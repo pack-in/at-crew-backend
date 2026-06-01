@@ -35,3 +35,9 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### Claude Code ###
+.claude/
+
+### 보안 문서 (Figma 파일 키 등 민감 정보 포함) ###
+docs/design/figma.md
