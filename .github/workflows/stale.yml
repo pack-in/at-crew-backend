@@ -1,0 +1,35 @@
+name: Stale 관리
+
+on:
+  schedule:
+    - cron: "0 1 * * *" # 매일 오전 10시 KST
+  workflow_dispatch:
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/stale@v9
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          days-before-stale: 30
+          days-before-close: 7
+          stale-issue-label: "stale"
+          stale-pr-label: "stale"
+          exempt-issue-labels: "in-progress,blocked"
+          exempt-pr-labels: "in-progress,blocked"
+          stale-issue-message: >
+            30일 이상 활동이 없어 stale 상태로 전환됩니다.
+            7일 내 업데이트가 없으면 자동으로 닫힙니다.
+          stale-pr-message: >
+            30일 이상 활동이 없어 stale 상태로 전환됩니다.
+            7일 내 업데이트가 없으면 자동으로 닫힙니다.
+          close-issue-message: >
+            장기간 활동이 없어 자동으로 닫혔습니다.
+            이슈가 여전히 유효하다면 다시 열어주세요.
+          close-pr-message: >
+            장기간 활동이 없어 자동으로 닫혔습니다.
+            PR이 여전히 유효하다면 다시 열어주세요.

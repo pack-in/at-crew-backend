@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 커밋 컨벤션 확인
+    url: https://github.com/pack-in/at-crew-backend/blob/main/docs/conventions/commit.md
+    about: PR 작성 전 커밋 컨벤션을 확인해주세요

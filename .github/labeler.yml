@@ -1,0 +1,24 @@
+"area: docs":
+  - changed-files:
+    - any-glob-to-any-file:
+      - "docs/**"
+      - "**/*.md"
+
+"area: ci":
+  - changed-files:
+    - any-glob-to-any-file:
+      - ".github/**"
+
+"area: build":
+  - changed-files:
+    - any-glob-to-any-file:
+      - "build.gradle"
+      - "settings.gradle"
+      - "gradle/**"
+      - "gradlew"
+      - "gradlew.bat"
+
+"area: test":
+  - changed-files:
+    - any-glob-to-any-file:
+      - "src/test/**"
