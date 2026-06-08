@@ -1,6 +1,5 @@
-package com.atcrew.member.internal;
+package com.atcrew.member.internal.persistence;
 
-import com.atcrew.member.Member;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;
