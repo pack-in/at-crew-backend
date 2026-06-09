@@ -113,20 +113,6 @@ public class Member {
         return toCareerInfo(entry);
     }
 
-    public void updateCareer(String careerId, String workTitle, String role,
-                             String startDate, String endDate, boolean ongoing, String description) {
-        assertActive();
-        validateCareerPeriod(startDate, endDate, ongoing);
-        for (int i = 0; i < careers.size(); i++) {
-            if (careers.get(i).getId().equals(careerId)) {
-                careers.set(i, new CareerEntry(careerId, workTitle, role,
-                        startDate, endDate, ongoing, description));
-                return;
-            }
-        }
-        throw new MemberException(MemberErrorCode.CAREER_NOT_FOUND, careerId);
-    }
-
     public void deleteCareer(String careerId) {
         assertActive();
         boolean removed = careers.removeIf(c -> c.getId().equals(careerId));

@@ -4,11 +4,9 @@ import com.atcrew.member.AddCareerCommand;
 import com.atcrew.member.CareerEntryInfo;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
-import com.atcrew.member.UpdateCareerCommand;
 import com.atcrew.member.UpdateInfoCommand;
 import com.atcrew.member.internal.web.dto.AddCareerRequest;
 import com.atcrew.member.internal.web.dto.RegisterRequest;
-import com.atcrew.member.internal.web.dto.UpdateCareerRequest;
 import com.atcrew.member.internal.web.dto.UpdateInfoRequest;
 import com.atcrew.member.internal.web.dto.UpdateNameRequest;
 import jakarta.validation.Valid;
@@ -64,15 +62,6 @@ class MemberController {
     @ResponseStatus(HttpStatus.CREATED)
     public CareerEntryInfo addCareer(@PathVariable String id, @RequestBody @Valid AddCareerRequest request) {
         return memberService.addCareer(id, new AddCareerCommand(
-                request.workTitle(), request.role(), request.startDate(),
-                request.endDate(), request.ongoing(), request.description()));
-    }
-
-    @PatchMapping("/{id}/careers/{careerId}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void updateCareer(@PathVariable String id, @PathVariable String careerId,
-                             @RequestBody @Valid UpdateCareerRequest request) {
-        memberService.updateCareer(id, careerId, new UpdateCareerCommand(
                 request.workTitle(), request.role(), request.startDate(),
                 request.endDate(), request.ongoing(), request.description()));
     }

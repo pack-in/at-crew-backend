@@ -5,7 +5,6 @@ import com.atcrew.member.CareerEntryInfo;
 import com.atcrew.member.CreatorRole;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
-import com.atcrew.member.UpdateCareerCommand;
 import com.atcrew.member.UpdateInfoCommand;
 import com.atcrew.member.exception.MemberErrorCode;
 import com.atcrew.member.exception.MemberException;
@@ -71,14 +70,6 @@ class MemberServiceImpl implements MemberService {
                 command.startDate(), command.endDate(), command.ongoing(), command.description());
         memberRepository.save(member);
         return entry;
-    }
-
-    @Override
-    public void updateCareer(String memberId, String careerId, UpdateCareerCommand command) {
-        Member member = findMemberById(memberId);
-        member.updateCareer(careerId, command.workTitle(), command.role(),
-                command.startDate(), command.endDate(), command.ongoing(), command.description());
-        memberRepository.save(member);
     }
 
     @Override

@@ -16,8 +16,6 @@ public interface MemberService {
 
     CareerEntryInfo addCareer(String memberId, AddCareerCommand command);
 
-    void updateCareer(String memberId, String careerId, UpdateCareerCommand command);
-
     void deleteCareer(String memberId, String careerId);
 
     void deactivate(String memberId);
