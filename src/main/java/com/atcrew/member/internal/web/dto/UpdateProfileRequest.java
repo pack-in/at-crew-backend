@@ -1,4 +1,4 @@
-package com.atcrew.member.internal.web;
+package com.atcrew.member.internal.web.dto;
 
 import com.atcrew.member.ActiveRegion;
 import com.atcrew.member.ActivityField;
@@ -12,7 +12,7 @@ import jakarta.validation.constraints.Size;
 
 import java.util.List;
 
-record UpdateProfileRequest(
+public record UpdateProfileRequest(
         @Size(max = 16)
         String name,
 

@@ -1,4 +1,4 @@
-package com.atcrew.member.internal.persistence;
+package com.atcrew.member.internal.domain;
 
 import com.atcrew.member.ActiveRegion;
 import com.atcrew.member.ActivityField;

@@ -1,10 +1,10 @@
-package com.atcrew.member.internal.web;
+package com.atcrew.member.internal.web.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
-record AddCareerRequest(
+public record AddCareerRequest(
         @NotBlank
         String workTitle,
 

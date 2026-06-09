@@ -1,5 +1,6 @@
 package com.atcrew.member.internal.persistence;
 
+import com.atcrew.member.internal.domain.Member;
 import org.springframework.data.mongodb.repository.MongoRepository;
 
 import java.util.Optional;

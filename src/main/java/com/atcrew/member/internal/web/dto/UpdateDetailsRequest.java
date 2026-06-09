@@ -1,8 +1,8 @@
-package com.atcrew.member.internal.web;
+package com.atcrew.member.internal.web.dto;
 
 import jakarta.validation.constraints.Size;
 
-record UpdateDetailsRequest(
+public record UpdateDetailsRequest(
         @Size(max = 100)
         String contact,
 

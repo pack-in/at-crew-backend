@@ -1,4 +1,4 @@
-package com.atcrew.member.internal.persistence;
+package com.atcrew.member.internal.domain;
 
 class CareerEntry {
 

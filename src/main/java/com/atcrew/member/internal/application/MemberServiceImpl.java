@@ -1,21 +1,17 @@
 package com.atcrew.member.internal.application;
 
-import com.atcrew.member.ActiveRegion;
-import com.atcrew.member.ActivityField;
+import com.atcrew.member.AddCareerCommand;
 import com.atcrew.member.CareerEntryInfo;
 import com.atcrew.member.CreatorRole;
-import com.atcrew.member.EmploymentStatus;
-import com.atcrew.member.ExperienceLevel;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
-import com.atcrew.member.TeamExperience;
+import com.atcrew.member.UpdateCareerCommand;
+import com.atcrew.member.UpdateProfileCommand;
 import com.atcrew.member.exception.MemberErrorCode;
 import com.atcrew.member.exception.MemberException;
-import com.atcrew.member.internal.persistence.Member;
+import com.atcrew.member.internal.domain.Member;
 import com.atcrew.member.internal.persistence.MemberRepository;
 import org.springframework.stereotype.Service;
-
-import java.util.List;
 
 @Service
 class MemberServiceImpl implements MemberService {
@@ -34,37 +30,32 @@ class MemberServiceImpl implements MemberService {
         if (memberRepository.existsByHandle(handle)) {
             throw new MemberException(MemberErrorCode.DUPLICATE_HANDLE, handle);
         }
-        return toInfo(memberRepository.save(Member.register(loginEmail, handle, name, creatorRole)));
+        return MemberMapper.toInfo(memberRepository.save(Member.register(loginEmail, handle, name, creatorRole)));
     }
 
     @Override
     public MemberInfo findByHandle(String handle) {
-        return toInfo(memberRepository.findByHandle(handle)
+        return MemberMapper.toInfo(memberRepository.findByHandle(handle)
                 .orElseThrow(() -> new MemberException(MemberErrorCode.MEMBER_NOT_FOUND, handle)));
     }
 
     @Override
     public MemberInfo findByLoginEmail(String loginEmail) {
-        return toInfo(memberRepository.findByLoginEmail(loginEmail)
+        return MemberMapper.toInfo(memberRepository.findByLoginEmail(loginEmail)
                 .orElseThrow(() -> new MemberException(MemberErrorCode.MEMBER_NOT_FOUND, loginEmail)));
     }
 
     @Override
     public MemberInfo findById(String memberId) {
-        return toInfo(findMemberById(memberId));
+        return MemberMapper.toInfo(findMemberById(memberId));
     }
 
     @Override
-    public void updateProfile(String memberId, String name, CreatorRole creatorRole,
-                              EmploymentStatus employmentStatus,
-                              List<ActivityField> activityFields,
-                              ExperienceLevel experienceLevel,
-                              List<ActiveRegion> activeRegions,
-                              int totalSlotCount, int availableSlotCount,
-                              List<TeamExperience> teamExperiences) {
+    public void updateProfile(String memberId, UpdateProfileCommand command) {
         Member member = findMemberById(memberId);
-        member.updateProfile(name, creatorRole, employmentStatus, activityFields,
-                experienceLevel, activeRegions, totalSlotCount, availableSlotCount, teamExperiences);
+        member.updateProfile(command.name(), command.creatorRole(), command.employmentStatus(),
+                command.activityFields(), command.experienceLevel(), command.activeRegions(),
+                command.totalSlotCount(), command.availableSlotCount(), command.teamExperiences());
         memberRepository.save(member);
     }
 
@@ -76,19 +67,19 @@ class MemberServiceImpl implements MemberService {
     }
 
     @Override
-    public CareerEntryInfo addCareer(String memberId, String workTitle, String role,
-                                     String startDate, String endDate, boolean ongoing, String description) {
+    public CareerEntryInfo addCareer(String memberId, AddCareerCommand command) {
         Member member = findMemberById(memberId);
-        CareerEntryInfo entry = member.addCareer(workTitle, role, startDate, endDate, ongoing, description);
+        CareerEntryInfo entry = member.addCareer(command.workTitle(), command.role(),
+                command.startDate(), command.endDate(), command.ongoing(), command.description());
         memberRepository.save(member);
         return entry;
     }
 
     @Override
-    public void updateCareer(String memberId, String careerId, String workTitle, String role,
-                             String startDate, String endDate, boolean ongoing, String description) {
+    public void updateCareer(String memberId, String careerId, UpdateCareerCommand command) {
         Member member = findMemberById(memberId);
-        member.updateCareer(careerId, workTitle, role, startDate, endDate, ongoing, description);
+        member.updateCareer(careerId, command.workTitle(), command.role(),
+                command.startDate(), command.endDate(), command.ongoing(), command.description());
         memberRepository.save(member);
     }
 
@@ -111,28 +102,4 @@ class MemberServiceImpl implements MemberService {
                 .orElseThrow(() -> new MemberException(MemberErrorCode.MEMBER_NOT_FOUND, memberId));
     }
 
-    private MemberInfo toInfo(Member member) {
-        return new MemberInfo(
-                member.getId(),
-                member.getHandle(),
-                member.getLoginEmail(),
-                member.getName(),
-                member.getCreatorRole(),
-                member.getEmploymentStatus(),
-                member.getActivityFields(),
-                member.getExperienceLevel(),
-                member.getActiveRegions(),
-                member.getTeamExperiences(),
-                member.getTotalSlotCount(),
-                member.getAvailableSlotCount(),
-                member.getContact(),
-                member.getSns(),
-                member.getTools(),
-                member.getCareers(),
-                member.isActive(),
-                member.getDeletedAt(),
-                member.getCreatedAt(),
-                member.getUpdatedAt()
-        );
-    }
 }
