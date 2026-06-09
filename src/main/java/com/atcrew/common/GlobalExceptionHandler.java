@@ -1,5 +1,6 @@
 package com.atcrew.common;
 
+import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
@@ -42,6 +43,16 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             Exception ex, Object body, HttpHeaders headers, HttpStatusCode status, WebRequest request) {
         ErrorResponse error = new ErrorResponse("HTTP_" + status.value(), ex.getMessage());
         return new ResponseEntity<>(error, headers, status);
+    }
+
+    // @Validated + PathVariable/RequestParam 제약 위반
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ErrorResponse> handleConstraintViolation(ConstraintViolationException e) {
+        String message = e.getConstraintViolations().stream()
+                .map(v -> v.getMessage())
+                .findFirst()
+                .orElse("입력값이 올바르지 않습니다");
+        return ResponseEntity.badRequest().body(new ErrorResponse("INVALID_INPUT", message));
     }
 
     // 예상치 못한 서버 예외

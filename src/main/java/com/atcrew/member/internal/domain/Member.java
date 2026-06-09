@@ -89,9 +89,11 @@ public class Member {
         assertActive();
         Integer totalSlotCount = command.totalSlotCount();
         Integer availableSlotCount = command.availableSlotCount();
-        if (totalSlotCount != null && availableSlotCount != null && availableSlotCount > totalSlotCount) {
+        int effectiveTotal = totalSlotCount != null ? totalSlotCount : this.totalSlotCount;
+        int effectiveAvailable = availableSlotCount != null ? availableSlotCount : this.availableSlotCount;
+        if (effectiveAvailable > effectiveTotal) {
             throw new MemberException(MemberErrorCode.INVALID_SLOT_COUNT,
-                    "available=" + availableSlotCount + " total=" + totalSlotCount);
+                    "available=" + effectiveAvailable + " total=" + effectiveTotal);
         }
         if (command.creatorRole() != null) this.creatorRole = command.creatorRole();
         if (command.employmentStatus() != null) this.employmentStatus = command.employmentStatus();
@@ -162,6 +164,9 @@ public class Member {
     }
 
     private void validateCareerPeriod(LocalDate startDate, LocalDate endDate, boolean ongoing) {
+        if (ongoing && endDate != null) {
+            throw new MemberException(MemberErrorCode.INVALID_CAREER_PERIOD, "연재중 상태에서는 종료일을 입력할 수 없습니다");
+        }
         if (!ongoing && endDate == null) {
             throw new MemberException(MemberErrorCode.INVALID_CAREER_PERIOD, "종료일 누락");
         }

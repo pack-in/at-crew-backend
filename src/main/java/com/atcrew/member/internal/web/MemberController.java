@@ -15,7 +15,9 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Pattern;
 import org.springframework.http.HttpStatus;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -27,6 +29,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 @Tag(name = "회원", description = "회원 가입·조회·프로필 수정·경력 관리 API")
+@Validated
 @RestController
 @RequestMapping("/api/members")
 class MemberController {
@@ -51,7 +54,8 @@ class MemberController {
     @CommonApiResponses
     @GetMapping("/{handle}")
     public MemberInfo findByHandle(
-            @Parameter(description = "회원 핸들 (@ 제외)", example = "creator_kim") @PathVariable String handle) {
+            @Parameter(description = "회원 핸들 (@ 제외)", example = "creator_kim")
+            @PathVariable @Pattern(regexp = "^[a-zA-Z0-9_-]{3,30}$", message = "핸들 형식이 올바르지 않습니다") String handle) {
         return memberService.findByHandle(handle);
     }
 
