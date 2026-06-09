@@ -41,7 +41,7 @@ class MemberControllerValidationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(registerBody("user@test.com", "valid_handle", "가".repeat(17), "WEBTOON")))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
     }
 
     @Test
@@ -50,7 +50,7 @@ class MemberControllerValidationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(registerBody("not-an-email", "valid_handle", "홍길동", "WEBTOON")))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
     }
 
     @Test
@@ -59,7 +59,7 @@ class MemberControllerValidationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(registerBody("user@test.com", "invalid handle!", "홍길동", "WEBTOON")))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
     }
 
     @Test
@@ -68,7 +68,7 @@ class MemberControllerValidationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(registerBody("user@test.com", "valid_handle", "홍길동", "INVALID_ROLE")))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
     }
 
     @Test
@@ -77,7 +77,7 @@ class MemberControllerValidationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(registerBody("user@test.com", "valid_handle", "   ", "WEBTOON")))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
     }
 
     // ─── UpdateNameRequest ────────────────────────────────────────────
@@ -88,7 +88,7 @@ class MemberControllerValidationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("name", "   "))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
     }
 
     @Test
@@ -97,7 +97,7 @@ class MemberControllerValidationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("name", "가".repeat(17)))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
     }
 
     // ─── AddCareerRequest ─────────────────────────────────────────────
@@ -112,7 +112,7 @@ class MemberControllerValidationTest {
                                 "ongoing", false
                         ))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
     }
 
     @Test
@@ -125,7 +125,7 @@ class MemberControllerValidationTest {
                                 "ongoing", false
                         ))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
     }
 
     @Test
@@ -138,7 +138,7 @@ class MemberControllerValidationTest {
                                 "ongoing", false
                         ))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
     }
 
     // ─── UpdateInfoRequest ────────────────────────────────────────────
@@ -149,7 +149,7 @@ class MemberControllerValidationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("totalSlotCount", 6))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
     }
 
     @Test
@@ -158,7 +158,7 @@ class MemberControllerValidationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("totalSlotCount", 0))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
     }
 
     @Test
@@ -167,7 +167,7 @@ class MemberControllerValidationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("contact", "a".repeat(101)))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
     }
 
     @Test
@@ -178,7 +178,7 @@ class MemberControllerValidationTest {
                                 "activityFields", List.of("ILLUSTRATION", "WEBTOON", "MANGA", "ANIMATION", "ILLUSTRATION")
                         ))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
     }
 
     // ─── Helper ───────────────────────────────────────────────────────

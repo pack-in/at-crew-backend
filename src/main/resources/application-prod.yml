@@ -5,3 +5,10 @@ spring:
   data:
     mongodb:
       auto-index-creation: false
+
+cors:
+  allowed-origins: ${CORS_ALLOWED_ORIGINS}
+
+logging:
+  level:
+    com.atcrew: INFO

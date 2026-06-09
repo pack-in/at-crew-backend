@@ -13,6 +13,7 @@ import com.atcrew.member.internal.domain.Member;
 import com.atcrew.member.internal.persistence.MemberRepository;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 class MemberServiceImpl implements MemberService {
@@ -54,6 +55,7 @@ class MemberServiceImpl implements MemberService {
     }
 
     @Override
+    @Transactional
     public void updateName(String memberId, String name) {
         Member member = findMemberById(memberId);
         member.updateName(name);
@@ -61,6 +63,7 @@ class MemberServiceImpl implements MemberService {
     }
 
     @Override
+    @Transactional
     public void updateInfo(String memberId, UpdateInfoCommand command) {
         Member member = findMemberById(memberId);
         member.updateInfo(command);
@@ -68,6 +71,7 @@ class MemberServiceImpl implements MemberService {
     }
 
     @Override
+    @Transactional
     public CareerEntryInfo addCareer(String memberId, AddCareerCommand command) {
         Member member = findMemberById(memberId);
         CareerEntryInfo entry = member.addCareer(command.workTitle(), command.role(),
@@ -77,6 +81,7 @@ class MemberServiceImpl implements MemberService {
     }
 
     @Override
+    @Transactional
     public void deleteCareer(String memberId, String careerId) {
         Member member = findMemberById(memberId);
         member.deleteCareer(careerId);
@@ -84,6 +89,7 @@ class MemberServiceImpl implements MemberService {
     }
 
     @Override
+    @Transactional
     public void deactivate(String memberId) {
         Member member = findMemberById(memberId);
         member.deactivate();

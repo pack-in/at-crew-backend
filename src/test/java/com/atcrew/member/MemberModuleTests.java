@@ -1,10 +1,12 @@
 package com.atcrew.member;
 
+import com.atcrew.TestMongoConfig;
 import com.atcrew.member.exception.MemberErrorCode;
 import com.atcrew.member.exception.MemberException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.context.annotation.Import;
 import org.springframework.modulith.test.ApplicationModuleTest;
 import org.testcontainers.containers.MongoDBContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -18,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @ApplicationModuleTest
 @Testcontainers
+@Import(TestMongoConfig.class)
 class MemberModuleTests {
 
     @Container
