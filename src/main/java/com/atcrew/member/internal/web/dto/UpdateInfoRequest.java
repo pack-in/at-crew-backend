@@ -9,6 +9,7 @@ import com.atcrew.member.TeamExperience;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
@@ -19,12 +20,12 @@ public record UpdateInfoRequest(
         EmploymentStatus employmentStatus,
 
         @Size(max = 4)
-        List<ActivityField> activityFields,
+        List<@NotNull ActivityField> activityFields,
 
         ExperienceLevel experienceLevel,
 
         @Size(max = 7)
-        List<ActiveRegion> activeRegions,
+        List<@NotNull ActiveRegion> activeRegions,
 
         @Min(1) @Max(5)
         Integer totalSlotCount,
@@ -33,7 +34,7 @@ public record UpdateInfoRequest(
         Integer availableSlotCount,
 
         @Size(max = 4)
-        List<TeamExperience> teamExperiences,
+        List<@NotNull TeamExperience> teamExperiences,
 
         // 전화번호 또는 이메일을 단일 필드로 통합 수신
         @Schema(description = "연락처 (전화번호 또는 이메일)", example = "010-1234-5678")
@@ -47,6 +48,7 @@ public record UpdateInfoRequest(
         @Size(max = 200)
         String sns,
 
+        @Size(max = 200)
         String tools
 ) {
 }
