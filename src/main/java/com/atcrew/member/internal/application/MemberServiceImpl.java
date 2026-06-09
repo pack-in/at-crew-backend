@@ -1,8 +1,11 @@
 package com.atcrew.member.internal.application;
 
+import com.atcrew.member.ActiveRegion;
+import com.atcrew.member.ActivityField;
 import com.atcrew.member.CareerEntryInfo;
 import com.atcrew.member.CreatorRole;
 import com.atcrew.member.EmploymentStatus;
+import com.atcrew.member.ExperienceLevel;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
 import com.atcrew.member.TeamExperience;
@@ -52,38 +55,40 @@ class MemberServiceImpl implements MemberService {
     }
 
     @Override
-    public void updateProfile(String memberId, String name, String profileImage, CreatorRole creatorRole,
+    public void updateProfile(String memberId, String name, CreatorRole creatorRole,
                               EmploymentStatus employmentStatus,
+                              List<ActivityField> activityFields,
+                              ExperienceLevel experienceLevel,
+                              List<ActiveRegion> activeRegions,
                               int totalSlotCount, int availableSlotCount,
                               List<TeamExperience> teamExperiences) {
         Member member = findMemberById(memberId);
-        member.updateProfile(name, profileImage, creatorRole, employmentStatus,
-                totalSlotCount, availableSlotCount, teamExperiences);
+        member.updateProfile(name, creatorRole, employmentStatus, activityFields,
+                experienceLevel, activeRegions, totalSlotCount, availableSlotCount, teamExperiences);
         memberRepository.save(member);
     }
 
     @Override
-    public void updateDetails(String memberId, String location, String contactEmail, String socialMediaLink,
-                              String twitter, String creativeTools, List<String> keywords) {
+    public void updateDetails(String memberId, String contact, String sns, String tools) {
         Member member = findMemberById(memberId);
-        member.updateDetails(location, contactEmail, socialMediaLink, twitter, creativeTools, keywords);
+        member.updateDetails(contact, sns, tools);
         memberRepository.save(member);
     }
 
     @Override
-    public CareerEntryInfo addCareer(String memberId, String workTitle, String episodeCount,
+    public CareerEntryInfo addCareer(String memberId, String workTitle, String role,
                                      String startDate, String endDate, boolean ongoing, String description) {
         Member member = findMemberById(memberId);
-        CareerEntryInfo entry = member.addCareer(workTitle, episodeCount, startDate, endDate, ongoing, description);
+        CareerEntryInfo entry = member.addCareer(workTitle, role, startDate, endDate, ongoing, description);
         memberRepository.save(member);
         return entry;
     }
 
     @Override
-    public void updateCareer(String memberId, String careerId, String workTitle, String episodeCount,
+    public void updateCareer(String memberId, String careerId, String workTitle, String role,
                              String startDate, String endDate, boolean ongoing, String description) {
         Member member = findMemberById(memberId);
-        member.updateCareer(careerId, workTitle, episodeCount, startDate, endDate, ongoing, description);
+        member.updateCareer(careerId, workTitle, role, startDate, endDate, ongoing, description);
         memberRepository.save(member);
     }
 
@@ -112,28 +117,22 @@ class MemberServiceImpl implements MemberService {
                 member.getHandle(),
                 member.getLoginEmail(),
                 member.getName(),
-                member.getProfileImage(),
                 member.getCreatorRole(),
                 member.getEmploymentStatus(),
+                member.getActivityFields(),
+                member.getExperienceLevel(),
+                member.getActiveRegions(),
+                member.getTeamExperiences(),
                 member.getTotalSlotCount(),
                 member.getAvailableSlotCount(),
-                member.getTeamExperiences(),
-                member.getContactEmail(),
-                member.getSocialMediaLink(),
-                member.getTwitter(),
-                member.getCreativeTools(),
+                member.getContact(),
+                member.getSns(),
+                member.getTools(),
                 member.getCareers(),
-                member.getKeywords(),
-                member.getExperienceLevel(),
-                member.getBirthDate(),
-                member.getSchool(),
-                member.getLocation(),
-                member.getDesiredField(),
                 member.isActive(),
                 member.getDeletedAt(),
                 member.getCreatedAt(),
                 member.getUpdatedAt()
         );
     }
-
 }

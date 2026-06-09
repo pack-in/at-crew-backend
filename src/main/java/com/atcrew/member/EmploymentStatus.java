@@ -1,8 +1,8 @@
 package com.atcrew.member;
 
 public enum EmploymentStatus {
-    LOOKING_FOR_JOB,  // 구직중
-    HIRING,           // 구인중
-    HIRING_AND_LOOKING, // 구인구직중
-    PREPARING         // 준비중
+    PREPARING,  // 준비중
+    AVAILABLE,  // 신규 작업 가능
+    NEGOTIABLE, // 협의 가능
+    CLOSED      // 마감
 }

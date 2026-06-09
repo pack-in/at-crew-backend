@@ -39,22 +39,22 @@ class MemberController {
     @PatchMapping("/{id}/profile")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void updateProfile(@PathVariable String id, @RequestBody @Valid UpdateProfileRequest request) {
-        memberService.updateProfile(id, request.name(), request.profileImage(), request.creatorRole(),
-                request.employmentStatus(), request.totalSlotCount(), request.availableSlotCount(),
+        memberService.updateProfile(id, request.name(), request.creatorRole(),
+                request.employmentStatus(), request.activityFields(), request.experienceLevel(),
+                request.activeRegions(), request.totalSlotCount(), request.availableSlotCount(),
                 request.teamExperiences());
     }
 
     @PatchMapping("/{id}/details")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void updateDetails(@PathVariable String id, @RequestBody @Valid UpdateDetailsRequest request) {
-        memberService.updateDetails(id, request.location(), request.contactEmail(),
-                request.socialMediaLink(), request.twitter(), request.creativeTools(), request.keywords());
+        memberService.updateDetails(id, request.contact(), request.sns(), request.tools());
     }
 
     @PostMapping("/{id}/careers")
     @ResponseStatus(HttpStatus.CREATED)
     public CareerEntryInfo addCareer(@PathVariable String id, @RequestBody @Valid AddCareerRequest request) {
-        return memberService.addCareer(id, request.workTitle(), request.episodeCount(),
+        return memberService.addCareer(id, request.workTitle(), request.role(),
                 request.startDate(), request.endDate(), request.ongoing(), request.description());
     }
 
@@ -62,7 +62,7 @@ class MemberController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void updateCareer(@PathVariable String id, @PathVariable String careerId,
                              @RequestBody @Valid UpdateCareerRequest request) {
-        memberService.updateCareer(id, careerId, request.workTitle(), request.episodeCount(),
+        memberService.updateCareer(id, careerId, request.workTitle(), request.role(),
                 request.startDate(), request.endDate(), request.ongoing(), request.description());
     }
 

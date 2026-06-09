@@ -12,18 +12,20 @@ public interface MemberService {
 
     MemberInfo findById(String memberId);
 
-    void updateProfile(String memberId, String name, String profileImage, CreatorRole creatorRole,
+    void updateProfile(String memberId, String name, CreatorRole creatorRole,
                        EmploymentStatus employmentStatus,
+                       List<ActivityField> activityFields,
+                       ExperienceLevel experienceLevel,
+                       List<ActiveRegion> activeRegions,
                        int totalSlotCount, int availableSlotCount,
                        List<TeamExperience> teamExperiences);
 
-    void updateDetails(String memberId, String location, String contactEmail, String socialMediaLink,
-                       String twitter, String creativeTools, List<String> keywords);
+    void updateDetails(String memberId, String contact, String sns, String tools);
 
-    CareerEntryInfo addCareer(String memberId, String workTitle, String episodeCount,
+    CareerEntryInfo addCareer(String memberId, String workTitle, String role,
                               String startDate, String endDate, boolean ongoing, String description);
 
-    void updateCareer(String memberId, String careerId, String workTitle, String episodeCount,
+    void updateCareer(String memberId, String careerId, String workTitle, String role,
                       String startDate, String endDate, boolean ongoing, String description);
 
     void deleteCareer(String memberId, String careerId);

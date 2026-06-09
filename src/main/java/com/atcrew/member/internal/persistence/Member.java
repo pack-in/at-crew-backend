@@ -1,5 +1,7 @@
 package com.atcrew.member.internal.persistence;
 
+import com.atcrew.member.ActiveRegion;
+import com.atcrew.member.ActivityField;
 import com.atcrew.member.CareerEntryInfo;
 import com.atcrew.member.CreatorRole;
 import com.atcrew.member.EmploymentStatus;
@@ -31,16 +33,23 @@ public class Member {
     @Indexed(unique = true, sparse = true)
     private String handle;
 
-    private MemberProfile profile;
-    private MemberPersonalInfo personalInfo;
-    private MemberContact contact;
-    private MemberCareer careerInfo;
+    private String name;
+    private CreatorRole creatorRole;
+
+    private EmploymentStatus employmentStatus = EmploymentStatus.PREPARING;
+    private List<ActivityField> activityFields = new ArrayList<>();
+    private ExperienceLevel experienceLevel;
+    private List<ActiveRegion> activeRegions = new ArrayList<>();
+    private List<TeamExperience> teamExperiences = new ArrayList<>();
 
     private int totalSlotCount = 5;
     private int availableSlotCount = 5;
-    private List<TeamExperience> teamExperiences = new ArrayList<>();
+
+    private String contact;
+    private String sns;
+    private String tools;
+
     private List<CareerEntry> careers = new ArrayList<>();
-    private List<String> keywords = new ArrayList<>();
 
     private boolean active = true;
     private LocalDateTime deletedAt;
@@ -60,60 +69,51 @@ public class Member {
     private Member(String loginEmail, String handle, String name, CreatorRole creatorRole) {
         this.loginEmail = loginEmail;
         this.handle = handle;
-        this.profile = new MemberProfile(name, "", creatorRole, EmploymentStatus.PREPARING, ExperienceLevel.NEWCOMER);
-        this.personalInfo = new MemberPersonalInfo("", "", "");
-        this.contact = new MemberContact("", "", "");
-        this.careerInfo = new MemberCareer("", "");
+        this.name = name;
+        this.creatorRole = creatorRole;
     }
 
     public static Member register(String loginEmail, String handle, String name, CreatorRole creatorRole) {
         return new Member(loginEmail, handle, name, creatorRole);
     }
 
-    public void updateProfile(String name, String profileImage, CreatorRole creatorRole,
+    public void updateProfile(String name, CreatorRole creatorRole,
                               EmploymentStatus employmentStatus,
+                              List<ActivityField> activityFields,
+                              ExperienceLevel experienceLevel,
+                              List<ActiveRegion> activeRegions,
                               int totalSlotCount, int availableSlotCount,
                               List<TeamExperience> teamExperiences) {
-        MemberProfile updated = this.profile;
-        if (name != null) updated = updated.withName(name);
-        if (profileImage != null) updated = updated.withProfileImage(profileImage);
-        if (creatorRole != null) updated = updated.withCreatorRole(creatorRole);
-        if (employmentStatus != null) updated = updated.withEmploymentStatus(employmentStatus);
-        this.profile = updated;
+        if (name != null) this.name = name;
+        if (creatorRole != null) this.creatorRole = creatorRole;
+        if (employmentStatus != null) this.employmentStatus = employmentStatus;
+        if (activityFields != null) this.activityFields = new ArrayList<>(activityFields);
+        if (experienceLevel != null) this.experienceLevel = experienceLevel;
+        if (activeRegions != null) this.activeRegions = new ArrayList<>(activeRegions);
         this.totalSlotCount = totalSlotCount;
         this.availableSlotCount = availableSlotCount;
-        if (teamExperiences != null) {
-            this.teamExperiences = new ArrayList<>(teamExperiences);
-        }
+        if (teamExperiences != null) this.teamExperiences = new ArrayList<>(teamExperiences);
     }
 
-    public void updateDetails(String location, String contactEmail, String socialMediaLink,
-                              String twitter, String creativeTools, List<String> keywords) {
-        if (location != null) this.personalInfo = this.personalInfo.withLocation(location);
-
-        MemberContact updatedContact = this.contact;
-        if (contactEmail != null) updatedContact = updatedContact.withContactEmail(contactEmail);
-        if (socialMediaLink != null) updatedContact = updatedContact.withSocialMediaLink(socialMediaLink);
-        if (twitter != null) updatedContact = updatedContact.withTwitter(twitter);
-        this.contact = updatedContact;
-
-        if (creativeTools != null) this.careerInfo = this.careerInfo.withCreativeTools(creativeTools);
-        if (keywords != null) this.keywords = new ArrayList<>(keywords);
+    public void updateDetails(String contact, String sns, String tools) {
+        if (contact != null) this.contact = contact;
+        if (sns != null) this.sns = sns;
+        if (tools != null) this.tools = tools;
     }
 
-    public CareerEntryInfo addCareer(String workTitle, String episodeCount, String startDate,
+    public CareerEntryInfo addCareer(String workTitle, String role, String startDate,
                                      String endDate, boolean ongoing, String description) {
-        CareerEntry entry = new CareerEntry(UUID.randomUUID().toString(), workTitle, episodeCount,
+        CareerEntry entry = new CareerEntry(UUID.randomUUID().toString(), workTitle, role,
                 startDate, endDate, ongoing, description);
         this.careers.add(entry);
         return toCareerInfo(entry);
     }
 
-    public void updateCareer(String careerId, String workTitle, String episodeCount,
+    public void updateCareer(String careerId, String workTitle, String role,
                              String startDate, String endDate, boolean ongoing, String description) {
         for (int i = 0; i < careers.size(); i++) {
             if (careers.get(i).getId().equals(careerId)) {
-                careers.set(i, new CareerEntry(careerId, workTitle, episodeCount,
+                careers.set(i, new CareerEntry(careerId, workTitle, role,
                         startDate, endDate, ongoing, description));
                 return;
             }
@@ -140,34 +140,49 @@ public class Member {
     public String getId() { return id; }
     public String getLoginEmail() { return loginEmail; }
     public String getHandle() { return handle; }
-    public boolean isActive() { return active; }
-    public LocalDateTime getDeletedAt() { return deletedAt; }
-    public String getDeletedLoginEmail() { return deletedLoginEmail; }
-    public LocalDateTime getCreatedAt() { return createdAt; }
-    public LocalDateTime getUpdatedAt() { return updatedAt; }
+    public String getName() { return name; }
+    public CreatorRole getCreatorRole() { return creatorRole; }
+    public EmploymentStatus getEmploymentStatus() { return employmentStatus; }
+    public List<ActivityField> getActivityFields() { return List.copyOf(activityFields); }
+    public ExperienceLevel getExperienceLevel() { return experienceLevel; }
+    public List<ActiveRegion> getActiveRegions() { return List.copyOf(activeRegions); }
+    public List<TeamExperience> getTeamExperiences() { return List.copyOf(teamExperiences); }
     public int getTotalSlotCount() { return totalSlotCount; }
     public int getAvailableSlotCount() { return availableSlotCount; }
-    public List<TeamExperience> getTeamExperiences() { return List.copyOf(teamExperiences); }
+    public String getContact() { return contact; }
+    public String getSns() { return sns; }
+    public String getTools() { return tools; }
     public List<CareerEntryInfo> getCareers() { return careers.stream().map(this::toCareerInfo).toList(); }
-    public List<String> getKeywords() { return List.copyOf(keywords); }
+    public boolean isActive() { return active; }
+    public LocalDateTime getDeletedAt() { return deletedAt; }
+    public LocalDateTime getCreatedAt() { return createdAt; }
+    public LocalDateTime getUpdatedAt() { return updatedAt; }
 
     private CareerEntryInfo toCareerInfo(CareerEntry entry) {
-        return new CareerEntryInfo(entry.getId(), entry.getWorkTitle(), entry.getEpisodeCount(),
-                entry.getStartDate(), entry.getEndDate(), entry.isOngoing(), entry.getDescription());
+        return new CareerEntryInfo(
+                entry.getId(), entry.getWorkTitle(), entry.getRole(),
+                entry.getStartDate(), entry.getEndDate(), entry.isOngoing(), entry.getDescription(),
+                computePeriodDisplay(entry.getStartDate(), entry.getEndDate(), entry.isOngoing()));
     }
 
-    public String getName() { return profile.getName(); }
-    public String getProfileImage() { return profile.getProfileImage(); }
-    public CreatorRole getCreatorRole() { return profile.getCreatorRole(); }
-    public EmploymentStatus getEmploymentStatus() { return profile.getEmploymentStatus(); }
-    public ExperienceLevel getExperienceLevel() { return profile.getExperienceLevel(); }
+    private static String computePeriodDisplay(String startDate, String endDate, boolean ongoing) {
+        if (ongoing || endDate == null) return startDate + " ~ 연재중";
 
-    public String getContactEmail() { return contact.getContactEmail(); }
-    public String getSocialMediaLink() { return contact.getSocialMediaLink(); }
-    public String getTwitter() { return contact.getTwitter(); }
-    public String getCreativeTools() { return careerInfo.getCreativeTools(); }
-    public String getDesiredField() { return careerInfo.getDesiredField(); }
-    public String getBirthDate() { return personalInfo.getBirthDate(); }
-    public String getSchool() { return personalInfo.getSchool(); }
-    public String getLocation() { return personalInfo.getLocation(); }
+        String[] s = startDate.split("\\.");
+        String[] e = endDate.split("\\.");
+        int months = (Integer.parseInt(e[0]) - Integer.parseInt(s[0])) * 12
+                   + (Integer.parseInt(e[1]) - Integer.parseInt(s[1]));
+
+        String duration;
+        if (months <= 0) {
+            duration = "하루";
+        } else if (months < 12) {
+            duration = "약 " + months + "개월";
+        } else {
+            int years = months / 12;
+            int rem = months % 12;
+            duration = rem == 0 ? "약 " + years + "년" : "약 " + years + "년 " + rem + "개월";
+        }
+        return startDate + " ~ " + endDate + " " + duration;
+    }
 }
