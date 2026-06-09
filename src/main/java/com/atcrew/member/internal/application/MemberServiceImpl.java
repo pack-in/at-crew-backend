@@ -3,6 +3,7 @@ package com.atcrew.member.internal.application;
 import com.atcrew.member.AddCareerCommand;
 import com.atcrew.member.CareerEntryInfo;
 import com.atcrew.member.CreatorRole;
+import com.atcrew.member.MemberDeactivatedEvent;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
 import com.atcrew.member.UpdateInfoCommand;
@@ -10,15 +11,18 @@ import com.atcrew.member.exception.MemberErrorCode;
 import com.atcrew.member.exception.MemberException;
 import com.atcrew.member.internal.domain.Member;
 import com.atcrew.member.internal.persistence.MemberRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 @Service
 class MemberServiceImpl implements MemberService {
 
     private final MemberRepository memberRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
-    MemberServiceImpl(MemberRepository memberRepository) {
+    MemberServiceImpl(MemberRepository memberRepository, ApplicationEventPublisher eventPublisher) {
         this.memberRepository = memberRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -84,6 +88,7 @@ class MemberServiceImpl implements MemberService {
         Member member = findMemberById(memberId);
         member.deactivate();
         memberRepository.save(member);
+        eventPublisher.publishEvent(new MemberDeactivatedEvent(memberId));
     }
 
     private Member findMemberById(String memberId) {
