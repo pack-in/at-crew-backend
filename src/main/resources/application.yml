@@ -21,3 +21,11 @@ management:
 
 cors:
   allowed-origins: http://localhost:3000
+
+jwt:
+  secret: ${JWT_SECRET:at-crew-default-secret-key-for-dev-only-must-be-at-least-64-chars-long}
+  access-token-expiration: 3600000       # 1시간 (ms)
+  refresh-token-expiration: 2592000000   # 30일 (ms)
+
+firebase:
+  credentials-path: ${FIREBASE_CREDENTIALS_PATH:}

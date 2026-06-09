@@ -4,6 +4,10 @@ public interface MemberService {
 
     MemberInfo register(String loginEmail, String handle, String name, CreatorRole creatorRole);
 
+    MemberInfo registerViaOAuth(String loginEmail, String name);
+
+    boolean existsByLoginEmail(String loginEmail);
+
     MemberInfo findByHandle(String handle);
 
     MemberInfo findByLoginEmail(String loginEmail);

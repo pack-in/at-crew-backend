@@ -12,7 +12,8 @@ public enum MemberErrorCode {
     CAREER_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 경력입니다"),
     CAREER_LIMIT_EXCEEDED(HttpStatus.BAD_REQUEST, "경력은 최대 50개까지 등록할 수 있습니다"),
     INVALID_SLOT_COUNT(HttpStatus.BAD_REQUEST, "작업 가능 슬롯은 전체 슬롯보다 클 수 없습니다"),
-    INVALID_CAREER_PERIOD(HttpStatus.BAD_REQUEST, "경력 종료일이 시작일보다 앞서거나 누락되었습니다");
+    INVALID_CAREER_PERIOD(HttpStatus.BAD_REQUEST, "경력 종료일이 시작일보다 앞서거나 누락되었습니다"),
+    HANDLE_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "핸들 자동 생성에 실패했습니다. 잠시 후 다시 시도해주세요");
 
     private final HttpStatus status;
     private final String message;

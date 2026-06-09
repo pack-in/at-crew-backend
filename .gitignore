@@ -41,3 +41,7 @@ out/
 
 ### 보안 문서 (Figma 파일 키 등 민감 정보 포함) ###
 docs/design/figma.md
+
+### Firebase 인증 정보 ###
+firebase-credentials.json
+src/main/resources/firebase-credentials.json

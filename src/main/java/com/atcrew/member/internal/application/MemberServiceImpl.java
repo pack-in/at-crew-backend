@@ -38,6 +38,32 @@ class MemberServiceImpl implements MemberService {
     }
 
     @Override
+    @Transactional
+    public MemberInfo registerViaOAuth(String loginEmail, String name) {
+        if (memberRepository.existsByLoginEmail(loginEmail)) {
+            throw new MemberException(MemberErrorCode.DUPLICATE_EMAIL, loginEmail);
+        }
+        String handle = generateUniqueHandle(name);
+        return MemberMapper.toInfo(memberRepository.save(Member.register(loginEmail, handle, name, null)));
+    }
+
+    @Override
+    public boolean existsByLoginEmail(String loginEmail) {
+        return memberRepository.existsByLoginEmail(loginEmail);
+    }
+
+    private String generateUniqueHandle(String name) {
+        String base = name.replaceAll("[^a-zA-Z0-9]", "").toLowerCase();
+        if (base.length() < 3) base = "user";
+        if (base.length() > 12) base = base.substring(0, 12);
+        for (int i = 0; i < 5; i++) {
+            String handle = base + "_" + (int) (Math.random() * 90000 + 10000);
+            if (!memberRepository.existsByHandle(handle)) return handle;
+        }
+        throw new MemberException(MemberErrorCode.HANDLE_GENERATION_FAILED, name);
+    }
+
+    @Override
     public MemberInfo findByHandle(String handle) {
         return MemberMapper.toInfo(memberRepository.findByHandle(handle)
                 .orElseThrow(() -> new MemberException(MemberErrorCode.MEMBER_NOT_FOUND, handle)));

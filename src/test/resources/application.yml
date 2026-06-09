@@ -2,3 +2,8 @@ spring:
   data:
     mongodb:
       auto-index-creation: true
+
+jwt:
+  secret: test-secret-key-for-unit-tests-only-must-be-at-least-64-bytes-long-here
+  access-token-expiration: 3600000
+  refresh-token-expiration: 2592000000
