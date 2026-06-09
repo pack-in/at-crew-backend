@@ -17,8 +17,6 @@ import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -185,28 +183,6 @@ public class Member {
         return new CareerEntryInfo(
                 entry.getId(), entry.getWorkTitle(), entry.getRole(),
                 entry.getStartDate(), entry.getEndDate(), entry.isOngoing(), entry.getDescription(),
-                computePeriodDisplay(entry.getStartDate(), entry.getEndDate(), entry.isOngoing()));
-    }
-
-    private static final DateTimeFormatter DATE_DISPLAY_FORMAT = DateTimeFormatter.ofPattern("yyyy.MM.dd");
-
-    private static String computePeriodDisplay(LocalDate startDate, LocalDate endDate, boolean ongoing) {
-        String start = startDate.format(DATE_DISPLAY_FORMAT);
-        if (ongoing || endDate == null) return start + " ~ 연재중";
-
-        String end = endDate.format(DATE_DISPLAY_FORMAT);
-        long months = ChronoUnit.MONTHS.between(startDate, endDate);
-
-        String duration;
-        if (months <= 0) {
-            duration = "하루";
-        } else if (months < 12) {
-            duration = "약 " + months + "개월";
-        } else {
-            long years = months / 12;
-            long rem = months % 12;
-            duration = rem == 0 ? "약 " + years + "년" : "약 " + years + "년 " + rem + "개월";
-        }
-        return start + " ~ " + end + " " + duration;
+                entry.periodDisplay());
     }
 }
