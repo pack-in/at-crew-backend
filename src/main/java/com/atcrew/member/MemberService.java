@@ -10,15 +10,23 @@ public interface MemberService {
 
     MemberInfo findByLoginEmail(String loginEmail);
 
-    void updateProfile(Long memberId, String name, String profileImage, CreatorRole creatorRole,
-                       EmploymentStatus employmentStatus, ExperienceLevel experienceLevel);
+    MemberInfo findById(String memberId);
 
-    void updateDetails(Long memberId, String birthDate, String school, String location,
-                       String contactEmail, String socialMediaLink, String twitter,
-                       String desiredField, String creativeTools, String career,
-                       List<String> keywords);
+    void updateProfile(String memberId, String name, String profileImage, CreatorRole creatorRole,
+                       EmploymentStatus employmentStatus,
+                       int totalSlotCount, int availableSlotCount,
+                       List<TeamExperience> teamExperiences);
 
-    void deactivate(Long memberId);
+    void updateDetails(String memberId, String location, String contactEmail, String socialMediaLink,
+                       String twitter, String creativeTools, List<String> keywords);
 
-    MemberInfo findById(Long memberId);
+    CareerEntryInfo addCareer(String memberId, String workTitle, String episodeCount,
+                              String startDate, String endDate, boolean ongoing, String description);
+
+    void updateCareer(String memberId, String careerId, String workTitle, String episodeCount,
+                      String startDate, String endDate, boolean ongoing, String description);
+
+    void deleteCareer(String memberId, String careerId);
+
+    void deactivate(String memberId);
 }

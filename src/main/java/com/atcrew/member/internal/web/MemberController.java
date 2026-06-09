@@ -1,14 +1,15 @@
 package com.atcrew.member.internal.web;
 
+import com.atcrew.member.CareerEntryInfo;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -35,24 +36,45 @@ class MemberController {
         return memberService.findByHandle(handle);
     }
 
-    @PutMapping("/{id}/profile")
+    @PatchMapping("/{id}/profile")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void updateProfile(@PathVariable Long id, @RequestBody @Valid UpdateProfileRequest request) {
-        memberService.updateProfile(id, request.name(), request.profileImage(),
-                request.creatorRole(), request.employmentStatus(), request.experienceLevel());
+    public void updateProfile(@PathVariable String id, @RequestBody @Valid UpdateProfileRequest request) {
+        memberService.updateProfile(id, request.name(), request.profileImage(), request.creatorRole(),
+                request.employmentStatus(), request.totalSlotCount(), request.availableSlotCount(),
+                request.teamExperiences());
     }
 
-    @PutMapping("/{id}/details")
+    @PatchMapping("/{id}/details")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void updateDetails(@PathVariable Long id, @RequestBody @Valid UpdateDetailsRequest request) {
-        memberService.updateDetails(id, request.birthDate(), request.school(), request.location(),
-                request.contactEmail(), request.socialMediaLink(), request.twitter(),
-                request.desiredField(), request.creativeTools(), request.career(), request.keywords());
+    public void updateDetails(@PathVariable String id, @RequestBody @Valid UpdateDetailsRequest request) {
+        memberService.updateDetails(id, request.location(), request.contactEmail(),
+                request.socialMediaLink(), request.twitter(), request.creativeTools(), request.keywords());
+    }
+
+    @PostMapping("/{id}/careers")
+    @ResponseStatus(HttpStatus.CREATED)
+    public CareerEntryInfo addCareer(@PathVariable String id, @RequestBody @Valid AddCareerRequest request) {
+        return memberService.addCareer(id, request.workTitle(), request.episodeCount(),
+                request.startDate(), request.endDate(), request.ongoing(), request.description());
+    }
+
+    @PatchMapping("/{id}/careers/{careerId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void updateCareer(@PathVariable String id, @PathVariable String careerId,
+                             @RequestBody @Valid UpdateCareerRequest request) {
+        memberService.updateCareer(id, careerId, request.workTitle(), request.episodeCount(),
+                request.startDate(), request.endDate(), request.ongoing(), request.description());
+    }
+
+    @DeleteMapping("/{id}/careers/{careerId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteCareer(@PathVariable String id, @PathVariable String careerId) {
+        memberService.deleteCareer(id, careerId);
     }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void deactivate(@PathVariable Long id) {
+    public void deactivate(@PathVariable String id) {
         memberService.deactivate(id);
     }
 }

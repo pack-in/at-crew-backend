@@ -1,10 +1,10 @@
 package com.atcrew.member.internal.persistence;
 
-import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.mongodb.repository.MongoRepository;
 
 import java.util.Optional;
 
-public interface MemberRepository extends JpaRepository<Member, Long> {
+public interface MemberRepository extends MongoRepository<Member, String> {
 
     Optional<Member> findByLoginEmail(String loginEmail);
 

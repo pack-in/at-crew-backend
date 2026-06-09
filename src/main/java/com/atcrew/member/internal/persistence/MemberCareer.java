@@ -1,36 +1,26 @@
 package com.atcrew.member.internal.persistence;
 
-import jakarta.persistence.Embeddable;
-
-@Embeddable
 class MemberCareer {
 
-    private String desiredField;
-    private String creativeTools;
-    private String career;
+    private String desiredField;  // 희망 분야 (라이트 호환)
+    private String creativeTools; // 사용 가능한 툴
 
     protected MemberCareer() {
     }
 
-    MemberCareer(String desiredField, String creativeTools, String career) {
+    MemberCareer(String desiredField, String creativeTools) {
         this.desiredField = desiredField;
         this.creativeTools = creativeTools;
-        this.career = career;
     }
 
     MemberCareer withDesiredField(String desiredField) {
-        return new MemberCareer(desiredField, this.creativeTools, this.career);
+        return new MemberCareer(desiredField, this.creativeTools);
     }
 
     MemberCareer withCreativeTools(String creativeTools) {
-        return new MemberCareer(this.desiredField, creativeTools, this.career);
-    }
-
-    MemberCareer withCareer(String career) {
-        return new MemberCareer(this.desiredField, this.creativeTools, career);
+        return new MemberCareer(this.desiredField, creativeTools);
     }
 
     String getDesiredField() { return desiredField; }
     String getCreativeTools() { return creativeTools; }
-    String getCareer() { return career; }
 }

@@ -1,18 +1,7 @@
 spring:
   application:
     name: at-crew-backend
-  datasource:
-    url: jdbc:h2:mem:atcrew;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL
-    driver-class-name: org.h2.Driver
-    username: sa
-    password:
-  jpa:
-    hibernate:
-      ddl-auto: none
-    show-sql: false
-  flyway:
-    enabled: true
-  h2:
-    console:
-      enabled: true
-      path: /h2-console
+  data:
+    mongodb:
+      uri: ${MONGODB_URI:mongodb://localhost:27017/atcrew}
+      auto-index-creation: true

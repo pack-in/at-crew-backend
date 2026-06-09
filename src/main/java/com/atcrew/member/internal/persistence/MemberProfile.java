@@ -3,29 +3,13 @@ package com.atcrew.member.internal.persistence;
 import com.atcrew.member.CreatorRole;
 import com.atcrew.member.EmploymentStatus;
 import com.atcrew.member.ExperienceLevel;
-import jakarta.persistence.Column;
-import jakarta.persistence.Embeddable;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 
-@Embeddable
 class MemberProfile {
 
-    @Column(nullable = false)
     private String name;
-
     private String profileImage;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
     private CreatorRole creatorRole;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
     private EmploymentStatus employmentStatus;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
     private ExperienceLevel experienceLevel;
 
     protected MemberProfile() {

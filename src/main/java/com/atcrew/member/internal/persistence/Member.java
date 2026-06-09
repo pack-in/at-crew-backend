@@ -1,62 +1,57 @@
 package com.atcrew.member.internal.persistence;
 
+import com.atcrew.member.CareerEntryInfo;
 import com.atcrew.member.CreatorRole;
 import com.atcrew.member.EmploymentStatus;
 import com.atcrew.member.ExperienceLevel;
-import jakarta.persistence.*;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
+import com.atcrew.member.TeamExperience;
+import com.atcrew.member.exception.MemberErrorCode;
+import com.atcrew.member.exception.MemberException;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.mongodb.core.index.Indexed;
+import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
-@Entity
-@Table(name = "members")
+@Document(collection = "members")
 public class Member {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    private String id;
 
-    // 탈퇴 시 null로 클리어해 재가입 충돌 방지 (unique + sparse)
-    @Column(unique = true, updatable = false)
+    // 탈퇴 시 null로 클리어해 재가입 충돌 방지
+    @Indexed(unique = true, sparse = true)
     private String loginEmail;
 
-    @Column(unique = true)
+    @Indexed(unique = true, sparse = true)
     private String handle;
 
-    @Embedded
     private MemberProfile profile;
-
-    @Embedded
     private MemberPersonalInfo personalInfo;
-
-    @Embedded
     private MemberContact contact;
+    private MemberCareer careerInfo;
 
-    @Embedded
-    private MemberCareer career;
-
-    @ElementCollection
-    @CollectionTable(name = "member_keywords", joinColumns = @JoinColumn(name = "member_id"))
-    @Column(name = "keyword")
+    private int totalSlotCount = 5;
+    private int availableSlotCount = 5;
+    private List<TeamExperience> teamExperiences = new ArrayList<>();
+    private List<CareerEntry> careers = new ArrayList<>();
     private List<String> keywords = new ArrayList<>();
 
-    @Column(nullable = false)
     private boolean active = true;
-
     private LocalDateTime deletedAt;
 
     // 탈퇴 시 loginEmail 백업 (감사 추적용)
     private String deletedLoginEmail;
 
-    @CreationTimestamp
-    @Column(nullable = false, updatable = false)
+    @CreatedDate
     private LocalDateTime createdAt;
 
-    @UpdateTimestamp
-    @Column(nullable = false)
+    @LastModifiedDate
     private LocalDateTime updatedAt;
 
     protected Member() {
@@ -68,7 +63,7 @@ public class Member {
         this.profile = new MemberProfile(name, "", creatorRole, EmploymentStatus.PREPARING, ExperienceLevel.NEWCOMER);
         this.personalInfo = new MemberPersonalInfo("", "", "");
         this.contact = new MemberContact("", "", "");
-        this.career = new MemberCareer("", "", "");
+        this.careerInfo = new MemberCareer("", "");
     }
 
     public static Member register(String loginEmail, String handle, String name, CreatorRole creatorRole) {
@@ -76,25 +71,25 @@ public class Member {
     }
 
     public void updateProfile(String name, String profileImage, CreatorRole creatorRole,
-                              EmploymentStatus employmentStatus, ExperienceLevel experienceLevel) {
+                              EmploymentStatus employmentStatus,
+                              int totalSlotCount, int availableSlotCount,
+                              List<TeamExperience> teamExperiences) {
         MemberProfile updated = this.profile;
         if (name != null) updated = updated.withName(name);
         if (profileImage != null) updated = updated.withProfileImage(profileImage);
         if (creatorRole != null) updated = updated.withCreatorRole(creatorRole);
         if (employmentStatus != null) updated = updated.withEmploymentStatus(employmentStatus);
-        if (experienceLevel != null) updated = updated.withExperienceLevel(experienceLevel);
         this.profile = updated;
+        this.totalSlotCount = totalSlotCount;
+        this.availableSlotCount = availableSlotCount;
+        if (teamExperiences != null) {
+            this.teamExperiences = new ArrayList<>(teamExperiences);
+        }
     }
 
-    public void updateDetails(String birthDate, String school, String location,
-                              String contactEmail, String socialMediaLink, String twitter,
-                              String desiredField, String creativeTools, String careerText,
-                              List<String> keywords) {
-        MemberPersonalInfo updatedPersonalInfo = this.personalInfo;
-        if (birthDate != null) updatedPersonalInfo = updatedPersonalInfo.withBirthDate(birthDate);
-        if (school != null) updatedPersonalInfo = updatedPersonalInfo.withSchool(school);
-        if (location != null) updatedPersonalInfo = updatedPersonalInfo.withLocation(location);
-        this.personalInfo = updatedPersonalInfo;
+    public void updateDetails(String location, String contactEmail, String socialMediaLink,
+                              String twitter, String creativeTools, List<String> keywords) {
+        if (location != null) this.personalInfo = this.personalInfo.withLocation(location);
 
         MemberContact updatedContact = this.contact;
         if (contactEmail != null) updatedContact = updatedContact.withContactEmail(contactEmail);
@@ -102,15 +97,34 @@ public class Member {
         if (twitter != null) updatedContact = updatedContact.withTwitter(twitter);
         this.contact = updatedContact;
 
-        MemberCareer updatedCareer = this.career;
-        if (desiredField != null) updatedCareer = updatedCareer.withDesiredField(desiredField);
-        if (creativeTools != null) updatedCareer = updatedCareer.withCreativeTools(creativeTools);
-        if (careerText != null) updatedCareer = updatedCareer.withCareer(careerText);
-        this.career = updatedCareer;
+        if (creativeTools != null) this.careerInfo = this.careerInfo.withCreativeTools(creativeTools);
+        if (keywords != null) this.keywords = new ArrayList<>(keywords);
+    }
 
-        if (keywords != null) {
-            this.keywords.clear();
-            this.keywords.addAll(keywords);
+    public CareerEntryInfo addCareer(String workTitle, String episodeCount, String startDate,
+                                     String endDate, boolean ongoing, String description) {
+        CareerEntry entry = new CareerEntry(UUID.randomUUID().toString(), workTitle, episodeCount,
+                startDate, endDate, ongoing, description);
+        this.careers.add(entry);
+        return toCareerInfo(entry);
+    }
+
+    public void updateCareer(String careerId, String workTitle, String episodeCount,
+                             String startDate, String endDate, boolean ongoing, String description) {
+        for (int i = 0; i < careers.size(); i++) {
+            if (careers.get(i).getId().equals(careerId)) {
+                careers.set(i, new CareerEntry(careerId, workTitle, episodeCount,
+                        startDate, endDate, ongoing, description));
+                return;
+            }
+        }
+        throw new MemberException(MemberErrorCode.CAREER_NOT_FOUND, careerId);
+    }
+
+    public void deleteCareer(String careerId) {
+        boolean removed = careers.removeIf(c -> c.getId().equals(careerId));
+        if (!removed) {
+            throw new MemberException(MemberErrorCode.CAREER_NOT_FOUND, careerId);
         }
     }
 
@@ -123,19 +137,37 @@ public class Member {
         this.handle = null;
     }
 
-    public Long getId() { return id; }
+    public String getId() { return id; }
     public String getLoginEmail() { return loginEmail; }
     public String getHandle() { return handle; }
-    public String getDeletedLoginEmail() { return deletedLoginEmail; }
     public boolean isActive() { return active; }
     public LocalDateTime getDeletedAt() { return deletedAt; }
+    public String getDeletedLoginEmail() { return deletedLoginEmail; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
+    public int getTotalSlotCount() { return totalSlotCount; }
+    public int getAvailableSlotCount() { return availableSlotCount; }
+    public List<TeamExperience> getTeamExperiences() { return List.copyOf(teamExperiences); }
+    public List<CareerEntryInfo> getCareers() { return careers.stream().map(this::toCareerInfo).toList(); }
     public List<String> getKeywords() { return List.copyOf(keywords); }
+
+    private CareerEntryInfo toCareerInfo(CareerEntry entry) {
+        return new CareerEntryInfo(entry.getId(), entry.getWorkTitle(), entry.getEpisodeCount(),
+                entry.getStartDate(), entry.getEndDate(), entry.isOngoing(), entry.getDescription());
+    }
 
     public String getName() { return profile.getName(); }
     public String getProfileImage() { return profile.getProfileImage(); }
     public CreatorRole getCreatorRole() { return profile.getCreatorRole(); }
     public EmploymentStatus getEmploymentStatus() { return profile.getEmploymentStatus(); }
     public ExperienceLevel getExperienceLevel() { return profile.getExperienceLevel(); }
+
+    public String getContactEmail() { return contact.getContactEmail(); }
+    public String getSocialMediaLink() { return contact.getSocialMediaLink(); }
+    public String getTwitter() { return contact.getTwitter(); }
+    public String getCreativeTools() { return careerInfo.getCreativeTools(); }
+    public String getDesiredField() { return careerInfo.getDesiredField(); }
+    public String getBirthDate() { return personalInfo.getBirthDate(); }
+    public String getSchool() { return personalInfo.getSchool(); }
+    public String getLocation() { return personalInfo.getLocation(); }
 }

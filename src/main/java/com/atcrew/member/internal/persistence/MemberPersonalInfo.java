@@ -1,8 +1,5 @@
 package com.atcrew.member.internal.persistence;
 
-import jakarta.persistence.Embeddable;
-
-@Embeddable
 class MemberPersonalInfo {
 
     private String birthDate;
