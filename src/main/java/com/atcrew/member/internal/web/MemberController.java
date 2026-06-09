@@ -45,18 +45,19 @@ class MemberController {
     @CommonApiResponses
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public MemberInfo register(@RequestBody @Valid RegisterRequest request) {
-        return memberService.register(request.loginEmail(), request.handle(), request.name(), request.creatorRole());
+    public com.atcrew.common.ApiResponse<MemberInfo> register(@RequestBody @Valid RegisterRequest request) {
+        return com.atcrew.common.ApiResponse.success(
+                memberService.register(request.loginEmail(), request.handle(), request.name(), request.creatorRole()));
     }
 
     @Operation(summary = "핸들로 회원 조회", description = "@핸들로 회원 프로필을 조회합니다.")
     @ApiResponse(responseCode = "200", description = "조회 성공")
     @CommonApiResponses
     @GetMapping("/{handle}")
-    public MemberInfo findByHandle(
+    public com.atcrew.common.ApiResponse<MemberInfo> findByHandle(
             @Parameter(description = "회원 핸들 (@ 제외)", example = "creator_kim")
             @PathVariable @Pattern(regexp = "^[a-zA-Z0-9_-]{3,30}$", message = "핸들 형식이 올바르지 않습니다") String handle) {
-        return memberService.findByHandle(handle);
+        return com.atcrew.common.ApiResponse.success(memberService.findByHandle(handle));
     }
 
     @Operation(summary = "이름 수정", description = "회원의 이름·작가명을 수정합니다. (최대 16자)")
@@ -90,12 +91,12 @@ class MemberController {
     @CommonApiResponses
     @PostMapping("/{id}/careers")
     @ResponseStatus(HttpStatus.CREATED)
-    public CareerEntryInfo addCareer(
+    public com.atcrew.common.ApiResponse<CareerEntryInfo> addCareer(
             @Parameter(description = "회원 ID") @PathVariable String id,
             @RequestBody @Valid AddCareerRequest request) {
-        return memberService.addCareer(id, new AddCareerCommand(
+        return com.atcrew.common.ApiResponse.success(memberService.addCareer(id, new AddCareerCommand(
                 request.workTitle(), request.role(), request.startDate(),
-                request.endDate(), request.ongoing(), request.description()));
+                request.endDate(), request.ongoing(), request.description())));
     }
 
     @Operation(summary = "경력 삭제", description = "등록된 경력 항목을 삭제합니다.")

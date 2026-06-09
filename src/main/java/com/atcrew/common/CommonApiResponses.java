@@ -14,13 +14,13 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 @ApiResponses({
         @ApiResponse(responseCode = "400", description = "입력값 유효성 오류",
-                content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+                content = @Content(schema = @Schema(implementation = com.atcrew.common.ApiResponse.class))),
         @ApiResponse(responseCode = "404", description = "리소스 없음",
-                content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+                content = @Content(schema = @Schema(implementation = com.atcrew.common.ApiResponse.class))),
         @ApiResponse(responseCode = "409", description = "요청 충돌",
-                content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+                content = @Content(schema = @Schema(implementation = com.atcrew.common.ApiResponse.class))),
         @ApiResponse(responseCode = "500", description = "서버 내부 오류",
-                content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+                content = @Content(schema = @Schema(implementation = com.atcrew.common.ApiResponse.class)))
 })
 public @interface CommonApiResponses {
 }
