@@ -82,20 +82,26 @@ public class Member {
                               List<ActivityField> activityFields,
                               ExperienceLevel experienceLevel,
                               List<ActiveRegion> activeRegions,
-                              int totalSlotCount, int availableSlotCount,
+                              Integer totalSlotCount, Integer availableSlotCount,
                               List<TeamExperience> teamExperiences) {
+        assertActive();
+        if (totalSlotCount != null && availableSlotCount != null && availableSlotCount > totalSlotCount) {
+            throw new MemberException(MemberErrorCode.INVALID_SLOT_COUNT,
+                    "available=" + availableSlotCount + " total=" + totalSlotCount);
+        }
         if (name != null) this.name = name;
         if (creatorRole != null) this.creatorRole = creatorRole;
         if (employmentStatus != null) this.employmentStatus = employmentStatus;
         if (activityFields != null) this.activityFields = new ArrayList<>(activityFields);
         if (experienceLevel != null) this.experienceLevel = experienceLevel;
         if (activeRegions != null) this.activeRegions = new ArrayList<>(activeRegions);
-        this.totalSlotCount = totalSlotCount;
-        this.availableSlotCount = availableSlotCount;
+        if (totalSlotCount != null) this.totalSlotCount = totalSlotCount;
+        if (availableSlotCount != null) this.availableSlotCount = availableSlotCount;
         if (teamExperiences != null) this.teamExperiences = new ArrayList<>(teamExperiences);
     }
 
     public void updateDetails(String contact, String sns, String tools) {
+        assertActive();
         if (contact != null) this.contact = contact;
         if (sns != null) this.sns = sns;
         if (tools != null) this.tools = tools;
@@ -103,6 +109,8 @@ public class Member {
 
     public CareerEntryInfo addCareer(String workTitle, String role, String startDate,
                                      String endDate, boolean ongoing, String description) {
+        assertActive();
+        validateCareerPeriod(startDate, endDate, ongoing);
         CareerEntry entry = new CareerEntry(UUID.randomUUID().toString(), workTitle, role,
                 startDate, endDate, ongoing, description);
         this.careers.add(entry);
@@ -111,6 +119,8 @@ public class Member {
 
     public void updateCareer(String careerId, String workTitle, String role,
                              String startDate, String endDate, boolean ongoing, String description) {
+        assertActive();
+        validateCareerPeriod(startDate, endDate, ongoing);
         for (int i = 0; i < careers.size(); i++) {
             if (careers.get(i).getId().equals(careerId)) {
                 careers.set(i, new CareerEntry(careerId, workTitle, role,
@@ -122,6 +132,7 @@ public class Member {
     }
 
     public void deleteCareer(String careerId) {
+        assertActive();
         boolean removed = careers.removeIf(c -> c.getId().equals(careerId));
         if (!removed) {
             throw new MemberException(MemberErrorCode.CAREER_NOT_FOUND, careerId);
@@ -130,6 +141,7 @@ public class Member {
 
     // unique sparse 인덱스 필드를 null로 클리어해 재가입 충돌 방지
     public void deactivate() {
+        assertActive();
         this.active = false;
         this.deletedAt = LocalDateTime.now();
         this.deletedLoginEmail = this.loginEmail;
@@ -157,6 +169,22 @@ public class Member {
     public LocalDateTime getDeletedAt() { return deletedAt; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
+
+    private void assertActive() {
+        if (!active) {
+            throw new MemberException(MemberErrorCode.MEMBER_DEACTIVATED, id);
+        }
+    }
+
+    private void validateCareerPeriod(String startDate, String endDate, boolean ongoing) {
+        if (!ongoing && endDate == null) {
+            throw new MemberException(MemberErrorCode.INVALID_CAREER_PERIOD, "종료일 누락");
+        }
+        if (!ongoing && endDate.compareTo(startDate) < 0) {
+            throw new MemberException(MemberErrorCode.INVALID_CAREER_PERIOD,
+                    startDate + " ~ " + endDate);
+        }
+    }
 
     private CareerEntryInfo toCareerInfo(CareerEntry entry) {
         return new CareerEntryInfo(

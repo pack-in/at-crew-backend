@@ -51,6 +51,7 @@ class MemberController {
                 request.name(), request.creatorRole(), request.employmentStatus(),
                 request.activityFields(), request.experienceLevel(), request.activeRegions(),
                 request.totalSlotCount(), request.availableSlotCount(), request.teamExperiences()));
+
     }
 
     @PatchMapping("/{id}/details")

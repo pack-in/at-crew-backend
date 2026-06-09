@@ -23,10 +23,10 @@ public record UpdateProfileRequest(
         List<ActiveRegion> activeRegions,
 
         @Min(1) @Max(5)
-        int totalSlotCount,
+        Integer totalSlotCount,
 
         @Min(0) @Max(5)
-        int availableSlotCount,
+        Integer availableSlotCount,
 
         List<TeamExperience> teamExperiences
 ) {

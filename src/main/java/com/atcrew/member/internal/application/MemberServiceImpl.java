@@ -56,6 +56,7 @@ class MemberServiceImpl implements MemberService {
         member.updateProfile(command.name(), command.creatorRole(), command.employmentStatus(),
                 command.activityFields(), command.experienceLevel(), command.activeRegions(),
                 command.totalSlotCount(), command.availableSlotCount(), command.teamExperiences());
+
         memberRepository.save(member);
     }
 
