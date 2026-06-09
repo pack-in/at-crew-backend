@@ -108,9 +108,14 @@ public class Member {
         if (command.tools() != null) this.tools = command.tools();
     }
 
+    private static final int MAX_CAREER_COUNT = 50;
+
     public CareerEntryInfo addCareer(String workTitle, String role, LocalDate startDate,
                                      LocalDate endDate, boolean ongoing, String description) {
         assertActive();
+        if (careers.size() >= MAX_CAREER_COUNT) {
+            throw new MemberException(MemberErrorCode.CAREER_LIMIT_EXCEEDED);
+        }
         validateCareerPeriod(startDate, endDate, ongoing);
         CareerEntry entry = new CareerEntry(UUID.randomUUID().toString(), workTitle, role,
                 startDate, endDate, ongoing, description);
