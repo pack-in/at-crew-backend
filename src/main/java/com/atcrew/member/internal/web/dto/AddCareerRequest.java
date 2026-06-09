@@ -1,8 +1,11 @@
 package com.atcrew.member.internal.web.dto;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+
+import java.time.LocalDate;
 
 public record AddCareerRequest(
         @NotBlank
@@ -10,12 +13,12 @@ public record AddCareerRequest(
 
         String role,
 
-        @NotBlank
-        @Pattern(regexp = "^\\d{4}\\.\\d{2}$", message = "YYYY.MM 형식으로 입력해 주세요")
-        String startDate,
+        @NotNull
+        @JsonFormat(pattern = "yyyy.MM.dd")
+        LocalDate startDate,
 
-        @Pattern(regexp = "^\\d{4}\\.\\d{2}$", message = "YYYY.MM 형식으로 입력해 주세요")
-        String endDate,
+        @JsonFormat(pattern = "yyyy.MM.dd")
+        LocalDate endDate,
 
         boolean ongoing,
 

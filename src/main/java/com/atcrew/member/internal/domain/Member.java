@@ -15,7 +15,10 @@ import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -52,16 +55,16 @@ public class Member {
     private List<CareerEntry> careers = new ArrayList<>();
 
     private boolean active = true;
-    private LocalDateTime deletedAt;
+    private Instant deletedAt;
 
     // 탈퇴 시 loginEmail 백업 (감사 추적용)
     private String deletedLoginEmail;
 
     @CreatedDate
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 
     @LastModifiedDate
-    private LocalDateTime updatedAt;
+    private Instant updatedAt;
 
     protected Member() {
     }
@@ -103,8 +106,8 @@ public class Member {
         if (command.tools() != null) this.tools = command.tools();
     }
 
-    public CareerEntryInfo addCareer(String workTitle, String role, String startDate,
-                                     String endDate, boolean ongoing, String description) {
+    public CareerEntryInfo addCareer(String workTitle, String role, LocalDate startDate,
+                                     LocalDate endDate, boolean ongoing, String description) {
         assertActive();
         validateCareerPeriod(startDate, endDate, ongoing);
         CareerEntry entry = new CareerEntry(UUID.randomUUID().toString(), workTitle, role,
@@ -125,7 +128,7 @@ public class Member {
     public void deactivate() {
         assertActive();
         this.active = false;
-        this.deletedAt = LocalDateTime.now();
+        this.deletedAt = Instant.now();
         this.deletedLoginEmail = this.loginEmail;
         this.loginEmail = null;
         this.handle = null;
@@ -148,9 +151,9 @@ public class Member {
     public String getTools() { return tools; }
     public List<CareerEntryInfo> getCareers() { return careers.stream().map(this::toCareerInfo).toList(); }
     public boolean isActive() { return active; }
-    public LocalDateTime getDeletedAt() { return deletedAt; }
-    public LocalDateTime getCreatedAt() { return createdAt; }
-    public LocalDateTime getUpdatedAt() { return updatedAt; }
+    public Instant getDeletedAt() { return deletedAt; }
+    public Instant getCreatedAt() { return createdAt; }
+    public Instant getUpdatedAt() { return updatedAt; }
 
     private void assertActive() {
         if (!active) {
@@ -158,11 +161,11 @@ public class Member {
         }
     }
 
-    private void validateCareerPeriod(String startDate, String endDate, boolean ongoing) {
+    private void validateCareerPeriod(LocalDate startDate, LocalDate endDate, boolean ongoing) {
         if (!ongoing && endDate == null) {
             throw new MemberException(MemberErrorCode.INVALID_CAREER_PERIOD, "종료일 누락");
         }
-        if (!ongoing && endDate.compareTo(startDate) < 0) {
+        if (!ongoing && endDate.isBefore(startDate)) {
             throw new MemberException(MemberErrorCode.INVALID_CAREER_PERIOD,
                     startDate + " ~ " + endDate);
         }
@@ -175,13 +178,14 @@ public class Member {
                 computePeriodDisplay(entry.getStartDate(), entry.getEndDate(), entry.isOngoing()));
     }
 
-    private static String computePeriodDisplay(String startDate, String endDate, boolean ongoing) {
-        if (ongoing || endDate == null) return startDate + " ~ 연재중";
+    private static final DateTimeFormatter DATE_DISPLAY_FORMAT = DateTimeFormatter.ofPattern("yyyy.MM.dd");
 
-        String[] s = startDate.split("\\.");
-        String[] e = endDate.split("\\.");
-        int months = (Integer.parseInt(e[0]) - Integer.parseInt(s[0])) * 12
-                   + (Integer.parseInt(e[1]) - Integer.parseInt(s[1]));
+    private static String computePeriodDisplay(LocalDate startDate, LocalDate endDate, boolean ongoing) {
+        String start = startDate.format(DATE_DISPLAY_FORMAT);
+        if (ongoing || endDate == null) return start + " ~ 연재중";
+
+        String end = endDate.format(DATE_DISPLAY_FORMAT);
+        long months = ChronoUnit.MONTHS.between(startDate, endDate);
 
         String duration;
         if (months <= 0) {
@@ -189,10 +193,10 @@ public class Member {
         } else if (months < 12) {
             duration = "약 " + months + "개월";
         } else {
-            int years = months / 12;
-            int rem = months % 12;
+            long years = months / 12;
+            long rem = months % 12;
             duration = rem == 0 ? "약 " + years + "년" : "약 " + years + "년 " + rem + "개월";
         }
-        return startDate + " ~ " + endDate + " " + duration;
+        return start + " ~ " + end + " " + duration;
     }
 }

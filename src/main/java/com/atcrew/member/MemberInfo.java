@@ -1,6 +1,6 @@
 package com.atcrew.member;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 public record MemberInfo(
@@ -43,8 +43,8 @@ public record MemberInfo(
 
         // === 계정 상태 ===
         boolean active,
-        LocalDateTime deletedAt,
-        LocalDateTime createdAt,
-        LocalDateTime updatedAt
+        Instant deletedAt,
+        Instant createdAt,
+        Instant updatedAt
 ) {
 }
