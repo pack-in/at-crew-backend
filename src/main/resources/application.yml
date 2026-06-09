@@ -1,7 +1,9 @@
 spring:
   application:
     name: at-crew-backend
+  mongodb:
+    uri: ${MONGODB_URI:mongodb://localhost:27017}
+    database: ${MONGODB_DATABASE:atcrew}
   data:
     mongodb:
-      uri: ${MONGODB_URI:mongodb://localhost:27017/atcrew}
       auto-index-creation: true

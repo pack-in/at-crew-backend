@@ -1,5 +1,7 @@
 spring:
+  mongodb:
+    uri: ${MONGODB_URI}
+    database: ${MONGODB_DATABASE}
   data:
     mongodb:
-      uri: ${MONGODB_URI}
       auto-index-creation: false
