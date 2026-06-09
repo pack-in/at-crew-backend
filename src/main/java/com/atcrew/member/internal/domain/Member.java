@@ -77,34 +77,30 @@ public class Member {
         return new Member(loginEmail, handle, name, creatorRole);
     }
 
-    public void updateProfile(String name, CreatorRole creatorRole,
-                              EmploymentStatus employmentStatus,
-                              List<ActivityField> activityFields,
-                              ExperienceLevel experienceLevel,
-                              List<ActiveRegion> activeRegions,
-                              Integer totalSlotCount, Integer availableSlotCount,
-                              List<TeamExperience> teamExperiences) {
+    public void updateName(String name) {
         assertActive();
+        this.name = name;
+    }
+
+    public void updateInfo(com.atcrew.member.UpdateInfoCommand command) {
+        assertActive();
+        Integer totalSlotCount = command.totalSlotCount();
+        Integer availableSlotCount = command.availableSlotCount();
         if (totalSlotCount != null && availableSlotCount != null && availableSlotCount > totalSlotCount) {
             throw new MemberException(MemberErrorCode.INVALID_SLOT_COUNT,
                     "available=" + availableSlotCount + " total=" + totalSlotCount);
         }
-        if (name != null) this.name = name;
-        if (creatorRole != null) this.creatorRole = creatorRole;
-        if (employmentStatus != null) this.employmentStatus = employmentStatus;
-        if (activityFields != null) this.activityFields = new ArrayList<>(activityFields);
-        if (experienceLevel != null) this.experienceLevel = experienceLevel;
-        if (activeRegions != null) this.activeRegions = new ArrayList<>(activeRegions);
+        if (command.creatorRole() != null) this.creatorRole = command.creatorRole();
+        if (command.employmentStatus() != null) this.employmentStatus = command.employmentStatus();
+        if (command.activityFields() != null) this.activityFields = new ArrayList<>(command.activityFields());
+        if (command.experienceLevel() != null) this.experienceLevel = command.experienceLevel();
+        if (command.activeRegions() != null) this.activeRegions = new ArrayList<>(command.activeRegions());
         if (totalSlotCount != null) this.totalSlotCount = totalSlotCount;
         if (availableSlotCount != null) this.availableSlotCount = availableSlotCount;
-        if (teamExperiences != null) this.teamExperiences = new ArrayList<>(teamExperiences);
-    }
-
-    public void updateDetails(String contact, String sns, String tools) {
-        assertActive();
-        if (contact != null) this.contact = contact;
-        if (sns != null) this.sns = sns;
-        if (tools != null) this.tools = tools;
+        if (command.teamExperiences() != null) this.teamExperiences = new ArrayList<>(command.teamExperiences());
+        if (command.contact() != null) this.contact = command.contact();
+        if (command.sns() != null) this.sns = command.sns();
+        if (command.tools() != null) this.tools = command.tools();
     }
 
     public CareerEntryInfo addCareer(String workTitle, String role, String startDate,

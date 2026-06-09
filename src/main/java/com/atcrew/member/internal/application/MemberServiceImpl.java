@@ -6,7 +6,7 @@ import com.atcrew.member.CreatorRole;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
 import com.atcrew.member.UpdateCareerCommand;
-import com.atcrew.member.UpdateProfileCommand;
+import com.atcrew.member.UpdateInfoCommand;
 import com.atcrew.member.exception.MemberErrorCode;
 import com.atcrew.member.exception.MemberException;
 import com.atcrew.member.internal.domain.Member;
@@ -51,19 +51,16 @@ class MemberServiceImpl implements MemberService {
     }
 
     @Override
-    public void updateProfile(String memberId, UpdateProfileCommand command) {
+    public void updateName(String memberId, String name) {
         Member member = findMemberById(memberId);
-        member.updateProfile(command.name(), command.creatorRole(), command.employmentStatus(),
-                command.activityFields(), command.experienceLevel(), command.activeRegions(),
-                command.totalSlotCount(), command.availableSlotCount(), command.teamExperiences());
-
+        member.updateName(name);
         memberRepository.save(member);
     }
 
     @Override
-    public void updateDetails(String memberId, String contact, String sns, String tools) {
+    public void updateInfo(String memberId, UpdateInfoCommand command) {
         Member member = findMemberById(memberId);
-        member.updateDetails(contact, sns, tools);
+        member.updateInfo(command);
         memberRepository.save(member);
     }
 

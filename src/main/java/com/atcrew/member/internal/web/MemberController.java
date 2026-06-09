@@ -5,12 +5,12 @@ import com.atcrew.member.CareerEntryInfo;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
 import com.atcrew.member.UpdateCareerCommand;
-import com.atcrew.member.UpdateProfileCommand;
+import com.atcrew.member.UpdateInfoCommand;
 import com.atcrew.member.internal.web.dto.AddCareerRequest;
 import com.atcrew.member.internal.web.dto.RegisterRequest;
 import com.atcrew.member.internal.web.dto.UpdateCareerRequest;
-import com.atcrew.member.internal.web.dto.UpdateDetailsRequest;
-import com.atcrew.member.internal.web.dto.UpdateProfileRequest;
+import com.atcrew.member.internal.web.dto.UpdateInfoRequest;
+import com.atcrew.member.internal.web.dto.UpdateNameRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -44,20 +44,20 @@ class MemberController {
         return memberService.findByHandle(handle);
     }
 
-    @PatchMapping("/{id}/profile")
+    @PatchMapping("/{id}/name")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void updateProfile(@PathVariable String id, @RequestBody @Valid UpdateProfileRequest request) {
-        memberService.updateProfile(id, new UpdateProfileCommand(
-                request.name(), request.creatorRole(), request.employmentStatus(),
-                request.activityFields(), request.experienceLevel(), request.activeRegions(),
-                request.totalSlotCount(), request.availableSlotCount(), request.teamExperiences()));
-
+    public void updateName(@PathVariable String id, @RequestBody @Valid UpdateNameRequest request) {
+        memberService.updateName(id, request.name());
     }
 
-    @PatchMapping("/{id}/details")
+    @PatchMapping("/{id}/info")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void updateDetails(@PathVariable String id, @RequestBody @Valid UpdateDetailsRequest request) {
-        memberService.updateDetails(id, request.contact(), request.sns(), request.tools());
+    public void updateInfo(@PathVariable String id, @RequestBody @Valid UpdateInfoRequest request) {
+        memberService.updateInfo(id, new UpdateInfoCommand(
+                request.creatorRole(), request.employmentStatus(),
+                request.activityFields(), request.experienceLevel(), request.activeRegions(),
+                request.totalSlotCount(), request.availableSlotCount(), request.teamExperiences(),
+                request.contact(), request.sns(), request.tools()));
     }
 
     @PostMapping("/{id}/careers")

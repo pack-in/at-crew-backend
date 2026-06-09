@@ -12,10 +12,7 @@ import jakarta.validation.constraints.Size;
 
 import java.util.List;
 
-public record UpdateProfileRequest(
-        @Size(max = 16)
-        String name,
-
+public record UpdateInfoRequest(
         CreatorRole creatorRole,
         EmploymentStatus employmentStatus,
         List<ActivityField> activityFields,
@@ -28,6 +25,14 @@ public record UpdateProfileRequest(
         @Min(0) @Max(5)
         Integer availableSlotCount,
 
-        List<TeamExperience> teamExperiences
+        List<TeamExperience> teamExperiences,
+
+        @Size(max = 100)
+        String contact,
+
+        @Size(max = 200)
+        String sns,
+
+        String tools
 ) {
 }

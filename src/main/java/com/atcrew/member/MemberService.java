@@ -10,9 +10,9 @@ public interface MemberService {
 
     MemberInfo findById(String memberId);
 
-    void updateProfile(String memberId, UpdateProfileCommand command);
+    void updateName(String memberId, String name);
 
-    void updateDetails(String memberId, String contact, String sns, String tools);
+    void updateInfo(String memberId, UpdateInfoCommand command);
 
     CareerEntryInfo addCareer(String memberId, AddCareerCommand command);
 
