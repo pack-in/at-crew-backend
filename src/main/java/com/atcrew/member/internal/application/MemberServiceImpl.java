@@ -5,6 +5,7 @@ import com.atcrew.member.CareerEntryInfo;
 import com.atcrew.member.CreatorRole;
 import com.atcrew.member.MemberDeactivatedEvent;
 import com.atcrew.member.MemberInfo;
+import com.atcrew.member.MemberProfileInfo;
 import com.atcrew.member.MemberService;
 import com.atcrew.member.UpdateInfoCommand;
 import com.atcrew.member.exception.MemberErrorCode;
@@ -79,6 +80,16 @@ class MemberServiceImpl implements MemberService {
     }
 
     @Override
+    public MemberProfileInfo findProfileByHandle(String handle) {
+        Member member = memberRepository.findByHandle(handle)
+                .orElseThrow(() -> new MemberException(MemberErrorCode.MEMBER_NOT_FOUND, handle));
+        if (!member.isActive()) {
+            throw new MemberException(MemberErrorCode.MEMBER_NOT_FOUND, handle);
+        }
+        return MemberMapper.toProfileInfo(member);
+    }
+
+    @Override
     public MemberInfo findByHandle(String handle) {
         return MemberMapper.toInfo(memberRepository.findByHandle(handle)
                 .orElseThrow(() -> new MemberException(MemberErrorCode.MEMBER_NOT_FOUND, handle)));
@@ -139,8 +150,12 @@ class MemberServiceImpl implements MemberService {
     }
 
     private Member findMemberById(String memberId) {
-        return memberRepository.findById(memberId)
+        Member member = memberRepository.findById(memberId)
                 .orElseThrow(() -> new MemberException(MemberErrorCode.MEMBER_NOT_FOUND, memberId));
+        if (!member.isActive()) {
+            throw new MemberException(MemberErrorCode.MEMBER_DEACTIVATED, memberId);
+        }
+        return member;
     }
 
 }

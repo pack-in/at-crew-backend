@@ -5,6 +5,12 @@ spring:
   data:
     mongodb:
       auto-index-creation: false
+      transactions:
+        enabled: true  # 레플리카셋 환경 — MongoTransactionManager 활성화
+
+spring.modulith:
+  events:
+    republish-outstanding-events-on-restart: true
 
 cors:
   allowed-origins: ${CORS_ALLOWED_ORIGINS}

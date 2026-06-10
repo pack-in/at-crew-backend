@@ -5,6 +5,7 @@ import com.atcrew.common.security.SecurityUtils;
 import com.atcrew.member.AddCareerCommand;
 import com.atcrew.member.CareerEntryInfo;
 import com.atcrew.member.MemberInfo;
+import com.atcrew.member.MemberProfileInfo;
 import com.atcrew.member.MemberService;
 import com.atcrew.member.UpdateInfoCommand;
 import com.atcrew.member.internal.web.dto.AddCareerRequest;
@@ -57,10 +58,10 @@ class MemberController {
     @ApiResponse(responseCode = "200", description = "조회 성공")
     @CommonApiResponses
     @GetMapping("/{handle}")
-    public com.atcrew.common.ApiResponse<MemberInfo> findByHandle(
+    public com.atcrew.common.ApiResponse<MemberProfileInfo> findByHandle(
             @Parameter(description = "회원 핸들 (@ 제외)", example = "creator_kim")
             @PathVariable @Pattern(regexp = "^[a-zA-Z0-9_-]{3,30}$", message = "핸들 형식이 올바르지 않습니다") String handle) {
-        return com.atcrew.common.ApiResponse.success(memberService.findByHandle(handle));
+        return com.atcrew.common.ApiResponse.success(memberService.findProfileByHandle(handle));
     }
 
     @Operation(summary = "이름 수정", description = "내 이름·작가명을 수정합니다. (최대 16자)")

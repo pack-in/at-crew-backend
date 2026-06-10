@@ -8,6 +8,8 @@ public interface MemberService {
 
     boolean existsByLoginEmail(String loginEmail);
 
+    MemberProfileInfo findProfileByHandle(String handle);
+
     MemberInfo findByHandle(String handle);
 
     MemberInfo findByLoginEmail(String loginEmail);

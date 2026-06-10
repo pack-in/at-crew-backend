@@ -1,5 +1,6 @@
 package com.atcrew.common.security;
 
+import com.atcrew.common.CommonErrorCode;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.MediaType;
@@ -13,8 +14,8 @@ import java.nio.charset.StandardCharsets;
 @Component
 class JwtAuthenticationEntryPoint implements AuthenticationEntryPoint {
 
-    private static final String BODY =
-            "{\"code\":\"AUTH_UNAUTHORIZED\",\"message\":\"인증이 필요합니다\"}";
+    private static final String BODY = "{\"code\":\"" + CommonErrorCode.UNAUTHENTICATED.name()
+            + "\",\"message\":\"" + CommonErrorCode.UNAUTHENTICATED.getMessage() + "\"}";
 
     @Override
     public void commence(HttpServletRequest request, HttpServletResponse response,

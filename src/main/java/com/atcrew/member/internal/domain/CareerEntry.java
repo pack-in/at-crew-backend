@@ -47,7 +47,8 @@ class CareerEntry {
 
         String duration;
         if (months <= 0) {
-            duration = "하루";
+            long days = ChronoUnit.DAYS.between(startDate, endDate);
+            duration = days <= 1 ? "하루" : days + "일";
         } else if (months < 12) {
             duration = "약 " + months + "개월";
         } else {

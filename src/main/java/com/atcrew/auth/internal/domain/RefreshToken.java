@@ -19,6 +19,7 @@ public class RefreshToken {
     @Indexed(unique = true)
     private String tokenValue;
 
+    @Indexed(expireAfterSeconds = 0) // expiresAt 도달 시 MongoDB가 자동 삭제
     private Instant expiresAt;
 
     @CreatedDate

@@ -11,6 +11,7 @@ import com.atcrew.common.DomainException;
 import com.atcrew.common.security.JwtProvider;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
+import com.atcrew.member.exception.MemberException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,10 +37,21 @@ class AuthServiceImpl implements AuthService {
         String email = firebaseVerifier.verifyAndGetEmail(firebaseIdToken);
 
         boolean isNewUser = !memberService.existsByLoginEmail(email);
-        MemberInfo member = isNewUser
-                ? memberService.registerViaOAuth(email, email.split("@")[0])
-                : memberService.findByLoginEmail(email);
+        MemberInfo member;
+        if (isNewUser) {
+            try {
+                member = memberService.registerViaOAuth(email, email.split("@")[0]);
+            } catch (MemberException e) {
+                // 동시 첫 로그인 경쟁: 다른 요청이 먼저 등록 완료 → 기존 회원으로 진행
+                isNewUser = false;
+                member = memberService.findByLoginEmail(email);
+            }
+        } else {
+            member = memberService.findByLoginEmail(email);
+        }
 
+        // 이전 세션 토큰 정리 — 디바이스 1개 정책, DB 무기한 누적 방지
+        refreshTokenRepository.deleteAllByMemberId(member.id());
         String accessToken = jwtProvider.generateAccessToken(member.id(), email);
         String refreshTokenValue = jwtProvider.generateRefreshToken(member.id());
         refreshTokenRepository.save(
@@ -51,11 +63,11 @@ class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public AuthInfo refresh(String refreshToken) {
-        RefreshToken stored = refreshTokenRepository.findByTokenValue(refreshToken)
+        // findAndDelete 원자 연산 — 동시 요청이 와도 하나만 토큰을 가져감 (TOCTOU 방지)
+        RefreshToken stored = refreshTokenRepository.findAndDeleteByTokenValue(refreshToken)
                 .orElseThrow(() -> new AuthException(AuthErrorCode.INVALID_REFRESH_TOKEN));
 
         if (!jwtProvider.validateToken(refreshToken)) {
-            refreshTokenRepository.delete(stored);
             throw new AuthException(AuthErrorCode.INVALID_REFRESH_TOKEN);
         }
 
@@ -63,13 +75,10 @@ class AuthServiceImpl implements AuthService {
         try {
             member = memberService.findById(stored.getMemberId());
         } catch (DomainException e) {
-            // 회원이 탈퇴·삭제된 경우 토큰 무효화 후 401 반환
-            refreshTokenRepository.delete(stored);
             throw new AuthException(AuthErrorCode.INVALID_REFRESH_TOKEN);
         }
 
-        // Refresh Token Rotation: 기존 삭제 후 새로 발급
-        refreshTokenRepository.delete(stored);
+        // Refresh Token Rotation: 신규 발급 (기존은 findAndDelete로 이미 제거됨)
         String newAccessToken = jwtProvider.generateAccessToken(member.id(), member.loginEmail());
         String newRefreshTokenValue = jwtProvider.generateRefreshToken(member.id());
         refreshTokenRepository.save(

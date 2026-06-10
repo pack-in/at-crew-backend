@@ -62,6 +62,16 @@ public class JwtProvider {
         }
     }
 
+    // Authorization 헤더용 — access 타입 토큰만 허용 (refresh token 오용 차단)
+    public boolean validateAccessToken(String token) {
+        try {
+            Claims claims = getClaims(token);
+            return "access".equals(claims.get("type", String.class));
+        } catch (JwtException | IllegalArgumentException e) {
+            return false;
+        }
+    }
+
     public String getMemberId(String token) {
         return getClaims(token).getSubject();
     }

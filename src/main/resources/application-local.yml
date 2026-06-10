@@ -1,3 +1,9 @@
+spring:
+  autoconfigure:
+    exclude:
+      # 로컬 standalone MongoDB는 트랜잭션 미지원 — replica set 없이도 구동
+      - org.springframework.modulith.events.mongodb.MongoDbTransactionAutoConfiguration
+
 management:
   endpoints:
     web:

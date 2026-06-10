@@ -26,7 +26,7 @@ class JwtAuthenticationFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
             FilterChain chain) throws ServletException, IOException {
         String token = extractToken(request);
-        if (token != null && jwtProvider.validateToken(token)) {
+        if (token != null && jwtProvider.validateAccessToken(token)) {
             String memberId = jwtProvider.getMemberId(token);
             MemberPrincipal principal = new MemberPrincipal(memberId);
             UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(

@@ -168,13 +168,15 @@ class MemberModuleTests {
     // ─── deactivate ───────────────────────────────────────────────────
 
     @Test
-    void 회원_탈퇴_후_비활성화() {
+    void 회원_탈퇴_후_ID_조회_불가() {
         MemberInfo member = memberService.register("leave@atcrew.com", "leavehandle", "탈퇴회원", CreatorRole.OTHER);
 
         memberService.deactivate(member.id());
 
-        MemberInfo deactivated = memberService.findById(member.id());
-        assertThat(deactivated.active()).isFalse();
-        assertThat(deactivated.deletedAt()).isNotNull();
+        // 탈퇴 후 findById는 MEMBER_DEACTIVATED (403) — refresh token 재발급 차단
+        assertThatThrownBy(() -> memberService.findById(member.id()))
+                .isInstanceOf(MemberException.class)
+                .extracting(e -> ((MemberException) e).getCode())
+                .isEqualTo(MemberErrorCode.MEMBER_DEACTIVATED.name());
     }
 }

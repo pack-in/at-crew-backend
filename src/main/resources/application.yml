@@ -29,3 +29,5 @@ jwt:
 
 firebase:
   credentials-path: ${FIREBASE_CREDENTIALS_PATH:}
+
+# republish-outstanding-events-on-restart 는 레플리카셋 필요 → application-prod.yml 참고

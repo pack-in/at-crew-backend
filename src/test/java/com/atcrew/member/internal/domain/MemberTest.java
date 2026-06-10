@@ -117,6 +117,18 @@ class MemberTest {
     }
 
     @Test
+    void 전체슬롯만_줄이면_가능슬롯_자동_조정() {
+        // 기본값: totalSlotCount=5, availableSlotCount=5
+        UpdateInfoCommand command = new UpdateInfoCommand(
+                null, null, null, null, null, 2, null, null, null, null, null);
+
+        member.updateInfo(command);
+
+        assertThat(member.getTotalSlotCount()).isEqualTo(2);
+        assertThat(member.getAvailableSlotCount()).isEqualTo(2); // 5 → 2로 자동 조정
+    }
+
+    @Test
     void 기존_전체슬롯_기준_가능슬롯_초과_시_예외() {
         // totalSlotCount 기본값 5, availableSlotCount만 6으로 설정하면 초과
         UpdateInfoCommand command = new UpdateInfoCommand(
@@ -212,9 +224,17 @@ class MemberTest {
     @Test
     void 기간표시_하루() {
         CareerEntryInfo entry = member.addCareer("작품", null,
-                LocalDate.of(2024, 3, 1), LocalDate.of(2024, 3, 15), false, null);
+                LocalDate.of(2024, 3, 1), LocalDate.of(2024, 3, 2), false, null);
 
         assertThat(entry.periodDisplay()).contains("하루");
+    }
+
+    @Test
+    void 기간표시_1개월_미만_일수() {
+        CareerEntryInfo entry = member.addCareer("작품", null,
+                LocalDate.of(2024, 3, 1), LocalDate.of(2024, 3, 15), false, null);
+
+        assertThat(entry.periodDisplay()).contains("14일");
     }
 
     @Test

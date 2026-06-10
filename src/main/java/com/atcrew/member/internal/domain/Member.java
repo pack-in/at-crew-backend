@@ -90,16 +90,21 @@ public class Member {
         int effectiveTotal = totalSlotCount != null ? totalSlotCount : this.totalSlotCount;
         int effectiveAvailable = availableSlotCount != null ? availableSlotCount : this.availableSlotCount;
         if (effectiveAvailable > effectiveTotal) {
-            throw new MemberException(MemberErrorCode.INVALID_SLOT_COUNT,
-                    "available=" + effectiveAvailable + " total=" + effectiveTotal);
+            if (availableSlotCount != null) {
+                // 명시적으로 두 값을 전달했는데 불일치 → 오류
+                throw new MemberException(MemberErrorCode.INVALID_SLOT_COUNT,
+                        "available=" + effectiveAvailable + " total=" + effectiveTotal);
+            }
+            // totalSlotCount만 줄인 경우 → available을 total에 맞게 자동 조정
+            effectiveAvailable = effectiveTotal;
         }
         if (command.creatorRole() != null) this.creatorRole = command.creatorRole();
         if (command.employmentStatus() != null) this.employmentStatus = command.employmentStatus();
         if (command.activityFields() != null) this.activityFields = new ArrayList<>(command.activityFields());
         if (command.experienceLevel() != null) this.experienceLevel = command.experienceLevel();
         if (command.activeRegions() != null) this.activeRegions = new ArrayList<>(command.activeRegions());
-        if (totalSlotCount != null) this.totalSlotCount = totalSlotCount;
-        if (availableSlotCount != null) this.availableSlotCount = availableSlotCount;
+        if (totalSlotCount != null) this.totalSlotCount = effectiveTotal;
+        if (totalSlotCount != null || availableSlotCount != null) this.availableSlotCount = effectiveAvailable;
         if (command.teamExperiences() != null) this.teamExperiences = new ArrayList<>(command.teamExperiences());
         if (command.contact() != null) this.contact = command.contact();
         if (command.sns() != null) this.sns = command.sns();
