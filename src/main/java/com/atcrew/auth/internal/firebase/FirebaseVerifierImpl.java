@@ -18,7 +18,7 @@ class FirebaseVerifierImpl implements FirebaseVerifier {
         try {
             return firebaseAuth.verifyIdToken(idToken).getEmail();
         } catch (FirebaseAuthException e) {
-            throw new AuthException(AuthErrorCode.INVALID_FIREBASE_TOKEN);
+            throw new AuthException(AuthErrorCode.INVALID_FIREBASE_TOKEN, e);
         }
     }
 }

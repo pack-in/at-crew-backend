@@ -1,7 +1,7 @@
 package com.atcrew.member.internal.web;
 
 import com.atcrew.common.CommonApiResponses;
-import com.atcrew.common.SecurityUtils;
+import com.atcrew.common.security.SecurityUtils;
 import com.atcrew.member.AddCareerCommand;
 import com.atcrew.member.CareerEntryInfo;
 import com.atcrew.member.MemberInfo;

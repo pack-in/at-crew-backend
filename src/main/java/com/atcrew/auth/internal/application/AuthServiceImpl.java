@@ -7,7 +7,8 @@ import com.atcrew.auth.exception.AuthException;
 import com.atcrew.auth.internal.domain.RefreshToken;
 import com.atcrew.auth.internal.firebase.FirebaseVerifier;
 import com.atcrew.auth.internal.persistence.RefreshTokenRepository;
-import com.atcrew.common.JwtProvider;
+import com.atcrew.common.DomainException;
+import com.atcrew.common.security.JwtProvider;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
 import org.springframework.stereotype.Service;
@@ -58,7 +59,14 @@ class AuthServiceImpl implements AuthService {
             throw new AuthException(AuthErrorCode.INVALID_REFRESH_TOKEN);
         }
 
-        MemberInfo member = memberService.findById(stored.getMemberId());
+        MemberInfo member;
+        try {
+            member = memberService.findById(stored.getMemberId());
+        } catch (DomainException e) {
+            // 회원이 탈퇴·삭제된 경우 토큰 무효화 후 401 반환
+            refreshTokenRepository.delete(stored);
+            throw new AuthException(AuthErrorCode.INVALID_REFRESH_TOKEN);
+        }
 
         // Refresh Token Rotation: 기존 삭제 후 새로 발급
         refreshTokenRepository.delete(stored);

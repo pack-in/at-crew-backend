@@ -8,7 +8,7 @@ public class MemberException extends DomainException {
         super(errorCode.getStatus(), errorCode.name(), errorCode.getMessage());
     }
 
-    public MemberException(MemberErrorCode errorCode, String detail) {
-        super(errorCode.getStatus(), errorCode.name(), errorCode.getMessage() + ": " + detail);
+    public MemberException(MemberErrorCode errorCode, String logDetail) {
+        super(errorCode.getStatus(), errorCode.name(), errorCode.getMessage(), logDetail);
     }
 }

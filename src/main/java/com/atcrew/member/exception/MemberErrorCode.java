@@ -8,7 +8,7 @@ public enum MemberErrorCode {
     DUPLICATE_HANDLE(HttpStatus.CONFLICT, "이미 사용 중인 핸들입니다"),
     DUPLICATE_MEMBER_INFO(HttpStatus.CONFLICT, "이미 사용 중인 이메일 또는 핸들입니다"),
     MEMBER_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 회원입니다"),
-    MEMBER_DEACTIVATED(HttpStatus.CONFLICT, "이미 탈퇴한 회원입니다"),
+    MEMBER_DEACTIVATED(HttpStatus.FORBIDDEN, "이미 탈퇴한 회원입니다"),
     CAREER_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 경력입니다"),
     CAREER_LIMIT_EXCEEDED(HttpStatus.BAD_REQUEST, "경력은 최대 50개까지 등록할 수 있습니다"),
     INVALID_SLOT_COUNT(HttpStatus.BAD_REQUEST, "작업 가능 슬롯은 전체 슬롯보다 클 수 없습니다"),

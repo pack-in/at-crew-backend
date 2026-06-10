@@ -11,6 +11,8 @@ import com.atcrew.member.exception.MemberErrorCode;
 import com.atcrew.member.exception.MemberException;
 import com.atcrew.member.internal.domain.Member;
 import com.atcrew.member.internal.persistence.MemberRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -18,6 +20,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 class MemberServiceImpl implements MemberService {
+
+    private static final Logger log = LoggerFactory.getLogger(MemberServiceImpl.class);
 
     private final MemberRepository memberRepository;
     private final ApplicationEventPublisher eventPublisher;
@@ -28,6 +32,7 @@ class MemberServiceImpl implements MemberService {
     }
 
     @Override
+    @Transactional
     public MemberInfo register(String loginEmail, String handle, String name, CreatorRole creatorRole) {
         if (memberRepository.existsByLoginEmail(loginEmail)) {
             throw new MemberException(MemberErrorCode.DUPLICATE_EMAIL, loginEmail);
@@ -69,6 +74,7 @@ class MemberServiceImpl implements MemberService {
             String handle = base + "_" + (int) (Math.random() * 90000 + 10000);
             if (!memberRepository.existsByHandle(handle)) return handle;
         }
+        log.error("핸들 자동 생성 실패 — 5회 시도 모두 충돌: name={}", name);
         throw new MemberException(MemberErrorCode.HANDLE_GENERATION_FAILED, name);
     }
 

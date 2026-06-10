@@ -1,7 +1,7 @@
 package com.atcrew.member.internal.web;
 
 import com.atcrew.common.GlobalExceptionHandler;
-import com.atcrew.common.SecurityUtils;
+import com.atcrew.common.security.SecurityUtils;
 import com.atcrew.member.MemberService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;

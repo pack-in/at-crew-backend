@@ -1,4 +1,4 @@
-package com.atcrew.common;
+package com.atcrew.common.security;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;

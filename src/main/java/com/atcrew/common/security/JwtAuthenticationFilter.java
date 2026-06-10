@@ -1,6 +1,5 @@
 package com.atcrew.common.security;
 
-import com.atcrew.common.JwtProvider;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;

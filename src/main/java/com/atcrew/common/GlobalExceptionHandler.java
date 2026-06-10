@@ -20,6 +20,14 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler(DomainException.class)
     public ResponseEntity<ApiResponse<Void>> handleDomain(DomainException e) {
+        if (e.getStatus().is5xxServerError()) {
+            log.error("도메인 예외: {}", e.getCode(), e);
+        } else {
+            log.debug("도메인 예외: {} {}", e.getCode(), e.getMessage());
+        }
+        if (e.getLogDetail() != null) {
+            log.debug("[{}] 상세: {}", e.getCode(), e.getLogDetail());
+        }
         return ResponseEntity.status(e.getStatus())
                 .body(ApiResponse.error(e.getCode(), e.getMessage()));
     }
@@ -47,7 +55,13 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @Override
     protected ResponseEntity<Object> handleExceptionInternal(
             Exception ex, Object body, HttpHeaders headers, HttpStatusCode status, WebRequest request) {
-        return new ResponseEntity<>(ApiResponse.error("HTTP_" + status.value(), ex.getMessage()), headers, status);
+        String message = switch (status.value()) {
+            case 404 -> "요청한 리소스를 찾을 수 없습니다";
+            case 405 -> "허용되지 않는 HTTP 메서드입니다";
+            case 415 -> "지원하지 않는 미디어 타입입니다";
+            default -> "요청을 처리할 수 없습니다";
+        };
+        return new ResponseEntity<>(ApiResponse.error("HTTP_" + status.value(), message), headers, status);
     }
 
     // @Validated + PathVariable/RequestParam 제약 위반
