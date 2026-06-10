@@ -1,7 +1,7 @@
-package com.atcrew.auth.internal.firebase;
+package com.atcrew.auth.internal.infra.firebase;
 
-import com.atcrew.auth.exception.AuthErrorCode;
-import com.atcrew.auth.exception.AuthException;
+import com.atcrew.auth.internal.exception.AuthErrorCode;
+import com.atcrew.auth.internal.exception.AuthException;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

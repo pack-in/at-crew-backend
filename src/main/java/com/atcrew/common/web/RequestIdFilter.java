@@ -1,4 +1,4 @@
-package com.atcrew.common;
+package com.atcrew.common.web;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;

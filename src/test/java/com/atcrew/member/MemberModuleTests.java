@@ -1,8 +1,8 @@
 package com.atcrew.member;
 
 import com.atcrew.TestMongoConfig;
-import com.atcrew.member.exception.MemberErrorCode;
-import com.atcrew.member.exception.MemberException;
+import com.atcrew.member.internal.exception.MemberErrorCode;
+import com.atcrew.member.internal.exception.MemberException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;

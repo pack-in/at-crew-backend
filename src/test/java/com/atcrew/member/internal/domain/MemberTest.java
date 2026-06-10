@@ -5,8 +5,8 @@ import com.atcrew.member.CareerEntryInfo;
 import com.atcrew.member.CreatorRole;
 import com.atcrew.member.EmploymentStatus;
 import com.atcrew.member.UpdateInfoCommand;
-import com.atcrew.member.exception.MemberErrorCode;
-import com.atcrew.member.exception.MemberException;
+import com.atcrew.member.internal.exception.MemberErrorCode;
+import com.atcrew.member.internal.exception.MemberException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 

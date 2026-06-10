@@ -1,4 +1,4 @@
-package com.atcrew.auth.internal.firebase;
+package com.atcrew.auth.internal.infra.firebase;
 
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.firebase.FirebaseApp;

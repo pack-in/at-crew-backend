@@ -1,6 +1,6 @@
 package com.atcrew.common.security;
 
-import com.atcrew.common.CommonErrorCode;
+import com.atcrew.common.exception.CommonErrorCode;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.MediaType;

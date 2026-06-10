@@ -1,4 +1,4 @@
-package com.atcrew.common;
+package com.atcrew.common.logging;
 
 public final class LogMask {
 

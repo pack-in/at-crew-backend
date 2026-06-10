@@ -1,4 +1,4 @@
-package com.atcrew.member.exception;
+package com.atcrew.member.internal.exception;
 
 import org.springframework.http.HttpStatus;
 

@@ -1,6 +1,6 @@
 package com.atcrew.member.internal.web;
 
-import com.atcrew.common.CommonApiResponses;
+import com.atcrew.common.response.CommonApiResponses;
 import com.atcrew.common.security.SecurityUtils;
 import com.atcrew.member.AddCareerCommand;
 import com.atcrew.member.CareerEntryInfo;
@@ -49,8 +49,8 @@ class MemberController {
     @CommonApiResponses
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public com.atcrew.common.ApiResponse<MemberInfo> register(@RequestBody @Valid RegisterRequest request) {
-        return com.atcrew.common.ApiResponse.success(
+    public com.atcrew.common.response.ApiResponse<MemberInfo> register(@RequestBody @Valid RegisterRequest request) {
+        return com.atcrew.common.response.ApiResponse.success(
                 memberService.register(request.loginEmail(), request.handle(), request.name(), request.creatorRole()));
     }
 
@@ -58,10 +58,10 @@ class MemberController {
     @ApiResponse(responseCode = "200", description = "조회 성공")
     @CommonApiResponses
     @GetMapping("/{handle}")
-    public com.atcrew.common.ApiResponse<MemberProfileInfo> findByHandle(
+    public com.atcrew.common.response.ApiResponse<MemberProfileInfo> findByHandle(
             @Parameter(description = "회원 핸들 (@ 제외)", example = "creator_kim")
             @PathVariable @Pattern(regexp = "^[a-zA-Z0-9_-]{3,30}$", message = "핸들 형식이 올바르지 않습니다") String handle) {
-        return com.atcrew.common.ApiResponse.success(memberService.findProfileByHandle(handle));
+        return com.atcrew.common.response.ApiResponse.success(memberService.findProfileByHandle(handle));
     }
 
     @Operation(summary = "이름 수정", description = "내 이름·작가명을 수정합니다. (최대 16자)")
@@ -91,8 +91,8 @@ class MemberController {
     @CommonApiResponses
     @PostMapping("/me/careers")
     @ResponseStatus(HttpStatus.CREATED)
-    public com.atcrew.common.ApiResponse<CareerEntryInfo> addCareer(@RequestBody @Valid AddCareerRequest request) {
-        return com.atcrew.common.ApiResponse.success(
+    public com.atcrew.common.response.ApiResponse<CareerEntryInfo> addCareer(@RequestBody @Valid AddCareerRequest request) {
+        return com.atcrew.common.response.ApiResponse.success(
                 memberService.addCareer(securityUtils.getCurrentMemberId(), new AddCareerCommand(
                         request.workTitle(), request.role(), request.startDate(),
                         request.endDate(), request.ongoing(), request.description())));

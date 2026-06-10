@@ -1,4 +1,4 @@
-package com.atcrew.common;
+package com.atcrew.common.config;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;

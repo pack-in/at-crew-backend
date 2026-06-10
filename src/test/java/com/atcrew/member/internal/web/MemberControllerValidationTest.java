@@ -1,6 +1,6 @@
 package com.atcrew.member.internal.web;
 
-import com.atcrew.common.GlobalExceptionHandler;
+import com.atcrew.common.web.GlobalExceptionHandler;
 import com.atcrew.common.security.SecurityUtils;
 import com.atcrew.member.MemberService;
 import com.fasterxml.jackson.databind.ObjectMapper;
