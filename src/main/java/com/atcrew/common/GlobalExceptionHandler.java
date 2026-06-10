@@ -4,6 +4,7 @@ import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -21,9 +22,13 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(DomainException.class)
     public ResponseEntity<ApiResponse<Void>> handleDomain(DomainException e) {
         if (e.getStatus().is5xxServerError()) {
-            log.error("도메인 예외: {}", e.getCode(), e);
+            log.error("서버 오류: {}", e.getCode(), e);
+        } else if (e.getStatus() == HttpStatus.UNAUTHORIZED || e.getStatus() == HttpStatus.FORBIDDEN) {
+            // 인증·인가 실패 — prod에서 보안 이벤트 추적 필수
+            log.warn("인증/인가 실패: {} {}", e.getCode(), e.getMessage(), e);
         } else {
-            log.debug("도메인 예외: {} {}", e.getCode(), e.getMessage());
+            // 400·404·409 등 클라이언트 오류 — 노이즈 방지를 위해 DEBUG
+            log.debug("클라이언트 오류: {} {}", e.getCode(), e.getMessage());
         }
         if (e.getLogDetail() != null) {
             log.debug("[{}] 상세: {}", e.getCode(), e.getLogDetail());

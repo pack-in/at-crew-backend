@@ -9,14 +9,19 @@ import com.atcrew.auth.internal.firebase.FirebaseVerifier;
 import com.atcrew.auth.internal.persistence.RefreshTokenRepository;
 import com.atcrew.common.DomainException;
 import com.atcrew.common.security.JwtProvider;
+import com.atcrew.common.LogMask;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
-import com.atcrew.member.exception.MemberException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 class AuthServiceImpl implements AuthService {
+
+    private static final Logger log = LoggerFactory.getLogger(AuthServiceImpl.class);
 
     private final FirebaseVerifier firebaseVerifier;
     private final MemberService memberService;
@@ -41,7 +46,7 @@ class AuthServiceImpl implements AuthService {
         if (isNewUser) {
             try {
                 member = memberService.registerViaOAuth(email, email.split("@")[0]);
-            } catch (MemberException e) {
+            } catch (DomainException e) {
                 if (!memberService.existsByLoginEmail(email)) {
                     throw e;
                 }
@@ -53,6 +58,17 @@ class AuthServiceImpl implements AuthService {
             member = memberService.findByLoginEmail(email);
         }
 
+        // F4: recordLogin을 토큰 발급 전에 호출 — 비활성 회원이면 내부 assertActive에서 MEMBER_DEACTIVATED 발생
+        // F6: 반환된 최신 MemberInfo로 lastLoginAt 갱신 반영
+        try {
+            member = memberService.recordLogin(member.id());
+        } catch (DomainException e) {
+            if (e.getStatus() == HttpStatus.FORBIDDEN) {
+                log.warn("비활성 회원 로그인 시도: email={}", LogMask.email(email));
+            }
+            throw e;
+        }
+
         // 이전 세션 토큰 정리 — 디바이스 1개 정책, DB 무기한 누적 방지
         refreshTokenRepository.deleteAllByMemberId(member.id());
         String accessToken = jwtProvider.generateAccessToken(member.id(), email);
@@ -60,6 +76,7 @@ class AuthServiceImpl implements AuthService {
         refreshTokenRepository.save(
                 RefreshToken.of(member.id(), refreshTokenValue, jwtProvider.getRefreshExpiry()));
 
+        log.info("로그인 성공: memberId={} email={} isNewUser={}", member.id(), LogMask.email(email), isNewUser);
         return new AuthInfo(accessToken, refreshTokenValue, member, isNewUser);
     }
 
@@ -73,12 +90,19 @@ class AuthServiceImpl implements AuthService {
 
         // findAndDelete 원자 연산 — 동시 요청이 와도 하나만 토큰을 가져감 (TOCTOU 방지)
         RefreshToken stored = refreshTokenRepository.findAndDeleteByTokenValue(refreshToken)
-                .orElseThrow(() -> new AuthException(AuthErrorCode.INVALID_REFRESH_TOKEN));
+                .orElseThrow(() -> {
+                    log.warn("refresh token 미존재 또는 재사용 시도 — 탈취 가능성");
+                    return new AuthException(AuthErrorCode.INVALID_REFRESH_TOKEN);
+                });
 
         MemberInfo member;
         try {
             member = memberService.findById(stored.getMemberId());
         } catch (DomainException e) {
+            // F1: MEMBER_DEACTIVATED(403)는 INVALID_REFRESH_TOKEN으로 둔갑하지 않도록 재전파
+            if (e.getStatus() == HttpStatus.FORBIDDEN) {
+                throw e;
+            }
             throw new AuthException(AuthErrorCode.INVALID_REFRESH_TOKEN);
         }
 
@@ -88,6 +112,10 @@ class AuthServiceImpl implements AuthService {
         refreshTokenRepository.save(
                 RefreshToken.of(member.id(), newRefreshTokenValue, jwtProvider.getRefreshExpiry()));
 
+        // F5: 토큰 갱신 시에도 lastLoginAt 업데이트 (앱 상시 구동 사용자 MAU 정확도)
+        member = memberService.recordLogin(member.id());
+
+        log.info("토큰 갱신: memberId={}", member.id());
         return new AuthInfo(newAccessToken, newRefreshTokenValue, member, false);
     }
 }

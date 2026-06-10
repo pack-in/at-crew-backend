@@ -54,6 +54,7 @@ public class Member {
 
     private boolean active = true;
     private Instant deletedAt;
+    private Instant lastLoginAt;
 
     // 탈퇴 시 loginEmail 백업 (감사 추적용)
     private String deletedLoginEmail;
@@ -134,6 +135,11 @@ public class Member {
         }
     }
 
+    public void recordLogin() {
+        assertActive();
+        this.lastLoginAt = Instant.now();
+    }
+
     // unique sparse 인덱스 필드를 null로 클리어해 재가입 충돌 방지
     public void deactivate() {
         assertActive();
@@ -162,6 +168,8 @@ public class Member {
     public List<CareerEntryInfo> getCareers() { return careers.stream().map(this::toCareerInfo).toList(); }
     public boolean isActive() { return active; }
     public Instant getDeletedAt() { return deletedAt; }
+    public String getDeletedLoginEmail() { return deletedLoginEmail; }
+    public Instant getLastLoginAt() { return lastLoginAt; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
 

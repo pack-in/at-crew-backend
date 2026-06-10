@@ -1,13 +1,18 @@
 package com.atcrew.member;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonInclude;
+
 import java.time.Instant;
 import java.util.List;
 
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public record MemberInfo(
 
         // === 식별자 ===
         String id,         // MongoDB ObjectId
         String handle,     // @핸들 (URL 식별자, unique)
+        @JsonIgnore
         String loginEmail, // 로그인 이메일 (탈퇴 시 null)
 
         // === 기본 프로필 ===
@@ -44,6 +49,7 @@ public record MemberInfo(
         // === 계정 상태 ===
         boolean active,
         Instant deletedAt,
+        Instant lastLoginAt,
         Instant createdAt,
         Instant updatedAt
 ) {
