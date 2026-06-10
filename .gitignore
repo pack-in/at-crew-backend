@@ -45,3 +45,7 @@ docs/design/figma.md
 ### Firebase 인증 정보 ###
 firebase-credentials.json
 src/main/resources/firebase-credentials.json
+at-crew-dev-firebase-adminsdk-fbsvc-19b8c64b54.json
+
+### 로컬 환경 변수 ###
+.env

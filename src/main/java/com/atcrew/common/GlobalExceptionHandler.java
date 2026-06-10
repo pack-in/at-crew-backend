@@ -18,6 +18,12 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+    @ExceptionHandler(DomainException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDomain(DomainException e) {
+        return ResponseEntity.status(e.getStatus())
+                .body(ApiResponse.error(e.getCode(), e.getMessage()));
+    }
+
     // Bean Validation (@Valid) 실패
     @Override
     protected ResponseEntity<Object> handleMethodArgumentNotValid(

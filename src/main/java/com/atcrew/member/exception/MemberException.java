@@ -1,18 +1,14 @@
 package com.atcrew.member.exception;
 
-public class MemberException extends RuntimeException {
+import com.atcrew.common.DomainException;
 
-    private final MemberErrorCode errorCode;
+public class MemberException extends DomainException {
 
     public MemberException(MemberErrorCode errorCode) {
-        super(errorCode.getMessage());
-        this.errorCode = errorCode;
+        super(errorCode.getStatus(), errorCode.name(), errorCode.getMessage());
     }
 
     public MemberException(MemberErrorCode errorCode, String detail) {
-        super(errorCode.getMessage() + ": " + detail);
-        this.errorCode = errorCode;
+        super(errorCode.getStatus(), errorCode.name(), errorCode.getMessage() + ": " + detail);
     }
-
-    public MemberErrorCode getErrorCode() { return errorCode; }
 }

@@ -60,8 +60,8 @@ class MemberModuleTests {
         assertThatThrownBy(() ->
                 memberService.register("dup@atcrew.com", "handle2", "회원B", CreatorRole.ILLUSTRATOR)
         ).isInstanceOf(MemberException.class)
-                .extracting(e -> ((MemberException) e).getErrorCode())
-                .isEqualTo(MemberErrorCode.DUPLICATE_EMAIL);
+                .extracting(e -> ((MemberException) e).getCode())
+                .isEqualTo(MemberErrorCode.DUPLICATE_EMAIL.name());
     }
 
     @Test
@@ -71,8 +71,8 @@ class MemberModuleTests {
         assertThatThrownBy(() ->
                 memberService.register("member-b@atcrew.com", "duphandle", "회원B", CreatorRole.ILLUSTRATOR)
         ).isInstanceOf(MemberException.class)
-                .extracting(e -> ((MemberException) e).getErrorCode())
-                .isEqualTo(MemberErrorCode.DUPLICATE_HANDLE);
+                .extracting(e -> ((MemberException) e).getCode())
+                .isEqualTo(MemberErrorCode.DUPLICATE_HANDLE.name());
     }
 
     // ─── find ─────────────────────────────────────────────────────────
@@ -81,24 +81,24 @@ class MemberModuleTests {
     void 없는_핸들_조회_시_예외() {
         assertThatThrownBy(() -> memberService.findByHandle("nonexistent"))
                 .isInstanceOf(MemberException.class)
-                .extracting(e -> ((MemberException) e).getErrorCode())
-                .isEqualTo(MemberErrorCode.MEMBER_NOT_FOUND);
+                .extracting(e -> ((MemberException) e).getCode())
+                .isEqualTo(MemberErrorCode.MEMBER_NOT_FOUND.name());
     }
 
     @Test
     void 없는_이메일_조회_시_예외() {
         assertThatThrownBy(() -> memberService.findByLoginEmail("nobody@atcrew.com"))
                 .isInstanceOf(MemberException.class)
-                .extracting(e -> ((MemberException) e).getErrorCode())
-                .isEqualTo(MemberErrorCode.MEMBER_NOT_FOUND);
+                .extracting(e -> ((MemberException) e).getCode())
+                .isEqualTo(MemberErrorCode.MEMBER_NOT_FOUND.name());
     }
 
     @Test
     void 없는_ID_조회_시_예외() {
         assertThatThrownBy(() -> memberService.findById("000000000000000000000000"))
                 .isInstanceOf(MemberException.class)
-                .extracting(e -> ((MemberException) e).getErrorCode())
-                .isEqualTo(MemberErrorCode.MEMBER_NOT_FOUND);
+                .extracting(e -> ((MemberException) e).getCode())
+                .isEqualTo(MemberErrorCode.MEMBER_NOT_FOUND.name());
     }
 
     // ─── updateName ───────────────────────────────────────────────────

@@ -1,15 +1,10 @@
 package com.atcrew.auth.exception;
 
-public class AuthException extends RuntimeException {
+import com.atcrew.common.DomainException;
 
-    private final AuthErrorCode errorCode;
+public class AuthException extends DomainException {
 
     public AuthException(AuthErrorCode errorCode) {
-        super(errorCode.getMessage());
-        this.errorCode = errorCode;
-    }
-
-    public AuthErrorCode getErrorCode() {
-        return errorCode;
+        super(errorCode.getStatus(), errorCode.name(), errorCode.getMessage());
     }
 }

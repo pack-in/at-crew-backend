@@ -44,8 +44,8 @@ class MemberTest {
                 member.addCareer("홍길동전", "작화",
                         LocalDate.of(2023, 1, 1), LocalDate.of(2024, 6, 30), true, null)
         ).isInstanceOf(MemberException.class)
-                .extracting(e -> ((MemberException) e).getErrorCode())
-                .isEqualTo(MemberErrorCode.INVALID_CAREER_PERIOD);
+                .extracting(e -> ((MemberException) e).getCode())
+                .isEqualTo(MemberErrorCode.INVALID_CAREER_PERIOD.name());
     }
 
     @Test
@@ -54,8 +54,8 @@ class MemberTest {
                 member.addCareer("홍길동전", "작화",
                         LocalDate.of(2023, 1, 1), null, false, null)
         ).isInstanceOf(MemberException.class)
-                .extracting(e -> ((MemberException) e).getErrorCode())
-                .isEqualTo(MemberErrorCode.INVALID_CAREER_PERIOD);
+                .extracting(e -> ((MemberException) e).getCode())
+                .isEqualTo(MemberErrorCode.INVALID_CAREER_PERIOD.name());
     }
 
     @Test
@@ -64,8 +64,8 @@ class MemberTest {
                 member.addCareer("홍길동전", "작화",
                         LocalDate.of(2024, 6, 1), LocalDate.of(2024, 1, 1), false, null)
         ).isInstanceOf(MemberException.class)
-                .extracting(e -> ((MemberException) e).getErrorCode())
-                .isEqualTo(MemberErrorCode.INVALID_CAREER_PERIOD);
+                .extracting(e -> ((MemberException) e).getCode())
+                .isEqualTo(MemberErrorCode.INVALID_CAREER_PERIOD.name());
     }
 
     @Test
@@ -79,8 +79,8 @@ class MemberTest {
                 member.addCareer("초과작품", null,
                         LocalDate.of(2020, 1, 1), LocalDate.of(2021, 1, 1), false, null)
         ).isInstanceOf(MemberException.class)
-                .extracting(e -> ((MemberException) e).getErrorCode())
-                .isEqualTo(MemberErrorCode.CAREER_LIMIT_EXCEEDED);
+                .extracting(e -> ((MemberException) e).getCode())
+                .isEqualTo(MemberErrorCode.CAREER_LIMIT_EXCEEDED.name());
     }
 
     // ─── deleteCareer ─────────────────────────────────────────────────
@@ -99,8 +99,8 @@ class MemberTest {
     void 없는_경력_삭제_시_예외() {
         assertThatThrownBy(() -> member.deleteCareer("nonexistent-id"))
                 .isInstanceOf(MemberException.class)
-                .extracting(e -> ((MemberException) e).getErrorCode())
-                .isEqualTo(MemberErrorCode.CAREER_NOT_FOUND);
+                .extracting(e -> ((MemberException) e).getCode())
+                .isEqualTo(MemberErrorCode.CAREER_NOT_FOUND.name());
     }
 
     // ─── updateInfo ───────────────────────────────────────────────────
@@ -112,8 +112,8 @@ class MemberTest {
 
         assertThatThrownBy(() -> member.updateInfo(command))
                 .isInstanceOf(MemberException.class)
-                .extracting(e -> ((MemberException) e).getErrorCode())
-                .isEqualTo(MemberErrorCode.INVALID_SLOT_COUNT);
+                .extracting(e -> ((MemberException) e).getCode())
+                .isEqualTo(MemberErrorCode.INVALID_SLOT_COUNT.name());
     }
 
     @Test
@@ -124,8 +124,8 @@ class MemberTest {
 
         assertThatThrownBy(() -> member.updateInfo(command))
                 .isInstanceOf(MemberException.class)
-                .extracting(e -> ((MemberException) e).getErrorCode())
-                .isEqualTo(MemberErrorCode.INVALID_SLOT_COUNT);
+                .extracting(e -> ((MemberException) e).getCode())
+                .isEqualTo(MemberErrorCode.INVALID_SLOT_COUNT.name());
     }
 
     @Test
@@ -161,8 +161,8 @@ class MemberTest {
 
         assertThatThrownBy(() -> member.updateName("새이름"))
                 .isInstanceOf(MemberException.class)
-                .extracting(e -> ((MemberException) e).getErrorCode())
-                .isEqualTo(MemberErrorCode.MEMBER_DEACTIVATED);
+                .extracting(e -> ((MemberException) e).getCode())
+                .isEqualTo(MemberErrorCode.MEMBER_DEACTIVATED.name());
     }
 
     @Test
@@ -173,8 +173,8 @@ class MemberTest {
 
         assertThatThrownBy(() -> member.updateInfo(command))
                 .isInstanceOf(MemberException.class)
-                .extracting(e -> ((MemberException) e).getErrorCode())
-                .isEqualTo(MemberErrorCode.MEMBER_DEACTIVATED);
+                .extracting(e -> ((MemberException) e).getCode())
+                .isEqualTo(MemberErrorCode.MEMBER_DEACTIVATED.name());
     }
 
     @Test
@@ -185,8 +185,8 @@ class MemberTest {
                 member.addCareer("작품", null,
                         LocalDate.of(2023, 1, 1), LocalDate.of(2024, 1, 1), false, null)
         ).isInstanceOf(MemberException.class)
-                .extracting(e -> ((MemberException) e).getErrorCode())
-                .isEqualTo(MemberErrorCode.MEMBER_DEACTIVATED);
+                .extracting(e -> ((MemberException) e).getCode())
+                .isEqualTo(MemberErrorCode.MEMBER_DEACTIVATED.name());
     }
 
     @Test
@@ -195,8 +195,8 @@ class MemberTest {
 
         assertThatThrownBy(() -> member.deactivate())
                 .isInstanceOf(MemberException.class)
-                .extracting(e -> ((MemberException) e).getErrorCode())
-                .isEqualTo(MemberErrorCode.MEMBER_DEACTIVATED);
+                .extracting(e -> ((MemberException) e).getCode())
+                .isEqualTo(MemberErrorCode.MEMBER_DEACTIVATED.name());
     }
 
     // ─── periodDisplay ────────────────────────────────────────────────

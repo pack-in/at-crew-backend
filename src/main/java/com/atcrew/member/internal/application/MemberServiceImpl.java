@@ -12,6 +12,7 @@ import com.atcrew.member.exception.MemberException;
 import com.atcrew.member.internal.domain.Member;
 import com.atcrew.member.internal.persistence.MemberRepository;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,7 +35,11 @@ class MemberServiceImpl implements MemberService {
         if (memberRepository.existsByHandle(handle)) {
             throw new MemberException(MemberErrorCode.DUPLICATE_HANDLE, handle);
         }
-        return MemberMapper.toInfo(memberRepository.save(Member.register(loginEmail, handle, name, creatorRole)));
+        try {
+            return MemberMapper.toInfo(memberRepository.save(Member.register(loginEmail, handle, name, creatorRole)));
+        } catch (DuplicateKeyException e) {
+            throw new MemberException(MemberErrorCode.DUPLICATE_MEMBER_INFO);
+        }
     }
 
     @Override
@@ -44,7 +49,11 @@ class MemberServiceImpl implements MemberService {
             throw new MemberException(MemberErrorCode.DUPLICATE_EMAIL, loginEmail);
         }
         String handle = generateUniqueHandle(name);
-        return MemberMapper.toInfo(memberRepository.save(Member.register(loginEmail, handle, name, null)));
+        try {
+            return MemberMapper.toInfo(memberRepository.save(Member.register(loginEmail, handle, name, null)));
+        } catch (DuplicateKeyException e) {
+            throw new MemberException(MemberErrorCode.DUPLICATE_MEMBER_INFO);
+        }
     }
 
     @Override
