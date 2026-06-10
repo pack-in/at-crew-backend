@@ -168,6 +168,7 @@ public class Member {
     public List<CareerEntryInfo> getCareers() { return careers.stream().map(this::toCareerInfo).toList(); }
     public boolean isActive() { return active; }
     public Instant getDeletedAt() { return deletedAt; }
+    public String getDeletedLoginEmail() { return deletedLoginEmail; }
     public Instant getLastLoginAt() { return lastLoginAt; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }

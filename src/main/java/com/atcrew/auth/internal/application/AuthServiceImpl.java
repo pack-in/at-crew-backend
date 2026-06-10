@@ -60,7 +60,14 @@ class AuthServiceImpl implements AuthService {
 
         // F4: recordLogin을 토큰 발급 전에 호출 — 비활성 회원이면 내부 assertActive에서 MEMBER_DEACTIVATED 발생
         // F6: 반환된 최신 MemberInfo로 lastLoginAt 갱신 반영
-        member = memberService.recordLogin(member.id());
+        try {
+            member = memberService.recordLogin(member.id());
+        } catch (DomainException e) {
+            if (e.getStatus() == HttpStatus.FORBIDDEN) {
+                log.warn("비활성 회원 로그인 시도: email={}", LogMask.email(email));
+            }
+            throw e;
+        }
 
         // 이전 세션 토큰 정리 — 디바이스 1개 정책, DB 무기한 누적 방지
         refreshTokenRepository.deleteAllByMemberId(member.id());
@@ -83,7 +90,10 @@ class AuthServiceImpl implements AuthService {
 
         // findAndDelete 원자 연산 — 동시 요청이 와도 하나만 토큰을 가져감 (TOCTOU 방지)
         RefreshToken stored = refreshTokenRepository.findAndDeleteByTokenValue(refreshToken)
-                .orElseThrow(() -> new AuthException(AuthErrorCode.INVALID_REFRESH_TOKEN));
+                .orElseThrow(() -> {
+                    log.warn("refresh token 미존재 또는 재사용 시도 — 탈취 가능성");
+                    return new AuthException(AuthErrorCode.INVALID_REFRESH_TOKEN);
+                });
 
         MemberInfo member;
         try {

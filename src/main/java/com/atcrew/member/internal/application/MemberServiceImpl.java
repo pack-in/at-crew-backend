@@ -12,6 +12,7 @@ import com.atcrew.member.exception.MemberErrorCode;
 import com.atcrew.member.exception.MemberException;
 import com.atcrew.member.internal.domain.Member;
 import com.atcrew.member.internal.persistence.MemberRepository;
+import com.atcrew.common.LogMask;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
@@ -79,7 +80,7 @@ class MemberServiceImpl implements MemberService {
             String handle = base + "_" + (int) (Math.random() * 90000 + 10000);
             if (!memberRepository.existsByHandle(handle)) return handle;
         }
-        log.error("핸들 자동 생성 실패 — 5회 시도 모두 충돌: name={}", name);
+        log.error("핸들 자동 생성 실패 — 5회 시도 모두 충돌");
         throw new MemberException(MemberErrorCode.HANDLE_GENERATION_FAILED, name);
     }
 
@@ -158,6 +159,7 @@ class MemberServiceImpl implements MemberService {
         }
         member.deactivate();
         memberRepository.save(member);
+        log.info("회원 탈퇴 처리: memberId={} email={}", memberId, LogMask.email(member.getDeletedLoginEmail()));
         eventPublisher.publishEvent(new MemberDeactivatedEvent(memberId));
     }
 

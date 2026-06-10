@@ -10,6 +10,10 @@ spring:
   jackson:
     time-zone: Asia/Seoul
 
+logging:
+  pattern:
+    level: "%5p [%X{requestId:-},%X{memberId:-}]"
+
 management:
   endpoints:
     web:
