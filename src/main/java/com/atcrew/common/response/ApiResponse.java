@@ -1,7 +1,9 @@
 package com.atcrew.common.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import io.swagger.v3.oas.annotations.media.Schema;
 
+@Schema(description = "공통 응답 봉투")
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record ApiResponse<T>(
         String code,    // SUCCESS 또는 에러 코드
