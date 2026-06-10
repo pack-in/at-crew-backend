@@ -1,0 +1,33 @@
+spring:
+  application:
+    name: at-crew-backend
+  mongodb:
+    uri: ${MONGODB_URI:mongodb://localhost:27017}
+    database: ${MONGODB_DATABASE:atcrew}
+  data:
+    mongodb:
+      auto-index-creation: true
+  jackson:
+    time-zone: Asia/Seoul
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info
+  endpoint:
+    health:
+      show-details: never
+
+cors:
+  allowed-origins: http://localhost:3000
+
+jwt:
+  secret: ${JWT_SECRET:at-crew-default-secret-key-for-dev-only-must-be-at-least-64-chars-long}
+  access-token-expiration: 3600000       # 1시간 (ms)
+  refresh-token-expiration: 2592000000   # 30일 (ms)
+
+firebase:
+  credentials-path: ${FIREBASE_CREDENTIALS_PATH:}
+
+# republish-outstanding-events-on-restart 는 레플리카셋 필요 → application-prod.yml 참고

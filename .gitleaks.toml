@@ -1,0 +1,19 @@
+# gitleaks 설정
+# 기본 탐지 규칙 외 프로젝트 전용 규칙 추가
+
+[extend]
+# gitleaks 기본 규칙셋 사용
+useDefault = true
+
+[allowlist]
+# 테스트 코드 내 예시 값 허용
+paths = [
+    "src/test"
+]
+
+# 알려진 false positive 패턴 허용
+regexes = [
+    # 예시 토큰 패턴 (테스트·문서용)
+    "example_token",
+    "your_secret_here",
+]

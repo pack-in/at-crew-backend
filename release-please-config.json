@@ -1,0 +1,21 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "simple",
+  "packages": {
+    ".": {
+      "changelog-path": "CHANGELOG.md",
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": true,
+      "changelog-sections": [
+        { "type": "feat",     "section": "기능" },
+        { "type": "fix",      "section": "버그 수정" },
+        { "type": "perf",     "section": "성능 개선" },
+        { "type": "refactor", "section": "리팩토링", "hidden": true },
+        { "type": "docs",     "section": "문서",     "hidden": true },
+        { "type": "test",     "section": "테스트",   "hidden": true },
+        { "type": "chore",    "section": "기타",     "hidden": true },
+        { "type": "ci",       "section": "CI/CD",    "hidden": true }
+      ]
+    }
+  }
+}

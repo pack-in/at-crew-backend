@@ -1,0 +1,26 @@
+spring:
+  mongodb:
+    uri: ${MONGODB_URI}
+    database: ${MONGODB_DATABASE}
+  data:
+    mongodb:
+      auto-index-creation: false
+      transactions:
+        enabled: true  # 레플리카셋 환경 — MongoTransactionManager 활성화
+
+spring.modulith:
+  events:
+    republish-outstanding-events-on-restart: true
+
+cors:
+  allowed-origins: ${CORS_ALLOWED_ORIGINS}
+
+jwt:
+  secret: ${JWT_SECRET}
+
+firebase:
+  credentials-path: ${FIREBASE_CREDENTIALS_PATH}
+
+logging:
+  level:
+    com.atcrew: INFO
