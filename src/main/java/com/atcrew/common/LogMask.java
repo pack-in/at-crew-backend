@@ -18,8 +18,9 @@ public final class LogMask {
     }
 
     private static String maskPart(String s, int visiblePrefix) {
-        if (s.length() <= visiblePrefix) return s + "*";
-        return s.substring(0, visiblePrefix) + "*".repeat(Math.min(s.length() - visiblePrefix, 4));
+        if (s.isEmpty()) return "*";
+        int show = Math.min(visiblePrefix, s.length() - 1);
+        return s.substring(0, show) + "*".repeat(Math.min(s.length() - show, 4));
     }
 
     private static String maskDomain(String domain) {

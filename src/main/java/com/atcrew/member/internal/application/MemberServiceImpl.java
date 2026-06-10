@@ -54,12 +54,16 @@ class MemberServiceImpl implements MemberService {
         if (memberRepository.existsByLoginEmail(loginEmail)) {
             throw new MemberException(MemberErrorCode.DUPLICATE_EMAIL, loginEmail);
         }
-        String handle = generateUniqueHandle(name);
-        try {
-            return MemberMapper.toInfo(memberRepository.save(Member.register(loginEmail, handle, name, null)));
-        } catch (DuplicateKeyException e) {
-            throw new MemberException(MemberErrorCode.DUPLICATE_MEMBER_INFO);
+        for (int attempt = 0; attempt < 3; attempt++) {
+            String handle = generateUniqueHandle(name);
+            try {
+                return MemberMapper.toInfo(memberRepository.save(Member.register(loginEmail, handle, name, null)));
+            } catch (DuplicateKeyException e) {
+                // 핸들 충돌 레이스 컨디션 — 새 핸들로 재시도
+                log.debug("핸들 충돌 재시도: attempt={}", attempt + 1);
+            }
         }
+        throw new MemberException(MemberErrorCode.HANDLE_GENERATION_FAILED, name);
     }
 
     @Override
@@ -138,10 +142,10 @@ class MemberServiceImpl implements MemberService {
 
     @Override
     @Transactional
-    public void recordLogin(String memberId) {
+    public MemberInfo recordLogin(String memberId) {
         Member member = findMemberById(memberId);
         member.recordLogin();
-        memberRepository.save(member);
+        return MemberMapper.toInfo(memberRepository.save(member));
     }
 
     @Override

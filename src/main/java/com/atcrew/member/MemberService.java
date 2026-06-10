@@ -24,7 +24,7 @@ public interface MemberService {
 
     void deleteCareer(String memberId, String careerId);
 
-    void recordLogin(String memberId);
+    MemberInfo recordLogin(String memberId);
 
     void deactivate(String memberId);
 }

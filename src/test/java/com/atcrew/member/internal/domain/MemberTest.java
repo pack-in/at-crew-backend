@@ -155,6 +155,18 @@ class MemberTest {
         assertThat(member.getContact()).isEqualTo("010-1234-5678");
     }
 
+    // ─── recordLogin ─────────────────────────────────────────────────
+
+    @Test
+    void 탈퇴_회원_로그인_기록_시_예외() {
+        member.deactivate();
+
+        assertThatThrownBy(() -> member.recordLogin())
+                .isInstanceOf(MemberException.class)
+                .extracting(e -> ((MemberException) e).getCode())
+                .isEqualTo(MemberErrorCode.MEMBER_DEACTIVATED.name());
+    }
+
     // ─── deactivate ───────────────────────────────────────────────────
 
     @Test
