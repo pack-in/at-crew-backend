@@ -23,4 +23,5 @@ firebase:
 
 logging:
   level:
-    com.atcrew: INFO
+    root: WARN          # 프레임워크 노이즈 차단
+    com.atcrew: INFO    # 비즈니스 이벤트(로그인·가입·탈퇴) + WARN·ERROR

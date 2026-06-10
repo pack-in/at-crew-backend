@@ -16,3 +16,7 @@ management:
 logging:
   level:
     com.atcrew: DEBUG
+    # MongoDB 쿼리 디버깅
+    org.springframework.data.mongodb.core.MongoTemplate: DEBUG
+    # Spring Security 인증 흐름 디버깅
+    org.springframework.security: DEBUG

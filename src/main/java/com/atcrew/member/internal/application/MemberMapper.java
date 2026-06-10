@@ -51,6 +51,7 @@ class MemberMapper {
                 member.getCareers(),
                 member.isActive(),
                 member.getDeletedAt(),
+                member.getLastLoginAt(),
                 member.getCreatedAt(),
                 member.getUpdatedAt()
         );

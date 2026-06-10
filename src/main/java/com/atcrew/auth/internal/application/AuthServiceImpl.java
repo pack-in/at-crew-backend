@@ -9,14 +9,19 @@ import com.atcrew.auth.internal.firebase.FirebaseVerifier;
 import com.atcrew.auth.internal.persistence.RefreshTokenRepository;
 import com.atcrew.common.DomainException;
 import com.atcrew.common.security.JwtProvider;
+import com.atcrew.common.LogMask;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
 import com.atcrew.member.exception.MemberException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 class AuthServiceImpl implements AuthService {
+
+    private static final Logger log = LoggerFactory.getLogger(AuthServiceImpl.class);
 
     private final FirebaseVerifier firebaseVerifier;
     private final MemberService memberService;
@@ -53,6 +58,8 @@ class AuthServiceImpl implements AuthService {
             member = memberService.findByLoginEmail(email);
         }
 
+        memberService.recordLogin(member.id());
+
         // 이전 세션 토큰 정리 — 디바이스 1개 정책, DB 무기한 누적 방지
         refreshTokenRepository.deleteAllByMemberId(member.id());
         String accessToken = jwtProvider.generateAccessToken(member.id(), email);
@@ -60,6 +67,7 @@ class AuthServiceImpl implements AuthService {
         refreshTokenRepository.save(
                 RefreshToken.of(member.id(), refreshTokenValue, jwtProvider.getRefreshExpiry()));
 
+        log.info("로그인 성공: memberId={} email={} isNewUser={}", member.id(), LogMask.email(email), isNewUser);
         return new AuthInfo(accessToken, refreshTokenValue, member, isNewUser);
     }
 
@@ -88,6 +96,7 @@ class AuthServiceImpl implements AuthService {
         refreshTokenRepository.save(
                 RefreshToken.of(member.id(), newRefreshTokenValue, jwtProvider.getRefreshExpiry()));
 
+        log.info("토큰 갱신: memberId={}", member.id());
         return new AuthInfo(newAccessToken, newRefreshTokenValue, member, false);
     }
 }

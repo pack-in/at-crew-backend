@@ -138,6 +138,14 @@ class MemberServiceImpl implements MemberService {
 
     @Override
     @Transactional
+    public void recordLogin(String memberId) {
+        Member member = findMemberById(memberId);
+        member.recordLogin();
+        memberRepository.save(member);
+    }
+
+    @Override
+    @Transactional
     public void deactivate(String memberId) {
         Member member = memberRepository.findById(memberId)
                 .orElseThrow(() -> new MemberException(MemberErrorCode.MEMBER_NOT_FOUND, memberId));

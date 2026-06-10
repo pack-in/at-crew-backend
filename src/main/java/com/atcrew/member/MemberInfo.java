@@ -44,6 +44,7 @@ public record MemberInfo(
         // === 계정 상태 ===
         boolean active,
         Instant deletedAt,
+        Instant lastLoginAt,
         Instant createdAt,
         Instant updatedAt
 ) {
