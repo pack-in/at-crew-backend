@@ -81,12 +81,8 @@ class MemberServiceImpl implements MemberService {
 
     @Override
     public MemberProfileInfo findProfileByHandle(String handle) {
-        Member member = memberRepository.findByHandle(handle)
-                .orElseThrow(() -> new MemberException(MemberErrorCode.MEMBER_NOT_FOUND, handle));
-        if (!member.isActive()) {
-            throw new MemberException(MemberErrorCode.MEMBER_NOT_FOUND, handle);
-        }
-        return MemberMapper.toProfileInfo(member);
+        return MemberMapper.toProfileInfo(memberRepository.findByHandle(handle)
+                .orElseThrow(() -> new MemberException(MemberErrorCode.MEMBER_NOT_FOUND, handle)));
     }
 
     @Override
@@ -143,7 +139,11 @@ class MemberServiceImpl implements MemberService {
     @Override
     @Transactional
     public void deactivate(String memberId) {
-        Member member = findMemberById(memberId);
+        Member member = memberRepository.findById(memberId)
+                .orElseThrow(() -> new MemberException(MemberErrorCode.MEMBER_NOT_FOUND, memberId));
+        if (!member.isActive()) {
+            return; // 이미 탈퇴 — 멱등 처리
+        }
         member.deactivate();
         memberRepository.save(member);
         eventPublisher.publishEvent(new MemberDeactivatedEvent(memberId));

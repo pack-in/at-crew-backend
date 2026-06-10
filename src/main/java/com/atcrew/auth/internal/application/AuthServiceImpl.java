@@ -42,6 +42,9 @@ class AuthServiceImpl implements AuthService {
             try {
                 member = memberService.registerViaOAuth(email, email.split("@")[0]);
             } catch (MemberException e) {
+                if (!memberService.existsByLoginEmail(email)) {
+                    throw e;
+                }
                 // 동시 첫 로그인 경쟁: 다른 요청이 먼저 등록 완료 → 기존 회원으로 진행
                 isNewUser = false;
                 member = memberService.findByLoginEmail(email);
@@ -63,13 +66,14 @@ class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public AuthInfo refresh(String refreshToken) {
+        // validate-then-delete: 만료/타입 오류 시 DB 항목이 소실되는 것을 방지
+        if (!jwtProvider.validateRefreshToken(refreshToken)) {
+            throw new AuthException(AuthErrorCode.INVALID_REFRESH_TOKEN);
+        }
+
         // findAndDelete 원자 연산 — 동시 요청이 와도 하나만 토큰을 가져감 (TOCTOU 방지)
         RefreshToken stored = refreshTokenRepository.findAndDeleteByTokenValue(refreshToken)
                 .orElseThrow(() -> new AuthException(AuthErrorCode.INVALID_REFRESH_TOKEN));
-
-        if (!jwtProvider.validateToken(refreshToken)) {
-            throw new AuthException(AuthErrorCode.INVALID_REFRESH_TOKEN);
-        }
 
         MemberInfo member;
         try {

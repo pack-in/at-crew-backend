@@ -15,7 +15,7 @@ import java.io.IOException;
 import java.io.InputStream;
 
 @Configuration
-@ConditionalOnExpression("'${firebase.credentials-path:}'.length() > 0")
+@ConditionalOnExpression("'${firebase.credentials-path:}'.trim().length() > 0")
 class FirebaseConfig {
 
     @Value("${firebase.credentials-path}")
