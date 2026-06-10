@@ -1,4 +1,4 @@
-package com.atcrew.common;
+package com.atcrew.common.web;
 
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;

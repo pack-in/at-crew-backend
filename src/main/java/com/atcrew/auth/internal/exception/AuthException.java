@@ -1,6 +1,6 @@
-package com.atcrew.auth.exception;
+package com.atcrew.auth.internal.exception;
 
-import com.atcrew.common.DomainException;
+import com.atcrew.common.exception.DomainException;
 
 public class AuthException extends DomainException {
 

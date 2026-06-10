@@ -1,4 +1,4 @@
-package com.atcrew.common;
+package com.atcrew.common.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 

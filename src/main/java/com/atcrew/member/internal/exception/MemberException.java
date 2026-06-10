@@ -1,6 +1,6 @@
-package com.atcrew.member.exception;
+package com.atcrew.member.internal.exception;
 
-import com.atcrew.common.DomainException;
+import com.atcrew.common.exception.DomainException;
 
 public class MemberException extends DomainException {
 

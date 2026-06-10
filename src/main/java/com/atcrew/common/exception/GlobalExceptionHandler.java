@@ -1,5 +1,6 @@
-package com.atcrew.common;
+package com.atcrew.common.exception;
 
+import com.atcrew.common.response.ApiResponse;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
