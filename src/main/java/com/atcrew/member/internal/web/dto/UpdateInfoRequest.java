@@ -16,23 +16,32 @@ import jakarta.validation.constraints.Size;
 import java.util.List;
 
 public record UpdateInfoRequest(
+        @Schema(description = "창작자 유형. null이면 변경 없음")
         CreatorRole creatorRole,
+
+        @Schema(description = "구인구직 상태. null이면 변경 없음")
         EmploymentStatus employmentStatus,
 
+        @Schema(description = "활동 분야 (최대 4개). null이면 변경 없음, []이면 전체 삭제")
         @Size(max = 4)
         List<@NotNull ActivityField> activityFields,
 
+        @Schema(description = "경력 연차. null이면 변경 없음")
         ExperienceLevel experienceLevel,
 
+        @Schema(description = "활동 지역 (최대 7개). null이면 변경 없음, []이면 전체 삭제")
         @Size(max = 7)
         List<@NotNull ActiveRegion> activeRegions,
 
+        @Schema(description = "전체 슬롯 수 (1~5). null이면 변경 없음")
         @Min(1) @Max(5)
         Integer totalSlotCount,
 
+        @Schema(description = "가용 슬롯 수 (0~5, totalSlotCount 이하). null이면 변경 없음")
         @Min(0) @Max(5)
         Integer availableSlotCount,
 
+        @Schema(description = "팀 작업 경험 (최대 4개). null이면 변경 없음, []이면 전체 삭제")
         @Size(max = 4)
         List<@NotNull TeamExperience> teamExperiences,
 
