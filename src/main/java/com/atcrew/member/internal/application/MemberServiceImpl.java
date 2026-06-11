@@ -60,7 +60,10 @@ class MemberServiceImpl implements MemberService {
             try {
                 return MemberMapper.toInfo(memberRepository.save(Member.register(loginEmail, handle, name, null)));
             } catch (DuplicateKeyException e) {
-                // 핸들 충돌 레이스 컨디션 — 새 핸들로 재시도
+                // 이메일 중복이 원인이면 재시도 없이 즉시 실패 — 핸들을 바꿔도 해결되지 않음
+                if (memberRepository.existsByLoginEmail(loginEmail)) {
+                    throw new MemberException(MemberErrorCode.DUPLICATE_EMAIL, loginEmail);
+                }
                 log.debug("핸들 충돌 재시도: attempt={}", attempt + 1);
             }
         }
