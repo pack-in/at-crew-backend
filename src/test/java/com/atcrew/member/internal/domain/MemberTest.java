@@ -1,6 +1,8 @@
 package com.atcrew.member.internal.domain;
 
+import com.atcrew.member.AccountType;
 import com.atcrew.member.ActivityField;
+import com.atcrew.member.AuthProvider;
 import com.atcrew.member.CareerEntryInfo;
 import com.atcrew.member.CreatorRole;
 import com.atcrew.member.EmploymentStatus;
@@ -272,5 +274,64 @@ class MemberTest {
                 LocalDate.of(2022, 1, 1), LocalDate.of(2023, 6, 1), false, null);
 
         assertThat(entry.periodDisplay()).contains("약 1년 5개월");
+    }
+
+    // ─── register (신규 가입 팩토리) ──────────────────────────────────
+
+    @Test
+    void 창작자_이메일_가입() {
+        TermsAgreement terms = TermsAgreement.of(true, true, false);
+        Member creator = Member.register("creator@test.com", "creatorhandle", "창작자",
+                AuthProvider.EMAIL, AccountType.CREATOR, null, terms);
+
+        assertThat(creator.getAuthProvider()).isEqualTo(AuthProvider.EMAIL);
+        assertThat(creator.getAccountType()).isEqualTo(AccountType.CREATOR);
+        assertThat(creator.getCompanyName()).isNull();
+    }
+
+    @Test
+    void 기업_이메일_가입() {
+        TermsAgreement terms = TermsAgreement.of(true, true, true);
+        Member company = Member.register("corp@test.com", "corphandle", "기업",
+                AuthProvider.EMAIL, AccountType.COMPANY, "주식회사 앳크루", terms);
+
+        assertThat(company.getAccountType()).isEqualTo(AccountType.COMPANY);
+        assertThat(company.getCompanyName()).isEqualTo("주식회사 앳크루");
+    }
+
+    @Test
+    void 기업_계정_기업명_미입력_시_예외() {
+        TermsAgreement terms = TermsAgreement.of(true, true, false);
+
+        assertThatThrownBy(() ->
+                Member.register("corp@test.com", "corphandle", "기업",
+                        AuthProvider.EMAIL, AccountType.COMPANY, null, terms)
+        ).isInstanceOf(MemberException.class)
+                .extracting(e -> ((MemberException) e).getCode())
+                .isEqualTo(MemberErrorCode.COMPANY_NAME_REQUIRED.name());
+    }
+
+    @Test
+    void 필수_약관_미동의_시_예외() {
+        TermsAgreement terms = TermsAgreement.of(false, true, false);
+
+        assertThatThrownBy(() ->
+                Member.register("creator@test.com", "handle", "창작자",
+                        AuthProvider.EMAIL, AccountType.CREATOR, null, terms)
+        ).isInstanceOf(MemberException.class)
+                .extracting(e -> ((MemberException) e).getCode())
+                .isEqualTo(MemberErrorCode.TERMS_NOT_AGREED.name());
+    }
+
+    @Test
+    void authProvider_null이면_예외() {
+        TermsAgreement terms = TermsAgreement.of(true, true, false);
+
+        assertThatThrownBy(() ->
+                Member.register("creator@test.com", "handle", "창작자",
+                        null, AccountType.CREATOR, null, terms)
+        ).isInstanceOf(MemberException.class)
+                .extracting(e -> ((MemberException) e).getCode())
+                .isEqualTo(MemberErrorCode.INVALID_AUTH_PROVIDER.name());
     }
 }
