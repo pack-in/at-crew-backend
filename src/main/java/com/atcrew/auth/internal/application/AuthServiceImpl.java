@@ -2,16 +2,20 @@ package com.atcrew.auth.internal.application;
 
 import com.atcrew.auth.AuthInfo;
 import com.atcrew.auth.AuthService;
+import com.atcrew.auth.RegisterCommand;
+import com.atcrew.auth.internal.domain.RefreshToken;
 import com.atcrew.auth.internal.exception.AuthErrorCode;
 import com.atcrew.auth.internal.exception.AuthException;
-import com.atcrew.auth.internal.domain.RefreshToken;
+import com.atcrew.auth.internal.infra.firebase.FirebaseUser;
 import com.atcrew.auth.internal.infra.firebase.FirebaseVerifier;
 import com.atcrew.auth.internal.persistence.RefreshTokenRepository;
 import com.atcrew.common.exception.DomainException;
-import com.atcrew.common.security.JwtProvider;
 import com.atcrew.common.logging.LogMask;
+import com.atcrew.common.security.JwtProvider;
+import com.atcrew.member.AuthProvider;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
+import com.atcrew.member.RegisterMemberCommand;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -39,47 +43,61 @@ class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public AuthInfo login(String firebaseIdToken) {
-        String email = firebaseVerifier.verifyAndGetEmail(firebaseIdToken);
+        FirebaseUser firebaseUser = firebaseVerifier.verify(firebaseIdToken);
+        String email = firebaseUser.email();
+        AuthProvider tokenProvider = firebaseUser.provider();
 
-        boolean isNewUser = !memberService.existsByLoginEmail(email);
-        MemberInfo member;
-        if (isNewUser) {
-            try {
-                member = memberService.registerViaOAuth(email, email.split("@")[0]);
-            } catch (DomainException e) {
-                // DUPLICATE_EMAIL(409 Conflict)만 동시 첫 로그인 경쟁으로 간주
-                // HANDLE_GENERATION_FAILED(500) 등 다른 오류는 그대로 전파
-                if (e.getStatus() != HttpStatus.CONFLICT) {
-                    throw e;
-                }
-                // 다른 요청이 먼저 등록 완료 → 기존 회원으로 진행
-                isNewUser = false;
-                member = memberService.findByLoginEmail(email);
-            }
-        } else {
-            member = memberService.findByLoginEmail(email);
+        // 활성 회원 조회 — 실패 원인은 서버 로그에만 기록, 클라이언트에는 단일 에러 반환
+        // (계정 존재 여부·탈퇴 이력·가입 방식을 응답에 노출하면 enumeration 공격에 악용될 수 있음)
+        if (!memberService.existsByLoginEmail(email)) {
+            String detail = memberService.isDeactivatedEmail(email) ? "탈퇴_계정" : "미가입_이메일";
+            log.warn("로그인 실패[{}]: email={}", detail, LogMask.email(email));
+            throw new AuthException(AuthErrorCode.AUTHENTICATION_FAILED);
         }
 
-        // F4: recordLogin을 토큰 발급 전에 호출 — 비활성 회원이면 내부 assertActive에서 MEMBER_DEACTIVATED 발생
-        // F6: 반환된 최신 MemberInfo로 lastLoginAt 갱신 반영
-        try {
-            member = memberService.recordLogin(member.id());
-        } catch (DomainException e) {
-            if (e.getStatus() == HttpStatus.FORBIDDEN) {
-                log.warn("비활성 회원 로그인 시도: email={}", LogMask.email(email));
-            }
-            throw e;
+        MemberInfo member = memberService.findByLoginEmail(email);
+
+        // 가입 경로 불일치 — 이유를 클라이언트에 노출하지 않고 로그에만 기록
+        if (member.authProvider() != null && member.authProvider() != tokenProvider) {
+            log.warn("로그인 실패[provider_불일치]: email={} registered={} attempted={}",
+                    LogMask.email(email), member.authProvider(), tokenProvider);
+            throw new AuthException(AuthErrorCode.AUTHENTICATION_FAILED);
         }
 
-        // 이전 세션 토큰 정리 — 디바이스 1개 정책, DB 무기한 누적 방지
-        refreshTokenRepository.deleteAllByMemberId(member.id());
+        member = memberService.recordLogin(member.id());
+
         String accessToken = jwtProvider.generateAccessToken(member.id(), email);
-        String refreshTokenValue = jwtProvider.generateRefreshToken(member.id());
-        refreshTokenRepository.save(
-                RefreshToken.of(member.id(), refreshTokenValue, jwtProvider.getRefreshExpiry()));
+        String refreshTokenValue = issueRefreshToken(member.id());
 
-        log.info("로그인 성공: memberId={} email={} isNewUser={}", member.id(), LogMask.email(email), isNewUser);
-        return new AuthInfo(accessToken, refreshTokenValue, member, isNewUser);
+        log.info("로그인 성공: memberId={} email={} provider={}", member.id(), LogMask.email(email), tokenProvider);
+        return new AuthInfo(accessToken, refreshTokenValue, member, false);
+    }
+
+    @Override
+    @Transactional
+    public AuthInfo register(RegisterCommand command) {
+        FirebaseUser firebaseUser = firebaseVerifier.verify(command.firebaseIdToken());
+        String email = firebaseUser.email();
+
+        RegisterMemberCommand memberCommand = new RegisterMemberCommand(
+                email,
+                email.split("@")[0],
+                firebaseUser.provider(),
+                command.accountType(),
+                command.companyName(),
+                command.agreePrivacy(),
+                command.agreeService(),
+                command.agreeMarketing()
+        );
+
+        MemberInfo member = memberService.register(memberCommand);
+
+        String accessToken = jwtProvider.generateAccessToken(member.id(), email);
+        String refreshTokenValue = issueRefreshToken(member.id());
+
+        log.info("회원가입 성공: memberId={} email={} accountType={} provider={}",
+                member.id(), LogMask.email(email), command.accountType(), firebaseUser.provider());
+        return new AuthInfo(accessToken, refreshTokenValue, member, true);
     }
 
     @Override
@@ -101,7 +119,7 @@ class AuthServiceImpl implements AuthService {
         try {
             member = memberService.findById(stored.getMemberId());
         } catch (DomainException e) {
-            // F1: MEMBER_DEACTIVATED(403)는 INVALID_REFRESH_TOKEN으로 둔갑하지 않도록 재전파
+            // MEMBER_DEACTIVATED(403)는 INVALID_REFRESH_TOKEN으로 둔갑하지 않도록 재전파
             if (e.getStatus() == HttpStatus.FORBIDDEN) {
                 throw e;
             }
@@ -114,10 +132,16 @@ class AuthServiceImpl implements AuthService {
         refreshTokenRepository.save(
                 RefreshToken.of(member.id(), newRefreshTokenValue, jwtProvider.getRefreshExpiry()));
 
-        // F5: 토큰 갱신 시에도 lastLoginAt 업데이트 (앱 상시 구동 사용자 MAU 정확도)
         member = memberService.recordLogin(member.id());
 
         log.info("토큰 갱신: memberId={}", member.id());
         return new AuthInfo(newAccessToken, newRefreshTokenValue, member, false);
+    }
+
+    private String issueRefreshToken(String memberId) {
+        refreshTokenRepository.deleteAllByMemberId(memberId);
+        String refreshTokenValue = jwtProvider.generateRefreshToken(memberId);
+        refreshTokenRepository.save(RefreshToken.of(memberId, refreshTokenValue, jwtProvider.getRefreshExpiry()));
+        return refreshTokenValue;
     }
 }
