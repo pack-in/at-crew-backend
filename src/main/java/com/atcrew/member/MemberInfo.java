@@ -2,6 +2,7 @@ package com.atcrew.member;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.Instant;
 import java.util.List;
@@ -17,6 +18,8 @@ public record MemberInfo(
 
         // === 기본 프로필 ===
         String name,           // 사용자 이름·작가명 (max 16자)
+        // OAuth 최초 가입 시 null — 회원이 프로필 설정에서 직접 지정하기 전까지 null 유지
+        @Schema(nullable = true)
         CreatorRole creatorRole, // 창작자 유형 (웹툰작가·일러스트작가·웹소설작가·기타)
 
         // === 구인구직 상태 [피그마: 구인구직 상태 칩 선택] ===

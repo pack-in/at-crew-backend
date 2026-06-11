@@ -47,10 +47,12 @@ class AuthServiceImpl implements AuthService {
             try {
                 member = memberService.registerViaOAuth(email, email.split("@")[0]);
             } catch (DomainException e) {
-                if (!memberService.existsByLoginEmail(email)) {
+                // DUPLICATE_EMAIL(409 Conflict)만 동시 첫 로그인 경쟁으로 간주
+                // HANDLE_GENERATION_FAILED(500) 등 다른 오류는 그대로 전파
+                if (e.getStatus() != HttpStatus.CONFLICT) {
                     throw e;
                 }
-                // 동시 첫 로그인 경쟁: 다른 요청이 먼저 등록 완료 → 기존 회원으로 진행
+                // 다른 요청이 먼저 등록 완료 → 기존 회원으로 진행
                 isNewUser = false;
                 member = memberService.findByLoginEmail(email);
             }

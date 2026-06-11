@@ -20,6 +20,8 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.UUID;
+
 @Service
 class MemberServiceImpl implements MemberService {
 
@@ -58,9 +60,13 @@ class MemberServiceImpl implements MemberService {
         for (int attempt = 0; attempt < 3; attempt++) {
             String handle = generateUniqueHandle(name);
             try {
+                // creatorRole=null: OAuth 가입은 역할 미선택 상태로 시작, 이후 프로필 설정에서 지정
                 return MemberMapper.toInfo(memberRepository.save(Member.register(loginEmail, handle, name, null)));
             } catch (DuplicateKeyException e) {
-                // 핸들 충돌 레이스 컨디션 — 새 핸들로 재시도
+                // 이메일 중복이 원인이면 재시도 없이 즉시 실패 — 핸들을 바꿔도 해결되지 않음
+                if (memberRepository.existsByLoginEmail(loginEmail)) {
+                    throw new MemberException(MemberErrorCode.DUPLICATE_EMAIL, loginEmail);
+                }
                 log.debug("핸들 충돌 재시도: attempt={}", attempt + 1);
             }
         }
@@ -76,12 +82,8 @@ class MemberServiceImpl implements MemberService {
         String base = name.replaceAll("[^a-zA-Z0-9]", "").toLowerCase();
         if (base.length() < 3) base = "user";
         if (base.length() > 12) base = base.substring(0, 12);
-        for (int i = 0; i < 5; i++) {
-            String handle = base + "_" + (int) (Math.random() * 90000 + 10000);
-            if (!memberRepository.existsByHandle(handle)) return handle;
-        }
-        log.error("핸들 자동 생성 실패 — 5회 시도 모두 충돌");
-        throw new MemberException(MemberErrorCode.HANDLE_GENERATION_FAILED, name);
+        // UUID 8자리 suffix — 충돌 가능성이 사실상 0에 수렴하므로 단순 생성 후 반환
+        return base + "_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
     }
 
     @Override

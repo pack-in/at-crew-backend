@@ -33,7 +33,14 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             log.debug("클라이언트 오류: {} {}", e.getCode(), e.getMessage());
         }
         if (e.getLogDetail() != null) {
-            log.debug("[{}] 상세: {}", e.getCode(), e.getLogDetail());
+            // logDetail 레벨은 메인 로그 레벨과 동일하게 유지
+            if (e.getStatus().is5xxServerError()) {
+                log.error("[{}] 상세: {}", e.getCode(), e.getLogDetail());
+            } else if (e.getStatus() == HttpStatus.UNAUTHORIZED || e.getStatus() == HttpStatus.FORBIDDEN) {
+                log.warn("[{}] 상세: {}", e.getCode(), e.getLogDetail());
+            } else {
+                log.debug("[{}] 상세: {}", e.getCode(), e.getLogDetail());
+            }
         }
         return ResponseEntity.status(e.getStatus())
                 .body(ApiResponse.error(e.getCode(), e.getMessage()));

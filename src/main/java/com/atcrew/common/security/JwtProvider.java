@@ -53,15 +53,6 @@ public class JwtProvider {
         return Instant.now().plusMillis(refreshTokenExpiration);
     }
 
-    public boolean validateToken(String token) {
-        try {
-            getClaims(token);
-            return true;
-        } catch (JwtException | IllegalArgumentException e) {
-            return false;
-        }
-    }
-
     // Authorization 헤더용 — access 타입 토큰만 허용 (refresh token 오용 차단)
     public boolean validateAccessToken(String token) {
         try {
