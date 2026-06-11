@@ -31,7 +31,8 @@ class MemberControllerValidationTest {
         securityUtils = mock(SecurityUtils.class);
         objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new MemberController(memberService, securityUtils))
+                .standaloneSetup(new MemberController(memberService, securityUtils),
+                        new DevMemberController(memberService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
