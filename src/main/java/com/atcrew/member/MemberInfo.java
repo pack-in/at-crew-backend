@@ -16,6 +16,14 @@ public record MemberInfo(
         @JsonIgnore
         String loginEmail, // 로그인 이메일 (탈퇴 시 null)
 
+        // === 계정 유형 ===
+        @Schema(nullable = true)
+        AuthProvider authProvider, // 가입 경로 (EMAIL | GOOGLE)
+        @Schema(nullable = true)
+        AccountType accountType,   // 계정 유형 (CREATOR | COMPANY)
+        @Schema(nullable = true)
+        String companyName,        // 기업명 (COMPANY 전용)
+
         // === 기본 프로필 ===
         String name,           // 사용자 이름·작가명 (max 16자)
         // OAuth 최초 가입 시 null — 회원이 프로필 설정에서 직접 지정하기 전까지 null 유지

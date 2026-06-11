@@ -14,4 +14,6 @@ public interface MemberRepository extends MongoRepository<Member, String> {
     boolean existsByHandle(String handle);
 
     boolean existsByLoginEmail(String loginEmail);
+
+    boolean existsByDeletedLoginEmail(String deletedLoginEmail);
 }

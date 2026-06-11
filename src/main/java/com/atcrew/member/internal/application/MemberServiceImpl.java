@@ -7,10 +7,12 @@ import com.atcrew.member.MemberDeactivatedEvent;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberProfileInfo;
 import com.atcrew.member.MemberService;
+import com.atcrew.member.RegisterMemberCommand;
 import com.atcrew.member.UpdateInfoCommand;
+import com.atcrew.member.internal.domain.Member;
+import com.atcrew.member.internal.domain.TermsAgreement;
 import com.atcrew.member.internal.exception.MemberErrorCode;
 import com.atcrew.member.internal.exception.MemberException;
-import com.atcrew.member.internal.domain.Member;
 import com.atcrew.member.internal.persistence.MemberRepository;
 import com.atcrew.common.logging.LogMask;
 import org.slf4j.Logger;
@@ -37,6 +39,31 @@ class MemberServiceImpl implements MemberService {
 
     @Override
     @Transactional
+    public MemberInfo register(RegisterMemberCommand command) {
+        if (memberRepository.existsByLoginEmail(command.loginEmail())) {
+            throw new MemberException(MemberErrorCode.DUPLICATE_EMAIL, command.loginEmail());
+        }
+        TermsAgreement terms = TermsAgreement.of(command.agreePrivacy(), command.agreeService(), command.agreeMarketing());
+        for (int attempt = 0; attempt < 3; attempt++) {
+            String handle = generateUniqueHandle(command.name());
+            try {
+                Member member = Member.register(
+                        command.loginEmail(), handle, command.name(),
+                        command.authProvider(), command.accountType(),
+                        command.companyName(), terms);
+                return MemberMapper.toInfo(memberRepository.save(member));
+            } catch (DuplicateKeyException e) {
+                if (memberRepository.existsByLoginEmail(command.loginEmail())) {
+                    throw new MemberException(MemberErrorCode.DUPLICATE_EMAIL, command.loginEmail());
+                }
+                log.debug("핸들 충돌 재시도: attempt={}", attempt + 1);
+            }
+        }
+        throw new MemberException(MemberErrorCode.HANDLE_GENERATION_FAILED, command.name());
+    }
+
+    @Override
+    @Transactional
     public MemberInfo register(String loginEmail, String handle, String name, CreatorRole creatorRole) {
         if (memberRepository.existsByLoginEmail(loginEmail)) {
             throw new MemberException(MemberErrorCode.DUPLICATE_EMAIL, loginEmail);
@@ -52,30 +79,13 @@ class MemberServiceImpl implements MemberService {
     }
 
     @Override
-    @Transactional
-    public MemberInfo registerViaOAuth(String loginEmail, String name) {
-        if (memberRepository.existsByLoginEmail(loginEmail)) {
-            throw new MemberException(MemberErrorCode.DUPLICATE_EMAIL, loginEmail);
-        }
-        for (int attempt = 0; attempt < 3; attempt++) {
-            String handle = generateUniqueHandle(name);
-            try {
-                // creatorRole=null: OAuth 가입은 역할 미선택 상태로 시작, 이후 프로필 설정에서 지정
-                return MemberMapper.toInfo(memberRepository.save(Member.register(loginEmail, handle, name, null)));
-            } catch (DuplicateKeyException e) {
-                // 이메일 중복이 원인이면 재시도 없이 즉시 실패 — 핸들을 바꿔도 해결되지 않음
-                if (memberRepository.existsByLoginEmail(loginEmail)) {
-                    throw new MemberException(MemberErrorCode.DUPLICATE_EMAIL, loginEmail);
-                }
-                log.debug("핸들 충돌 재시도: attempt={}", attempt + 1);
-            }
-        }
-        throw new MemberException(MemberErrorCode.HANDLE_GENERATION_FAILED, name);
+    public boolean existsByLoginEmail(String loginEmail) {
+        return memberRepository.existsByLoginEmail(loginEmail);
     }
 
     @Override
-    public boolean existsByLoginEmail(String loginEmail) {
-        return memberRepository.existsByLoginEmail(loginEmail);
+    public boolean isDeactivatedEmail(String loginEmail) {
+        return memberRepository.existsByDeletedLoginEmail(loginEmail);
     }
 
     private String generateUniqueHandle(String name) {
