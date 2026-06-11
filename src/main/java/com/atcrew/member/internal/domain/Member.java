@@ -1,7 +1,9 @@
 package com.atcrew.member.internal.domain;
 
+import com.atcrew.member.AccountType;
 import com.atcrew.member.ActiveRegion;
 import com.atcrew.member.ActivityField;
+import com.atcrew.member.AuthProvider;
 import com.atcrew.member.CareerEntryInfo;
 import com.atcrew.member.CreatorRole;
 import com.atcrew.member.EmploymentStatus;
@@ -37,6 +39,11 @@ public class Member {
     private String name;
     private CreatorRole creatorRole;
 
+    private AuthProvider authProvider;
+    private AccountType accountType;
+    private String companyName;
+    private TermsAgreement termsAgreement;
+
     private EmploymentStatus employmentStatus = EmploymentStatus.PREPARING;
     private List<ActivityField> activityFields = new ArrayList<>();
     private ExperienceLevel experienceLevel;
@@ -56,7 +63,8 @@ public class Member {
     private Instant deletedAt;
     private Instant lastLoginAt;
 
-    // 탈퇴 시 loginEmail 백업 (감사 추적용)
+    // 탈퇴 시 loginEmail 백업 (감사 추적용 + 탈퇴 회원 로그인 시도 감지)
+    @Indexed(sparse = true)
     private String deletedLoginEmail;
 
     @CreatedDate
@@ -77,6 +85,26 @@ public class Member {
 
     public static Member register(String loginEmail, String handle, String name, CreatorRole creatorRole) {
         return new Member(loginEmail, handle, name, creatorRole);
+    }
+
+    public static Member register(String loginEmail, String handle, String name,
+                                  AuthProvider authProvider, AccountType accountType,
+                                  String companyName, TermsAgreement termsAgreement) {
+        if (authProvider == null) {
+            throw new MemberException(MemberErrorCode.INVALID_AUTH_PROVIDER);
+        }
+        if (accountType == AccountType.COMPANY && (companyName == null || companyName.isBlank())) {
+            throw new MemberException(MemberErrorCode.COMPANY_NAME_REQUIRED);
+        }
+        if (!termsAgreement.privacyPolicy() || !termsAgreement.serviceTerms()) {
+            throw new MemberException(MemberErrorCode.TERMS_NOT_AGREED);
+        }
+        Member m = new Member(loginEmail, handle, name, null);
+        m.authProvider = authProvider;
+        m.accountType = accountType;
+        m.companyName = (accountType == AccountType.COMPANY) ? companyName : null;
+        m.termsAgreement = termsAgreement;
+        return m;
     }
 
     public void updateName(String name) {
@@ -155,6 +183,9 @@ public class Member {
     public String getHandle() { return handle; }
     public String getName() { return name; }
     public CreatorRole getCreatorRole() { return creatorRole; }
+    public AuthProvider getAuthProvider() { return authProvider; }
+    public AccountType getAccountType() { return accountType; }
+    public String getCompanyName() { return companyName; }
     public EmploymentStatus getEmploymentStatus() { return employmentStatus; }
     public List<ActivityField> getActivityFields() { return List.copyOf(activityFields); }
     public ExperienceLevel getExperienceLevel() { return experienceLevel; }
