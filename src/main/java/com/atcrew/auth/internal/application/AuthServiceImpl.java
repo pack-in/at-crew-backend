@@ -49,9 +49,9 @@ class AuthServiceImpl implements AuthService {
 
         // 활성 회원 조회 — 실패 원인은 서버 로그에만 기록, 클라이언트에는 단일 에러 반환
         // (계정 존재 여부·탈퇴 이력·가입 방식을 응답에 노출하면 enumeration 공격에 악용될 수 있음)
+        // isDeactivatedEmail 추가 조회를 하지 않는 이유: 타이밍 사이드채널 제거 (응답 경로별 DB 쿼리 수 균일화)
         if (!memberService.existsByLoginEmail(email)) {
-            String detail = memberService.isDeactivatedEmail(email) ? "탈퇴_계정" : "미가입_이메일";
-            log.warn("로그인 실패[{}]: email={}", detail, LogMask.email(email));
+            log.warn("로그인 실패[미가입_또는_탈퇴]: email={}", LogMask.email(email));
             throw new AuthException(AuthErrorCode.AUTHENTICATION_FAILED);
         }
 
@@ -78,6 +78,11 @@ class AuthServiceImpl implements AuthService {
     public AuthInfo register(RegisterCommand command) {
         FirebaseUser firebaseUser = firebaseVerifier.verify(command.firebaseIdToken());
         String email = firebaseUser.email();
+
+        if (!firebaseUser.emailVerified()) {
+            log.warn("가입 실패[이메일_미인증]: email={}", LogMask.email(email));
+            throw new AuthException(AuthErrorCode.EMAIL_NOT_VERIFIED);
+        }
 
         RegisterMemberCommand memberCommand = new RegisterMemberCommand(
                 email,

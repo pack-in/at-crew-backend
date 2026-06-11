@@ -5,6 +5,7 @@ import org.springframework.http.HttpStatus;
 public enum AuthErrorCode {
 
     INVALID_FIREBASE_TOKEN(HttpStatus.UNAUTHORIZED, "Firebase 토큰이 유효하지 않습니다"),
+    EMAIL_NOT_VERIFIED(HttpStatus.UNPROCESSABLE_ENTITY, "이메일 인증을 완료한 후 가입해주세요"),
     INVALID_REFRESH_TOKEN(HttpStatus.UNAUTHORIZED, "Refresh Token이 유효하지 않거나 만료되었습니다"),
     FIREBASE_NOT_CONFIGURED(HttpStatus.SERVICE_UNAVAILABLE, "Firebase가 설정되지 않았습니다"),
     UNSUPPORTED_AUTH_PROVIDER(HttpStatus.BAD_REQUEST, "지원하지 않는 로그인 방식입니다"),

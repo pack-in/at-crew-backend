@@ -46,9 +46,12 @@ class SecurityConfig {
                     }
                     auth.requestMatchers(HttpMethod.GET, "/api/members/{handle}").permitAll()
                             // 노출 엔드포인트(application.yml)는 health, info만 설정 — 와일드카드 대신 명시
-                            .requestMatchers("/actuator/health", "/actuator/info").permitAll()
-                            .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
-                            .anyRequest().authenticated();
+                            .requestMatchers("/actuator/health", "/actuator/info").permitAll();
+                    // prod에서는 API 명세 노출 차단
+                    if (!isProd()) {
+                        auth.requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll();
+                    }
+                    auth.anyRequest().authenticated();
                 })
                 .exceptionHandling(ex -> ex.authenticationEntryPoint(entryPoint))
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)

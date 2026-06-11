@@ -86,22 +86,9 @@ class AuthServiceImplTest {
     }
 
     @Test
-    void 미가입_이메일_로그인_시_단일_에러_반환() {
+    void 미가입_또는_탈퇴_이메일_로그인_시_단일_에러_반환() {
         when(firebaseVerifier.verify(TOKEN)).thenReturn(new FirebaseUser(EMAIL, AuthProvider.EMAIL, true));
         when(memberService.existsByLoginEmail(EMAIL)).thenReturn(false);
-        when(memberService.isDeactivatedEmail(EMAIL)).thenReturn(false);
-
-        assertThatThrownBy(() -> authService.login(TOKEN))
-                .isInstanceOf(AuthException.class)
-                .satisfies(e -> assertThat(((AuthException) e).getCode())
-                        .isEqualTo(AuthErrorCode.AUTHENTICATION_FAILED.name()));
-    }
-
-    @Test
-    void 탈퇴_계정_로그인_시_단일_에러_반환() {
-        when(firebaseVerifier.verify(TOKEN)).thenReturn(new FirebaseUser(EMAIL, AuthProvider.EMAIL, true));
-        when(memberService.existsByLoginEmail(EMAIL)).thenReturn(false);
-        when(memberService.isDeactivatedEmail(EMAIL)).thenReturn(true);
 
         assertThatThrownBy(() -> authService.login(TOKEN))
                 .isInstanceOf(AuthException.class)
@@ -134,20 +121,20 @@ class AuthServiceImplTest {
     }
 
     @Test
-    void 미가입과_탈퇴_에러_코드가_동일해_enumeration_불가() {
+    void 로그인_실패_에러_코드가_동일해_enumeration_불가() {
         when(firebaseVerifier.verify(TOKEN)).thenReturn(new FirebaseUser(EMAIL, AuthProvider.EMAIL, true));
+
+        // 미가입(또는 탈퇴) 경로
         when(memberService.existsByLoginEmail(EMAIL)).thenReturn(false);
-        when(memberService.isDeactivatedEmail(EMAIL)).thenReturn(false);
         AuthException notFound = (AuthException) catchAuthException(() -> authService.login(TOKEN));
 
-        when(memberService.isDeactivatedEmail(EMAIL)).thenReturn(true);
-        AuthException deactivated = (AuthException) catchAuthException(() -> authService.login(TOKEN));
-
+        // provider 불일치 경로
         when(memberService.existsByLoginEmail(EMAIL)).thenReturn(true);
         when(memberService.findByLoginEmail(EMAIL)).thenReturn(memberInfo(AuthProvider.GOOGLE));
         AuthException providerMismatch = (AuthException) catchAuthException(() -> authService.login(TOKEN));
 
-        assertThat(notFound.getCode()).isEqualTo(deactivated.getCode()).isEqualTo(providerMismatch.getCode());
+        assertThat(notFound.getCode()).isEqualTo(providerMismatch.getCode());
+        assertThat(notFound.getCode()).isEqualTo(AuthErrorCode.AUTHENTICATION_FAILED.name());
     }
 
     @Test
@@ -178,13 +165,25 @@ class AuthServiceImplTest {
     }
 
     @Test
-    void Google_창작자_가입_성공() {
+    void 이메일_미인증_가입_시_422() {
+        when(firebaseVerifier.verify(TOKEN)).thenReturn(new FirebaseUser(EMAIL, AuthProvider.EMAIL, false));
+
+        assertThatThrownBy(() ->
+                authService.register(new RegisterCommand(TOKEN, "홍길동", true, true, false))
+        ).isInstanceOf(AuthException.class)
+                .satisfies(e -> assertThat(((AuthException) e).getCode())
+                        .isEqualTo(AuthErrorCode.EMAIL_NOT_VERIFIED.name()));
+    }
+
+    @Test
+    void Google_가입은_emailVerified_무관하게_성공() {
+        // Google 토큰은 항상 verified=true이지만, 이 검증이 provider 무관하게 동작함을 확인
         when(firebaseVerifier.verify(TOKEN)).thenReturn(new FirebaseUser(EMAIL, AuthProvider.GOOGLE, true));
         when(memberService.register(any(RegisterMemberCommand.class))).thenReturn(memberInfo(AuthProvider.GOOGLE));
 
-        authService.register(new RegisterCommand(TOKEN, "작가이름", true, true, false));
+        AuthInfo result = authService.register(new RegisterCommand(TOKEN, "작가이름", true, true, false));
 
-        verify(memberService).register(argThat(cmd -> cmd.authProvider() == AuthProvider.GOOGLE));
+        assertThat(result.isNewUser()).isTrue();
     }
 
     @Test
