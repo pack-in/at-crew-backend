@@ -1,6 +1,5 @@
 package com.atcrew.member.internal.web;
 
-import com.atcrew.common.response.CommonApiResponses;
 import com.atcrew.common.security.SecurityUtils;
 import com.atcrew.member.AddCareerCommand;
 import com.atcrew.member.CareerEntryInfo;
@@ -15,6 +14,7 @@ import com.atcrew.member.internal.web.dto.UpdateNameRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Pattern;
@@ -46,7 +46,6 @@ class MemberController {
 
     @Operation(summary = "회원 가입 (내부)", description = "이메일·핸들·이름·창작자 유형으로 회원을 등록합니다. (개발용)")
     @ApiResponse(responseCode = "201", description = "회원 가입 성공")
-    @CommonApiResponses
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public com.atcrew.common.response.ApiResponse<MemberInfo> register(@RequestBody @Valid RegisterRequest request) {
@@ -56,7 +55,6 @@ class MemberController {
 
     @Operation(summary = "핸들로 회원 조회", description = "@핸들로 회원 프로필을 조회합니다.")
     @ApiResponse(responseCode = "200", description = "조회 성공")
-    @CommonApiResponses
     @GetMapping("/{handle}")
     public com.atcrew.common.response.ApiResponse<MemberProfileInfo> findByHandle(
             @Parameter(description = "회원 핸들 (@ 제외)", example = "creator_kim")
@@ -65,8 +63,10 @@ class MemberController {
     }
 
     @Operation(summary = "이름 수정", description = "내 이름·작가명을 수정합니다. (최대 16자)")
-    @ApiResponse(responseCode = "204", description = "수정 성공")
-    @CommonApiResponses
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "수정 성공"),
+            @ApiResponse(responseCode = "401", description = "인증 필요")
+    })
     @PatchMapping("/me/name")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void updateName(@RequestBody @Valid UpdateNameRequest request) {
@@ -74,8 +74,10 @@ class MemberController {
     }
 
     @Operation(summary = "프로필 정보 수정", description = "구인구직 상태·활동 분야·경력·지역·슬롯·연락처·SNS·툴 등 프로필 전체를 수정합니다.")
-    @ApiResponse(responseCode = "204", description = "수정 성공")
-    @CommonApiResponses
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "수정 성공"),
+            @ApiResponse(responseCode = "401", description = "인증 필요")
+    })
     @PatchMapping("/me/info")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void updateInfo(@RequestBody @Valid UpdateInfoRequest request) {
@@ -87,8 +89,10 @@ class MemberController {
     }
 
     @Operation(summary = "경력 추가", description = "참여작 정보를 경력으로 추가합니다.")
-    @ApiResponse(responseCode = "201", description = "경력 추가 성공")
-    @CommonApiResponses
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "경력 추가 성공"),
+            @ApiResponse(responseCode = "401", description = "인증 필요")
+    })
     @PostMapping("/me/careers")
     @ResponseStatus(HttpStatus.CREATED)
     public com.atcrew.common.response.ApiResponse<CareerEntryInfo> addCareer(@RequestBody @Valid AddCareerRequest request) {
@@ -99,8 +103,10 @@ class MemberController {
     }
 
     @Operation(summary = "경력 삭제", description = "등록된 경력 항목을 삭제합니다.")
-    @ApiResponse(responseCode = "204", description = "삭제 성공")
-    @CommonApiResponses
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "삭제 성공"),
+            @ApiResponse(responseCode = "401", description = "인증 필요")
+    })
     @DeleteMapping("/me/careers/{careerId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteCareer(@Parameter(description = "경력 ID") @PathVariable String careerId) {
@@ -108,8 +114,10 @@ class MemberController {
     }
 
     @Operation(summary = "회원 탈퇴", description = "내 계정을 비활성화(소프트 딜리트) 처리합니다.")
-    @ApiResponse(responseCode = "204", description = "탈퇴 처리 성공")
-    @CommonApiResponses
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "탈퇴 처리 성공"),
+            @ApiResponse(responseCode = "401", description = "인증 필요")
+    })
     @DeleteMapping("/me")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deactivate() {
