@@ -58,7 +58,7 @@ class AuthControllerValidationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "firebaseIdToken", "",
-                                "accountType", "CREATOR",
+                                "name", "홍길동",
                                 "agreePrivacy", true,
                                 "agreeService", true,
                                 "agreeMarketing", false))))
@@ -67,11 +67,12 @@ class AuthControllerValidationTest {
     }
 
     @Test
-    void 가입_accountType_null_400() throws Exception {
+    void 가입_name_blank_400() throws Exception {
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "firebaseIdToken", "valid-token",
+                                "name", "",
                                 "agreePrivacy", true,
                                 "agreeService", true,
                                 "agreeMarketing", false))))
@@ -80,13 +81,12 @@ class AuthControllerValidationTest {
     }
 
     @Test
-    void 가입_companyName_50자_초과_400() throws Exception {
+    void 가입_name_16자_초과_400() throws Exception {
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "firebaseIdToken", "valid-token",
-                                "accountType", "COMPANY",
-                                "companyName", "주".repeat(51),
+                                "name", "가".repeat(17),
                                 "agreePrivacy", true,
                                 "agreeService", true,
                                 "agreeMarketing", false))))

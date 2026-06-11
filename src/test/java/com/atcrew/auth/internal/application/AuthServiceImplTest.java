@@ -10,7 +10,6 @@ import com.atcrew.auth.internal.infra.firebase.FirebaseVerifier;
 import com.atcrew.auth.internal.persistence.RefreshTokenRepository;
 import com.atcrew.common.exception.DomainException;
 import com.atcrew.common.security.JwtProvider;
-import com.atcrew.member.AccountType;
 import com.atcrew.member.AuthProvider;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
@@ -112,7 +111,6 @@ class AuthServiceImplTest {
 
     @Test
     void Google_가입_계정_이메일_로그인_시도_단일_에러_반환() {
-        // 응답 에러 코드가 동일해야 — provider 정보 노출 없음
         when(firebaseVerifier.verify(TOKEN)).thenReturn(new FirebaseUser(EMAIL, AuthProvider.EMAIL, true));
         when(memberService.existsByLoginEmail(EMAIL)).thenReturn(true);
         when(memberService.findByLoginEmail(EMAIL)).thenReturn(memberInfo(AuthProvider.GOOGLE));
@@ -137,17 +135,14 @@ class AuthServiceImplTest {
 
     @Test
     void 미가입과_탈퇴_에러_코드가_동일해_enumeration_불가() {
-        // 미가입
         when(firebaseVerifier.verify(TOKEN)).thenReturn(new FirebaseUser(EMAIL, AuthProvider.EMAIL, true));
         when(memberService.existsByLoginEmail(EMAIL)).thenReturn(false);
         when(memberService.isDeactivatedEmail(EMAIL)).thenReturn(false);
         AuthException notFound = (AuthException) catchAuthException(() -> authService.login(TOKEN));
 
-        // 탈퇴
         when(memberService.isDeactivatedEmail(EMAIL)).thenReturn(true);
         AuthException deactivated = (AuthException) catchAuthException(() -> authService.login(TOKEN));
 
-        // provider 불일치
         when(memberService.existsByLoginEmail(EMAIL)).thenReturn(true);
         when(memberService.findByLoginEmail(EMAIL)).thenReturn(memberInfo(AuthProvider.GOOGLE));
         AuthException providerMismatch = (AuthException) catchAuthException(() -> authService.login(TOKEN));
@@ -172,27 +167,24 @@ class AuthServiceImplTest {
         when(firebaseVerifier.verify(TOKEN)).thenReturn(new FirebaseUser(EMAIL, AuthProvider.EMAIL, true));
         when(memberService.register(any(RegisterMemberCommand.class))).thenReturn(memberInfo(AuthProvider.EMAIL));
 
-        AuthInfo result = authService.register(new RegisterCommand(TOKEN, AccountType.CREATOR, null, true, true, false));
+        AuthInfo result = authService.register(new RegisterCommand(TOKEN, "홍길동", true, true, false));
 
         assertThat(result.isNewUser()).isTrue();
         verify(memberService).register(argThat(cmd ->
                 cmd.authProvider() == AuthProvider.EMAIL &&
-                cmd.accountType() == AccountType.CREATOR &&
+                "홍길동".equals(cmd.name()) &&
                 cmd.agreePrivacy() && cmd.agreeService()
         ));
     }
 
     @Test
-    void 기업_가입_성공() {
-        when(firebaseVerifier.verify(TOKEN)).thenReturn(new FirebaseUser(EMAIL, AuthProvider.EMAIL, true));
-        when(memberService.register(any(RegisterMemberCommand.class))).thenReturn(memberInfo(AuthProvider.EMAIL));
+    void Google_창작자_가입_성공() {
+        when(firebaseVerifier.verify(TOKEN)).thenReturn(new FirebaseUser(EMAIL, AuthProvider.GOOGLE, true));
+        when(memberService.register(any(RegisterMemberCommand.class))).thenReturn(memberInfo(AuthProvider.GOOGLE));
 
-        authService.register(new RegisterCommand(TOKEN, AccountType.COMPANY, "주식회사 앳크루", true, true, false));
+        authService.register(new RegisterCommand(TOKEN, "작가이름", true, true, false));
 
-        verify(memberService).register(argThat(cmd ->
-                cmd.accountType() == AccountType.COMPANY &&
-                "주식회사 앳크루".equals(cmd.companyName())
-        ));
+        verify(memberService).register(argThat(cmd -> cmd.authProvider() == AuthProvider.GOOGLE));
     }
 
     @Test
@@ -202,7 +194,7 @@ class AuthServiceImplTest {
                 .thenThrow(new MemberException(MemberErrorCode.DUPLICATE_EMAIL, EMAIL));
 
         assertThatThrownBy(() ->
-                authService.register(new RegisterCommand(TOKEN, AccountType.CREATOR, null, true, true, false))
+                authService.register(new RegisterCommand(TOKEN, "홍길동", true, true, false))
         ).isInstanceOf(DomainException.class)
                 .satisfies(e -> assertThat(((DomainException) e).getStatus()).isEqualTo(HttpStatus.CONFLICT));
     }
@@ -253,7 +245,6 @@ class AuthServiceImplTest {
         when(memberService.findById(MEMBER_ID))
                 .thenThrow(new MemberException(MemberErrorCode.MEMBER_DEACTIVATED, MEMBER_ID));
 
-        // 403은 INVALID_REFRESH_TOKEN(401)으로 바뀌지 않고 그대로 전파되어야 함
         assertThatThrownBy(() -> authService.refresh(REFRESH_TOKEN))
                 .isInstanceOf(DomainException.class)
                 .satisfies(e -> assertThat(((DomainException) e).getStatus()).isEqualTo(HttpStatus.FORBIDDEN));
@@ -275,7 +266,7 @@ class AuthServiceImplTest {
 
     private MemberInfo memberInfo(AuthProvider provider) {
         return new MemberInfo(MEMBER_ID, "handle", EMAIL,
-                provider, AccountType.CREATOR, null,
+                provider,
                 "테스트", null, null, List.of(), null, List.of(), List.of(),
                 5, 5, null, null, null, List.of(),
                 true, null, null, Instant.now(), Instant.now());

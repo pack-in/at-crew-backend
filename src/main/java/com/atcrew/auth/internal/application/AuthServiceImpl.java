@@ -81,10 +81,8 @@ class AuthServiceImpl implements AuthService {
 
         RegisterMemberCommand memberCommand = new RegisterMemberCommand(
                 email,
-                email.split("@")[0],
+                command.name(),
                 firebaseUser.provider(),
-                command.accountType(),
-                command.companyName(),
                 command.agreePrivacy(),
                 command.agreeService(),
                 command.agreeMarketing()
@@ -95,8 +93,8 @@ class AuthServiceImpl implements AuthService {
         String accessToken = jwtProvider.generateAccessToken(member.id(), email);
         String refreshTokenValue = issueRefreshToken(member.id());
 
-        log.info("회원가입 성공: memberId={} email={} accountType={} provider={}",
-                member.id(), LogMask.email(email), command.accountType(), firebaseUser.provider());
+        log.info("회원가입 성공: memberId={} email={} provider={}",
+                member.id(), LogMask.email(email), firebaseUser.provider());
         return new AuthInfo(accessToken, refreshTokenValue, member, true);
     }
 

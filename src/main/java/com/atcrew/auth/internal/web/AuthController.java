@@ -43,8 +43,7 @@ class AuthController {
     public com.atcrew.common.response.ApiResponse<AuthInfo> register(@RequestBody @Valid RegisterAuthRequest request) {
         RegisterCommand command = new RegisterCommand(
                 request.firebaseIdToken(),
-                request.accountType(),
-                request.companyName(),
+                request.name(),
                 request.agreePrivacy(),
                 request.agreeService(),
                 request.agreeMarketing()

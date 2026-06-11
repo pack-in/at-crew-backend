@@ -49,8 +49,7 @@ class MemberServiceImpl implements MemberService {
             try {
                 Member member = Member.register(
                         command.loginEmail(), handle, command.name(),
-                        command.authProvider(), command.accountType(),
-                        command.companyName(), terms);
+                        command.authProvider(), terms);
                 return MemberMapper.toInfo(memberRepository.save(member));
             } catch (DuplicateKeyException e) {
                 if (memberRepository.existsByLoginEmail(command.loginEmail())) {
