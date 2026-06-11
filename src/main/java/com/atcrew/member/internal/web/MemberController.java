@@ -3,12 +3,10 @@ package com.atcrew.member.internal.web;
 import com.atcrew.common.security.SecurityUtils;
 import com.atcrew.member.AddCareerCommand;
 import com.atcrew.member.CareerEntryInfo;
-import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberProfileInfo;
 import com.atcrew.member.MemberService;
 import com.atcrew.member.UpdateInfoCommand;
 import com.atcrew.member.internal.web.dto.AddCareerRequest;
-import com.atcrew.member.internal.web.dto.RegisterRequest;
 import com.atcrew.member.internal.web.dto.UpdateInfoRequest;
 import com.atcrew.member.internal.web.dto.UpdateNameRequest;
 import io.swagger.v3.oas.annotations.Operation;
@@ -42,15 +40,6 @@ class MemberController {
     MemberController(MemberService memberService, SecurityUtils securityUtils) {
         this.memberService = memberService;
         this.securityUtils = securityUtils;
-    }
-
-    @Operation(summary = "회원 가입 (내부)", description = "이메일·핸들·이름·창작자 유형으로 회원을 등록합니다. (개발용)")
-    @ApiResponse(responseCode = "201", description = "회원 가입 성공")
-    @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public com.atcrew.common.response.ApiResponse<MemberInfo> register(@RequestBody @Valid RegisterRequest request) {
-        return com.atcrew.common.response.ApiResponse.success(
-                memberService.register(request.loginEmail(), request.handle(), request.name(), request.creatorRole()));
     }
 
     @Operation(summary = "핸들로 회원 조회", description = "@핸들로 회원 프로필을 조회합니다.")
