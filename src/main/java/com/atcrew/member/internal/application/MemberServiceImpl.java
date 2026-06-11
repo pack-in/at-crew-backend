@@ -60,6 +60,7 @@ class MemberServiceImpl implements MemberService {
         for (int attempt = 0; attempt < 3; attempt++) {
             String handle = generateUniqueHandle(name);
             try {
+                // creatorRole=null: OAuth 가입은 역할 미선택 상태로 시작, 이후 프로필 설정에서 지정
                 return MemberMapper.toInfo(memberRepository.save(Member.register(loginEmail, handle, name, null)));
             } catch (DuplicateKeyException e) {
                 // 이메일 중복이 원인이면 재시도 없이 즉시 실패 — 핸들을 바꿔도 해결되지 않음

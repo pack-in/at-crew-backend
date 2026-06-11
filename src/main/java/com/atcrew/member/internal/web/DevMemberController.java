@@ -9,6 +9,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.context.annotation.Profile;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 // prod 프로파일에서는 빈 자체가 로드되지 않아 엔드포인트가 존재하지 않음
 @Profile("!prod")
+@Validated
 @Tag(name = "회원 (개발용)", description = "개발·테스트 환경 전용 회원 API")
 @RestController
 @RequestMapping("/api/members")
