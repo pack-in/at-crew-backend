@@ -20,6 +20,8 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.UUID;
+
 @Service
 class MemberServiceImpl implements MemberService {
 
@@ -79,12 +81,8 @@ class MemberServiceImpl implements MemberService {
         String base = name.replaceAll("[^a-zA-Z0-9]", "").toLowerCase();
         if (base.length() < 3) base = "user";
         if (base.length() > 12) base = base.substring(0, 12);
-        for (int i = 0; i < 5; i++) {
-            String handle = base + "_" + (int) (Math.random() * 90000 + 10000);
-            if (!memberRepository.existsByHandle(handle)) return handle;
-        }
-        log.error("핸들 자동 생성 실패 — 5회 시도 모두 충돌");
-        throw new MemberException(MemberErrorCode.HANDLE_GENERATION_FAILED, name);
+        // UUID 8자리 suffix — 충돌 가능성이 사실상 0에 수렴하므로 단순 생성 후 반환
+        return base + "_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
     }
 
     @Override
