@@ -33,7 +33,12 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             log.debug("클라이언트 오류: {} {}", e.getCode(), e.getMessage());
         }
         if (e.getLogDetail() != null) {
-            log.debug("[{}] 상세: {}", e.getCode(), e.getLogDetail());
+            // 401/403 보안 이벤트의 상세 내역은 WARN — prod INFO 레벨에서도 유실되지 않도록
+            if (e.getStatus() == HttpStatus.UNAUTHORIZED || e.getStatus() == HttpStatus.FORBIDDEN) {
+                log.warn("[{}] 상세: {}", e.getCode(), e.getLogDetail());
+            } else {
+                log.debug("[{}] 상세: {}", e.getCode(), e.getLogDetail());
+            }
         }
         return ResponseEntity.status(e.getStatus())
                 .body(ApiResponse.error(e.getCode(), e.getMessage()));
