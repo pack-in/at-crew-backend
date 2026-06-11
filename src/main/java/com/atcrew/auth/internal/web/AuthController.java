@@ -29,9 +29,7 @@ class AuthController {
     @Operation(summary = "로그인",
             description = "Firebase ID Token으로 로그인합니다. 이메일/비밀번호 및 Google 로그인 모두 지원합니다.")
     @ApiResponse(responseCode = "200", description = "로그인 성공")
-    @ApiResponse(responseCode = "401", description = "가입되지 않은 이메일")
-    @ApiResponse(responseCode = "400", description = "잘못된 로그인 방식 (가입 경로와 다른 방식으로 로그인 시도)")
-    @ApiResponse(responseCode = "403", description = "탈퇴한 계정")
+    @ApiResponse(responseCode = "401", description = "로그인 실패 (이메일 또는 로그인 방식 오류)")
     @PostMapping("/login")
     public com.atcrew.common.response.ApiResponse<AuthInfo> login(@RequestBody @Valid LoginRequest request) {
         return com.atcrew.common.response.ApiResponse.success(authService.login(request.firebaseIdToken()));
