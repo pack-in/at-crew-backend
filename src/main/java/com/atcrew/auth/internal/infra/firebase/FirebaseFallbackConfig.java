@@ -12,6 +12,8 @@ class FirebaseFallbackConfig {
     @Bean
     @ConditionalOnMissingBean(FirebaseVerifier.class)
     FirebaseVerifier noOpFirebaseVerifier() {
-        return idToken -> { throw new AuthException(AuthErrorCode.FIREBASE_NOT_CONFIGURED); };
+        return idToken -> {
+            throw new AuthException(AuthErrorCode.FIREBASE_NOT_CONFIGURED);
+        };
     }
 }
