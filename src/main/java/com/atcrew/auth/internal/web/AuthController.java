@@ -41,6 +41,7 @@ class AuthController {
             description = "Firebase ID Token으로 회원가입합니다. 이메일 가입과 Google 가입 모두 이 엔드포인트를 사용합니다.")
     @ApiResponse(responseCode = "201", description = "회원가입 성공")
     @ApiResponse(responseCode = "409", description = "이미 가입된 이메일")
+    @ApiResponse(responseCode = "422", description = "이메일 인증 미완료 (이메일 인증 링크 확인 후 재시도)")
     @ResponseStatus(HttpStatus.CREATED)
     @PostMapping("/register")
     public com.atcrew.common.response.ApiResponse<AuthInfo> register(@RequestBody @Valid RegisterAuthRequest request) {
