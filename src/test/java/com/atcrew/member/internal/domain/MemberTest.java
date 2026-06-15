@@ -1,6 +1,7 @@
 package com.atcrew.member.internal.domain;
 
 import com.atcrew.member.ActivityField;
+import com.atcrew.member.AuthProvider;
 import com.atcrew.member.CareerEntryInfo;
 import com.atcrew.member.CreatorRole;
 import com.atcrew.member.EmploymentStatus;
@@ -272,5 +273,60 @@ class MemberTest {
                 LocalDate.of(2022, 1, 1), LocalDate.of(2023, 6, 1), false, null);
 
         assertThat(entry.periodDisplay()).contains("약 1년 5개월");
+    }
+
+    // ─── register (신규 가입 팩토리) ──────────────────────────────────
+
+    @Test
+    void 이메일_가입() {
+        TermsAgreement terms = TermsAgreement.of(true, true, true, false);
+        Member creator = Member.registerWithEmail("creator@test.com", "creatorhandle", "창작자",
+                "$2a$10$dummyhash", terms);
+
+        assertThat(creator.getAuthProvider()).isEqualTo(AuthProvider.EMAIL);
+        assertThat(creator.getName()).isEqualTo("창작자");
+        assertThat(creator.hasPassword()).isTrue();
+    }
+
+    @Test
+    void Google_가입() {
+        TermsAgreement terms = TermsAgreement.of(true, true, true, false);
+        Member creator = Member.registerWithGoogle("creator@test.com", "creatorhandle", "창작자", terms);
+
+        assertThat(creator.getAuthProvider()).isEqualTo(AuthProvider.GOOGLE);
+        assertThat(creator.hasPassword()).isFalse();
+    }
+
+    @Test
+    void 필수_약관_미동의_시_예외() {
+        TermsAgreement terms = TermsAgreement.of(false, true, true, false);
+
+        assertThatThrownBy(() ->
+                Member.registerWithEmail("creator@test.com", "handle", "창작자", "hash", terms)
+        ).isInstanceOf(MemberException.class)
+                .extracting(e -> ((MemberException) e).getCode())
+                .isEqualTo(MemberErrorCode.TERMS_NOT_AGREED.name());
+    }
+
+    @Test
+    void 제3자제공_미동의_시_예외() {
+        TermsAgreement terms = TermsAgreement.of(true, true, false, false);
+
+        assertThatThrownBy(() ->
+                Member.registerWithGoogle("creator@test.com", "handle", "창작자", terms)
+        ).isInstanceOf(MemberException.class)
+                .extracting(e -> ((MemberException) e).getCode())
+                .isEqualTo(MemberErrorCode.TERMS_NOT_AGREED.name());
+    }
+
+    @Test
+    void 탈퇴_시_passwordHash_클리어() {
+        TermsAgreement terms = TermsAgreement.of(true, true, true, false);
+        Member creator = Member.registerWithEmail("creator@test.com", "creatorhandle", "창작자",
+                "$2a$10$dummyhash", terms);
+
+        creator.deactivate();
+
+        assertThat(creator.hasPassword()).isFalse();
     }
 }

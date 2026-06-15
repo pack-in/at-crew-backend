@@ -36,6 +36,7 @@ class MemberMapper {
                 member.getId(),
                 member.getHandle(),
                 member.getLoginEmail(),
+                member.getAuthProvider(),
                 member.getName(),
                 member.getCreatorRole(),
                 member.getEmploymentStatus(),

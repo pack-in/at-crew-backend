@@ -1,0 +1,21 @@
+package com.atcrew.member;
+
+public record RegisterMemberCommand(
+        String loginEmail,
+        String name,
+        AuthProvider authProvider,
+        String rawPassword,       // EMAIL일 때 필수 (해싱은 member.internal에서 수행), GOOGLE이면 null
+        boolean agreePrivacy,
+        boolean agreeService,
+        boolean agreeThirdParty,  // [필수] 개인정보 제3자 제공 동의
+        boolean agreeMarketing
+) {
+    @Override
+    public String toString() {
+        return "RegisterMemberCommand[loginEmail=" + loginEmail +
+               ", name=" + name + ", authProvider=" + authProvider +
+               ", rawPassword=****, agreePrivacy=" + agreePrivacy +
+               ", agreeService=" + agreeService + ", agreeThirdParty=" + agreeThirdParty +
+               ", agreeMarketing=" + agreeMarketing + "]";
+    }
+}
