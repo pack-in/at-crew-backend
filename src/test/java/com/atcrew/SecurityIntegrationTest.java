@@ -141,8 +141,15 @@ class SecurityIntegrationTest {
     }
 
     @Test
-    void 로그인_엔드포인트_토큰_없이_401_아님() {
-        ResponseEntity<String> res = exchange("/api/auth/login", HttpMethod.POST,
+    void 이메일_로그인_엔드포인트_토큰_없이_401_아님() {
+        ResponseEntity<String> res = exchange("/api/auth/email/login", HttpMethod.POST,
+                null, "{}");
+        assertThat(res.getStatusCode()).isNotEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
+    void Google_로그인_엔드포인트_토큰_없이_401_아님() {
+        ResponseEntity<String> res = exchange("/api/auth/google/login", HttpMethod.POST,
                 null, "{}");
         assertThat(res.getStatusCode()).isNotEqualTo(HttpStatus.UNAUTHORIZED);
     }

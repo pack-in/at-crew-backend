@@ -45,23 +45,24 @@ class MemberModuleTests {
     }
 
     @Test
-    void 회원_가입_후_이메일로_조회() {
+    void 회원_가입_후_ID로_조회() {
         MemberInfo member = memberService.register("email-lookup@atcrew.com", "emaillookup", "이메일조회", CreatorRole.ILLUSTRATOR);
 
-        MemberInfo found = memberService.findByLoginEmail("email-lookup@atcrew.com");
+        MemberInfo found = memberService.findById(member.id());
 
         assertThat(found.id()).isEqualTo(member.id());
+        assertThat(found.name()).isEqualTo("이메일조회");
     }
 
     @Test
-    void 중복_이메일_가입_불가() {
-        memberService.register("dup@atcrew.com", "handle1", "회원A", CreatorRole.ILLUSTRATOR);
+    void 중복_핸들_가입_불가_개발용_API() {
+        memberService.register("dup-a@atcrew.com", "duphandle2", "회원A", CreatorRole.ILLUSTRATOR);
 
         assertThatThrownBy(() ->
-                memberService.register("dup@atcrew.com", "handle2", "회원B", CreatorRole.ILLUSTRATOR)
+                memberService.register("dup-b@atcrew.com", "duphandle2", "회원B", CreatorRole.ILLUSTRATOR)
         ).isInstanceOf(MemberException.class)
                 .extracting(e -> ((MemberException) e).getCode())
-                .isEqualTo(MemberErrorCode.DUPLICATE_EMAIL.name());
+                .isEqualTo(MemberErrorCode.DUPLICATE_HANDLE.name());
     }
 
     @Test
@@ -80,14 +81,6 @@ class MemberModuleTests {
     @Test
     void 없는_핸들_조회_시_예외() {
         assertThatThrownBy(() -> memberService.findByHandle("nonexistent"))
-                .isInstanceOf(MemberException.class)
-                .extracting(e -> ((MemberException) e).getCode())
-                .isEqualTo(MemberErrorCode.MEMBER_NOT_FOUND.name());
-    }
-
-    @Test
-    void 없는_이메일_조회_시_예외() {
-        assertThatThrownBy(() -> memberService.findByLoginEmail("nobody@atcrew.com"))
                 .isInstanceOf(MemberException.class)
                 .extracting(e -> ((MemberException) e).getCode())
                 .isEqualTo(MemberErrorCode.MEMBER_NOT_FOUND.name());

@@ -9,6 +9,8 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
@@ -32,22 +34,47 @@ class SecurityConfig {
     }
 
     @Bean
+    PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder(); // strength 10 (기본값)
+    }
+
+    @Bean
     SecurityFilterChain filterChain(HttpSecurity http, JwtAuthenticationFilter jwtFilter,
             JwtAuthenticationEntryPoint entryPoint) throws Exception {
-        return http
-                .csrf(AbstractHttpConfigurer::disable)
+        http
+                .csrf(AbstractHttpConfigurer::disable) // stateless JWT — CSRF 불필요 (쿠키 전환 시 재검토)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
+
+        // HSTS — HTTPS 응답에만 포함되므로 항상 활성화
+        http.headers(headers -> headers
+                .httpStrictTransportSecurity(hsts -> hsts
+                        .includeSubDomains(true)
+                        .maxAgeInSeconds(31536000)));
+
+        // prod: HTTP → HTTPS 강제 리다이렉트 (LB 뒤라면 server.forward-headers-strategy=framework 필수)
+        if (isProd()) {
+            http.requiresChannel(channel -> channel.anyRequest().requiresSecure());
+        }
+
+        return http
                 .authorizeHttpRequests(auth -> {
-                    auth.requestMatchers("/api/auth/**").permitAll();
-                    // prod 프로파일에서는 차단 — DevMemberController도 prod에서 로드되지 않음 (이중 방어)
+                    // 인증 없이 접근 가능한 엔드포인트 — 와일드카드 대신 개별 명시 (향후 auth 하위 인증 필요 API 사고 방지)
+                    auth.requestMatchers(HttpMethod.POST,
+                                    "/api/auth/email/login",
+                                    "/api/auth/email/register",
+                                    "/api/auth/email/password-reset/request",
+                                    "/api/auth/email/password-reset/confirm",
+                                    "/api/auth/google/login",
+                                    "/api/auth/google/register",
+                                    "/api/auth/refresh").permitAll();
+
+                    // prod 프로파일에서는 차단 (DevMemberController도 prod에서 미로드 — 이중 방어)
                     if (!isProd()) {
                         auth.requestMatchers(HttpMethod.POST, "/api/members").permitAll();
                     }
                     auth.requestMatchers(HttpMethod.GET, "/api/members/{handle}").permitAll()
-                            // 노출 엔드포인트(application.yml)는 health, info만 설정 — 와일드카드 대신 명시
                             .requestMatchers("/actuator/health", "/actuator/info").permitAll();
-                    // prod에서는 API 명세 노출 차단
                     if (!isProd()) {
                         auth.requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll();
                     }

@@ -39,10 +39,10 @@ class FirebaseVerifierImpl implements FirebaseVerifier {
             throw new AuthException(AuthErrorCode.INVALID_FIREBASE_TOKEN);
         }
         String signInProvider = (String) firebaseClaim.get("sign_in_provider");
-        return switch (signInProvider) {
-            case "password" -> AuthProvider.EMAIL;
-            case "google.com" -> AuthProvider.GOOGLE;
-            default -> throw new AuthException(AuthErrorCode.UNSUPPORTED_AUTH_PROVIDER);
-        };
+        // Google 로그인 전용 — Firebase 이메일 계정 토큰 우회 경로 차단
+        if (!"google.com".equals(signInProvider)) {
+            throw new AuthException(AuthErrorCode.UNSUPPORTED_AUTH_PROVIDER);
+        }
+        return AuthProvider.GOOGLE;
     }
 }

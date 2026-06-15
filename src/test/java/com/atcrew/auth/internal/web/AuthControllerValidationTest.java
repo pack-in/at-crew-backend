@@ -32,67 +32,120 @@ class AuthControllerValidationTest {
                 .build();
     }
 
-    // ─── 섹션 6: 입력 검증 ────────────────────────────────────────────
+    // ─── POST /api/auth/email/login ───────────────────────────────────
 
     @Test
-    void 로그인_firebaseIdToken_blank_400() throws Exception {
-        mockMvc.perform(post("/api/auth/login")
+    void 이메일_로그인_email_blank_400() throws Exception {
+        mockMvc.perform(post("/api/auth/email/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("email", "", "password", "Pass1234!"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
+    }
+
+    @Test
+    void 이메일_로그인_email_형식_오류_400() throws Exception {
+        mockMvc.perform(post("/api/auth/email/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("email", "not-email", "password", "Pass1234!"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
+    }
+
+    @Test
+    void 이메일_로그인_password_blank_400() throws Exception {
+        mockMvc.perform(post("/api/auth/email/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("email", "user@test.com", "password", ""))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
+    }
+
+    @Test
+    void 이메일_로그인_password_정책_위반_400() throws Exception {
+        mockMvc.perform(post("/api/auth/email/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("email", "user@test.com", "password", "short"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
+    }
+
+    // ─── POST /api/auth/email/register ───────────────────────────────
+
+    @Test
+    void 이메일_가입_email_blank_400() throws Exception {
+        mockMvc.perform(post("/api/auth/email/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(registerBody("", "Pass1234!", "Pass1234!", "홍길동")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
+    }
+
+    @Test
+    void 이메일_가입_name_blank_400() throws Exception {
+        mockMvc.perform(post("/api/auth/email/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(registerBody("user@test.com", "Pass1234!", "Pass1234!", "")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
+    }
+
+    @Test
+    void 이메일_가입_name_16자_초과_400() throws Exception {
+        mockMvc.perform(post("/api/auth/email/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(registerBody("user@test.com", "Pass1234!", "Pass1234!", "가".repeat(17))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
+    }
+
+    @Test
+    void 이메일_가입_비밀번호_불일치_400() throws Exception {
+        mockMvc.perform(post("/api/auth/email/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(registerBody("user@test.com", "Pass1234!", "Different1!", "홍길동")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
+    }
+
+    // ─── POST /api/auth/google/login ─────────────────────────────────
+
+    @Test
+    void Google_로그인_firebaseIdToken_blank_400() throws Exception {
+        mockMvc.perform(post("/api/auth/google/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("firebaseIdToken", ""))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
     }
 
-    @Test
-    void 로그인_firebaseIdToken_누락_400() throws Exception {
-        mockMvc.perform(post("/api/auth/login")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
-    }
+    // ─── POST /api/auth/google/register ──────────────────────────────
 
     @Test
-    void 가입_firebaseIdToken_blank_400() throws Exception {
-        mockMvc.perform(post("/api/auth/register")
+    void Google_가입_firebaseIdToken_blank_400() throws Exception {
+        mockMvc.perform(post("/api/auth/google/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "firebaseIdToken", "",
                                 "name", "홍길동",
-                                "agreePrivacy", true,
-                                "agreeService", true,
-                                "agreeMarketing", false))))
+                                "agreePrivacy", true, "agreeService", true, "agreeThirdParty", true, "agreeMarketing", false))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
     }
 
     @Test
-    void 가입_name_blank_400() throws Exception {
-        mockMvc.perform(post("/api/auth/register")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "firebaseIdToken", "valid-token",
-                                "name", "",
-                                "agreePrivacy", true,
-                                "agreeService", true,
-                                "agreeMarketing", false))))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
-    }
-
-    @Test
-    void 가입_name_16자_초과_400() throws Exception {
-        mockMvc.perform(post("/api/auth/register")
+    void Google_가입_name_16자_초과_400() throws Exception {
+        mockMvc.perform(post("/api/auth/google/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "firebaseIdToken", "valid-token",
                                 "name", "가".repeat(17),
-                                "agreePrivacy", true,
-                                "agreeService", true,
-                                "agreeMarketing", false))))
+                                "agreePrivacy", true, "agreeService", true, "agreeThirdParty", true, "agreeMarketing", false))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
     }
+
+    // ─── POST /api/auth/refresh ───────────────────────────────────────
 
     @Test
     void refresh_토큰_blank_400() throws Exception {
@@ -101,5 +154,20 @@ class AuthControllerValidationTest {
                         .content(objectMapper.writeValueAsString(Map.of("refreshToken", ""))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
+    }
+
+    // ─── 헬퍼 ─────────────────────────────────────────────────────────
+
+    private String registerBody(String email, String password, String passwordConfirm, String name) throws Exception {
+        return objectMapper.writeValueAsString(Map.of(
+                "email", email,
+                "password", password,
+                "passwordConfirm", passwordConfirm,
+                "name", name,
+                "agreeService", true,
+                "agreePrivacy", true,
+                "agreeThirdParty", true,
+                "agreeMarketing", false
+        ));
     }
 }

@@ -15,6 +15,7 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -28,8 +29,7 @@ public class Member {
     @Id
     private String id;
 
-    // 탈퇴 시 null로 클리어해 재가입 충돌 방지
-    @Indexed(unique = true, sparse = true)
+    // 탈퇴 시 null로 클리어 — 복합 unique 인덱스(loginEmail, authProvider)로 재가입 충돌 방지
     private String loginEmail;
 
     @Indexed(unique = true, sparse = true)
@@ -40,6 +40,13 @@ public class Member {
 
     private AuthProvider authProvider;
     private TermsAgreement termsAgreement;
+
+    // EMAIL provider 전용. GOOGLE 회원·마이그레이션 미전환 회원은 null.
+    // 절대 MemberInfo 등 공개 레코드로 노출하지 않는다.
+    private String passwordHash;
+
+    // 기본 false. Google 가입 시 true로 초기화. 이메일 인증 캠페인 대비 선제 추가.
+    private boolean emailVerified = false;
 
     private EmploymentStatus employmentStatus = EmploymentStatus.PREPARING;
     private List<ActivityField> activityFields = new ArrayList<>();
@@ -60,7 +67,7 @@ public class Member {
     private Instant deletedAt;
     private Instant lastLoginAt;
 
-    // 탈퇴 시 loginEmail 백업 (감사 추적용 + 탈퇴 회원 로그인 시도 감지)
+    // 탈퇴 시 loginEmail 백업 (감사 추적용)
     @Indexed(sparse = true)
     private String deletedLoginEmail;
 
@@ -80,22 +87,49 @@ public class Member {
         this.creatorRole = creatorRole;
     }
 
+    // 개발·테스트 전용 (authProvider 없이 직접 가입)
     public static Member register(String loginEmail, String handle, String name, CreatorRole creatorRole) {
         return new Member(loginEmail, handle, name, creatorRole);
     }
 
-    public static Member register(String loginEmail, String handle, String name,
-                                  AuthProvider authProvider, TermsAgreement termsAgreement) {
-        if (authProvider == null) {
-            throw new MemberException(MemberErrorCode.INVALID_AUTH_PROVIDER);
-        }
-        if (!termsAgreement.privacyPolicy() || !termsAgreement.serviceTerms()) {
-            throw new MemberException(MemberErrorCode.TERMS_NOT_AGREED);
-        }
+    public static Member registerWithEmail(String loginEmail, String handle, String name,
+                                           String passwordHash, TermsAgreement termsAgreement) {
+        validateTerms(termsAgreement);
         Member m = new Member(loginEmail, handle, name, null);
-        m.authProvider = authProvider;
+        m.authProvider = AuthProvider.EMAIL;
+        m.passwordHash = passwordHash;
+        m.emailVerified = false;
         m.termsAgreement = termsAgreement;
         return m;
+    }
+
+    public static Member registerWithGoogle(String loginEmail, String handle, String name,
+                                            TermsAgreement termsAgreement) {
+        validateTerms(termsAgreement);
+        Member m = new Member(loginEmail, handle, name, null);
+        m.authProvider = AuthProvider.GOOGLE;
+        m.emailVerified = true;
+        m.termsAgreement = termsAgreement;
+        return m;
+    }
+
+    private static void validateTerms(TermsAgreement terms) {
+        if (terms == null || !terms.privacyPolicy() || !terms.serviceTerms() || !terms.thirdPartyProvision()) {
+            throw new MemberException(MemberErrorCode.TERMS_NOT_AGREED);
+        }
+    }
+
+    public boolean matchesPassword(String rawPassword, PasswordEncoder encoder) {
+        return passwordHash != null && encoder.matches(rawPassword, passwordHash);
+    }
+
+    public void changePassword(String newPasswordHash) {
+        assertActive();
+        this.passwordHash = newPasswordHash;
+    }
+
+    public boolean hasPassword() {
+        return passwordHash != null;
     }
 
     public void updateName(String name) {
@@ -157,7 +191,6 @@ public class Member {
         this.lastLoginAt = Instant.now();
     }
 
-    // unique sparse 인덱스 필드를 null로 클리어해 재가입 충돌 방지
     public void deactivate() {
         assertActive();
         this.active = false;
@@ -165,6 +198,7 @@ public class Member {
         this.deletedLoginEmail = this.loginEmail;
         this.loginEmail = null;
         this.handle = null;
+        this.passwordHash = null;
     }
 
     public String getId() { return id; }

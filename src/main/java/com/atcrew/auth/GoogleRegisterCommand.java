@@ -1,9 +1,10 @@
 package com.atcrew.auth;
 
-public record RegisterCommand(
+public record GoogleRegisterCommand(
         String firebaseIdToken,
         String name,
-        boolean agreePrivacy,
         boolean agreeService,
+        boolean agreePrivacy,
+        boolean agreeThirdParty,
         boolean agreeMarketing
 ) {}
