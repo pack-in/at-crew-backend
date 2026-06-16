@@ -5,6 +5,7 @@ import java.util.List;
 public record UploadArtworkCommand(
         List<String> imageKeys,
         int representativeImageIndex,
+        String thumbnailKey,
         ImageLayoutType imageLayoutType,
         String title,
         String description,
@@ -16,8 +17,9 @@ public record UploadArtworkCommand(
         AgeRating ageRating,
         Visibility visibility,
         List<String> tools,
-        String workPeriodStart,
-        String workPeriodEnd,
+        WorkDuration workDuration,
+        Integer cutCount,
+        List<String> videoLinks,
         List<MaterialData> materials
 ) {
 }

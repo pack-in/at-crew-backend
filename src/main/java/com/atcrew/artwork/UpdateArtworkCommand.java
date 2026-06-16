@@ -5,6 +5,7 @@ import java.util.List;
 public record UpdateArtworkCommand(
         List<String> imageKeys,
         Integer representativeImageIndex,
+        String thumbnailKey,
         ImageLayoutType imageLayoutType,
         String title,
         String description,
@@ -15,8 +16,9 @@ public record UpdateArtworkCommand(
         List<String> tags,
         AgeRating ageRating,
         List<String> tools,
-        String workPeriodStart,
-        String workPeriodEnd,
+        WorkDuration workDuration,
+        Integer cutCount,
+        List<String> videoLinks,
         List<MaterialData> materials
 ) {
 }
