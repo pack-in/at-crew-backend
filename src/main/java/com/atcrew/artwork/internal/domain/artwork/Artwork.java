@@ -7,6 +7,7 @@ import com.atcrew.artwork.ArtworkStatus;
 import com.atcrew.artwork.CreativeType;
 import com.atcrew.artwork.ImageLayoutType;
 import com.atcrew.artwork.Visibility;
+import com.atcrew.artwork.WorkDuration;
 import com.atcrew.artwork.internal.exception.ArtworkErrorCode;
 import com.atcrew.artwork.internal.exception.ArtworkException;
 import org.springframework.data.annotation.CreatedDate;
@@ -30,6 +31,7 @@ public class Artwork {
 
     private List<ArtworkImage> images;
     private int representativeImageIndex;
+    private String thumbnailKey;
     private ImageLayoutType imageLayoutType;
 
     private ArtworkField artworkField;
@@ -39,8 +41,9 @@ public class Artwork {
     private List<String> tags;
 
     private List<String> tools;
-    private String workPeriodStart;
-    private String workPeriodEnd;
+    private WorkDuration workDuration;
+    private Integer cutCount;
+    private List<String> videoLinks;
 
     private AgeRating ageRating;
     private Visibility visibility;
@@ -61,11 +64,13 @@ public class Artwork {
 
     public static Artwork create(String authorId, String title, String description,
                                  List<String> imageKeys, int representativeImageIndex,
+                                 String thumbnailKey,
                                  ImageLayoutType imageLayoutType, ArtworkField artworkField,
                                  CreativeType creativeType, List<ArtworkRole> roles,
                                  List<String> genres, List<String> tags,
                                  AgeRating ageRating, Visibility visibility,
-                                 List<String> tools, String workPeriodStart, String workPeriodEnd,
+                                 List<String> tools, WorkDuration workDuration,
+                                 Integer cutCount, List<String> videoLinks,
                                  List<Material> materials) {
         if (imageKeys == null || imageKeys.isEmpty() || imageKeys.size() > 20) {
             throw new ArtworkException(ArtworkErrorCode.INVALID_IMAGE_COUNT);
@@ -79,6 +84,7 @@ public class Artwork {
         artwork.description = description;
         artwork.images = imageKeys.stream().map(ArtworkImage::pending).toList();
         artwork.representativeImageIndex = representativeImageIndex;
+        artwork.thumbnailKey = thumbnailKey;
         artwork.imageLayoutType = imageLayoutType;
         artwork.artworkField = artworkField;
         artwork.creativeType = creativeType;
@@ -88,8 +94,9 @@ public class Artwork {
         artwork.ageRating = ageRating;
         artwork.visibility = visibility;
         artwork.tools = new ArrayList<>(tools != null ? tools : List.of());
-        artwork.workPeriodStart = workPeriodStart;
-        artwork.workPeriodEnd = workPeriodEnd;
+        artwork.workDuration = workDuration;
+        artwork.cutCount = cutCount;
+        artwork.videoLinks = new ArrayList<>(videoLinks != null ? videoLinks : List.of());
         artwork.materials = new ArrayList<>(materials != null ? materials : List.of());
         artwork.status = ArtworkStatus.PROCESSING;
         return artwork;
@@ -115,11 +122,12 @@ public class Artwork {
 
     public void updateDetails(String title, String description,
                               ImageLayoutType imageLayoutType, Integer representativeImageIndex,
+                              String thumbnailKey,
                               ArtworkField artworkField, CreativeType creativeType,
                               List<ArtworkRole> roles, List<String> genres, List<String> tags,
                               AgeRating ageRating, List<String> tools,
-                              String workPeriodStart, String workPeriodEnd,
-                              List<Material> materials) {
+                              WorkDuration workDuration, Integer cutCount,
+                              List<String> videoLinks, List<Material> materials) {
         if (title != null) this.title = title;
         if (description != null) this.description = description;
         if (imageLayoutType != null) this.imageLayoutType = imageLayoutType;
@@ -129,6 +137,7 @@ public class Artwork {
             }
             this.representativeImageIndex = representativeImageIndex;
         }
+        if (thumbnailKey != null) this.thumbnailKey = thumbnailKey;
         if (artworkField != null) this.artworkField = artworkField;
         if (creativeType != null) this.creativeType = creativeType;
         if (roles != null) this.roles = new ArrayList<>(roles);
@@ -136,8 +145,9 @@ public class Artwork {
         if (tags != null) this.tags = new ArrayList<>(tags);
         if (ageRating != null) this.ageRating = ageRating;
         if (tools != null) this.tools = new ArrayList<>(tools);
-        if (workPeriodStart != null) this.workPeriodStart = workPeriodStart;
-        if (workPeriodEnd != null) this.workPeriodEnd = workPeriodEnd;
+        if (workDuration != null) this.workDuration = workDuration;
+        if (cutCount != null) this.cutCount = cutCount;
+        if (videoLinks != null) this.videoLinks = new ArrayList<>(videoLinks);
         if (materials != null) this.materials = new ArrayList<>(materials);
     }
 
@@ -224,6 +234,7 @@ public class Artwork {
     public String getDescription() { return description; }
     public List<ArtworkImage> getImages() { return List.copyOf(images); }
     public int getRepresentativeImageIndex() { return representativeImageIndex; }
+    public String getThumbnailKey() { return thumbnailKey; }
     public ImageLayoutType getImageLayoutType() { return imageLayoutType; }
     public ArtworkField getArtworkField() { return artworkField; }
     public CreativeType getCreativeType() { return creativeType; }
@@ -231,8 +242,9 @@ public class Artwork {
     public List<String> getGenres() { return List.copyOf(genres); }
     public List<String> getTags() { return List.copyOf(tags); }
     public List<String> getTools() { return List.copyOf(tools); }
-    public String getWorkPeriodStart() { return workPeriodStart; }
-    public String getWorkPeriodEnd() { return workPeriodEnd; }
+    public WorkDuration getWorkDuration() { return workDuration; }
+    public Integer getCutCount() { return cutCount; }
+    public List<String> getVideoLinks() { return videoLinks != null ? List.copyOf(videoLinks) : List.of(); }
     public AgeRating getAgeRating() { return ageRating; }
     public Visibility getVisibility() { return visibility; }
     public List<Material> getMaterials() { return List.copyOf(materials); }
