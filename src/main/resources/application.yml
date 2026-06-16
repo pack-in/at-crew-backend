@@ -34,4 +34,18 @@ jwt:
 firebase:
   credentials-path: ${FIREBASE_CREDENTIALS_PATH:}
 
+cloudflare:
+  r2:
+    endpoint: ${R2_ENDPOINT:https://dummy.r2.cloudflarestorage.com}
+    access-key: ${R2_ACCESS_KEY:dummy-access-key}
+    secret-key: ${R2_SECRET_KEY:dummy-secret-key}
+    bucket: ${R2_BUCKET:atcrew-artwork}
+    presign-expiration-minutes: 10
+    worker-trigger-url: ${WORKER_TRIGGER_URL:http://localhost:8080/internal/artwork/images/processed}
+    callback-secret: ${WORKER_CALLBACK_SECRET:dev-internal-secret}
+
+artwork:
+  internal:
+    secret: ${ARTWORK_INTERNAL_SECRET:dev-internal-secret}
+
 # republish-outstanding-events-on-restart 는 레플리카셋 필요 → application-prod.yml 참고

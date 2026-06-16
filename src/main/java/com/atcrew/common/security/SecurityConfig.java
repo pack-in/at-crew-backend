@@ -74,6 +74,9 @@ class SecurityConfig {
                         auth.requestMatchers(HttpMethod.POST, "/api/members").permitAll();
                     }
                     auth.requestMatchers(HttpMethod.GET, "/api/members/{handle}").permitAll()
+                            .requestMatchers(HttpMethod.GET, "/api/artworks/{artworkId}").permitAll()
+                            .requestMatchers(HttpMethod.GET, "/api/community/artworks").permitAll()
+                            .requestMatchers(HttpMethod.POST, "/internal/artwork/images/processed").permitAll()
                             .requestMatchers("/actuator/health", "/actuator/info").permitAll();
                     if (!isProd()) {
                         auth.requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll();
