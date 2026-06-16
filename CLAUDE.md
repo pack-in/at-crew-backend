@@ -33,3 +33,4 @@
 | [docs/design/figma.md](docs/design/figma.md) | Figma 파일 링크 및 UI 페이지 목록 (**비공개**) |
 | [docs/design/auth-email-custom-redesign.md](docs/design/auth-email-custom-redesign.md) | 이메일 자체 인증 재설계 (Firebase → Custom) 설계안 |
 | [docs/design/artwork-module-design.md](docs/design/artwork-module-design.md) | artwork 모듈 설계 — 작품·북마크·휴지통, 이미지 업로드(Presigned URL + Worker) |
+| [docs/design/artwork-module-summary.md](docs/design/artwork-module-summary.md) | artwork 모듈 총 정리 — API·도메인·플로우·인덱스·에러코드 완전 정리 |
