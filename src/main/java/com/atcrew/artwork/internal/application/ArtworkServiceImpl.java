@@ -105,6 +105,7 @@ class ArtworkServiceImpl implements ArtworkService {
                 command.description(),
                 command.imageKeys(),
                 command.representativeImageIndex(),
+                command.thumbnailKey(),
                 command.imageLayoutType(),
                 command.artworkField(),
                 command.creativeType(),
@@ -114,8 +115,9 @@ class ArtworkServiceImpl implements ArtworkService {
                 command.ageRating(),
                 command.visibility(),
                 command.tools(),
-                command.workPeriodStart(),
-                command.workPeriodEnd(),
+                command.workDuration(),
+                command.cutCount(),
+                command.videoLinks(),
                 materials
         );
         Artwork saved = artworkRepository.save(artwork);
@@ -169,6 +171,7 @@ class ArtworkServiceImpl implements ArtworkService {
                 command.description(),
                 command.imageLayoutType(),
                 command.imageKeys() == null ? command.representativeImageIndex() : null,
+                command.thumbnailKey(),
                 command.artworkField(),
                 command.creativeType(),
                 command.roles(),
@@ -176,8 +179,9 @@ class ArtworkServiceImpl implements ArtworkService {
                 command.tags(),
                 command.ageRating(),
                 command.tools(),
-                command.workPeriodStart(),
-                command.workPeriodEnd(),
+                command.workDuration(),
+                command.cutCount(),
+                command.videoLinks(),
                 materials
         );
 
@@ -352,7 +356,7 @@ class ArtworkServiceImpl implements ArtworkService {
 
     private Instant parseCursor(String cursor) {
         try {
-            return parseCursor(cursor);
+            return Instant.ofEpochMilli(Long.parseLong(cursor));
         } catch (NumberFormatException e) {
             throw new ArtworkException(ArtworkErrorCode.INVALID_CURSOR);
         }
@@ -361,7 +365,7 @@ class ArtworkServiceImpl implements ArtworkService {
     private List<Material> toMaterials(List<MaterialData> data) {
         if (data == null) return List.of();
         return data.stream()
-                .map(d -> new Material(d.name(), d.targets(), d.attachmentKeys()))
+                .map(d -> new Material(d.name(), d.targets(), d.attachmentKeys(), d.links()))
                 .toList();
     }
 }

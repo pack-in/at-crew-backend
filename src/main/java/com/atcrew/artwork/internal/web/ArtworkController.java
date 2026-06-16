@@ -133,23 +133,25 @@ class ArtworkController {
         List<MaterialData> materials = req.materials() == null ? List.of()
                 : req.materials().stream().map(this::toMaterialData).toList();
         return new UploadArtworkCommand(
-                req.imageKeys(), req.representativeImageIndex(), req.imageLayoutType(),
-                req.title(), req.description(), req.artworkField(), req.creativeType(),
-                req.roles(), req.genres(), req.tags(), req.ageRating(), req.visibility(),
-                req.tools(), req.workPeriodStart(), req.workPeriodEnd(), materials);
+                req.imageKeys(), req.representativeImageIndex(), req.thumbnailKey(),
+                req.imageLayoutType(), req.title(), req.description(),
+                req.artworkField(), req.creativeType(), req.roles(), req.genres(),
+                req.tags(), req.ageRating(), req.visibility(), req.tools(),
+                req.workDuration(), req.cutCount(), req.videoLinks(), materials);
     }
 
     private UpdateArtworkCommand toCommand(UpdateArtworkRequest req) {
         List<MaterialData> materials = req.materials() == null ? null
                 : req.materials().stream().map(this::toMaterialData).toList();
         return new UpdateArtworkCommand(
-                req.imageKeys(), req.representativeImageIndex(), req.imageLayoutType(),
-                req.title(), req.description(), req.artworkField(), req.creativeType(),
-                req.roles(), req.genres(), req.tags(), req.ageRating(),
-                req.tools(), req.workPeriodStart(), req.workPeriodEnd(), materials);
+                req.imageKeys(), req.representativeImageIndex(), req.thumbnailKey(),
+                req.imageLayoutType(), req.title(), req.description(),
+                req.artworkField(), req.creativeType(), req.roles(), req.genres(),
+                req.tags(), req.ageRating(), req.tools(),
+                req.workDuration(), req.cutCount(), req.videoLinks(), materials);
     }
 
     private MaterialData toMaterialData(MaterialRequest r) {
-        return new MaterialData(r.name(), r.targets(), r.attachmentKeys());
+        return new MaterialData(r.name(), r.targets(), r.attachmentKeys(), r.links());
     }
 }

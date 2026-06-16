@@ -29,6 +29,7 @@ class ArtworkMapper {
                 artwork.getDescription(),
                 artwork.getImages().stream().map(ArtworkMapper::toImageInfo).toList(),
                 artwork.getRepresentativeImageIndex(),
+                artwork.getThumbnailKey(),
                 artwork.getImageLayoutType(),
                 artwork.getArtworkField(),
                 artwork.getCreativeType(),
@@ -36,12 +37,14 @@ class ArtworkMapper {
                 artwork.getGenres(),
                 artwork.getTags(),
                 artwork.getTools(),
-                artwork.getWorkPeriodStart(),
-                artwork.getWorkPeriodEnd(),
+                artwork.getWorkDuration(),
+                artwork.getCutCount(),
+                artwork.getVideoLinks(),
                 artwork.getAgeRating(),
                 artwork.getVisibility(),
                 artwork.getMaterials().stream()
-                        .map(m -> new MaterialInfo(m.getName(), m.getTargets(), m.getAttachmentKeys()))
+                        .map(m -> new MaterialInfo(m.getName(), m.getTargets(),
+                                m.getAttachmentKeys(), m.getLinks()))
                         .toList(),
                 artwork.getStatus(),
                 artwork.getCreatedAt(),
@@ -50,15 +53,25 @@ class ArtworkMapper {
     }
 
     static ArtworkSummaryInfo toSummaryInfo(Artwork artwork, MemberInfo author) {
-        ArtworkImage repImage = artwork.getRepresentativeImage();
+        // 사용자 지정 썸네일 우선, 없으면 대표 이미지의 Worker 생성 썸네일 사용
+        String thumbKey;
+        String thumbAdultKey;
+        if (artwork.getThumbnailKey() != null) {
+            thumbKey = artwork.getThumbnailKey();
+            thumbAdultKey = null;
+        } else {
+            ArtworkImage repImage = artwork.getRepresentativeImage();
+            thumbKey = repImage != null ? repImage.getThumbKey() : null;
+            thumbAdultKey = repImage != null ? repImage.getThumbAdultKey() : null;
+        }
         return new ArtworkSummaryInfo(
                 artwork.getId(),
                 artwork.getAuthorId(),
                 author != null ? author.name() : null,
                 author != null ? author.handle() : null,
                 artwork.getTitle(),
-                repImage != null ? repImage.getThumbKey() : null,
-                repImage != null ? repImage.getThumbAdultKey() : null,
+                thumbKey,
+                thumbAdultKey,
                 artwork.getArtworkField(),
                 artwork.getTags(),
                 artwork.getAgeRating(),

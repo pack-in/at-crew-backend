@@ -7,6 +7,7 @@ import java.util.List;
 public record MaterialRequest(
         @NotBlank String name,
         List<String> targets,
-        List<String> attachmentKeys
+        List<String> attachmentKeys,
+        List<String> links
 ) {
 }
