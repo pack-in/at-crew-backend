@@ -100,7 +100,11 @@ class BookmarkServiceImpl implements BookmarkService {
             criteria = criteria.and("folderId").isNull();
         }
         if (cursor != null) {
-            criteria = criteria.and("savedAt").lt(Instant.ofEpochMilli(Long.parseLong(cursor)));
+            try {
+                criteria = criteria.and("savedAt").lt(Instant.ofEpochMilli(Long.parseLong(cursor)));
+            } catch (NumberFormatException e) {
+                throw new ArtworkException(ArtworkErrorCode.INVALID_CURSOR);
+            }
         }
         Query query = Query.query(criteria)
                 .with(Sort.by(Sort.Direction.DESC, "savedAt"))

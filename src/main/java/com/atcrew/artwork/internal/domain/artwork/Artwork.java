@@ -198,7 +198,10 @@ public class Artwork {
                         img.markFailed();
                     }
                 });
-        if (images.stream().allMatch(ArtworkImage::isDone)) {
+        // 처리 중인 이미지가 없고 하나라도 성공한 경우 READY로 전환 (부분 실패 허용)
+        boolean noneProcessing = images.stream().noneMatch(ArtworkImage::isPending);
+        boolean anyDone = images.stream().anyMatch(ArtworkImage::isDone);
+        if (noneProcessing && anyDone) {
             this.status = ArtworkStatus.READY;
         }
     }

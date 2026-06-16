@@ -217,10 +217,11 @@ class ArtworkServiceImpl implements ArtworkService {
         if (artworkField != null) {
             criteria = criteria.and("artworkField").is(artworkField.name());
         }
-        AgeRating effectiveAgeRating = ageRating != null ? ageRating : AgeRating.ALL;
-        criteria = criteria.and("ageRating").is(effectiveAgeRating.name());
+        if (ageRating != null) {
+            criteria = criteria.and("ageRating").is(ageRating.name());
+        }
         if (cursor != null) {
-            criteria = criteria.and("createdAt").lt(Instant.ofEpochMilli(Long.parseLong(cursor)));
+            criteria = criteria.and("createdAt").lt(parseCursor(cursor));
         }
         Query query = Query.query(criteria)
                 .with(Sort.by(Sort.Direction.DESC, "createdAt"))
@@ -235,7 +236,7 @@ class ArtworkServiceImpl implements ArtworkService {
         Criteria criteria = Criteria.where("authorId").is(memberId)
                 .and("status").ne(ArtworkStatus.DELETED.name());
         if (cursor != null) {
-            criteria = criteria.and("createdAt").lt(Instant.ofEpochMilli(Long.parseLong(cursor)));
+            criteria = criteria.and("createdAt").lt(parseCursor(cursor));
         }
         Query query = Query.query(criteria)
                 .with(Sort.by(Sort.Direction.DESC, "createdAt"))
@@ -250,7 +251,7 @@ class ArtworkServiceImpl implements ArtworkService {
         Criteria criteria = Criteria.where("authorId").is(memberId)
                 .and("status").is(ArtworkStatus.DELETED.name());
         if (cursor != null) {
-            criteria = criteria.and("createdAt").lt(Instant.ofEpochMilli(Long.parseLong(cursor)));
+            criteria = criteria.and("createdAt").lt(parseCursor(cursor));
         }
         Query query = Query.query(criteria)
                 .with(Sort.by(Sort.Direction.DESC, "createdAt"))
@@ -263,6 +264,7 @@ class ArtworkServiceImpl implements ArtworkService {
     @Transactional
     public void restoreArtworks(String memberId, List<String> artworkIds) {
         List<Artwork> artworks = artworkRepository.findAllById(artworkIds);
+        validateAllFound(artworks, artworkIds);
         for (Artwork artwork : artworks) {
             artwork.assertOwner(memberId);
             artwork.restore();
@@ -274,6 +276,7 @@ class ArtworkServiceImpl implements ArtworkService {
     @Transactional
     public void permanentlyDeleteArtworks(String memberId, List<String> artworkIds) {
         List<Artwork> artworks = artworkRepository.findAllById(artworkIds);
+        validateAllFound(artworks, artworkIds);
         for (Artwork artwork : artworks) {
             artwork.assertOwner(memberId);
             artwork.assertDeleted();
@@ -339,6 +342,20 @@ class ArtworkServiceImpl implements ArtworkService {
     private Artwork findArtworkById(String artworkId) {
         return artworkRepository.findById(artworkId)
                 .orElseThrow(() -> new ArtworkException(ArtworkErrorCode.ARTWORK_NOT_FOUND, artworkId));
+    }
+
+    private void validateAllFound(List<Artwork> found, List<String> requestedIds) {
+        if (found.size() != new java.util.HashSet<>(requestedIds).size()) {
+            throw new ArtworkException(ArtworkErrorCode.ARTWORK_NOT_FOUND);
+        }
+    }
+
+    private Instant parseCursor(String cursor) {
+        try {
+            return parseCursor(cursor);
+        } catch (NumberFormatException e) {
+            throw new ArtworkException(ArtworkErrorCode.INVALID_CURSOR);
+        }
     }
 
     private List<Material> toMaterials(List<MaterialData> data) {

@@ -19,14 +19,17 @@ class ArtworkIndexInitializer {
     @SuppressWarnings({"deprecation", "removal"})
     void ensureIndexes() {
         var artworkOps = mongoTemplate.indexOps("artworks");
+        // createdAt 포함: getMyArtworks/getTrashArtworks의 createdAt DESC 정렬을 인덱스로 커버
         artworkOps.ensureIndex(new CompoundIndexDefinition(
-                Document.parse("{'authorId': 1, 'status': 1}"))
+                Document.parse("{'authorId': 1, 'status': 1, 'createdAt': -1}"))
                 .named("idx_artwork_author_status"));
+        // ageRating은 항상 필터링되므로 인덱스에 포함 — 커뮤니티 피드 기본 경로(artworkField 없음) 커버
         artworkOps.ensureIndex(new CompoundIndexDefinition(
-                Document.parse("{'status': 1, 'visibility': 1, 'createdAt': -1}"))
+                Document.parse("{'status': 1, 'visibility': 1, 'ageRating': 1, 'createdAt': -1}"))
                 .named("idx_artwork_community_feed"));
+        // artworkField 필터 경로 커버 (artworkField + ageRating + createdAt 정렬)
         artworkOps.ensureIndex(new CompoundIndexDefinition(
-                Document.parse("{'status': 1, 'artworkField': 1, 'visibility': 1}"))
+                Document.parse("{'status': 1, 'visibility': 1, 'artworkField': 1, 'ageRating': 1, 'createdAt': -1}"))
                 .named("idx_artwork_field_filter"));
 
         var entryOps = mongoTemplate.indexOps("bookmarkEntries");
