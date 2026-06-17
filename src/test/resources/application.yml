@@ -9,3 +9,17 @@ jwt:
   secret: test-secret-key-for-unit-tests-only-must-be-at-least-64-bytes-long-here
   access-token-expiration: 3600000
   refresh-token-expiration: 2592000000
+
+cloudflare:
+  r2:
+    endpoint: https://test.r2.cloudflarestorage.com
+    access-key: test-access-key
+    secret-key: test-secret-key
+    bucket: test-bucket
+    presign-expiration-minutes: 10
+    worker-trigger-url: http://localhost:8080/internal/artwork/images/processed
+    callback-secret: test-internal-secret
+
+artwork:
+  internal:
+    secret: test-internal-secret
