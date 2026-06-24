@@ -1,13 +1,16 @@
 package com.atcrew.member.internal.web;
 
-import com.atcrew.common.web.GlobalExceptionHandler;
 import com.atcrew.common.security.SecurityUtils;
+import com.atcrew.common.web.GlobalExceptionHandler;
 import com.atcrew.member.MemberService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.http.MediaType;
+import org.springframework.restdocs.RestDocumentationContextProvider;
+import org.springframework.restdocs.RestDocumentationExtension;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -15,9 +18,20 @@ import java.util.List;
 import java.util.Map;
 
 import static org.mockito.Mockito.mock;
+import static org.springframework.restdocs.mockmvc.MockMvcRestDocumentation.document;
+import static org.springframework.restdocs.mockmvc.MockMvcRestDocumentation.documentationConfiguration;
+import static org.springframework.restdocs.operation.preprocess.Preprocessors.prettyPrint;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+/**
+ * MemberController 입력 검증 단위 테스트.
+ *
+ * <p>실제 서비스 없이 standaloneSetup으로 컨트롤러만 기동하여 Bean Validation 규칙을 검증한다.
+ * DevMemberController도 함께 등록하여 개발용 회원가입 엔드포인트 검증도 포함한다.
+ * 각 케이스에 REST Docs 스니펫을 생성해 잘못된 요청의 응답 형태를 문서화한다.
+ */
+@ExtendWith(RestDocumentationExtension.class)
 class MemberControllerValidationTest {
 
     MockMvc mockMvc;
@@ -26,7 +40,7 @@ class MemberControllerValidationTest {
     SecurityUtils securityUtils;
 
     @BeforeEach
-    void setUp() {
+    void setUp(RestDocumentationContextProvider restDoc) {
         memberService = mock(MemberService.class);
         securityUtils = mock(SecurityUtils.class);
         objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
@@ -34,6 +48,10 @@ class MemberControllerValidationTest {
                 .standaloneSetup(new MemberController(memberService, securityUtils),
                         new DevMemberController(memberService))
                 .setControllerAdvice(new GlobalExceptionHandler())
+                .apply(documentationConfiguration(restDoc)
+                        .operationPreprocessors()
+                        .withRequestDefaults(prettyPrint())
+                        .withResponseDefaults(prettyPrint()))
                 .build();
     }
 
@@ -45,7 +63,8 @@ class MemberControllerValidationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(registerBody("user@test.com", "valid_handle", "가".repeat(17), "WEBTOON")))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("member/validation/register-name-too-long"));
     }
 
     @Test
@@ -54,7 +73,8 @@ class MemberControllerValidationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(registerBody("not-an-email", "valid_handle", "홍길동", "WEBTOON")))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("member/validation/register-invalid-email-format"));
     }
 
     @Test
@@ -63,7 +83,8 @@ class MemberControllerValidationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(registerBody("user@test.com", "invalid handle!", "홍길동", "WEBTOON")))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("member/validation/register-invalid-handle-pattern"));
     }
 
     @Test
@@ -72,7 +93,8 @@ class MemberControllerValidationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(registerBody("user@test.com", "valid_handle", "홍길동", "INVALID_ROLE")))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("member/validation/register-invalid-enum-value"));
     }
 
     @Test
@@ -81,7 +103,8 @@ class MemberControllerValidationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(registerBody("user@test.com", "valid_handle", "   ", "WEBTOON")))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("member/validation/register-blank-name"));
     }
 
     // ─── UpdateNameRequest ────────────────────────────────────────────
@@ -92,7 +115,8 @@ class MemberControllerValidationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("name", "   "))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("member/validation/update-name-blank"));
     }
 
     @Test
@@ -101,7 +125,8 @@ class MemberControllerValidationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("name", "가".repeat(17)))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("member/validation/update-name-too-long"));
     }
 
     // ─── AddCareerRequest ─────────────────────────────────────────────
@@ -116,7 +141,8 @@ class MemberControllerValidationTest {
                                 "ongoing", false
                         ))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("member/validation/add-career-title-too-long"));
     }
 
     @Test
@@ -129,7 +155,8 @@ class MemberControllerValidationTest {
                                 "ongoing", false
                         ))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("member/validation/add-career-future-start-date"));
     }
 
     @Test
@@ -142,7 +169,8 @@ class MemberControllerValidationTest {
                                 "ongoing", false
                         ))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("member/validation/add-career-blank-title"));
     }
 
     // ─── UpdateInfoRequest ────────────────────────────────────────────
@@ -153,7 +181,8 @@ class MemberControllerValidationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("totalSlotCount", 6))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("member/validation/update-info-slot-count-too-high"));
     }
 
     @Test
@@ -162,7 +191,8 @@ class MemberControllerValidationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("totalSlotCount", 0))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("member/validation/update-info-slot-count-too-low"));
     }
 
     @Test
@@ -171,7 +201,8 @@ class MemberControllerValidationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("contact", "a".repeat(101)))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("member/validation/update-info-contact-too-long"));
     }
 
     @Test
@@ -182,7 +213,8 @@ class MemberControllerValidationTest {
                                 "activityFields", List.of("ILLUSTRATION", "WEBTOON", "MANGA", "ANIMATION", "ILLUSTRATION")
                         ))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("member/validation/update-info-too-many-activity-fields"));
     }
 
     // ─── Helper ───────────────────────────────────────────────────────
