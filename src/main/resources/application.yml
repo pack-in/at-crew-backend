@@ -1,6 +1,10 @@
 spring:
   application:
     name: at-crew-backend
+  autoconfigure:
+    exclude:
+      # standalone MongoDB(로컬 포함)는 트랜잭션 미지원 — prod에서는 MongoConfig가 MongoTransactionManager를 직접 등록
+      - org.springframework.modulith.events.mongodb.MongoDbTransactionAutoConfiguration
   mongodb:
     uri: ${MONGODB_URI:mongodb://localhost:27017}
     database: ${MONGODB_DATABASE:atcrew}

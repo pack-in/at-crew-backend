@@ -10,6 +10,8 @@ import io.swagger.v3.oas.models.media.Schema;
 import io.swagger.v3.oas.models.media.StringSchema;
 import io.swagger.v3.oas.models.responses.ApiResponse;
 import io.swagger.v3.oas.models.responses.ApiResponses;
+import io.swagger.v3.oas.models.security.SecurityRequirement;
+import io.swagger.v3.oas.models.security.SecurityScheme;
 import org.springdoc.core.customizers.OperationCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -30,19 +32,28 @@ class OpenApiConfig {
             Map.entry("500", "서버 내부 오류")
     );
 
+    private static final String BEARER_AUTH = "bearerAuth";
+
     @Bean
     @SuppressWarnings("unchecked")
     OpenAPI openAPI() {
         return new OpenAPI()
-                .components(new Components().addSchemas("ApiResponse",
-                        new ObjectSchema()
-                                .description("공통 응답 봉투")
-                                .addProperty("code", new StringSchema()
-                                        .description("응답 코드").example("SUCCESS"))
-                                .addProperty("message", new StringSchema()
-                                        .description("에러 메시지 (성공 시 null)").nullable(true))
-                                .addProperty("data", new Schema<>()
-                                        .description("응답 데이터 (에러 시 null)").nullable(true))))
+                .components(new Components()
+                        .addSchemas("ApiResponse",
+                                new ObjectSchema()
+                                        .description("공통 응답 봉투")
+                                        .addProperty("code", new StringSchema()
+                                                .description("응답 코드").example("SUCCESS"))
+                                        .addProperty("message", new StringSchema()
+                                                .description("에러 메시지 (성공 시 null)").nullable(true))
+                                        .addProperty("data", new Schema<>()
+                                                .description("응답 데이터 (에러 시 null)").nullable(true)))
+                        .addSecuritySchemes(BEARER_AUTH,
+                                new SecurityScheme()
+                                        .type(SecurityScheme.Type.HTTP)
+                                        .scheme("bearer")
+                                        .bearerFormat("JWT")))
+                .addSecurityItem(new SecurityRequirement().addList(BEARER_AUTH))
                 .info(new Info()
                         .title("앳크루 API")
                         .version("v1")

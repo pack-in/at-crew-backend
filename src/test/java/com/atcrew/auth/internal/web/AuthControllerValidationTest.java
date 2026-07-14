@@ -5,17 +5,30 @@ import com.atcrew.common.web.GlobalExceptionHandler;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.http.MediaType;
+import org.springframework.restdocs.RestDocumentationContextProvider;
+import org.springframework.restdocs.RestDocumentationExtension;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.util.Map;
 
 import static org.mockito.Mockito.mock;
+import static org.springframework.restdocs.mockmvc.MockMvcRestDocumentation.document;
+import static org.springframework.restdocs.mockmvc.MockMvcRestDocumentation.documentationConfiguration;
+import static org.springframework.restdocs.operation.preprocess.Preprocessors.prettyPrint;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+/**
+ * AuthController 입력 검증 단위 테스트.
+ *
+ * <p>실제 서비스 없이 standaloneSetup으로 컨트롤러만 기동하여 Bean Validation 규칙을 검증한다.
+ * 각 케이스에 REST Docs 스니펫을 생성해 잘못된 요청의 응답 형태를 문서화한다.
+ */
+@ExtendWith(RestDocumentationExtension.class)
 class AuthControllerValidationTest {
 
     MockMvc mockMvc;
@@ -23,12 +36,16 @@ class AuthControllerValidationTest {
     AuthService authService;
 
     @BeforeEach
-    void setUp() {
+    void setUp(RestDocumentationContextProvider restDoc) {
         authService = mock(AuthService.class);
         objectMapper = new ObjectMapper();
         mockMvc = MockMvcBuilders
                 .standaloneSetup(new AuthController(authService))
                 .setControllerAdvice(new GlobalExceptionHandler())
+                .apply(documentationConfiguration(restDoc)
+                        .operationPreprocessors()
+                        .withRequestDefaults(prettyPrint())
+                        .withResponseDefaults(prettyPrint()))
                 .build();
     }
 
@@ -40,7 +57,8 @@ class AuthControllerValidationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("email", "", "password", "Pass1234!"))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("auth/validation/email-login-blank-email"));
     }
 
     @Test
@@ -49,7 +67,8 @@ class AuthControllerValidationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("email", "not-email", "password", "Pass1234!"))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("auth/validation/email-login-invalid-email-format"));
     }
 
     @Test
@@ -58,7 +77,8 @@ class AuthControllerValidationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("email", "user@test.com", "password", ""))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("auth/validation/email-login-blank-password"));
     }
 
     @Test
@@ -67,7 +87,8 @@ class AuthControllerValidationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("email", "user@test.com", "password", "short"))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("auth/validation/email-login-invalid-password-policy"));
     }
 
     // ─── POST /api/auth/email/register ───────────────────────────────
@@ -78,7 +99,8 @@ class AuthControllerValidationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(registerBody("", "Pass1234!", "Pass1234!", "홍길동")))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("auth/validation/email-register-blank-email"));
     }
 
     @Test
@@ -87,7 +109,8 @@ class AuthControllerValidationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(registerBody("user@test.com", "Pass1234!", "Pass1234!", "")))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("auth/validation/email-register-blank-name"));
     }
 
     @Test
@@ -96,7 +119,8 @@ class AuthControllerValidationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(registerBody("user@test.com", "Pass1234!", "Pass1234!", "가".repeat(17))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("auth/validation/email-register-name-too-long"));
     }
 
     @Test
@@ -105,7 +129,8 @@ class AuthControllerValidationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(registerBody("user@test.com", "Pass1234!", "Different1!", "홍길동")))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("auth/validation/email-register-password-mismatch"));
     }
 
     // ─── POST /api/auth/google/login ─────────────────────────────────
@@ -116,7 +141,8 @@ class AuthControllerValidationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("firebaseIdToken", ""))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("auth/validation/google-login-blank-token"));
     }
 
     // ─── POST /api/auth/google/register ──────────────────────────────
@@ -130,7 +156,8 @@ class AuthControllerValidationTest {
                                 "name", "홍길동",
                                 "agreePrivacy", true, "agreeService", true, "agreeThirdParty", true, "agreeMarketing", false))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("auth/validation/google-register-blank-token"));
     }
 
     @Test
@@ -142,7 +169,8 @@ class AuthControllerValidationTest {
                                 "name", "가".repeat(17),
                                 "agreePrivacy", true, "agreeService", true, "agreeThirdParty", true, "agreeMarketing", false))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("auth/validation/google-register-name-too-long"));
     }
 
     // ─── POST /api/auth/refresh ───────────────────────────────────────
@@ -153,7 +181,8 @@ class AuthControllerValidationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("refreshToken", ""))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("auth/validation/refresh-blank-token"));
     }
 
     // ─── 헬퍼 ─────────────────────────────────────────────────────────
