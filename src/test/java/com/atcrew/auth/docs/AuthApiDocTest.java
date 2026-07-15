@@ -37,7 +37,8 @@ class AuthApiDocTest extends RestDocsIntegrationSupport {
                                 "Secure1!",
                                 "Secure1!",
                                 "문서화유저",
-                                true, true, true, false
+                                true, true, true, false,
+                                "Asia/Seoul"
                         ))))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
@@ -53,7 +54,8 @@ class AuthApiDocTest extends RestDocsIntegrationSupport {
                                 fieldWithPath("agreeService").description("서비스 이용약관 동의 (필수)"),
                                 fieldWithPath("agreePrivacy").description("개인정보처리방침 동의 (필수)"),
                                 fieldWithPath("agreeThirdParty").description("제3자 정보제공 동의 (선택)"),
-                                fieldWithPath("agreeMarketing").description("마케팅 정보 수신 동의 (선택)")
+                                fieldWithPath("agreeMarketing").description("마케팅 정보 수신 동의 (선택)"),
+                                fieldWithPath("timezone").description("IANA 시간대 ID, 클라이언트 자동감지값 (예: Asia/Seoul)")
                         ),
                         relaxedResponseFields(
                                 fieldWithPath("code").description("응답 코드 (SUCCESS)"),
@@ -69,7 +71,8 @@ class AuthApiDocTest extends RestDocsIntegrationSupport {
                                 fieldWithPath("data.member.availableSlotCount").description("가용 슬롯 수"),
                                 fieldWithPath("data.member.active").description("계정 활성화 여부"),
                                 fieldWithPath("data.member.createdAt").description("가입 일시 (ISO 8601)"),
-                                fieldWithPath("data.member.updatedAt").description("최종 수정 일시 (ISO 8601)")
+                                fieldWithPath("data.member.updatedAt").description("최종 수정 일시 (ISO 8601)"),
+                                fieldWithPath("data.member.timezone").description("회원 시간대 (IANA tz ID)")
                         )
                 ));
     }
@@ -86,7 +89,7 @@ class AuthApiDocTest extends RestDocsIntegrationSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new RegisterRequest(
                                 uniqueEmail, "Secure1!", "Secure1!", "로그인문서유저",
-                                true, true, true, false
+                                true, true, true, false, "Asia/Seoul"
                         ))))
                 .andExpect(status().isCreated());
 
@@ -126,7 +129,7 @@ class AuthApiDocTest extends RestDocsIntegrationSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new RegisterRequest(
                                 uniqueEmail, "Secure1!", "Secure1!", "갱신문서유저",
-                                true, true, true, false
+                                true, true, true, false, "Asia/Seoul"
                         ))))
                 .andExpect(status().isCreated())
                 .andReturn();
@@ -166,7 +169,8 @@ class AuthApiDocTest extends RestDocsIntegrationSupport {
             boolean agreeService,
             boolean agreePrivacy,
             boolean agreeThirdParty,
-            boolean agreeMarketing
+            boolean agreeMarketing,
+            String timezone
     ) {}
 
     /** 이메일 로그인 요청 바디 */

@@ -19,6 +19,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -47,6 +48,10 @@ public class Member {
 
     // 기본 false. Google 가입 시 true로 초기화. 이메일 인증 캠페인 대비 선제 추가.
     private boolean emailVerified = false;
+
+    // IANA tz ID(예: "Asia/Tokyo", "America/New_York"). 가입 시 클라이언트 자동감지값을 저장,
+    // 설정에서 변경 가능. UTC 오프셋이 아닌 ID로 저장해야 DST가 자동 반영된다.
+    private String timezone;
 
     private EmploymentStatus employmentStatus = EmploymentStatus.PREPARING;
     private List<ActivityField> activityFields = new ArrayList<>();
@@ -93,29 +98,43 @@ public class Member {
     }
 
     public static Member registerWithEmail(String loginEmail, String handle, String name,
-                                           String passwordHash, TermsAgreement termsAgreement) {
+                                           String passwordHash, TermsAgreement termsAgreement,
+                                           String timezone) {
         validateTerms(termsAgreement);
+        validateTimezone(timezone);
         Member m = new Member(loginEmail, handle, name, null);
         m.authProvider = AuthProvider.EMAIL;
         m.passwordHash = passwordHash;
         m.emailVerified = false;
         m.termsAgreement = termsAgreement;
+        m.timezone = timezone;
         return m;
     }
 
     public static Member registerWithGoogle(String loginEmail, String handle, String name,
-                                            TermsAgreement termsAgreement) {
+                                            TermsAgreement termsAgreement, String timezone) {
         validateTerms(termsAgreement);
+        validateTimezone(timezone);
         Member m = new Member(loginEmail, handle, name, null);
         m.authProvider = AuthProvider.GOOGLE;
         m.emailVerified = true;
         m.termsAgreement = termsAgreement;
+        m.timezone = timezone;
         return m;
     }
 
     private static void validateTerms(TermsAgreement terms) {
         if (terms == null || !terms.privacyPolicy() || !terms.serviceTerms() || !terms.thirdPartyProvision()) {
             throw new MemberException(MemberErrorCode.TERMS_NOT_AGREED);
+        }
+    }
+
+    // IANA tz ID만 허용 — ZoneId.of()는 "+09:00"·"GMT+9" 같은 고정 오프셋도 통과시키므로
+    // 오프셋 저장을 원천 차단하려면 실제 IANA tzdb 카탈로그(getAvailableZoneIds)에 있는지 확인해야 한다.
+    // DST 지역(미국·유럽)에서 오프셋 저장은 연 2회 어긋난다.
+    private static void validateTimezone(String timezone) {
+        if (timezone == null || !ZoneId.getAvailableZoneIds().contains(timezone)) {
+            throw new MemberException(MemberErrorCode.INVALID_TIMEZONE, timezone);
         }
     }
 
@@ -161,6 +180,10 @@ public class Member {
         if (command.contact() != null) this.contact = command.contact();
         if (command.sns() != null) this.sns = command.sns();
         if (command.tools() != null) this.tools = command.tools();
+        if (command.timezone() != null) {
+            validateTimezone(command.timezone());
+            this.timezone = command.timezone();
+        }
     }
 
     private static final int MAX_CAREER_COUNT = 50;
@@ -217,6 +240,7 @@ public class Member {
     public String getContact() { return contact; }
     public String getSns() { return sns; }
     public String getTools() { return tools; }
+    public String getTimezone() { return timezone; }
     public List<CareerEntryInfo> getCareers() { return careers.stream().map(this::toCareerInfo).toList(); }
     public boolean isActive() { return active; }
     public Instant getDeletedAt() { return deletedAt; }

@@ -113,7 +113,7 @@ class MemberModuleTests {
         UpdateInfoCommand command = new UpdateInfoCommand(
                 CreatorRole.ILLUSTRATOR, EmploymentStatus.AVAILABLE,
                 List.of(ActivityField.ILLUSTRATION), null, null,
-                3, 2, null, "010-9999-0000", null, null);
+                3, 2, null, "010-9999-0000", null, null, null);
 
         memberService.updateInfo(member.id(), command);
 

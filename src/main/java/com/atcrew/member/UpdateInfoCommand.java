@@ -13,6 +13,7 @@ public record UpdateInfoCommand(
         List<TeamExperience> teamExperiences,
         String contact,
         String sns,
-        String tools
+        String tools,
+        String timezone
 ) {
 }

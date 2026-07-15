@@ -1,5 +1,6 @@
 package com.atcrew.auth.internal.web.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
@@ -10,5 +11,10 @@ public record GoogleRegisterRequest(
         boolean agreeService,
         boolean agreePrivacy,
         boolean agreeThirdParty,
-        boolean agreeMarketing
+        boolean agreeMarketing,
+
+        @NotBlank(message = "시간대를 입력해주세요")
+        @Size(max = 64, message = "시간대 값이 올바르지 않습니다")
+        @Schema(description = "IANA 시간대 ID, 클라이언트 자동감지값", example = "Asia/Seoul")
+        String timezone
 ) {}

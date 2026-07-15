@@ -74,7 +74,7 @@ class MemberController {
                 request.creatorRole(), request.employmentStatus(),
                 request.activityFields(), request.experienceLevel(), request.activeRegions(),
                 request.totalSlotCount(), request.availableSlotCount(), request.teamExperiences(),
-                request.contact(), request.sns(), request.tools()));
+                request.contact(), request.sns(), request.tools(), request.timezone()));
     }
 
     @Operation(summary = "경력 추가", description = "참여작 정보를 경력으로 추가합니다.")

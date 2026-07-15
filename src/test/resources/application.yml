@@ -3,7 +3,7 @@ spring:
     mongodb:
       auto-index-creation: true
   jackson:
-    time-zone: Asia/Seoul
+    time-zone: UTC
 
 jwt:
   secret: test-secret-key-for-unit-tests-only-must-be-at-least-64-bytes-long-here

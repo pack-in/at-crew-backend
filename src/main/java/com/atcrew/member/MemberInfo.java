@@ -57,6 +57,9 @@ public record MemberInfo(
         Instant deletedAt,
         Instant lastLoginAt,
         Instant createdAt,
-        Instant updatedAt
+        Instant updatedAt,
+
+        // === 시간대 ===
+        String timezone // IANA tz ID, 예: "Asia/Tokyo"
 ) {
 }
