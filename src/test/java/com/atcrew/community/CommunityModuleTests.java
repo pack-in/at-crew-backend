@@ -12,6 +12,8 @@ import org.testcontainers.containers.MongoDBContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 // community는 artwork·member 모두에 의존(CommunityController)하므로 DIRECT_DEPENDENCIES로는
@@ -84,5 +86,55 @@ class CommunityModuleTests {
 
         assertThat(updated.imageUrl()).isEqualTo("https://img.example/4-new.png");
         assertThat(updated.linkUrl()).isEqualTo(banner.linkUrl());
+    }
+
+    // ─── updateBanner sortOrder 이동 ─────────────────────────────────────
+
+    @Test
+    void 배너_수정으로_앞으로_당기면_그_사이_배너들이_뒤로_밀림() {
+        String memberId = memberService.register(
+                "banner-owner-5@atcrew.com", "bannerowner5", "배너주인5", CreatorRole.WEBTOON).id();
+        BannerInfo a = bannerService.createBanner(new CreateBannerCommand(
+                memberId, "https://img.example/a.png", "https://example.com/a", null));
+        BannerInfo b = bannerService.createBanner(new CreateBannerCommand(
+                memberId, "https://img.example/b.png", "https://example.com/b", null));
+        BannerInfo c = bannerService.createBanner(new CreateBannerCommand(
+                memberId, "https://img.example/c.png", "https://example.com/c", null));
+        // 초기 순번: a=0, b=1, c=2
+
+        bannerService.updateBanner(c.id(), new UpdateBannerCommand(null, null, a.sortOrder()));
+        // c를 맨 앞으로 이동 → 기대: c=0, a=1, b=2
+
+        var banners = bannerService.getActiveBanners();
+        assertThat(findSortOrder(banners, c.id())).isEqualTo(a.sortOrder());
+        assertThat(findSortOrder(banners, a.id())).isEqualTo(a.sortOrder() + 1);
+        assertThat(findSortOrder(banners, b.id())).isEqualTo(a.sortOrder() + 2);
+        assertThat(banners).extracting(BannerInfo::sortOrder).doesNotHaveDuplicates();
+    }
+
+    @Test
+    void 배너_수정으로_뒤로_밀면_그_사이_배너들이_앞으로_당겨짐() {
+        String memberId = memberService.register(
+                "banner-owner-6@atcrew.com", "bannerowner6", "배너주인6", CreatorRole.WEBTOON).id();
+        BannerInfo a = bannerService.createBanner(new CreateBannerCommand(
+                memberId, "https://img.example/a.png", "https://example.com/a", null));
+        BannerInfo b = bannerService.createBanner(new CreateBannerCommand(
+                memberId, "https://img.example/b.png", "https://example.com/b", null));
+        BannerInfo c = bannerService.createBanner(new CreateBannerCommand(
+                memberId, "https://img.example/c.png", "https://example.com/c", null));
+        // 초기 순번: a=0, b=1, c=2
+
+        bannerService.updateBanner(a.id(), new UpdateBannerCommand(null, null, c.sortOrder()));
+        // a를 맨 뒤로 이동 → 기대: b=0, c=1, a=2
+
+        var banners = bannerService.getActiveBanners();
+        assertThat(findSortOrder(banners, b.id())).isEqualTo(a.sortOrder());
+        assertThat(findSortOrder(banners, c.id())).isEqualTo(a.sortOrder() + 1);
+        assertThat(findSortOrder(banners, a.id())).isEqualTo(a.sortOrder() + 2);
+        assertThat(banners).extracting(BannerInfo::sortOrder).doesNotHaveDuplicates();
+    }
+
+    private int findSortOrder(List<BannerInfo> banners, String bannerId) {
+        return banners.stream().filter(b -> b.id().equals(bannerId)).findFirst().orElseThrow().sortOrder();
     }
 }

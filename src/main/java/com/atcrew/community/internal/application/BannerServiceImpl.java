@@ -65,9 +65,31 @@ class BannerServiceImpl implements BannerService {
     @Transactional
     public BannerInfo updateBanner(String bannerId, UpdateBannerCommand command) {
         Banner banner = findBannerById(bannerId);
-        // 순번 재배치(다른 배너 밀기)는 생성 시에만 적용한다 — 수정 시 순번 충돌은 관리자가 직접 정리.
+        if (command.sortOrder() != null && command.sortOrder() != banner.getSortOrder()) {
+            shiftForMove(banner.getId(), banner.getSortOrder(), command.sortOrder());
+        }
         banner.update(command.imageUrl(), command.linkUrl(), command.sortOrder());
         return BannerMapper.toInfo(bannerRepository.save(banner));
+    }
+
+    // 배너를 oldSortOrder에서 newSortOrder로 옮길 때, 그 사이 구간에 있는 다른 배너들을
+    // 한 칸씩 밀거나 당겨 순번이 중복되지 않도록 한다. (자기 자신은 아직 저장 전이므로 제외)
+    private void shiftForMove(String excludeId, int oldSortOrder, int newSortOrder) {
+        if (newSortOrder < oldSortOrder) {
+            // 앞으로 당김 — [newSortOrder, oldSortOrder) 구간의 다른 배너를 한 칸씩 뒤로 민다.
+            mongoTemplate.updateMulti(
+                    Query.query(Criteria.where("_id").ne(excludeId)
+                            .and("sortOrder").gte(newSortOrder).lt(oldSortOrder)),
+                    new Update().inc("sortOrder", 1),
+                    Banner.class);
+        } else {
+            // 뒤로 밀림 — (oldSortOrder, newSortOrder] 구간의 다른 배너를 한 칸씩 앞으로 당긴다.
+            mongoTemplate.updateMulti(
+                    Query.query(Criteria.where("_id").ne(excludeId)
+                            .and("sortOrder").gt(oldSortOrder).lte(newSortOrder)),
+                    new Update().inc("sortOrder", -1),
+                    Banner.class);
+        }
     }
 
     @Override
