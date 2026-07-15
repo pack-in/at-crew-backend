@@ -1,5 +1,7 @@
 package com.atcrew.member;
 
+import com.atcrew.common.response.CursorPage;
+
 public interface MemberService {
 
     MemberInfo register(RegisterMemberCommand command);
@@ -14,6 +16,12 @@ public interface MemberService {
     MemberInfo findByLoginEmailAndProvider(String loginEmail, AuthProvider authProvider);
 
     MemberInfo findById(String memberId);
+
+    /**
+     * 구인 가능 상태 창작자 프로필 검색. 커뮤니티 "작가 찾아보기" 탭에서 사용.
+     * 탈퇴 회원은 결과에서 항상 제외된다.
+     */
+    CursorPage<MemberProfileInfo> searchProfiles(SearchProfilesCommand command);
 
     /**
      * EMAIL 활성 회원의 비밀번호 검증. timing-safe 보장 (회원 부재 시 더미 BCrypt 수행).

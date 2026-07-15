@@ -37,5 +37,15 @@ class MemberIndexInitializer {
                         .named("idx_login_email_provider")
                         .unique()
                         .partial(PartialIndexFilter.of(Criteria.where("loginEmail").type(2))));  // 2 = BSON String
+
+        // 커뮤니티 "작가 찾아보기" — 최신 업데이트순 정렬 경로
+        mongoTemplate.indexOps("members").ensureIndex(
+                new CompoundIndexDefinition(Document.parse("{'active': 1, 'employmentStatus': 1, 'updatedAt': -1}"))
+                        .named("idx_member_search_updated"));
+        // 커뮤니티 "작가 찾아보기" — 경력순 정렬 경로
+        mongoTemplate.indexOps("members").ensureIndex(
+                new CompoundIndexDefinition(Document.parse(
+                        "{'active': 1, 'employmentStatus': 1, 'experienceRank': -1, 'updatedAt': -1}"))
+                        .named("idx_member_search_experience"));
     }
 }
