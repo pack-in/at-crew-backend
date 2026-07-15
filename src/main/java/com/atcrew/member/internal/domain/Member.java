@@ -17,7 +17,6 @@ import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
-import java.time.DateTimeException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -130,14 +129,11 @@ public class Member {
         }
     }
 
-    // IANA tz ID(오프셋이 아닌 ID)만 허용 — DST 지역(미국·유럽)에서 오프셋 저장은 연 2회 어긋난다.
+    // IANA tz ID만 허용 — ZoneId.of()는 "+09:00"·"GMT+9" 같은 고정 오프셋도 통과시키므로
+    // 오프셋 저장을 원천 차단하려면 실제 IANA tzdb 카탈로그(getAvailableZoneIds)에 있는지 확인해야 한다.
+    // DST 지역(미국·유럽)에서 오프셋 저장은 연 2회 어긋난다.
     private static void validateTimezone(String timezone) {
-        if (timezone == null || timezone.isBlank()) {
-            throw new MemberException(MemberErrorCode.INVALID_TIMEZONE, timezone);
-        }
-        try {
-            ZoneId.of(timezone);
-        } catch (DateTimeException e) {
+        if (timezone == null || !ZoneId.getAvailableZoneIds().contains(timezone)) {
             throw new MemberException(MemberErrorCode.INVALID_TIMEZONE, timezone);
         }
     }
