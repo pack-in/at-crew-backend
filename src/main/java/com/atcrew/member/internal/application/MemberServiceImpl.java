@@ -82,9 +82,10 @@ class MemberServiceImpl implements MemberService {
     private Member buildMember(RegisterMemberCommand command, String handle, TermsAgreement terms) {
         if (command.authProvider() == AuthProvider.EMAIL) {
             String passwordHash = passwordEncoder.encode(command.rawPassword());
-            return Member.registerWithEmail(command.loginEmail(), handle, command.name(), passwordHash, terms);
+            return Member.registerWithEmail(command.loginEmail(), handle, command.name(), passwordHash, terms,
+                    command.timezone());
         }
-        return Member.registerWithGoogle(command.loginEmail(), handle, command.name(), terms);
+        return Member.registerWithGoogle(command.loginEmail(), handle, command.name(), terms, command.timezone());
     }
 
     @Override

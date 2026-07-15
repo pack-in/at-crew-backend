@@ -28,7 +28,11 @@ public record EmailRegisterRequest(
         boolean agreeService,
         boolean agreePrivacy,
         boolean agreeThirdParty,
-        boolean agreeMarketing
+        boolean agreeMarketing,
+
+        @NotBlank(message = "시간대를 입력해주세요")
+        @Schema(description = "IANA 시간대 ID, 클라이언트 자동감지값", example = "Asia/Seoul")
+        String timezone
 ) {
     @AssertTrue(message = "비밀번호가 일치하지 않습니다")
     public boolean isPasswordConfirmed() {

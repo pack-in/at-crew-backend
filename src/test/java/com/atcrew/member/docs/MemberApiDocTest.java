@@ -82,7 +82,7 @@ class MemberApiDocTest extends RestDocsIntegrationSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new RegisterRequest(
                                 uniqueEmail, "Secure1!", "Secure1!", "원래이름",
-                                true, true, true, false
+                                true, true, true, false, "Asia/Seoul"
                         ))))
                 .andExpect(status().isCreated())
                 .andReturn();
@@ -117,7 +117,7 @@ class MemberApiDocTest extends RestDocsIntegrationSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new RegisterRequest(
                                 uniqueEmail, "Secure1!", "Secure1!", "경력문서유저",
-                                true, true, true, false
+                                true, true, true, false, "Asia/Seoul"
                         ))))
                 .andExpect(status().isCreated())
                 .andReturn();
@@ -168,7 +168,8 @@ class MemberApiDocTest extends RestDocsIntegrationSupport {
             boolean agreeService,
             boolean agreePrivacy,
             boolean agreeThirdParty,
-            boolean agreeMarketing
+            boolean agreeMarketing,
+            String timezone
     ) {}
 
     /** 이름 수정 요청 바디 */
