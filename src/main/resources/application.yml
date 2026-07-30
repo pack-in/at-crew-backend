@@ -11,6 +11,21 @@ spring:
   data:
     mongodb:
       auto-index-creation: true
+  # MariaDB 전환(docs/design/mariadb-migration-design.md) — Mongo와 병행 중(P1~P4), prod 접속 정보는 P6에서 채움
+  datasource:
+    url: jdbc:mariadb://${MARIADB_HOST:localhost}:${MARIADB_PORT:3306}/${MARIADB_DATABASE:atcrew}?connectionTimeZone=UTC
+    username: ${MARIADB_USERNAME:root}
+    password: ${MARIADB_PASSWORD:atcrew_local_dev}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    locations: classpath:db/migration
   jackson:
     time-zone: UTC
 

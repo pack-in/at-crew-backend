@@ -1,7 +1,21 @@
 spring:
+  autoconfigure:
+    exclude:
+      # JPA(HibernateJpaConfiguration)의 transactionManager 빈과 이름이 충돌 — application.yml(main)과 동일하게 제외
+      - org.springframework.modulith.events.mongodb.MongoDbTransactionAutoConfiguration
   data:
     mongodb:
       auto-index-creation: true
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    locations: classpath:db/migration
   jackson:
     time-zone: UTC
 
