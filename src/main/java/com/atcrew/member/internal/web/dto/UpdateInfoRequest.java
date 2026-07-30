@@ -58,6 +58,10 @@ public record UpdateInfoRequest(
         String sns,
 
         @Size(max = 200)
-        String tools
+        String tools,
+
+        @Size(max = 64, message = "시간대 값이 올바르지 않습니다")
+        @Schema(description = "IANA 시간대 ID, 예: \"Asia/Tokyo\". null이면 변경 없음", example = "Asia/Seoul")
+        String timezone
 ) {
 }

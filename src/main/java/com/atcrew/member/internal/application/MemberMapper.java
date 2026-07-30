@@ -54,7 +54,8 @@ class MemberMapper {
                 member.getDeletedAt(),
                 member.getLastLoginAt(),
                 member.getCreatedAt(),
-                member.getUpdatedAt()
+                member.getUpdatedAt(),
+                member.getTimezone()
         );
     }
 }

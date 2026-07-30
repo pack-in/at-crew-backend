@@ -60,7 +60,7 @@ class AuthController {
         EmailRegisterCommand command = new EmailRegisterCommand(
                 request.email(), request.password(), request.name(),
                 request.agreeService(), request.agreePrivacy(),
-                request.agreeThirdParty(), request.agreeMarketing());
+                request.agreeThirdParty(), request.agreeMarketing(), request.timezone());
         return com.atcrew.common.response.ApiResponse.success(authService.registerWithEmail(command));
     }
 
@@ -89,7 +89,7 @@ class AuthController {
         GoogleRegisterCommand command = new GoogleRegisterCommand(
                 request.firebaseIdToken(), request.name(),
                 request.agreeService(), request.agreePrivacy(),
-                request.agreeThirdParty(), request.agreeMarketing());
+                request.agreeThirdParty(), request.agreeMarketing(), request.timezone());
         return com.atcrew.common.response.ApiResponse.success(authService.registerWithGoogle(command));
     }
 
