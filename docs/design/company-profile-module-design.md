@@ -239,7 +239,7 @@ CREATE TABLE company_careers (
 ) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-Flyway `V2__company_module.sql`로 커밋(V1 베이스라인 이후 첫 신규 모듈 스키마).
+Flyway `V3__company_module.sql`로 커밋(V2는 member 모듈 전환 중 발견된 `experience_rank` 컬럼 타입 수정에 이미 사용됨).
 
 ---
 
