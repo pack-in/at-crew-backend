@@ -35,4 +35,5 @@
 | [docs/design/artwork-module-design.md](docs/design/artwork-module-design.md) | artwork 모듈 설계 — 작품·북마크·휴지통, 이미지 업로드(Presigned URL + Worker) |
 | [docs/design/artwork-module-summary.md](docs/design/artwork-module-summary.md) | artwork 모듈 총 정리 — API·도메인·플로우·인덱스·에러코드 완전 정리 |
 | [docs/design/global-timezone-strategy.md](docs/design/global-timezone-strategy.md) | 글로벌 시간대 관리 설계 — 일본·중국·영미·유럽 확장 시 UTC 저장/Member timezone 필드/직렬화 정책 변경안 |
+| [docs/design/community-module-design.md](docs/design/community-module-design.md) | community 모듈 설계 — 커뮤니티 피드(배너·포트폴리오·작가 찾아보기), 구인글/팀원모집글은 recruit 모듈 스텁 |
 | [docs/testing/rest-docs-guide.md](docs/testing/rest-docs-guide.md) | MockMvc + Spring REST Docs 테스트 전략, 계층 구조, 새 API 개발 체크리스트 |
