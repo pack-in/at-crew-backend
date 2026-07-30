@@ -16,6 +16,7 @@ public enum MemberErrorCode {
     HANDLE_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "핸들 자동 생성에 실패했습니다. 잠시 후 다시 시도해주세요"),
     TERMS_NOT_AGREED(HttpStatus.BAD_REQUEST, "필수 약관에 동의해야 합니다"),
     INVALID_AUTH_PROVIDER(HttpStatus.BAD_REQUEST, "인증 제공자 정보가 유효하지 않습니다"),
+    INVALID_CURSOR(HttpStatus.BAD_REQUEST, "유효하지 않은 커서 값입니다"),
     INVALID_TIMEZONE(HttpStatus.BAD_REQUEST, "유효하지 않은 시간대입니다");
 
     private final HttpStatus status;

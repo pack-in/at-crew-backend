@@ -9,7 +9,9 @@ import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberProfileInfo;
 import com.atcrew.member.MemberService;
 import com.atcrew.member.PasswordVerification;
+import com.atcrew.member.ProfileSort;
 import com.atcrew.member.RegisterMemberCommand;
+import com.atcrew.member.SearchProfilesCommand;
 import com.atcrew.member.UpdateInfoCommand;
 import com.atcrew.member.internal.domain.Member;
 import com.atcrew.member.internal.domain.TermsAgreement;
@@ -17,10 +19,12 @@ import com.atcrew.member.internal.exception.MemberErrorCode;
 import com.atcrew.member.internal.exception.MemberException;
 import com.atcrew.member.internal.persistence.MemberRepository;
 import com.atcrew.common.logging.LogMask;
+import com.atcrew.common.response.CursorPage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.FindAndModifyOptions;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
@@ -31,6 +35,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -160,6 +165,72 @@ class MemberServiceImpl implements MemberService {
     @Override
     public MemberInfo findById(String memberId) {
         return MemberMapper.toInfo(findMemberById(memberId));
+    }
+
+    @Override
+    public CursorPage<MemberProfileInfo> searchProfiles(SearchProfilesCommand command) {
+        int limit = command.size() + 1;
+        Criteria criteria = Criteria.where("active").is(true);
+        if (command.employmentStatuses() != null && !command.employmentStatuses().isEmpty()) {
+            criteria = criteria.and("employmentStatus").in(command.employmentStatuses().stream().map(Enum::name).toList());
+        }
+        if (command.activityField() != null) {
+            criteria = criteria.and("activityFields").is(command.activityField().name());
+        }
+        ProfileSort sort = command.sort() != null ? command.sort() : ProfileSort.RECENTLY_UPDATED;
+        Sort mongoSort;
+        if (sort == ProfileSort.EXPERIENCE) {
+            mongoSort = Sort.by(Sort.Direction.DESC, "experienceRank").and(Sort.by(Sort.Direction.DESC, "updatedAt"));
+            if (command.cursor() != null) {
+                ExperienceCursor c = parseExperienceCursor(command.cursor());
+                criteria = criteria.orOperator(
+                        Criteria.where("experienceRank").lt(c.rank()),
+                        Criteria.where("experienceRank").is(c.rank()).and("updatedAt").lt(c.updatedAt()));
+            }
+        } else {
+            mongoSort = Sort.by(Sort.Direction.DESC, "updatedAt");
+            if (command.cursor() != null) {
+                criteria = criteria.and("updatedAt").lt(parseCursor(command.cursor()));
+            }
+        }
+        Query query = Query.query(criteria).with(mongoSort).limit(limit);
+        List<Member> members = mongoTemplate.find(query, Member.class);
+        return toProfilePage(members, command.size(), sort);
+    }
+
+    private CursorPage<MemberProfileInfo> toProfilePage(List<Member> members, int size, ProfileSort sort) {
+        if (members.isEmpty()) return CursorPage.empty();
+        boolean hasNext = members.size() > size;
+        List<Member> page = hasNext ? members.subList(0, size) : members;
+        List<MemberProfileInfo> items = page.stream().map(MemberMapper::toProfileInfo).toList();
+        String nextCursor = null;
+        if (hasNext) {
+            Member last = page.get(page.size() - 1);
+            nextCursor = sort == ProfileSort.EXPERIENCE
+                    ? last.getExperienceRank() + "_" + last.getUpdatedAt().toEpochMilli()
+                    : String.valueOf(last.getUpdatedAt().toEpochMilli());
+        }
+        return CursorPage.of(items, nextCursor);
+    }
+
+    private Instant parseCursor(String cursor) {
+        try {
+            return Instant.ofEpochMilli(Long.parseLong(cursor));
+        } catch (NumberFormatException e) {
+            throw new MemberException(MemberErrorCode.INVALID_CURSOR);
+        }
+    }
+
+    private record ExperienceCursor(int rank, Instant updatedAt) {
+    }
+
+    private ExperienceCursor parseExperienceCursor(String cursor) {
+        try {
+            String[] parts = cursor.split("_", 2);
+            return new ExperienceCursor(Integer.parseInt(parts[0]), Instant.ofEpochMilli(Long.parseLong(parts[1])));
+        } catch (RuntimeException e) {
+            throw new MemberException(MemberErrorCode.INVALID_CURSOR);
+        }
     }
 
     @Override

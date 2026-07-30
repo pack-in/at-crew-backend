@@ -56,6 +56,9 @@ public class Member {
     private EmploymentStatus employmentStatus = EmploymentStatus.PREPARING;
     private List<ActivityField> activityFields = new ArrayList<>();
     private ExperienceLevel experienceLevel;
+    // experienceLevel은 Mongo에 문자열(enum name)로 저장되어 그대로는 경력순 정렬이 불가능하므로
+    // ordinal을 별도 필드로 캐시해 DB 레벨 정렬에 사용한다 (커뮤니티 "작가 찾아보기" 경력순 정렬).
+    private int experienceRank = -1;
     private List<ActiveRegion> activeRegions = new ArrayList<>();
     private List<TeamExperience> teamExperiences = new ArrayList<>();
 
@@ -172,7 +175,10 @@ public class Member {
         if (command.creatorRole() != null) this.creatorRole = command.creatorRole();
         if (command.employmentStatus() != null) this.employmentStatus = command.employmentStatus();
         if (command.activityFields() != null) this.activityFields = new ArrayList<>(command.activityFields());
-        if (command.experienceLevel() != null) this.experienceLevel = command.experienceLevel();
+        if (command.experienceLevel() != null) {
+            this.experienceLevel = command.experienceLevel();
+            this.experienceRank = command.experienceLevel().ordinal();
+        }
         if (command.activeRegions() != null) this.activeRegions = new ArrayList<>(command.activeRegions());
         if (totalSlotCount != null) this.totalSlotCount = effectiveTotal;
         if (totalSlotCount != null || availableSlotCount != null) this.availableSlotCount = effectiveAvailable;
@@ -233,6 +239,7 @@ public class Member {
     public EmploymentStatus getEmploymentStatus() { return employmentStatus; }
     public List<ActivityField> getActivityFields() { return List.copyOf(activityFields); }
     public ExperienceLevel getExperienceLevel() { return experienceLevel; }
+    public int getExperienceRank() { return experienceRank; }
     public List<ActiveRegion> getActiveRegions() { return List.copyOf(activeRegions); }
     public List<TeamExperience> getTeamExperiences() { return List.copyOf(teamExperiences); }
     public int getTotalSlotCount() { return totalSlotCount; }

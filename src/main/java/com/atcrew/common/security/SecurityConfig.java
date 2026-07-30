@@ -76,6 +76,10 @@ class SecurityConfig {
                     auth.requestMatchers(HttpMethod.GET, "/api/members/{handle}").permitAll()
                             .requestMatchers(HttpMethod.GET, "/api/artworks/{artworkId}").permitAll()
                             .requestMatchers(HttpMethod.GET, "/api/community/artworks").permitAll()
+                            .requestMatchers(HttpMethod.GET, "/api/community/authors").permitAll()
+                            .requestMatchers(HttpMethod.GET, "/api/community/job-postings").permitAll()
+                            .requestMatchers(HttpMethod.GET, "/api/community/team-recruits").permitAll()
+                            .requestMatchers(HttpMethod.GET, "/api/community/banners").permitAll()
                             .requestMatchers(HttpMethod.POST, "/internal/artwork/images/processed").permitAll()
                             .requestMatchers("/actuator/health", "/actuator/info").permitAll();
                     if (!isProd()) {

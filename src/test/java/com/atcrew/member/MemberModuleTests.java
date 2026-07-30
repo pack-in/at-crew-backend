@@ -1,6 +1,7 @@
 package com.atcrew.member;
 
 import com.atcrew.TestMongoConfig;
+import com.atcrew.common.response.CursorPage;
 import com.atcrew.member.internal.exception.MemberErrorCode;
 import com.atcrew.member.internal.exception.MemberException;
 import org.junit.jupiter.api.Test;
@@ -171,5 +172,68 @@ class MemberModuleTests {
                 .isInstanceOf(MemberException.class)
                 .extracting(e -> ((MemberException) e).getCode())
                 .isEqualTo(MemberErrorCode.MEMBER_DEACTIVATED.name());
+    }
+
+    // ─── searchProfiles (커뮤니티 작가 찾아보기) ─────────────────────────
+
+    @Test
+    void 프로필_검색_구인가능_상태만_노출() {
+        MemberInfo available = memberService.register(
+                "search-available@atcrew.com", "searchavailable", "구인가능작가", CreatorRole.WEBTOON);
+        memberService.updateInfo(available.id(), new UpdateInfoCommand(
+                null, EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), null, null,
+                null, null, null, null, null, null, null));
+
+        MemberInfo preparing = memberService.register(
+                "search-preparing@atcrew.com", "searchpreparing", "준비중작가", CreatorRole.WEBTOON);
+        // PREPARING(기본값) 유지 — updateInfo 호출 없음
+
+        CursorPage<MemberProfileInfo> result = memberService.searchProfiles(new SearchProfilesCommand(
+                List.of(EmploymentStatus.AVAILABLE, EmploymentStatus.NEGOTIABLE), null, null, null, 20));
+
+        assertThat(result.items()).extracting(MemberProfileInfo::id).contains(available.id());
+        assertThat(result.items()).extracting(MemberProfileInfo::id).doesNotContain(preparing.id());
+    }
+
+    @Test
+    void 프로필_검색_활동분야_필터() {
+        MemberInfo webtoon = memberService.register(
+                "search-webtoon@atcrew.com", "searchwebtoon", "웹툰작가", CreatorRole.WEBTOON);
+        memberService.updateInfo(webtoon.id(), new UpdateInfoCommand(
+                null, EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), null, null,
+                null, null, null, null, null, null, null));
+
+        MemberInfo illustration = memberService.register(
+                "search-illust@atcrew.com", "searchillust", "일러스트작가", CreatorRole.ILLUSTRATOR);
+        memberService.updateInfo(illustration.id(), new UpdateInfoCommand(
+                null, EmploymentStatus.AVAILABLE, List.of(ActivityField.ILLUSTRATION), null, null,
+                null, null, null, null, null, null, null));
+
+        CursorPage<MemberProfileInfo> result = memberService.searchProfiles(new SearchProfilesCommand(
+                List.of(EmploymentStatus.AVAILABLE), ActivityField.WEBTOON, null, null, 20));
+
+        assertThat(result.items()).extracting(MemberProfileInfo::id).contains(webtoon.id());
+        assertThat(result.items()).extracting(MemberProfileInfo::id).doesNotContain(illustration.id());
+    }
+
+    @Test
+    void 프로필_검색_경력순_정렬() {
+        MemberInfo newcomer = memberService.register(
+                "search-exp-newcomer@atcrew.com", "searchexpnew", "신입작가", CreatorRole.WEBTOON);
+        memberService.updateInfo(newcomer.id(), new UpdateInfoCommand(
+                null, EmploymentStatus.AVAILABLE, null, ExperienceLevel.NEWCOMER, null,
+                null, null, null, null, null, null, null));
+
+        MemberInfo senior = memberService.register(
+                "search-exp-senior@atcrew.com", "searchexpsenior", "시니어작가", CreatorRole.WEBTOON);
+        memberService.updateInfo(senior.id(), new UpdateInfoCommand(
+                null, EmploymentStatus.AVAILABLE, null, ExperienceLevel.TEN_PLUS, null,
+                null, null, null, null, null, null, null));
+
+        CursorPage<MemberProfileInfo> result = memberService.searchProfiles(new SearchProfilesCommand(
+                List.of(EmploymentStatus.AVAILABLE), null, ProfileSort.EXPERIENCE, null, 20));
+
+        List<String> ids = result.items().stream().map(MemberProfileInfo::id).toList();
+        assertThat(ids.indexOf(senior.id())).isLessThan(ids.indexOf(newcomer.id()));
     }
 }
