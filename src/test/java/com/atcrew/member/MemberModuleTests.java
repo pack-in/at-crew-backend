@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Import;
 import org.springframework.modulith.test.ApplicationModuleTest;
+import org.testcontainers.containers.MariaDBContainer;
 import org.testcontainers.containers.MongoDBContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -27,6 +28,10 @@ class MemberModuleTests {
     @Container
     @ServiceConnection
     static MongoDBContainer mongo = new MongoDBContainer("mongo:7");
+
+    @Container
+    @ServiceConnection
+    static MariaDBContainer<?> mariadb = new MariaDBContainer<>("mariadb:11.4");
 
     @Autowired
     MemberService memberService;

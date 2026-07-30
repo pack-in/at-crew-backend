@@ -358,8 +358,8 @@ LIMIT ?;
 
 | Phase | 내용 | 되돌리기 |
 |------|------|------|
-| **P1. 인프라 준비** | build.gradle 의존성 추가(Mongo 의존성은 아직 유지 — 공존), Flyway + V1/V2 스키마, docker-compose에 mariadb 서비스 추가(mongo와 병행), `SharedContainersConfig`에 MariaDBContainer 추가 | **쉬움** — 순수 추가, 기존 경로 무영향 |
-| **P2. community 파일럿 전환** | Banner 엔티티·리포지토리·bulk 시프트(§3.3.3)를 JPA로 전환. **가장 작고(애그리게잇 1개), 다른 모듈이 참조하지 않으며, 관리자 전용 기능이라 사고 반경이 최소** — 여기서 JPA 매핑·Flyway·테스트 패턴을 확립해 이후 모듈의 템플릿으로 삼는다. member부터 시작하지 않는 이유: member는 auth·artwork·community가 전부 참조하는 중심 모듈이라 패턴 미검증 상태에서 손대면 실패 비용이 가장 크다 | **쉬움** — 모듈 하나, PR 단위 revert 가능 |
+| **P1. 인프라 준비** ✅ 완료 | build.gradle 의존성 추가(Mongo 의존성은 아직 유지 — 공존), Flyway V1 스키마, docker-compose에 mariadb 서비스 추가(mongo와 병행), `SharedContainersConfig` 및 개별 `@Container` 테스트 클래스 3곳에 MariaDBContainer 추가, datasource/JPA 설정. 전체 테스트 스위트 그린 확인 완료. **V2(modulith event_publication 스키마)는 P5로 연기** — spring-modulith-starter-jdbc를 아직 추가하지 않아 공식 스키마를 jar에서 추출할 수 없었음(§8 O.Q. 추가). P1 진행 중 발견한 이슈: 테스트 전용 `application.yml`에 `MongoDbTransactionAutoConfiguration` exclude가 없어 JPA `transactionManager` 빈과 이름 충돌 — main과 동일하게 exclude 추가로 해결(기존에도 존재했던 로컬/테스트 설정 드리프트) | **쉬움** — 순수 추가, 기존 경로 무영향 |
+| **P2. community 파일럿 전환** ✅ 완료 | Banner 엔티티·리포지토리·bulk 시프트(§3.3.3)를 JPA로 전환. **가장 작고(애그리게잇 1개), 다른 모듈이 참조하지 않으며, 관리자 전용 기능이라 사고 반경이 최소** — 여기서 JPA 매핑·Flyway·테스트 패턴을 확립해 이후 모듈의 템플릿으로 삼는다. member부터 시작하지 않는 이유: member는 auth·artwork·community가 전부 참조하는 중심 모듈이라 패턴 미검증 상태에서 손대면 실패 비용이 가장 크다 | **쉬움** — 모듈 하나, PR 단위 revert 가능 |
 | **P3. member 전환** | Member + 자식 테이블 4종, searchProfiles Specification + keyset(§3.6), recordLogin(§3.3.1), `@Version`. 가장 큰 단일 작업 — P2에서 검증된 패턴 적용 | **보통** — PR revert 가능하나 후속 P4가 의존 |
 | **P4. auth·artwork 전환** | RefreshToken 소비(§3.3.2), LoginAttemptLimiter(§3.3.4), TTL 정리 배치(§3.5.2) / Artwork + 자식 테이블, 북마크 커서 쿼리, Worker 재시도 쿼리(`@Query` JPQL 치환). 두 모듈은 상호 독립이라 병렬 PR 가능 | **보통** |
 | **P5. 이벤트 레지스트리·정리** | modulith-starter-jdbc 교체 + UUID 검증 테스트(§3.8), `MongoConfig`·IndexInitializer 3종 삭제, **Mongo 의존성·docker-compose mongo 서비스 최종 제거**, 전체 테스트 스위트 회귀(기존 `/test` 커맨드 기준 전체 녹색) — 이 시점에는 아직 로컬/CI에서만 검증된 상태 | **어려움 시작** — 여기서부터 Mongo 경로가 소멸. P5 머지 전이 마지막 무비용 회귀 지점 |
@@ -401,8 +401,14 @@ LIMIT ?;
 
 1. **MariaDB 호스팅 형태** — managed(RDS/SkySQL 등) vs self-hosted. 백업·PITR(point-in-time recovery) 전략과 `application-prod.yml` 접속 설정이 여기 걸린다(§5의 prod 연결 단계에서 확정 필요).
 2. **라이트(laiteu) Mongo 데이터의 필드 매핑** — §1.1/§5-3에서 재정의된 별도 이관 문제. 라이트 서비스 종료 일정이 잡히면 별도 문서로 설계.
-3. **UUIDv7 생성 방식** — 직접 구현(수십 줄) vs 라이브러리(`java-uuid-generator` 등) 의존 추가. 구현 단계 결정.
+3. ~~**UUIDv7 생성 방식**~~ — **해결(P2)**: 라이브러리 추가 없이 직접 구현(`com.atcrew.common.id.UuidV7Generator`, RFC 9562, ms 타임스탬프+SecureRandom). 전 모듈 공용.
 4. **`uk_be_member_artwork`(중복 북마크 방지) DB 제약 승격 여부** — 실사용자 데이터가 없으므로 기존 데이터 중복 스캔은 불필요, 로컬 전환 시 바로 제약으로 적용 가능할 것으로 보이나 §4에서 최종 확정.
 5. **QueryDSL 재검토 트리거** — 동적 쿼리 3개 이상(recruit 모듈 검색 예상) 시점에 Specification 유지 vs QueryDSL 도입 재평가 (§3.6).
 6. **전환 기간 중 기능 개발 기준 브랜치 합의** — §7-7. 팀 운영 결정 사항(단, §9 결정으로 신규 모듈 착수 자체가 미뤄지므로 실질적 충돌 범위는 줄어든다).
 7. **`Member.countryCode` 병합 시점** — [global-country-plan-design.md](global-country-plan-design.md) 구현이 이 문서의 P3(member 전환)보다 먼저 끝나면 Mongo `Member`에 필드가 먼저 생기고, 그 반대면 MariaDB 스키마(§3.2/§4)에 바로 반영된다. 어느 쪽이 먼저 끝나든 필드 자체(String, 카탈로그 검증)는 동일하므로 순서에 따른 재작업은 없다.
+8. **V2(`event_publication`) 마이그레이션 SQL** — P1에서 작성하지 않음. spring-modulith-starter-jdbc를 P5에서 추가한 직후, 해당 jar에 포함된 MariaDB 공식 스키마 SQL을 그대로 복사해 `V2__modulith_event_publication.sql`로 커밋할 것(§3.8의 UUID 컬럼 타입 검증 경고와 동일한 이유로 추측 작성 금지).
+
+## 11. P2에서 발견한 Spring Boot 4 / Modulith 관련 함정 (다음 Phase 참고용)
+
+- **Flyway 자동설정이 별도 아티팩트로 분리됨**: Boot 3까지는 `flyway-core`를 클래스패스에 두기만 하면 `spring-boot-autoconfigure`가 `FlywayAutoConfiguration`을 제공했으나, **Boot 4.0.6부터는 `org.springframework.boot:spring-boot-flyway`를 별도로 추가해야 한다**(Hibernate/Mongo도 각각 `spring-boot-hibernate`/`spring-boot-mongodb`로 분리된 것과 같은 패턴). 이 의존성이 없으면 Flyway가 아무 로그·에러 없이 조용히 스킵되고, Hibernate `ddl-auto: validate`가 "missing table" 에러로만 뒤늦게 드러난다 — 원인 파악이 까다로우니 다음 Phase에서 새 Boot 4 전용 모듈을 추가할 때는 이 분리 패턴을 먼저 의심할 것.
+- **Spring Modulith는 `common`의 하위 패키지마다 `package-info.java` + `@NamedInterface`가 필요**: `com.atcrew.common.id`(UuidV7Generator)처럼 새 공용 유틸 패키지를 추가하면, 기존 `common.response`/`common.security` 등과 동일하게 `@org.springframework.modulith.NamedInterface("id")` package-info를 함께 추가해야 `ModularStructureTests`가 통과한다.

@@ -2,14 +2,18 @@ package com.atcrew;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 import org.springframework.data.mongodb.config.EnableMongoAuditing;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 import java.util.TimeZone;
 
+// MariaDB 전환(docs/design/mariadb-migration-design.md) P1~P4 — Mongo와 JPA 감사(auditing)를 병행 지원.
+// P5에서 Mongo 의존성 제거 시 @EnableMongoAuditing도 함께 삭제.
 @SpringBootApplication
 @EnableMongoAuditing
+@EnableJpaAuditing
 @EnableAsync
 @EnableScheduling
 public class AtCrewBackendApplication {

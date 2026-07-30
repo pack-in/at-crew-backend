@@ -25,6 +25,12 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-data-mongodb'
 	// 검색 모듈(docs/design/search-module-design.md) — Mongo/artwork 원본 데이터는 그대로 두고 조회 전용 색인만 추가
 	implementation 'org.springframework.boot:spring-boot-starter-data-elasticsearch'
+	// MariaDB 전환(docs/design/mariadb-migration-design.md) P1 — Mongo와 공존, P5에서 Mongo 의존성 제거
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	runtimeOnly 'org.mariadb.jdbc:mariadb-java-client'
+	implementation 'org.springframework.boot:spring-boot-flyway'
+	implementation 'org.flywaydb:flyway-core'
+	runtimeOnly 'org.flywaydb:flyway-mysql'
 	implementation 'org.springframework.boot:spring-boot-starter-web'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
@@ -46,6 +52,7 @@ dependencies {
 	testImplementation 'org.springframework.boot:spring-boot-testcontainers'
 	testImplementation 'org.testcontainers:testcontainers-mongodb'
 	testImplementation 'org.testcontainers:testcontainers-elasticsearch'
+	testImplementation 'org.testcontainers:testcontainers-mariadb'
 	testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
 	testImplementation 'org.springframework.restdocs:spring-restdocs-mockmvc'
 	testImplementation 'org.springframework.security:spring-security-test'
