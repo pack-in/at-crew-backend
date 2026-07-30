@@ -22,6 +22,8 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 
 @Document(collection = "members")
@@ -52,6 +54,9 @@ public class Member {
     // IANA tz ID(예: "Asia/Tokyo", "America/New_York"). 가입 시 클라이언트 자동감지값을 저장,
     // 설정에서 변경 가능. UTC 오프셋이 아닌 ID로 저장해야 DST가 자동 반영된다.
     private String timezone;
+
+    // ISO 3166-1 alpha-2 국가 코드(예: "KR", "JP"). 거주 국가 — 가입 시 필수 수집, 설정에서 변경 가능.
+    private String countryCode;
 
     private EmploymentStatus employmentStatus = EmploymentStatus.PREPARING;
     private List<ActivityField> activityFields = new ArrayList<>();
@@ -102,27 +107,31 @@ public class Member {
 
     public static Member registerWithEmail(String loginEmail, String handle, String name,
                                            String passwordHash, TermsAgreement termsAgreement,
-                                           String timezone) {
+                                           String timezone, String countryCode) {
         validateTerms(termsAgreement);
         validateTimezone(timezone);
+        validateCountryCode(countryCode);
         Member m = new Member(loginEmail, handle, name, null);
         m.authProvider = AuthProvider.EMAIL;
         m.passwordHash = passwordHash;
         m.emailVerified = false;
         m.termsAgreement = termsAgreement;
         m.timezone = timezone;
+        m.countryCode = countryCode;
         return m;
     }
 
     public static Member registerWithGoogle(String loginEmail, String handle, String name,
-                                            TermsAgreement termsAgreement, String timezone) {
+                                            TermsAgreement termsAgreement, String timezone, String countryCode) {
         validateTerms(termsAgreement);
         validateTimezone(timezone);
+        validateCountryCode(countryCode);
         Member m = new Member(loginEmail, handle, name, null);
         m.authProvider = AuthProvider.GOOGLE;
         m.emailVerified = true;
         m.termsAgreement = termsAgreement;
         m.timezone = timezone;
+        m.countryCode = countryCode;
         return m;
     }
 
@@ -138,6 +147,13 @@ public class Member {
     private static void validateTimezone(String timezone) {
         if (timezone == null || !ZoneId.getAvailableZoneIds().contains(timezone)) {
             throw new MemberException(MemberErrorCode.INVALID_TIMEZONE, timezone);
+        }
+    }
+
+    // ISO 3166-1 alpha-2만 허용 — JDK 내장 카탈로그(Locale.getISOCountries())로 임의 문자열을 원천 차단한다.
+    private static void validateCountryCode(String countryCode) {
+        if (countryCode == null || !Set.of(Locale.getISOCountries()).contains(countryCode)) {
+            throw new MemberException(MemberErrorCode.INVALID_COUNTRY, countryCode);
         }
     }
 
@@ -189,6 +205,10 @@ public class Member {
         if (command.timezone() != null) {
             validateTimezone(command.timezone());
             this.timezone = command.timezone();
+        }
+        if (command.countryCode() != null) {
+            validateCountryCode(command.countryCode());
+            this.countryCode = command.countryCode();
         }
     }
 
@@ -248,6 +268,7 @@ public class Member {
     public String getSns() { return sns; }
     public String getTools() { return tools; }
     public String getTimezone() { return timezone; }
+    public String getCountryCode() { return countryCode; }
     public List<CareerEntryInfo> getCareers() { return careers.stream().map(this::toCareerInfo).toList(); }
     public boolean isActive() { return active; }
     public Instant getDeletedAt() { return deletedAt; }

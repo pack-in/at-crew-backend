@@ -88,9 +88,10 @@ class MemberServiceImpl implements MemberService {
         if (command.authProvider() == AuthProvider.EMAIL) {
             String passwordHash = passwordEncoder.encode(command.rawPassword());
             return Member.registerWithEmail(command.loginEmail(), handle, command.name(), passwordHash, terms,
-                    command.timezone());
+                    command.timezone(), command.countryCode());
         }
-        return Member.registerWithGoogle(command.loginEmail(), handle, command.name(), terms, command.timezone());
+        return Member.registerWithGoogle(command.loginEmail(), handle, command.name(), terms,
+                command.timezone(), command.countryCode());
     }
 
     @Override

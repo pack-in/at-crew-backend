@@ -44,7 +44,7 @@ class CommunityApiDocTest extends RestDocsIntegrationSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new RegisterRequest(
                                 uniqueEmail, "Secure1!", "Secure1!", "배너문서유저",
-                                true, true, true, false, "Asia/Seoul"))))
+                                true, true, true, false, "Asia/Seoul", "KR"))))
                 .andExpect(status().isCreated())
                 .andReturn();
         String responseBody = registerResult.getResponse().getContentAsString();
@@ -100,7 +100,7 @@ class CommunityApiDocTest extends RestDocsIntegrationSupport {
                 "찾아보기작가", CreatorRole.WEBTOON);
         memberService.updateInfo(author.id(), new UpdateInfoCommand(
                 null, EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), ExperienceLevel.THREE_TO_FOUR,
-                null, null, null, null, null, null, null, null));
+                null, null, null, null, null, null, null, null, null));
 
         mockMvc.perform(get("/api/community/authors").param("activityField", "WEBTOON"))
                 .andExpect(status().isOk())
@@ -144,6 +144,7 @@ class CommunityApiDocTest extends RestDocsIntegrationSupport {
             boolean agreePrivacy,
             boolean agreeThirdParty,
             boolean agreeMarketing,
-            String timezone
+            String timezone,
+            String countryCode
     ) {}
 }

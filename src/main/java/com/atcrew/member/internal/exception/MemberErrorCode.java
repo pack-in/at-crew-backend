@@ -17,7 +17,8 @@ public enum MemberErrorCode {
     TERMS_NOT_AGREED(HttpStatus.BAD_REQUEST, "필수 약관에 동의해야 합니다"),
     INVALID_AUTH_PROVIDER(HttpStatus.BAD_REQUEST, "인증 제공자 정보가 유효하지 않습니다"),
     INVALID_CURSOR(HttpStatus.BAD_REQUEST, "유효하지 않은 커서 값입니다"),
-    INVALID_TIMEZONE(HttpStatus.BAD_REQUEST, "유효하지 않은 시간대입니다");
+    INVALID_TIMEZONE(HttpStatus.BAD_REQUEST, "유효하지 않은 시간대입니다"),
+    INVALID_COUNTRY(HttpStatus.BAD_REQUEST, "유효하지 않은 국가 코드입니다");
 
     private final HttpStatus status;
     private final String message;

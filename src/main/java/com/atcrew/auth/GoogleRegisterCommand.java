@@ -7,5 +7,6 @@ public record GoogleRegisterCommand(
         boolean agreePrivacy,
         boolean agreeThirdParty,
         boolean agreeMarketing,
-        String timezone            // IANA tz ID, 가입 시 클라이언트 자동감지값
+        String timezone,           // IANA tz ID, 가입 시 클라이언트 자동감지값
+        String countryCode         // ISO 3166-1 alpha-2, 거주 국가
 ) {}

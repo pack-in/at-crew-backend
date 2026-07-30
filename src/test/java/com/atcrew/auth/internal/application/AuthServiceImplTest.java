@@ -174,7 +174,7 @@ class AuthServiceImplTest {
         when(memberService.register(any())).thenReturn(memberInfo(AuthProvider.EMAIL));
 
         AuthInfo result = authService.registerWithEmail(
-                new EmailRegisterCommand(EMAIL, "Pass1234!", "홍길동", true, true, true, false, "Asia/Seoul"));
+                new EmailRegisterCommand(EMAIL, "Pass1234!", "홍길동", true, true, true, false, "Asia/Seoul", "KR"));
 
         assertThat(result.isNewUser()).isTrue();
         verify(memberService).register(argThat(cmd ->
@@ -190,7 +190,7 @@ class AuthServiceImplTest {
                 .thenThrow(new MemberException(MemberErrorCode.DUPLICATE_EMAIL, EMAIL));
 
         assertThatThrownBy(() -> authService.registerWithEmail(
-                new EmailRegisterCommand(EMAIL, "Pass1234!", "홍길동", true, true, true, false, "Asia/Seoul")))
+                new EmailRegisterCommand(EMAIL, "Pass1234!", "홍길동", true, true, true, false, "Asia/Seoul", "KR")))
                 .isInstanceOf(DomainException.class)
                 .satisfies(e -> assertThat(((DomainException) e).getStatus()).isEqualTo(HttpStatus.CONFLICT));
     }
@@ -203,7 +203,7 @@ class AuthServiceImplTest {
         when(memberService.register(any())).thenReturn(memberInfo(AuthProvider.GOOGLE));
 
         AuthInfo result = authService.registerWithGoogle(
-                new GoogleRegisterCommand(TOKEN, "홍길동", true, true, true, false, "Asia/Seoul"));
+                new GoogleRegisterCommand(TOKEN, "홍길동", true, true, true, false, "Asia/Seoul", "KR"));
 
         assertThat(result.isNewUser()).isTrue();
         verify(memberService).register(argThat(cmd ->
@@ -278,7 +278,7 @@ class AuthServiceImplTest {
                 provider,
                 "테스트", null, null, List.of(), null, List.of(), List.of(),
                 5, 5, null, null, null, List.of(),
-                true, null, null, Instant.now(), Instant.now(), "Asia/Seoul");
+                true, null, null, Instant.now(), Instant.now(), "Asia/Seoul", "KR");
     }
 
     private AuthException catchAuthException(Runnable action) {

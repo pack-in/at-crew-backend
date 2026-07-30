@@ -14,6 +14,7 @@ public record UpdateInfoCommand(
         String contact,
         String sns,
         String tools,
-        String timezone
+        String timezone,
+        String countryCode
 ) {
 }

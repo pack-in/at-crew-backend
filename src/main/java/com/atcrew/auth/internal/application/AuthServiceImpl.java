@@ -114,7 +114,7 @@ class AuthServiceImpl implements AuthService {
         RegisterMemberCommand memberCommand = new RegisterMemberCommand(
                 command.email(), command.name(), AuthProvider.EMAIL, command.password(),
                 command.agreePrivacy(), command.agreeService(), command.agreeThirdParty(), command.agreeMarketing(),
-                command.timezone());
+                command.timezone(), command.countryCode());
 
         MemberInfo member = memberService.register(memberCommand);
 
@@ -134,7 +134,7 @@ class AuthServiceImpl implements AuthService {
         RegisterMemberCommand memberCommand = new RegisterMemberCommand(
                 email, command.name(), AuthProvider.GOOGLE, null,
                 command.agreePrivacy(), command.agreeService(), command.agreeThirdParty(), command.agreeMarketing(),
-                command.timezone());
+                command.timezone(), command.countryCode());
 
         MemberInfo member = memberService.register(memberCommand);
 
