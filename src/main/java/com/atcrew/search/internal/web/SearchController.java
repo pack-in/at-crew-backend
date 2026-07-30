@@ -1,0 +1,74 @@
+package com.atcrew.search.internal.web;
+
+import com.atcrew.artwork.AgeRating;
+import com.atcrew.artwork.ArtworkField;
+import com.atcrew.artwork.ArtworkRole;
+import com.atcrew.artwork.CreativeType;
+import com.atcrew.common.response.ApiResponse;
+import com.atcrew.search.PostType;
+import com.atcrew.search.SearchPage;
+import com.atcrew.search.SearchQuery;
+import com.atcrew.search.SearchResultItem;
+import com.atcrew.search.SearchService;
+import com.atcrew.search.SearchSort;
+import com.atcrew.search.internal.exception.SearchErrorCode;
+import com.atcrew.search.internal.exception.SearchException;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+
+/**
+ * 검색 API. 피그마 UI개편_검색(5154:41768) 기준 — 텍스트 검색 + 다중선택 chip 필터(작품 분야·창작 유형·
+ * 연령대·담당 업무·장르·소재 대상) + 게시글 유형(포트폴리오·구인글·구직글·팀원모집글).
+ *
+ * <p>구인글/구직글/팀원모집글은 recruit 모듈이 아직 없어 현재는 항상 빈 목록을 반환합니다.
+ */
+@Tag(name = "검색", description = "태그 기반 검색 API — 포트폴리오 검색 지원, 구인글/구직글/팀원모집글은 recruit 모듈 미구현으로 빈 목록")
+@RestController
+@RequestMapping("/api/search")
+class SearchController {
+
+    private static final int DEFAULT_SIZE = 20;
+    private static final int MAX_SIZE = 50;
+
+    private final SearchService searchService;
+
+    SearchController(SearchService searchService) {
+        this.searchService = searchService;
+    }
+
+    @Operation(summary = "검색", description =
+            "검색어와 필터가 모두 비어 있으면 빈 결과를 반환합니다(최초 진입 상태 — 결과 목록 미노출). " +
+            "각 필터 축은 다중선택이며 축 내부는 OR, 축 간에는 AND로 결합됩니다. 인증 불필요.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공")
+    @GetMapping
+    public ApiResponse<SearchPage<SearchResultItem>> search(
+            @Parameter(description = "검색어") @RequestParam(required = false) String q,
+            @Parameter(description = "게시글 유형 필터 (다중선택)") @RequestParam(required = false) List<PostType> postTypes,
+            @Parameter(description = "작품 분야 필터 (다중선택)") @RequestParam(required = false) List<ArtworkField> artworkFields,
+            @Parameter(description = "창작 유형 필터 (다중선택)") @RequestParam(required = false) List<CreativeType> creativeTypes,
+            @Parameter(description = "연령대 필터 (다중선택)") @RequestParam(required = false) List<AgeRating> ageRatings,
+            @Parameter(description = "담당 업무 필터 (다중선택)") @RequestParam(required = false) List<ArtworkRole> roles,
+            @Parameter(description = "장르 필터 (다중선택)") @RequestParam(required = false) List<String> genres,
+            @Parameter(description = "소재 대상 필터 (다중선택)") @RequestParam(required = false) List<String> materialTargets,
+            @Parameter(description = "정렬 기준 (기본: 검색어 있으면 RELEVANCE, 없으면 LATEST)")
+            @RequestParam(required = false) SearchSort sort,
+            @Parameter(description = "커서") @RequestParam(required = false) String cursor,
+            @Parameter(description = "페이지 크기 (기본 20, 최대 50)") @RequestParam(required = false) Integer size) {
+        return ApiResponse.success(searchService.search(new SearchQuery(
+                q, postTypes, artworkFields, creativeTypes, ageRatings, roles, genres, materialTargets,
+                sort, cursor, resolveSize(size))));
+    }
+
+    private int resolveSize(Integer size) {
+        if (size == null) return DEFAULT_SIZE;
+        if (size < 1) throw new SearchException(SearchErrorCode.INVALID_SIZE);
+        return Math.min(size, MAX_SIZE);
+    }
+}

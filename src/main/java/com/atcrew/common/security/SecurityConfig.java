@@ -80,7 +80,9 @@ class SecurityConfig {
                             .requestMatchers(HttpMethod.GET, "/api/community/job-postings").permitAll()
                             .requestMatchers(HttpMethod.GET, "/api/community/team-recruits").permitAll()
                             .requestMatchers(HttpMethod.GET, "/api/community/banners").permitAll()
+                            .requestMatchers(HttpMethod.GET, "/api/search").permitAll()
                             .requestMatchers(HttpMethod.POST, "/internal/artwork/images/processed").permitAll()
+                            .requestMatchers(HttpMethod.POST, "/internal/search/reindex").permitAll()
                             .requestMatchers("/actuator/health", "/actuator/info").permitAll();
                     if (!isProd()) {
                         auth.requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll();
