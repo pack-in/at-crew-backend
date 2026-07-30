@@ -25,6 +25,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
+
 @Service
 class AuthServiceImpl implements AuthService {
 
@@ -152,12 +154,8 @@ class AuthServiceImpl implements AuthService {
             throw new AuthException(AuthErrorCode.INVALID_REFRESH_TOKEN);
         }
 
-        // findAndDelete 원자 연산 — 동시 요청 TOCTOU 방지
-        RefreshToken stored = refreshTokenRepository.findAndDeleteByTokenValue(refreshToken)
-                .orElseThrow(() -> {
-                    log.warn("refresh token 미존재 또는 재사용 시도 — 탈취 가능성");
-                    return new AuthException(AuthErrorCode.INVALID_REFRESH_TOKEN);
-                });
+        // 단일 소비 보장 — 동시 요청 TOCTOU 방지
+        RefreshToken stored = consumeRefreshToken(refreshToken);
 
         MemberInfo member;
         try {
@@ -178,6 +176,21 @@ class AuthServiceImpl implements AuthService {
 
         log.info("토큰 갱신: memberId={}", member.id());
         return new AuthInfo(newAccessToken, newRefreshTokenValue, member, false);
+    }
+
+    // Mongo findAndRemove 대체 (docs/design/mariadb-migration-design.md §3.3.2) —
+    // 조회 후 조건부 DELETE의 영향 행 수로 승자를 결정한다. 동시 요청 두 개가 같은 토큰을 들고 와도
+    // 1을 가져가는 쪽은 하나뿐이므로 "하나만 토큰을 소비한다"는 보장이 유지된다.
+    private RefreshToken consumeRefreshToken(String tokenValue) {
+        RefreshToken stored = refreshTokenRepository
+                .findByTokenValueAndExpiresAtAfter(tokenValue, Instant.now())
+                .orElse(null);
+
+        if (stored == null || refreshTokenRepository.deleteByIdReturningCount(stored.getId()) == 0) {
+            log.warn("refresh token 미존재 또는 재사용 시도 — 탈취 가능성");
+            throw new AuthException(AuthErrorCode.INVALID_REFRESH_TOKEN);
+        }
+        return stored;
     }
 
     private String issueRefreshToken(String memberId) {
