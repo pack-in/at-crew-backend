@@ -20,6 +20,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Import;
 import org.springframework.modulith.test.ApplicationModuleTest;
+import org.testcontainers.containers.MariaDBContainer;
 import org.testcontainers.containers.MongoDBContainer;
 import org.testcontainers.elasticsearch.ElasticsearchContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -39,6 +40,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>search는 artwork에 의존(SearchServiceImpl, ArtworkSearchIndexer)하므로 DIRECT_DEPENDENCIES로는
  * artwork의 추이적 의존성(memberService 등)까지 부트스트랩되지 않는다 — community 모듈 테스트와 동일한 이유로
  * ALL_DEPENDENCIES를 사용한다.
+ *
+ * <p>MariaDB 전환(docs/design/mariadb-migration-design.md) 이후 spring-boot-starter-data-jpa가
+ * 무조건 오토컨피규레이션되어 이 모듈이 MariaDB를 쓰지 않아도 DataSource 빈 생성에 컨테이너가 필요하다.
  */
 @ApplicationModuleTest(mode = ApplicationModuleTest.BootstrapMode.ALL_DEPENDENCIES)
 @Testcontainers
@@ -55,6 +59,10 @@ class SearchModuleTests {
             "docker.elastic.co/elasticsearch/elasticsearch:9.2.8")
             .withEnv("xpack.security.enabled", "false")
             .withStartupTimeout(Duration.ofMinutes(3));
+
+    @Container
+    @ServiceConnection
+    static MariaDBContainer<?> mariadb = new MariaDBContainer<>("mariadb:11.4");
 
     @Autowired
     ArtworkService artworkService;
