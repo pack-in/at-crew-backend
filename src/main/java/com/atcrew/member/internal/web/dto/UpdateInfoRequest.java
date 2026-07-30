@@ -62,6 +62,10 @@ public record UpdateInfoRequest(
 
         @Size(max = 64, message = "시간대 값이 올바르지 않습니다")
         @Schema(description = "IANA 시간대 ID, 예: \"Asia/Tokyo\". null이면 변경 없음", example = "Asia/Seoul")
-        String timezone
+        String timezone,
+
+        @Pattern(regexp = "^[A-Z]{2}$", message = "국가 코드는 ISO 3166-1 alpha-2 형식이어야 합니다")
+        @Schema(description = "거주 국가 (ISO 3166-1 alpha-2). null이면 변경 없음", example = "KR")
+        String countryCode
 ) {
 }

@@ -35,5 +35,8 @@
 | [docs/design/artwork-module-design.md](docs/design/artwork-module-design.md) | artwork 모듈 설계 — 작품·북마크·휴지통, 이미지 업로드(Presigned URL + Worker) |
 | [docs/design/artwork-module-summary.md](docs/design/artwork-module-summary.md) | artwork 모듈 총 정리 — API·도메인·플로우·인덱스·에러코드 완전 정리 |
 | [docs/design/global-timezone-strategy.md](docs/design/global-timezone-strategy.md) | 글로벌 시간대 관리 설계 — 일본·중국·영미·유럽 확장 시 UTC 저장/Member timezone 필드/직렬화 정책 변경안 |
+| [docs/design/mariadb-migration-design.md](docs/design/mariadb-migration-design.md) | MongoDB → MariaDB 전면 전환 설계 — ID 전략(String/UUIDv7), 스키마 정규화, 원자 연산 재설계, Flyway, Modulith JDBC 레지스트리, ETL·컷오버 계획 |
 | [docs/design/community-module-design.md](docs/design/community-module-design.md) | community 모듈 설계 — 커뮤니티 피드(배너·포트폴리오·작가 찾아보기), 구인글/팀원모집글은 recruit 모듈 스텁 |
+| [docs/design/global-country-plan-design.md](docs/design/global-country-plan-design.md) | 거주 국가(Member.countryCode) 설계 — Phase 1. Pro 플랜 노출국가(Artwork.targetCountryCodes)는 로드맵 5순위(결제/구독) 도달 후 Phase 2로 보류 |
 | [docs/testing/rest-docs-guide.md](docs/testing/rest-docs-guide.md) | MockMvc + Spring REST Docs 테스트 전략, 계층 구조, 새 API 개발 체크리스트 |
+| [docs/roadmap.md](docs/roadmap.md) | 모듈 개발 로드맵 — Figma 대비 미구현 영역 및 착수 우선순위(인증 시스템 → recruit → 기업 프로필 → 검색 → 결제 → 설정) |

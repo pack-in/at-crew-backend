@@ -8,13 +8,14 @@ public record EmailRegisterCommand(
         boolean agreePrivacy,
         boolean agreeThirdParty,
         boolean agreeMarketing,
-        String timezone            // IANA tz ID, 가입 시 클라이언트 자동감지값
+        String timezone,           // IANA tz ID, 가입 시 클라이언트 자동감지값
+        String countryCode         // ISO 3166-1 alpha-2, 거주 국가
 ) {
     @Override
     public String toString() {
         return "EmailRegisterCommand[email=" + email + ", password=****, name=" + name +
                ", agreeService=" + agreeService + ", agreePrivacy=" + agreePrivacy +
                ", agreeThirdParty=" + agreeThirdParty + ", agreeMarketing=" + agreeMarketing +
-               ", timezone=" + timezone + "]";
+               ", timezone=" + timezone + ", countryCode=" + countryCode + "]";
     }
 }

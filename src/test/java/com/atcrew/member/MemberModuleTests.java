@@ -114,7 +114,7 @@ class MemberModuleTests {
         UpdateInfoCommand command = new UpdateInfoCommand(
                 CreatorRole.ILLUSTRATOR, EmploymentStatus.AVAILABLE,
                 List.of(ActivityField.ILLUSTRATION), null, null,
-                3, 2, null, "010-9999-0000", null, null, null);
+                3, 2, null, "010-9999-0000", null, null, null, null);
 
         memberService.updateInfo(member.id(), command);
 
@@ -182,7 +182,7 @@ class MemberModuleTests {
                 "search-available@atcrew.com", "searchavailable", "구인가능작가", CreatorRole.WEBTOON);
         memberService.updateInfo(available.id(), new UpdateInfoCommand(
                 null, EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), null, null,
-                null, null, null, null, null, null, null));
+                null, null, null, null, null, null, null, null));
 
         MemberInfo preparing = memberService.register(
                 "search-preparing@atcrew.com", "searchpreparing", "준비중작가", CreatorRole.WEBTOON);
@@ -201,13 +201,13 @@ class MemberModuleTests {
                 "search-webtoon@atcrew.com", "searchwebtoon", "웹툰작가", CreatorRole.WEBTOON);
         memberService.updateInfo(webtoon.id(), new UpdateInfoCommand(
                 null, EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), null, null,
-                null, null, null, null, null, null, null));
+                null, null, null, null, null, null, null, null));
 
         MemberInfo illustration = memberService.register(
                 "search-illust@atcrew.com", "searchillust", "일러스트작가", CreatorRole.ILLUSTRATOR);
         memberService.updateInfo(illustration.id(), new UpdateInfoCommand(
                 null, EmploymentStatus.AVAILABLE, List.of(ActivityField.ILLUSTRATION), null, null,
-                null, null, null, null, null, null, null));
+                null, null, null, null, null, null, null, null));
 
         CursorPage<MemberProfileInfo> result = memberService.searchProfiles(new SearchProfilesCommand(
                 List.of(EmploymentStatus.AVAILABLE), ActivityField.WEBTOON, null, null, 20));
@@ -222,13 +222,13 @@ class MemberModuleTests {
                 "search-exp-newcomer@atcrew.com", "searchexpnew", "신입작가", CreatorRole.WEBTOON);
         memberService.updateInfo(newcomer.id(), new UpdateInfoCommand(
                 null, EmploymentStatus.AVAILABLE, null, ExperienceLevel.NEWCOMER, null,
-                null, null, null, null, null, null, null));
+                null, null, null, null, null, null, null, null));
 
         MemberInfo senior = memberService.register(
                 "search-exp-senior@atcrew.com", "searchexpsenior", "시니어작가", CreatorRole.WEBTOON);
         memberService.updateInfo(senior.id(), new UpdateInfoCommand(
                 null, EmploymentStatus.AVAILABLE, null, ExperienceLevel.TEN_PLUS, null,
-                null, null, null, null, null, null, null));
+                null, null, null, null, null, null, null, null));
 
         CursorPage<MemberProfileInfo> result = memberService.searchProfiles(new SearchProfilesCommand(
                 List.of(EmploymentStatus.AVAILABLE), null, ProfileSort.EXPERIENCE, null, 20));

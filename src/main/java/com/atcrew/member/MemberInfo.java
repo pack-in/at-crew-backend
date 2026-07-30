@@ -59,7 +59,8 @@ public record MemberInfo(
         Instant createdAt,
         Instant updatedAt,
 
-        // === 시간대 ===
-        String timezone // IANA tz ID, 예: "Asia/Tokyo"
+        // === 시간대·국가 ===
+        String timezone,   // IANA tz ID, 예: "Asia/Tokyo"
+        String countryCode // ISO 3166-1 alpha-2, 거주 국가. 예: "KR"
 ) {
 }

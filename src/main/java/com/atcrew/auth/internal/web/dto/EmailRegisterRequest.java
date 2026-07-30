@@ -33,7 +33,12 @@ public record EmailRegisterRequest(
         @NotBlank(message = "시간대를 입력해주세요")
         @Size(max = 64, message = "시간대 값이 올바르지 않습니다")
         @Schema(description = "IANA 시간대 ID, 클라이언트 자동감지값", example = "Asia/Seoul")
-        String timezone
+        String timezone,
+
+        @NotBlank(message = "거주 국가를 입력해주세요")
+        @Pattern(regexp = "^[A-Z]{2}$", message = "국가 코드는 ISO 3166-1 alpha-2 형식이어야 합니다")
+        @Schema(description = "거주 국가 (ISO 3166-1 alpha-2)", example = "KR")
+        String countryCode
 ) {
     @AssertTrue(message = "비밀번호가 일치하지 않습니다")
     public boolean isPasswordConfirmed() {
