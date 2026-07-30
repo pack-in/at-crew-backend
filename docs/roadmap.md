@@ -15,7 +15,7 @@
 | 1 | 본인/기업 인증(verification) 시스템 | 착수 전 |
 | 2 | recruit 모듈 | 착수 전 |
 | 3 | 기업 계정/프로필 모듈 | 착수 전 |
-| 4 | 검색 모듈 | 착수 전 |
+| 4 | 검색 모듈 | 설계 완료, 구현 진행 중 — `docs/design/search-module-design.md` (별도 워크트리 `worktree-search-module`) |
 | 5 | 결제/구독(요금제) — 설정 | 착수 전 |
 | 6 | 설정 나머지(로그아웃/비밀번호 변경 등) | 착수 전 |
 
@@ -99,6 +99,10 @@ Spring Modulith JDBC 이벤트 레지스트리 교체, ETL·컷오버 계획까�
 **스코프:** 태그 기반 검색, 검색창, 결과 없음 상태.
 
 **Figma 근거:** `UI개편_검색` (5154:41768)
+
+**진행 상황(2026-07-30):** 설계 완료, Elasticsearch 기반으로 구현 착수 — `docs/design/search-module-design.md` 참고.
+recruit/기업 프로필과 병렬 진행 중이라 별도 워크트리(`worktree-search-module`)에서 독립 진행하며,
+구인글/구직글/팀원모집글 검색은 `RecruitSearchPort` 스텁으로 남기고 recruit 모듈 완성 후 실구현으로 교체 예정.
 
 ---
 

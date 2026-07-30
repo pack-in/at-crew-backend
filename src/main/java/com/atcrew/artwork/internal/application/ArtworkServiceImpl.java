@@ -13,6 +13,7 @@ import com.atcrew.artwork.PresignedUrlInfo;
 import com.atcrew.artwork.UpdateArtworkCommand;
 import com.atcrew.artwork.UploadArtworkCommand;
 import com.atcrew.artwork.Visibility;
+import com.atcrew.artwork.ArtworkChangedEvent;
 import com.atcrew.artwork.ArtworkPermanentlyDeletedEvent;
 import com.atcrew.artwork.internal.domain.artwork.Artwork;
 import com.atcrew.artwork.internal.domain.artwork.ArtworkImage;
@@ -39,6 +40,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -122,6 +124,7 @@ class ArtworkServiceImpl implements ArtworkService {
         );
         Artwork saved = artworkRepository.save(artwork);
         imageProcessingWorker.triggerAsync(saved.getId(), command.imageKeys());
+        eventPublisher.publishEvent(new ArtworkChangedEvent(saved.getId()));
         MemberInfo author = memberService.findById(memberId);
         log.info("작품 업로드 완료: artworkId={} memberId={}", saved.getId(), memberId);
         return ArtworkMapper.toInfo(saved, author);
@@ -189,6 +192,7 @@ class ArtworkServiceImpl implements ArtworkService {
         if (command.imageKeys() != null) {
             imageProcessingWorker.triggerAsync(saved.getId(), command.imageKeys());
         }
+        eventPublisher.publishEvent(new ArtworkChangedEvent(saved.getId()));
         MemberInfo author = memberService.findById(memberId);
         return ArtworkMapper.toInfo(saved, author);
     }
@@ -200,6 +204,7 @@ class ArtworkServiceImpl implements ArtworkService {
         artwork.assertOwner(memberId);
         artwork.changeVisibility(visibility);
         artworkRepository.save(artwork);
+        eventPublisher.publishEvent(new ArtworkChangedEvent(artworkId));
     }
 
     @Override
@@ -209,6 +214,7 @@ class ArtworkServiceImpl implements ArtworkService {
         artwork.assertOwner(memberId);
         artwork.moveToTrash();
         artworkRepository.save(artwork);
+        eventPublisher.publishEvent(new ArtworkChangedEvent(artworkId));
     }
 
     @Override
@@ -274,6 +280,7 @@ class ArtworkServiceImpl implements ArtworkService {
             artwork.restore();
         }
         artworkRepository.saveAll(artworks);
+        artworks.forEach(a -> eventPublisher.publishEvent(new ArtworkChangedEvent(a.getId())));
     }
 
     @Override
@@ -297,6 +304,7 @@ class ArtworkServiceImpl implements ArtworkService {
                     .filter(k -> k != null && !k.isBlank())
                     .toList();
             eventPublisher.publishEvent(new ArtworkPermanentlyDeletedEvent(artwork.getId(), allKeys));
+            eventPublisher.publishEvent(new ArtworkChangedEvent(artwork.getId()));
         }
     }
 
@@ -313,8 +321,58 @@ class ArtworkServiceImpl implements ArtworkService {
                 success
         );
         artworkRepository.save(artwork);
+        eventPublisher.publishEvent(new ArtworkChangedEvent(command.artworkId()));
         log.debug("이미지 처리 콜백: artworkId={} imageKey={} status={}",
                 command.artworkId(), command.imageKey(), command.status());
+    }
+
+    @Override
+    public Optional<ArtworkInfo> getArtworkForIndexing(String artworkId) {
+        return artworkRepository.findById(artworkId)
+                .map(artwork -> {
+                    MemberInfo author;
+                    try {
+                        author = memberService.findById(artwork.getAuthorId());
+                    } catch (Exception e) {
+                        author = null;
+                    }
+                    return ArtworkMapper.toInfo(artwork, author);
+                });
+    }
+
+    @Override
+    public CursorPage<ArtworkInfo> getArtworksForReindex(String cursor, int size) {
+        int limit = size + 1;
+        Criteria criteria = new Criteria();
+        if (cursor != null) {
+            criteria = criteria.and("createdAt").gt(parseCursor(cursor));
+        }
+        Query query = Query.query(criteria)
+                .with(Sort.by(Sort.Direction.ASC, "createdAt"))
+                .limit(limit);
+        List<Artwork> artworks = mongoTemplate.find(query, Artwork.class);
+        if (artworks.isEmpty()) return CursorPage.empty();
+
+        boolean hasNext = artworks.size() > size;
+        List<Artwork> page = hasNext ? artworks.subList(0, size) : artworks;
+
+        Set<String> authorIds = page.stream().map(Artwork::getAuthorId).collect(Collectors.toSet());
+        java.util.Map<String, MemberInfo> authorMap = authorIds.stream()
+                .collect(Collectors.toMap(
+                        id -> id,
+                        id -> {
+                            try { return memberService.findById(id); } catch (Exception e) { return null; }
+                        }
+                ));
+
+        List<ArtworkInfo> items = page.stream()
+                .map(a -> ArtworkMapper.toInfo(a, authorMap.get(a.getAuthorId())))
+                .toList();
+
+        String nextCursor = hasNext
+                ? String.valueOf(page.get(page.size() - 1).getCreatedAt().toEpochMilli())
+                : null;
+        return CursorPage.of(items, nextCursor);
     }
 
     private CursorPage<ArtworkSummaryInfo> toSummaryPage(List<Artwork> artworks, int size) {

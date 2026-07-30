@@ -11,6 +11,8 @@ spring:
   data:
     mongodb:
       auto-index-creation: true
+  elasticsearch:
+    uris: ${ELASTICSEARCH_URIS:http://localhost:9200}
   jackson:
     time-zone: UTC
 
@@ -51,5 +53,9 @@ cloudflare:
 artwork:
   internal:
     secret: ${ARTWORK_INTERNAL_SECRET:dev-internal-secret}
+
+search:
+  internal:
+    secret: ${SEARCH_INTERNAL_SECRET:dev-internal-secret}
 
 # republish-outstanding-events-on-restart 는 레플리카셋 필요 → application-prod.yml 참고

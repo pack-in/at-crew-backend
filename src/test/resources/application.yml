@@ -23,3 +23,7 @@ cloudflare:
 artwork:
   internal:
     secret: test-internal-secret
+
+search:
+  internal:
+    secret: test-internal-secret

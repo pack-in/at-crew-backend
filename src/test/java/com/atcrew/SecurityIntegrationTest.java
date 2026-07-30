@@ -157,6 +157,14 @@ class SecurityIntegrationTest extends RestDocsIntegrationSupport {
                 .andExpect(status().isOk());
     }
 
+    @Test
+    void 검색_토큰_없이_401_아님() throws Exception {
+        // 검색어·필터 없음 → 최초 진입 상태로 빈 결과, 401이 아님을 확인
+        mockMvc.perform(get("/api/search"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"));
+    }
+
     // ─── 헬퍼 ──────────────────────────────────────────────────────────
 
     private String uniqueEmail() {
