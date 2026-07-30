@@ -1,5 +1,6 @@
 package com.atcrew.member.internal.domain;
 
+import com.atcrew.common.id.UuidV7Generator;
 import com.atcrew.member.ActiveRegion;
 import com.atcrew.member.ActivityField;
 import com.atcrew.member.AuthProvider;
@@ -10,24 +11,45 @@ import com.atcrew.member.ExperienceLevel;
 import com.atcrew.member.TeamExperience;
 import com.atcrew.member.internal.exception.MemberErrorCode;
 import com.atcrew.member.internal.exception.MemberException;
+import jakarta.persistence.AttributeOverride;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.CollectionTable;
+import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
+import jakarta.persistence.Embedded;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
+import jakarta.persistence.PostLoad;
+import jakarta.persistence.PostPersist;
+import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
+import jakarta.persistence.Version;
 import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.Id;
 import org.springframework.data.annotation.LastModifiedDate;
-import org.springframework.data.mongodb.core.index.Indexed;
-import org.springframework.data.mongodb.core.mapping.Document;
+import org.springframework.data.domain.Persistable;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
-import java.util.UUID;
 
-@Document(collection = "members")
-public class Member {
+@Entity
+@Table(name = "members")
+@EntityListeners(AuditingEntityListener.class)
+public class Member implements Persistable<String> {
 
     @Id
     private String id;
@@ -35,13 +57,22 @@ public class Member {
     // 탈퇴 시 null로 클리어 — 복합 unique 인덱스(loginEmail, authProvider)로 재가입 충돌 방지
     private String loginEmail;
 
-    @Indexed(unique = true, sparse = true)
     private String handle;
 
     private String name;
+
+    @Enumerated(EnumType.STRING)
     private CreatorRole creatorRole;
 
+    @Enumerated(EnumType.STRING)
     private AuthProvider authProvider;
+
+    @Embedded
+    @AttributeOverride(name = "privacyPolicy", column = @Column(name = "terms_privacy_policy"))
+    @AttributeOverride(name = "serviceTerms", column = @Column(name = "terms_service_terms"))
+    @AttributeOverride(name = "thirdPartyProvision", column = @Column(name = "terms_third_party"))
+    @AttributeOverride(name = "marketingNotification", column = @Column(name = "terms_marketing"))
+    @AttributeOverride(name = "agreedAt", column = @Column(name = "terms_agreed_at"))
     private TermsAgreement termsAgreement;
 
     // EMAIL provider 전용. GOOGLE 회원·마이그레이션 미전환 회원은 null.
@@ -58,14 +89,33 @@ public class Member {
     // ISO 3166-1 alpha-2 국가 코드(예: "KR", "JP"). 거주 국가 — 가입 시 필수 수집, 설정에서 변경 가능.
     private String countryCode;
 
+    @Enumerated(EnumType.STRING)
     private EmploymentStatus employmentStatus = EmploymentStatus.PREPARING;
-    private List<ActivityField> activityFields = new ArrayList<>();
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "member_activity_fields", joinColumns = @JoinColumn(name = "member_id"))
+    @Column(name = "activity_field")
+    @Enumerated(EnumType.STRING)
+    private Set<ActivityField> activityFields = new HashSet<>();
+
+    @Enumerated(EnumType.STRING)
     private ExperienceLevel experienceLevel;
-    // experienceLevel은 Mongo에 문자열(enum name)로 저장되어 그대로는 경력순 정렬이 불가능하므로
+
+    // experienceLevel은 @Enumerated(STRING) 컬럼이라 그대로는 경력순 정렬(사전순≠경력순)이 안 되므로
     // ordinal을 별도 필드로 캐시해 DB 레벨 정렬에 사용한다 (커뮤니티 "작가 찾아보기" 경력순 정렬).
     private int experienceRank = -1;
-    private List<ActiveRegion> activeRegions = new ArrayList<>();
-    private List<TeamExperience> teamExperiences = new ArrayList<>();
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "member_active_regions", joinColumns = @JoinColumn(name = "member_id"))
+    @Column(name = "value")
+    @Enumerated(EnumType.STRING)
+    private Set<ActiveRegion> activeRegions = new HashSet<>();
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "member_team_experiences", joinColumns = @JoinColumn(name = "member_id"))
+    @Column(name = "value")
+    @Enumerated(EnumType.STRING)
+    private Set<TeamExperience> teamExperiences = new HashSet<>();
 
     private int totalSlotCount = 5;
     private int availableSlotCount = 5;
@@ -74,15 +124,23 @@ public class Member {
     private String sns;
     private String tools;
 
+    // 양방향 매핑(mappedBy) — 단방향 @JoinColumn은 Hibernate가 INSERT 시 FK 없이 먼저 쓰고
+    // 뒤이어 UPDATE로 채우는 2단계 패턴이라 member_id NOT NULL 제약과 충돌한다.
+    @OneToMany(mappedBy = "member", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @OrderBy("id ASC") // id가 UUIDv7(시간순)라 삽입 순서와 근사 일치
     private List<CareerEntry> careers = new ArrayList<>();
 
+    @Column(name = "is_active")
     private boolean active = true;
+
     private Instant deletedAt;
     private Instant lastLoginAt;
 
     // 탈퇴 시 loginEmail 백업 (감사 추적용)
-    @Indexed(sparse = true)
     private String deletedLoginEmail;
+
+    @Version
+    private Long version;
 
     @CreatedDate
     private Instant createdAt;
@@ -90,14 +148,21 @@ public class Member {
     @LastModifiedDate
     private Instant updatedAt;
 
+    // MariaDB 전환(docs/design/mariadb-migration-design.md §3.1) — 애플리케이션이 ID를 직접 할당하므로
+    // Persistable로 신규 여부를 명시해 신규 엔티티는 매번 merge()(선행 SELECT) 대신 persist()로 처리되게 한다.
+    @Transient
+    private boolean isNew = false;
+
     protected Member() {
     }
 
     private Member(String loginEmail, String handle, String name, CreatorRole creatorRole) {
+        this.id = UuidV7Generator.generate();
         this.loginEmail = loginEmail;
         this.handle = handle;
         this.name = name;
         this.creatorRole = creatorRole;
+        this.isNew = true;
     }
 
     // 개발·테스트 전용 (authProvider 없이 직접 가입)
@@ -190,15 +255,15 @@ public class Member {
         }
         if (command.creatorRole() != null) this.creatorRole = command.creatorRole();
         if (command.employmentStatus() != null) this.employmentStatus = command.employmentStatus();
-        if (command.activityFields() != null) this.activityFields = new ArrayList<>(command.activityFields());
+        if (command.activityFields() != null) this.activityFields = new HashSet<>(command.activityFields());
         if (command.experienceLevel() != null) {
             this.experienceLevel = command.experienceLevel();
             this.experienceRank = command.experienceLevel().ordinal();
         }
-        if (command.activeRegions() != null) this.activeRegions = new ArrayList<>(command.activeRegions());
+        if (command.activeRegions() != null) this.activeRegions = new HashSet<>(command.activeRegions());
         if (totalSlotCount != null) this.totalSlotCount = effectiveTotal;
         if (totalSlotCount != null || availableSlotCount != null) this.availableSlotCount = effectiveAvailable;
-        if (command.teamExperiences() != null) this.teamExperiences = new ArrayList<>(command.teamExperiences());
+        if (command.teamExperiences() != null) this.teamExperiences = new HashSet<>(command.teamExperiences());
         if (command.contact() != null) this.contact = command.contact();
         if (command.sns() != null) this.sns = command.sns();
         if (command.tools() != null) this.tools = command.tools();
@@ -221,7 +286,7 @@ public class Member {
             throw new MemberException(MemberErrorCode.CAREER_LIMIT_EXCEEDED);
         }
         validateCareerPeriod(startDate, endDate, ongoing);
-        CareerEntry entry = new CareerEntry(UUID.randomUUID().toString(), workTitle, role,
+        CareerEntry entry = new CareerEntry(UuidV7Generator.generate(), this, workTitle, role,
                 startDate, endDate, ongoing, description);
         this.careers.add(entry);
         return toCareerInfo(entry);
@@ -250,6 +315,7 @@ public class Member {
         this.passwordHash = null;
     }
 
+    @Override
     public String getId() { return id; }
     public String getLoginEmail() { return loginEmail; }
     public String getHandle() { return handle; }
@@ -257,11 +323,11 @@ public class Member {
     public CreatorRole getCreatorRole() { return creatorRole; }
     public AuthProvider getAuthProvider() { return authProvider; }
     public EmploymentStatus getEmploymentStatus() { return employmentStatus; }
-    public List<ActivityField> getActivityFields() { return List.copyOf(activityFields); }
+    public List<ActivityField> getActivityFields() { return activityFields.stream().sorted().toList(); }
     public ExperienceLevel getExperienceLevel() { return experienceLevel; }
     public int getExperienceRank() { return experienceRank; }
-    public List<ActiveRegion> getActiveRegions() { return List.copyOf(activeRegions); }
-    public List<TeamExperience> getTeamExperiences() { return List.copyOf(teamExperiences); }
+    public List<ActiveRegion> getActiveRegions() { return activeRegions.stream().sorted().toList(); }
+    public List<TeamExperience> getTeamExperiences() { return teamExperiences.stream().sorted().toList(); }
     public int getTotalSlotCount() { return totalSlotCount; }
     public int getAvailableSlotCount() { return availableSlotCount; }
     public String getContact() { return contact; }
@@ -276,6 +342,15 @@ public class Member {
     public Instant getLastLoginAt() { return lastLoginAt; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
+
+    @Override
+    public boolean isNew() { return isNew; }
+
+    @PostPersist
+    @PostLoad
+    void markNotNew() {
+        this.isNew = false;
+    }
 
     private void assertActive() {
         if (!active) {
