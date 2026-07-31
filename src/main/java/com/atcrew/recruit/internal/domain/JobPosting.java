@@ -24,6 +24,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import org.hibernate.annotations.BatchSize;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
@@ -88,11 +89,13 @@ public class JobPosting {
     private boolean isCoverLetterRequired;
 
     @ElementCollection
+    @BatchSize(size = 100)   // 목록 조회 시 컬렉션 지연 로딩 N+1 완화
     @CollectionTable(name = "job_posting_roles", joinColumns = @JoinColumn(name = "job_posting_id"))
     @Column(name = "role", length = 100, nullable = false)
     private List<String> roles = new ArrayList<>();
 
     @ElementCollection
+    @BatchSize(size = 100)   // 목록 조회 시 컬렉션 지연 로딩 N+1 완화
     @CollectionTable(name = "job_posting_genres", joinColumns = @JoinColumn(name = "job_posting_id"))
     @Column(name = "genre", length = 100, nullable = false)
     private List<String> genres = new ArrayList<>();

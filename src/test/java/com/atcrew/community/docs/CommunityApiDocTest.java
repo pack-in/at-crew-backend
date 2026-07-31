@@ -119,7 +119,7 @@ class CommunityApiDocTest extends RestDocsIntegrationSupport {
 
     @Test
     void 구인글_탭_빈_목록_문서화() throws Exception {
-        // recruit 모듈 미구현 — NoopRecruitFeedPort가 항상 빈 목록을 반환한다.
+        // recruit 모듈의 RecruitService를 호출한다 — 이 테스트에는 PUBLISHED 구인글이 없어 빈 목록이 반환된다.
         mockMvc.perform(get("/api/community/job-postings"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
@@ -128,7 +128,7 @@ class CommunityApiDocTest extends RestDocsIntegrationSupport {
                         preprocessResponse(prettyPrint()),
                         relaxedResponseFields(
                                 fieldWithPath("code").description("응답 코드 (SUCCESS)"),
-                                fieldWithPath("data.items").description("구인글 카드 목록 (recruit 모듈 미구현으로 항상 빈 배열)"),
+                                fieldWithPath("data.items").description("구인글 카드 목록 (PUBLISHED 상태만 노출)"),
                                 fieldWithPath("data.hasNext").description("다음 페이지 존재 여부")
                         )
                 ));

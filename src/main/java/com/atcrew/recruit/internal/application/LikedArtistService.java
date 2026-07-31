@@ -38,13 +38,9 @@ class LikedArtistService {
         this.authorNameResolver = authorNameResolver;
     }
 
-    // 좋아요 저장 — 이미 저장돼 있으면 최초 저장 시각을 유지한다(재저장은 무시).
+    // 좋아요 저장 — 이미 저장돼 있으면 최초 저장 시각을 유지한다(멱등, 원자적 upsert).
     void likeArtist(String companyMemberId, String artistMemberId) {
-        CompanyArtistId id = new CompanyArtistId(companyMemberId, artistMemberId);
-        if (likedArtistRepository.existsById(id)) {
-            return;
-        }
-        likedArtistRepository.save(LikedArtist.create(companyMemberId, artistMemberId, Instant.now()));
+        likedArtistRepository.upsert(companyMemberId, artistMemberId, Instant.now());
     }
 
     // 좋아요 해제 — 저장돼 있지 않아도 성공으로 간주한다(토글 API 멱등성).
@@ -78,14 +74,9 @@ class LikedArtistService {
         return CursorPage.of(items, nextCursor);
     }
 
-    // 작가 마이페이지 조회 기록 — 같은 작가를 다시 보면 조회 시각만 갱신한다(upsert).
+    // 작가 마이페이지 조회 기록 — 같은 작가를 다시 보면 조회 시각만 갱신한다(원자적 upsert).
     void recordArtistView(String companyMemberId, String artistMemberId) {
-        CompanyArtistId id = new CompanyArtistId(companyMemberId, artistMemberId);
-        recentlyViewedArtistRepository.findById(id)
-                .ifPresentOrElse(
-                        viewed -> viewed.renewViewedAt(Instant.now()), // dirty checking으로 갱신
-                        () -> recentlyViewedArtistRepository.save(
-                                RecentlyViewedArtist.create(companyMemberId, artistMemberId, Instant.now())));
+        recentlyViewedArtistRepository.upsert(companyMemberId, artistMemberId, Instant.now());
     }
 
     @Transactional(readOnly = true)
