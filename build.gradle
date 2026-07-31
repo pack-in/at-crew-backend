@@ -67,4 +67,13 @@ dependencyManagement {
 
 tasks.named('test') {
 	useJUnitPlatform()
+	// 글로벌 시간대 전략(docs/design/global-timezone-strategy.md §3.1) — 테스트 JVM은 AtCrewBackendApplication.main()을
+	// 거치지 않아 TimeZone.setDefault(UTC)가 적용되지 않으므로 개발 환경의 로컬 시간대에 결과가 좌우되지 않도록 별도 고정.
+	jvmArgs '-Duser.timezone=UTC'
+}
+
+tasks.named('bootRun') {
+	// 글로벌 시간대 전략(docs/design/global-timezone-strategy.md §3.1) — 이중 안전장치.
+	// AtCrewBackendApplication.main()의 TimeZone.setDefault(UTC)보다 앞서 JVM 부팅 시점부터 UTC를 강제한다.
+	jvmArgs '-Duser.timezone=UTC'
 }

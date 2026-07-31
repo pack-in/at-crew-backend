@@ -5,6 +5,8 @@ services:
       - "27017:27017"
     environment:
       MONGO_INITDB_DATABASE: atcrew
+      # 글로벌 시간대 전략(docs/design/global-timezone-strategy.md §3.1) — 컨테이너 기본 시간대를 UTC로 명시 고정
+      TZ: UTC
     volumes:
       - mongodb_data:/data/db
 
@@ -17,6 +19,8 @@ services:
       discovery.type: single-node
       xpack.security.enabled: "false" # 로컬 개발 전용 — prod는 별도 인증/네트워크 정책 적용
       ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+      # 글로벌 시간대 전략(docs/design/global-timezone-strategy.md §3.1) — 컨테이너 기본 시간대를 UTC로 명시 고정
+      TZ: UTC
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
 
@@ -28,6 +32,8 @@ services:
     environment:
       MARIADB_DATABASE: atcrew
       MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-atcrew_local_dev}
+      # 글로벌 시간대 전략(docs/design/global-timezone-strategy.md §3.1) — 컨테이너 기본 시간대를 UTC로 명시 고정
+      TZ: UTC
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     volumes:
       - mariadb_data:/var/lib/mysql
