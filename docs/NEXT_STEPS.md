@@ -12,8 +12,9 @@
 2. 글로벌 시간대 **UTC 저장 확정 + 구현 완료** → main 병합 (PR [#30](https://github.com/pack-in/at-crew-backend/pull/30), 이슈 [#29](https://github.com/pack-in/at-crew-backend/issues/29))
 3. MariaDB 마이그레이션 **P4 완료(artwork 모듈 전환)** → main 병합 (PR [#32](https://github.com/pack-in/at-crew-backend/pull/32), 이슈 [#31](https://github.com/pack-in/at-crew-backend/issues/31))
 4. **recruit 모듈 구현 완료**(JobPosting/TeamPosting/JobSeekingPost CRUD, 지원/지원자관리, 끌어올리기, 관심 작가, `RecruitService` 공개 API) → main 병합 (PR [#34](https://github.com/pack-in/at-crew-backend/pull/34), 이슈 [#33](https://github.com/pack-in/at-crew-backend/issues/33))
+5. **recruit REST Docs 테스트 작성 완료**(컨트롤러 5종 × `*ControllerValidationTest`+`*ApiDocTest`, 69개 테스트) → main 병합 (PR [#35](https://github.com/pack-in/at-crew-backend/pull/35))
 
-세 PR 모두 워커 에이전트가 구현 → 테스트 그린 확인 → 이슈/PR 생성 → 병합까지 전부 자동으로 처리했다.
+네 PR 모두 워커 에이전트가 구현 → 테스트 그린 확인 → 이슈/PR 생성 → 병합까지 전부 자동으로 처리했다.
 recruit는 main과 15개 커밋 격차가 있어 병합 충돌(공용 JPA 인프라 중복 구현 등)이 있었고 별도로 해결했다.
 
 ## 지금 바로 처리할 것 (우선순위순)
