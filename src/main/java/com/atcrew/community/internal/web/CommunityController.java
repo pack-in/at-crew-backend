@@ -6,15 +6,15 @@ import com.atcrew.artwork.ArtworkService;
 import com.atcrew.artwork.ArtworkSummaryInfo;
 import com.atcrew.common.response.ApiResponse;
 import com.atcrew.common.response.CursorPage;
-import com.atcrew.community.CommunityJobPostingCardInfo;
-import com.atcrew.community.CommunityTeamRecruitCardInfo;
-import com.atcrew.community.RecruitFeedPort;
 import com.atcrew.member.ActivityField;
 import com.atcrew.member.EmploymentStatus;
 import com.atcrew.member.MemberProfileInfo;
 import com.atcrew.member.MemberService;
 import com.atcrew.member.ProfileSort;
 import com.atcrew.member.SearchProfilesCommand;
+import com.atcrew.recruit.CommunityJobPostingCardInfo;
+import com.atcrew.recruit.CommunityTeamRecruitCardInfo;
+import com.atcrew.recruit.RecruitService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -40,12 +40,12 @@ class CommunityController {
 
     private final ArtworkService artworkService;
     private final MemberService memberService;
-    private final RecruitFeedPort recruitFeedPort;
+    private final RecruitService recruitService;
 
-    CommunityController(ArtworkService artworkService, MemberService memberService, RecruitFeedPort recruitFeedPort) {
+    CommunityController(ArtworkService artworkService, MemberService memberService, RecruitService recruitService) {
         this.artworkService = artworkService;
         this.memberService = memberService;
-        this.recruitFeedPort = recruitFeedPort;
+        this.recruitService = recruitService;
     }
 
     @Operation(summary = "포트폴리오 탭 — 커뮤니티 작품 목록", description = "공개 작품을 최신순으로 조회합니다. 인증 불필요.")
@@ -74,24 +74,22 @@ class CommunityController {
                 activityField, sort, cursor, resolveSize(size))));
     }
 
-    @Operation(summary = "구인글 탭", description =
-            "구인글 카드 목록을 조회합니다. recruit 모듈이 아직 없어 현재는 항상 빈 목록을 반환합니다.")
+    @Operation(summary = "구인글 탭", description = "구인글 카드 목록을 PUBLISHED 상태만 커서 페이지네이션으로 조회합니다. 인증 불필요.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공")
     @GetMapping("/job-postings")
     public ApiResponse<CursorPage<CommunityJobPostingCardInfo>> getJobPostings(
             @Parameter(description = "커서") @RequestParam(required = false) String cursor,
             @Parameter(description = "페이지 크기 (기본 20, 최대 50)") @RequestParam(required = false) Integer size) {
-        return ApiResponse.success(recruitFeedPort.getJobPostingFeed(cursor, resolveSize(size)));
+        return ApiResponse.success(recruitService.getJobPostingFeed(cursor, resolveSize(size)));
     }
 
-    @Operation(summary = "팀원모집글 탭", description =
-            "팀원모집글 카드 목록을 조회합니다. recruit 모듈이 아직 없어 현재는 항상 빈 목록을 반환합니다.")
+    @Operation(summary = "팀원모집글 탭", description = "팀원모집글 카드 목록을 PUBLISHED 상태만 커서 페이지네이션으로 조회합니다. 인증 불필요.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공")
     @GetMapping("/team-recruits")
     public ApiResponse<CursorPage<CommunityTeamRecruitCardInfo>> getTeamRecruits(
             @Parameter(description = "커서") @RequestParam(required = false) String cursor,
             @Parameter(description = "페이지 크기 (기본 20, 최대 50)") @RequestParam(required = false) Integer size) {
-        return ApiResponse.success(recruitFeedPort.getTeamRecruitFeed(cursor, resolveSize(size)));
+        return ApiResponse.success(recruitService.getTeamRecruitFeed(cursor, resolveSize(size)));
     }
 
     private int resolveSize(Integer size) {
