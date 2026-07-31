@@ -116,4 +116,32 @@ public interface RecruitService {
 
     // 공개 목록(커서) — PUBLISHED만
     CursorPage<JobSeekingPostInfo> getJobSeekingPosts(String cursor, int size);
+
+    // === 지원/지원자 관리 (§2.4, §2.5, §2.6) — 목록·상태변경·삭제는 Job/Team 모두 작성자 소유권 검증 ===
+
+    // 구인글 지원 — PUBLISHED 상태에만 가능, 중복 지원은 DB 유니크 제약으로 차단
+    ApplicationInfo applyToJobPosting(String memberId, String jobPostingId, CreateApplicationCommand command);
+
+    // 구인글 지원자 목록(커서) — 작성자 본인만 조회 가능
+    CursorPage<ApplicationInfo> getJobPostingApplications(String memberId, String jobPostingId, String cursor, int size);
+
+    // 구인글 지원자 채용 단계 변경 — 작성자 본인만 가능
+    ApplicationInfo updateJobApplicationReviewStatus(String memberId, String jobPostingId, String applicationId,
+            ApplicationReviewStatus reviewStatus);
+
+    // 구인글 지원 내역 삭제 — 작성자 본인만 가능
+    void deleteJobApplication(String memberId, String jobPostingId, String applicationId);
+
+    // 팀원모집글 지원 — PUBLISHED 상태에만 가능, 중복 지원은 DB 유니크 제약으로 차단
+    ApplicationInfo applyToTeamPosting(String memberId, String teamPostingId, CreateApplicationCommand command);
+
+    // 팀원모집글 지원자 목록(커서) — 작성자 본인만 조회 가능
+    CursorPage<ApplicationInfo> getTeamPostingApplications(String memberId, String teamPostingId, String cursor, int size);
+
+    // 팀원모집글 지원자 채용 단계 변경 — 작성자 본인만 가능
+    ApplicationInfo updateTeamApplicationReviewStatus(String memberId, String teamPostingId, String applicationId,
+            ApplicationReviewStatus reviewStatus);
+
+    // 팀원모집글 지원 내역 삭제 — 작성자 본인만 가능
+    void deleteTeamApplication(String memberId, String teamPostingId, String applicationId);
 }

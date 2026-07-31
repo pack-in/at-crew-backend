@@ -1,8 +1,11 @@
 package com.atcrew.recruit.internal.application;
 
 import com.atcrew.common.response.CursorPage;
+import com.atcrew.recruit.ApplicationInfo;
+import com.atcrew.recruit.ApplicationReviewStatus;
 import com.atcrew.recruit.CommunityJobPostingCardInfo;
 import com.atcrew.recruit.CommunityTeamRecruitCardInfo;
+import com.atcrew.recruit.CreateApplicationCommand;
 import com.atcrew.recruit.CreateJobPostingCommand;
 import com.atcrew.recruit.CreateJobSeekingPostCommand;
 import com.atcrew.recruit.CreateTeamPostingCommand;
@@ -36,13 +39,16 @@ class RecruitServiceImpl implements RecruitService {
     private final JobPostingRepository jobPostingRepository;
     private final TeamPostingRepository teamPostingRepository;
     private final JobSeekingPostService jobSeekingPostService;
+    private final ApplicationService applicationService;
     private final AuthorNameResolver authorNameResolver;
 
     RecruitServiceImpl(JobPostingRepository jobPostingRepository, TeamPostingRepository teamPostingRepository,
-            JobSeekingPostService jobSeekingPostService, AuthorNameResolver authorNameResolver) {
+            JobSeekingPostService jobSeekingPostService, ApplicationService applicationService,
+            AuthorNameResolver authorNameResolver) {
         this.jobPostingRepository = jobPostingRepository;
         this.teamPostingRepository = teamPostingRepository;
         this.jobSeekingPostService = jobSeekingPostService;
+        this.applicationService = applicationService;
         this.authorNameResolver = authorNameResolver;
     }
 
@@ -316,6 +322,54 @@ class RecruitServiceImpl implements RecruitService {
     @Transactional(readOnly = true)
     public CursorPage<JobSeekingPostInfo> getJobSeekingPosts(String cursor, int size) {
         return jobSeekingPostService.getPublished(cursor, size);
+    }
+
+    // === 지원/지원자 관리 (§2.4, §2.5, §2.6) — 내부 협력자 ApplicationService에 위임 ===
+
+    @Override
+    public ApplicationInfo applyToJobPosting(String memberId, String jobPostingId, CreateApplicationCommand command) {
+        return applicationService.applyToJobPosting(memberId, jobPostingId, command);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public CursorPage<ApplicationInfo> getJobPostingApplications(String memberId, String jobPostingId, String cursor,
+            int size) {
+        return applicationService.getJobPostingApplications(memberId, jobPostingId, cursor, size);
+    }
+
+    @Override
+    public ApplicationInfo updateJobApplicationReviewStatus(String memberId, String jobPostingId, String applicationId,
+            ApplicationReviewStatus reviewStatus) {
+        return applicationService.updateJobApplicationReviewStatus(memberId, jobPostingId, applicationId, reviewStatus);
+    }
+
+    @Override
+    public void deleteJobApplication(String memberId, String jobPostingId, String applicationId) {
+        applicationService.deleteJobApplication(memberId, jobPostingId, applicationId);
+    }
+
+    @Override
+    public ApplicationInfo applyToTeamPosting(String memberId, String teamPostingId, CreateApplicationCommand command) {
+        return applicationService.applyToTeamPosting(memberId, teamPostingId, command);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public CursorPage<ApplicationInfo> getTeamPostingApplications(String memberId, String teamPostingId, String cursor,
+            int size) {
+        return applicationService.getTeamPostingApplications(memberId, teamPostingId, cursor, size);
+    }
+
+    @Override
+    public ApplicationInfo updateTeamApplicationReviewStatus(String memberId, String teamPostingId,
+            String applicationId, ApplicationReviewStatus reviewStatus) {
+        return applicationService.updateTeamApplicationReviewStatus(memberId, teamPostingId, applicationId, reviewStatus);
+    }
+
+    @Override
+    public void deleteTeamApplication(String memberId, String teamPostingId, String applicationId) {
+        applicationService.deleteTeamApplication(memberId, teamPostingId, applicationId);
     }
 
     private List<JobPosting> findPublished(String cursor, int size) {
