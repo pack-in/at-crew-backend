@@ -26,10 +26,10 @@
 
 | 순서 | 항목 | 상태 |
 |---|---|---|
-| 0 | MongoDB → MariaDB 마이그레이션 | P1~P3 완료, P4 auth 완료·**artwork 잔여**, P5·P6 착수 전 — `docs/design/mariadb-migration-design.md` |
-| 0.5 | 글로벌 시간대 UTC 전환 | **확정, 구현 착수** — `docs/design/global-timezone-strategy.md` §3.1~3.4 |
+| 0 | MongoDB → MariaDB 마이그레이션 | **P1~P4 완료**(auth·artwork 포함), P5(이벤트 레지스트리·Mongo 제거)·P6(prod 연결) 착수 전 — `docs/design/mariadb-migration-design.md` |
+| 0.5 | 글로벌 시간대 UTC 전환 | **완료**(§3.1~3.4 전부 구현·병합) — `docs/design/global-timezone-strategy.md` |
 | 1 | 본인/기업 인증(verification) 시스템 | 방식 확정(PASS/수동 이메일 심사), 구현 착수 전 |
-| 2 | recruit 모듈 | **구현 진행 중**(워크트리 `recruit-module`), 스코프 확대(끌어올리기·관심 작가 포함) |
+| 2 | recruit 모듈 | **핵심 CRUD 완료·main 병합**(PR #34) — REST Docs 테스트·검색/기업모듈 포트 연동 잔여, 아래 참고 |
 | 3 | 기업 계정/프로필 모듈 | **완료**, main 머지(`ab61508`) |
 | 4 | 검색 모듈 | **완료**, main 머지(Elasticsearch 기반) — recruit 완성 후 `RecruitSearchPort` 스텁 교체 잔여 |
 | 5 | 결제/구독(요금제) | PG 확정(Polar), 구현 착수 전 |
@@ -103,6 +103,11 @@ Spring Modulith JDBC 이벤트 레지스트리 교체, ETL·컷오버 계획까�
 - laiteu는 커뮤니티 쿼리 성능 이슈(p95 7.3s) 이력 있음 — artwork 모듈처럼 처음부터 커서 페이지네이션+복합 인덱스로 설계
 
 **Figma/기획서 근거:** `UI개편_구인구직(창작자/기업 둘 다)` (node 5154:41764), `UI개편_구인글세부페이지` (5154:41397), `UI개편_팀원모집글세부페이지` (5154:41765). 기획서 REQ-015~017, 정책 업로드-R10·구인구직-R02·구인글 상세 페이지-R05, 기능명세 구인구직-R04·R05·구인글 상세 페이지-R02·R06·R09.
+
+**2026-07-31 구현 완료(main 병합, PR #34, 이슈 #33)**: JobPosting/TeamPosting/JobSeekingPost CRUD, Application 지원·지원자 관리, 끌어올리기, 관심 작가, `RecruitService` 공개 API 이관까지 전부 병합됨. **잔여 작업**(이슈 #33 체크리스트):
+- REST Docs 테스트 전무(다른 모듈은 전부 있음, `docs/testing/rest-docs-guide.md` 컨벤션 미준수 상태) — 다음 착수 우선순위로 권장
+- `company.CompanyRecruitPort`/`search.RecruitSearchPort`가 여전히 Noop 스텁 — recruit이 이제 존재하므로 실제 연동 가능해짐
+- 좋아요한 작가 검색어 필터(정렬만 구현, search 모듈 연동 TODO), 최근 본 작가 자동 기록(member 마이페이지 조회 시 훅 없음, recruit 쪽 엔드포인트만 존재)
 
 ---
 
