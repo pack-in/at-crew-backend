@@ -1,5 +1,6 @@
 package com.atcrew.artwork.internal.application;
 
+import com.atcrew.artwork.ArtworkStatus;
 import com.atcrew.artwork.internal.persistence.ArtworkRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,7 +27,7 @@ class ImageRetryScheduler {
     @Scheduled(fixedDelay = 300_000)
     void retryStuckImages() {
         Instant threshold = Instant.now().minus(10, ChronoUnit.MINUTES);
-        var stuckArtworks = artworkRepository.findStuckProcessingArtworks(threshold);
+        var stuckArtworks = artworkRepository.findByStatusAndUpdatedAtBefore(ArtworkStatus.PROCESSING, threshold);
         if (stuckArtworks.isEmpty()) return;
         log.info("이미지 처리 재시도: count={}", stuckArtworks.size());
         stuckArtworks.forEach(artwork -> {

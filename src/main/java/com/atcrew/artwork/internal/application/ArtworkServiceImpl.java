@@ -27,13 +27,13 @@ import com.atcrew.artwork.internal.persistence.OrphanedImageKeyRepository;
 import com.atcrew.common.response.CursorPage;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
+import jakarta.persistence.criteria.Predicate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -52,7 +52,6 @@ class ArtworkServiceImpl implements ArtworkService {
 
     private final ArtworkRepository artworkRepository;
     private final OrphanedImageKeyRepository orphanedRepo;
-    private final MongoTemplate mongoTemplate;
     private final MemberService memberService;
     private final ArtworkStoragePort storagePort;
     private final ImageProcessingWorker imageProcessingWorker;
@@ -60,14 +59,12 @@ class ArtworkServiceImpl implements ArtworkService {
 
     ArtworkServiceImpl(ArtworkRepository artworkRepository,
                        OrphanedImageKeyRepository orphanedRepo,
-                       MongoTemplate mongoTemplate,
                        MemberService memberService,
                        ArtworkStoragePort storagePort,
                        ImageProcessingWorker imageProcessingWorker,
                        ApplicationEventPublisher eventPublisher) {
         this.artworkRepository = artworkRepository;
         this.orphanedRepo = orphanedRepo;
-        this.mongoTemplate = mongoTemplate;
         this.memberService = memberService;
         this.storagePort = storagePort;
         this.imageProcessingWorker = imageProcessingWorker;
@@ -158,17 +155,13 @@ class ArtworkServiceImpl implements ArtworkService {
         }
 
         if (command.imageKeys() != null) {
-            // 이미지 교체: 기존 이미지를 orphaned로 등록하고 새 이미지로 교체
-            int newRepIndex = command.representativeImageIndex() != null
-                    ? command.representativeImageIndex() : 0;
-            List<ArtworkImage> orphaned = artwork.replaceImages(command.imageKeys(), newRepIndex);
-            List<OrphanedImageKey> orphanedDocs = orphaned.stream()
-                    .map(OrphanedImageKey::from)
-                    .toList();
-            orphanedRepo.saveAll(orphanedDocs);
+            replaceImages(artwork, command.imageKeys(), command.representativeImageIndex());
         }
 
-        List<Material> materials = command.materials() != null ? toMaterials(command.materials()) : null;
+        if (command.materials() != null) {
+            replaceMaterials(artwork, toMaterials(command.materials()));
+        }
+
         artwork.updateDetails(
                 command.title(),
                 command.description(),
@@ -184,8 +177,7 @@ class ArtworkServiceImpl implements ArtworkService {
                 command.tools(),
                 command.workDuration(),
                 command.cutCount(),
-                command.videoLinks(),
-                materials
+                command.videoLinks()
         );
 
         Artwork saved = artworkRepository.save(artwork);
@@ -195,6 +187,25 @@ class ArtworkServiceImpl implements ArtworkService {
         eventPublisher.publishEvent(new ArtworkChangedEvent(saved.getId()));
         MemberInfo author = memberService.findById(memberId);
         return ArtworkMapper.toInfo(saved, author);
+    }
+
+    // 이미지 교체 — 기존 행 삭제를 saveAndFlush로 먼저 확정한 뒤 새 행을 붙인다.
+    // Hibernate가 같은 flush에서 신규 INSERT를 기존 DELETE보다 먼저 실행해
+    // uk_ai_order(artwork_id, ordinal) 유니크 제약과 충돌하는 것을 막기 위함
+    // (docs/design/mariadb-migration-design.md §3.3.2 RefreshToken과 동일 계열의 함정, 이번 전환에서 신규 발견).
+    private void replaceImages(Artwork artwork, List<String> newImageKeys, Integer representativeImageIndex) {
+        List<ArtworkImage> orphaned = artwork.detachImages();
+        artworkRepository.saveAndFlush(artwork);
+        orphanedRepo.saveAll(orphaned.stream().map(OrphanedImageKey::from).toList());
+        int newRepIndex = representativeImageIndex != null ? representativeImageIndex : 0;
+        artwork.attachImages(newImageKeys, newRepIndex);
+    }
+
+    // 자재 교체 — replaceImages와 동일한 이유로 uk_am_order(artwork_id, ordinal) 충돌을 막기 위해 2단계로 처리한다.
+    private void replaceMaterials(Artwork artwork, List<Material> newMaterials) {
+        artwork.detachMaterials();
+        artworkRepository.saveAndFlush(artwork);
+        artwork.attachMaterials(newMaterials);
     }
 
     @Override
@@ -222,51 +233,52 @@ class ArtworkServiceImpl implements ArtworkService {
                                                                 AgeRating ageRating,
                                                                 String cursor, int size) {
         int limit = size + 1;
-        Criteria criteria = Criteria.where("status").is(ArtworkStatus.READY.name())
-                .and("visibility").is(Visibility.PUBLIC.name());
-        if (artworkField != null) {
-            criteria = criteria.and("artworkField").is(artworkField.name());
-        }
-        if (ageRating != null) {
-            criteria = criteria.and("ageRating").is(ageRating.name());
-        }
-        if (cursor != null) {
-            criteria = criteria.and("createdAt").lt(parseCursor(cursor));
-        }
-        Query query = Query.query(criteria)
-                .with(Sort.by(Sort.Direction.DESC, "createdAt"))
-                .limit(limit);
-        List<Artwork> artworks = mongoTemplate.find(query, Artwork.class);
+        Specification<Artwork> spec = buildCommunitySpecification(artworkField, ageRating, cursor);
+        List<Artwork> artworks = artworkRepository
+                .findAll(spec, PageRequest.of(0, limit, Sort.by(Sort.Direction.DESC, "createdAt")))
+                .getContent();
         return toSummaryPage(artworks, size);
+    }
+
+    // Mongo Criteria 동적 쿼리 → JPA Specification (docs/design/mariadb-migration-design.md §3.6)
+    private Specification<Artwork> buildCommunitySpecification(ArtworkField artworkField,
+                                                                AgeRating ageRating, String cursor) {
+        return (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            predicates.add(cb.equal(root.get("status"), ArtworkStatus.READY));
+            predicates.add(cb.equal(root.get("visibility"), Visibility.PUBLIC));
+            if (artworkField != null) {
+                predicates.add(cb.equal(root.get("artworkField"), artworkField));
+            }
+            if (ageRating != null) {
+                predicates.add(cb.equal(root.get("ageRating"), ageRating));
+            }
+            if (cursor != null) {
+                predicates.add(cb.lessThan(root.get("createdAt"), parseCursor(cursor)));
+            }
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
     }
 
     @Override
     public CursorPage<ArtworkSummaryInfo> getMyArtworks(String memberId, String cursor, int size) {
         int limit = size + 1;
-        Criteria criteria = Criteria.where("authorId").is(memberId)
-                .and("status").ne(ArtworkStatus.DELETED.name());
-        if (cursor != null) {
-            criteria = criteria.and("createdAt").lt(parseCursor(cursor));
-        }
-        Query query = Query.query(criteria)
-                .with(Sort.by(Sort.Direction.DESC, "createdAt"))
-                .limit(limit);
-        List<Artwork> artworks = mongoTemplate.find(query, Artwork.class);
+        List<Artwork> artworks = cursor != null
+                ? artworkRepository.findByAuthorIdAndStatusNotAndCreatedAtBeforeOrderByCreatedAtDesc(
+                        memberId, ArtworkStatus.DELETED, parseCursor(cursor), PageRequest.of(0, limit))
+                : artworkRepository.findByAuthorIdAndStatusNotOrderByCreatedAtDesc(
+                        memberId, ArtworkStatus.DELETED, PageRequest.of(0, limit));
         return toSummaryPage(artworks, size);
     }
 
     @Override
     public CursorPage<ArtworkSummaryInfo> getTrashArtworks(String memberId, String cursor, int size) {
         int limit = size + 1;
-        Criteria criteria = Criteria.where("authorId").is(memberId)
-                .and("status").is(ArtworkStatus.DELETED.name());
-        if (cursor != null) {
-            criteria = criteria.and("createdAt").lt(parseCursor(cursor));
-        }
-        Query query = Query.query(criteria)
-                .with(Sort.by(Sort.Direction.DESC, "createdAt"))
-                .limit(limit);
-        List<Artwork> artworks = mongoTemplate.find(query, Artwork.class);
+        List<Artwork> artworks = cursor != null
+                ? artworkRepository.findByAuthorIdAndStatusAndCreatedAtBeforeOrderByCreatedAtDesc(
+                        memberId, ArtworkStatus.DELETED, parseCursor(cursor), PageRequest.of(0, limit))
+                : artworkRepository.findByAuthorIdAndStatusOrderByCreatedAtDesc(
+                        memberId, ArtworkStatus.DELETED, PageRequest.of(0, limit));
         return toSummaryPage(artworks, size);
     }
 
@@ -343,14 +355,9 @@ class ArtworkServiceImpl implements ArtworkService {
     @Override
     public CursorPage<ArtworkInfo> getArtworksForReindex(String cursor, int size) {
         int limit = size + 1;
-        Criteria criteria = new Criteria();
-        if (cursor != null) {
-            criteria = criteria.and("createdAt").gt(parseCursor(cursor));
-        }
-        Query query = Query.query(criteria)
-                .with(Sort.by(Sort.Direction.ASC, "createdAt"))
-                .limit(limit);
-        List<Artwork> artworks = mongoTemplate.find(query, Artwork.class);
+        List<Artwork> artworks = cursor != null
+                ? artworkRepository.findByCreatedAtAfterOrderByCreatedAtAsc(parseCursor(cursor), PageRequest.of(0, limit))
+                : artworkRepository.findAllByOrderByCreatedAtAsc(PageRequest.of(0, limit));
         if (artworks.isEmpty()) return CursorPage.empty();
 
         boolean hasNext = artworks.size() > size;
