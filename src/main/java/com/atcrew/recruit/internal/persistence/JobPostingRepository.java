@@ -4,6 +4,7 @@ import com.atcrew.recruit.JobPostingStatus;
 import com.atcrew.recruit.internal.domain.JobPosting;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -11,7 +12,11 @@ import org.springframework.data.repository.query.Param;
 import java.time.Instant;
 import java.util.List;
 
-public interface JobPostingRepository extends JpaRepository<JobPosting, String> {
+// 검색(RecruitSearchQueryRepository)은 조건 조합이 동적이라 Specification으로 조회한다.
+public interface JobPostingRepository extends JpaRepository<JobPosting, String>, JpaSpecificationExecutor<JobPosting> {
+
+    // 기업 마이페이지 "구인글 업로드 카드" 진입점 판단 — 공개 중인 구인글 보유 여부(§6.2)
+    boolean existsByAuthorMemberIdAndStatus(String authorMemberId, JobPostingStatus status);
 
     // 내 목록/휴지통/관리자 PENDING 목록 첫 페이지 — id(UUIDv7)는 생성 시각순 정렬과 동일하므로 id 기준 커서로 충분
     List<JobPosting> findByStatusOrderByIdDesc(JobPostingStatus status, Pageable pageable);

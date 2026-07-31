@@ -20,6 +20,7 @@ public record CompanyInfo(
         boolean hasBusinessRegistration,    // 사업자 등록 여부 (자기 신고)
         List<ActivityField> activityFields, // 활동 분야
         List<ActiveRegion> activeRegions,   // 활동 지역
+        boolean hasOpenJobPosting,          // 공개 중인 구인글 보유 여부 — 구인글 업로드 카드 진입점 판단용(§6.2)
         boolean isOwner,                    // 조회자가 소유자인지 여부 — 수정/업로드/관리 액션 노출 판단용
         Instant createdAt,                  // 생성 일시
         Instant updatedAt                   // 최종 수정 일시

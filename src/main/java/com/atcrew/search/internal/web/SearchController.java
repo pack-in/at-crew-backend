@@ -27,9 +27,9 @@ import java.util.List;
  * 검색 API. 피그마 UI개편_검색(5154:41768) 기준 — 텍스트 검색 + 다중선택 chip 필터(작품 분야·창작 유형·
  * 연령대·담당 업무·장르·소재 대상) + 게시글 유형(포트폴리오·구인글·구직글·팀원모집글).
  *
- * <p>구인글/구직글/팀원모집글은 recruit 모듈이 아직 없어 현재는 항상 빈 목록을 반환합니다.
+ * <p>구인글/구직글/팀원모집글은 recruit 모듈에서 조회하며, 포트폴리오와 함께 요청하면 최신순으로 병합해 반환합니다.
  */
-@Tag(name = "검색", description = "태그 기반 검색 API — 포트폴리오 검색 지원, 구인글/구직글/팀원모집글은 recruit 모듈 미구현으로 빈 목록")
+@Tag(name = "검색", description = "태그 기반 검색 API — 포트폴리오·구인글·구직글·팀원모집글 통합 검색")
 @RestController
 @RequestMapping("/api/search")
 class SearchController {
@@ -45,7 +45,10 @@ class SearchController {
 
     @Operation(summary = "검색", description =
             "검색어와 필터가 모두 비어 있으면 빈 결과를 반환합니다(최초 진입 상태 — 결과 목록 미노출). " +
-            "각 필터 축은 다중선택이며 축 내부는 OR, 축 간에는 AND로 결합됩니다. 인증 불필요.")
+            "각 필터 축은 다중선택이며 축 내부는 OR, 축 간에는 AND로 결합됩니다. " +
+            "포트폴리오와 구인글/구직글/팀원모집글을 함께 요청하면 정렬 요청과 무관하게 최신순으로 병합됩니다. " +
+            "작품 분야·창작 유형·연령대·소재 대상 필터는 포트폴리오에만 존재하는 속성이라, 해당 필터가 걸리면 " +
+            "구인글/구직글/팀원모집글은 결과에서 제외됩니다. 인증 불필요.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공")
     @GetMapping
     public ApiResponse<SearchPage<SearchResultItem>> search(

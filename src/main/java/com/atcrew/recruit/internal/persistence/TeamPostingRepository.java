@@ -4,6 +4,7 @@ import com.atcrew.recruit.TeamPostingStatus;
 import com.atcrew.recruit.internal.domain.TeamPosting;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -11,7 +12,9 @@ import org.springframework.data.repository.query.Param;
 import java.time.Instant;
 import java.util.List;
 
-public interface TeamPostingRepository extends JpaRepository<TeamPosting, String> {
+// 검색(RecruitSearchQueryRepository)은 조건 조합이 동적이라 Specification으로 조회한다.
+public interface TeamPostingRepository extends JpaRepository<TeamPosting, String>,
+        JpaSpecificationExecutor<TeamPosting> {
 
     /**
      * 공개 목록 첫 페이지 — 끌어올리기 적용 중인 글을 상단에 고정한다(설계 §2.1.1).

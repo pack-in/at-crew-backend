@@ -14,6 +14,8 @@ import com.atcrew.recruit.JobPostingStatus;
 import com.atcrew.recruit.JobSeekingPostInfo;
 import com.atcrew.recruit.LikedArtistInfo;
 import com.atcrew.recruit.RecentlyViewedArtistInfo;
+import com.atcrew.recruit.RecruitSearchPage;
+import com.atcrew.recruit.RecruitSearchQuery;
 import com.atcrew.recruit.RecruitService;
 import com.atcrew.recruit.TeamPostingInfo;
 import com.atcrew.recruit.TeamPostingStatus;
@@ -45,16 +47,19 @@ class RecruitServiceImpl implements RecruitService {
     private final JobSeekingPostService jobSeekingPostService;
     private final ApplicationService applicationService;
     private final LikedArtistService likedArtistService;
+    private final RecruitSearchService recruitSearchService;
     private final AuthorNameResolver authorNameResolver;
 
     RecruitServiceImpl(JobPostingRepository jobPostingRepository, TeamPostingRepository teamPostingRepository,
             JobSeekingPostService jobSeekingPostService, ApplicationService applicationService,
-            LikedArtistService likedArtistService, AuthorNameResolver authorNameResolver) {
+            LikedArtistService likedArtistService, RecruitSearchService recruitSearchService,
+            AuthorNameResolver authorNameResolver) {
         this.jobPostingRepository = jobPostingRepository;
         this.teamPostingRepository = teamPostingRepository;
         this.jobSeekingPostService = jobSeekingPostService;
         this.applicationService = applicationService;
         this.likedArtistService = likedArtistService;
+        this.recruitSearchService = recruitSearchService;
         this.authorNameResolver = authorNameResolver;
     }
 
@@ -72,6 +77,20 @@ class RecruitServiceImpl implements RecruitService {
         Instant now = Instant.now();
         List<TeamPosting> postings = findPublishedTeamPostings(cursor, size, now);
         return toTeamCardPage(postings, size, now);
+    }
+
+    // === 타 모듈 연동 (§6) ===
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean hasOpenJobPosting(String companyMemberId) {
+        return jobPostingRepository.existsByAuthorMemberIdAndStatus(companyMemberId, JobPostingStatus.PUBLISHED);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public RecruitSearchPage searchPosts(RecruitSearchQuery query) {
+        return recruitSearchService.search(query);
     }
 
     @Override
@@ -412,8 +431,8 @@ class RecruitServiceImpl implements RecruitService {
 
     @Override
     @Transactional(readOnly = true)
-    public CursorPage<LikedArtistInfo> getLikedArtists(String companyMemberId, String cursor, int size) {
-        return likedArtistService.getLikedArtists(companyMemberId, cursor, size);
+    public CursorPage<LikedArtistInfo> getLikedArtists(String companyMemberId, String q, String cursor, int size) {
+        return likedArtistService.getLikedArtists(companyMemberId, q, cursor, size);
     }
 
     @Override

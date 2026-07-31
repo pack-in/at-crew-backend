@@ -45,4 +45,32 @@ public interface LikedArtistRepository extends JpaRepository<LikedArtist, Compan
     List<LikedArtist> findNextPage(@Param("companyMemberId") String companyMemberId,
             @Param("cursorLikedAt") Instant cursorLikedAt,
             @Param("cursorArtistMemberId") String cursorArtistMemberId, Pageable pageable);
+
+    // 검색어 필터용 — 좋아요한 작가 ID 전체. 이름 매칭은 member 모듈이 담당하므로 후보 ID를 먼저 모은다(§2.7).
+    @Query("SELECT l.id.artistMemberId FROM LikedArtist l WHERE l.id.companyMemberId = :companyMemberId")
+    List<String> findArtistMemberIds(@Param("companyMemberId") String companyMemberId);
+
+    // 검색어로 걸러진 작가 목록 첫 페이지
+    @Query("""
+            SELECT l FROM LikedArtist l
+            WHERE l.id.companyMemberId = :companyMemberId
+              AND l.id.artistMemberId IN :artistMemberIds
+            ORDER BY l.likedAt DESC, l.id.artistMemberId DESC
+            """)
+    List<LikedArtist> findFirstPageIn(@Param("companyMemberId") String companyMemberId,
+            @Param("artistMemberIds") List<String> artistMemberIds, Pageable pageable);
+
+    // 검색어로 걸러진 작가 목록 다음 페이지 — (likedAt, artistMemberId) 복합 커서 keyset
+    @Query("""
+            SELECT l FROM LikedArtist l
+            WHERE l.id.companyMemberId = :companyMemberId
+              AND l.id.artistMemberId IN :artistMemberIds
+              AND (l.likedAt < :cursorLikedAt
+                   OR (l.likedAt = :cursorLikedAt AND l.id.artistMemberId < :cursorArtistMemberId))
+            ORDER BY l.likedAt DESC, l.id.artistMemberId DESC
+            """)
+    List<LikedArtist> findNextPageIn(@Param("companyMemberId") String companyMemberId,
+            @Param("artistMemberIds") List<String> artistMemberIds,
+            @Param("cursorLikedAt") Instant cursorLikedAt,
+            @Param("cursorArtistMemberId") String cursorArtistMemberId, Pageable pageable);
 }

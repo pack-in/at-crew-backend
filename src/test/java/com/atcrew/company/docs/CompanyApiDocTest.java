@@ -67,6 +67,8 @@ class CompanyApiDocTest extends RestDocsIntegrationSupport {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.isOwner").value(false))
+                // 공개 중인 구인글이 없는 기업이므로 false (recruit 모듈 조회 결과)
+                .andExpect(jsonPath("$.data.hasOpenJobPosting").value(false))
                 .andDo(document("company/get-company",
                         preprocessResponse(prettyPrint()),
                         pathParameters(
@@ -77,6 +79,8 @@ class CompanyApiDocTest extends RestDocsIntegrationSupport {
                                 fieldWithPath("data.id").description("기업 프로필 ID"),
                                 fieldWithPath("data.companyName").description("기업명"),
                                 fieldWithPath("data.recruitStatus").description("구인구직 상태"),
+                                fieldWithPath("data.hasOpenJobPosting")
+                                        .description("공개 중인 구인글 보유 여부 — 구인글 업로드 카드 진입점 판단용"),
                                 fieldWithPath("data.isOwner").description("조회자가 소유자인지 여부 (비로그인이면 false)")
                         )
                 ));

@@ -16,6 +16,7 @@ import static org.springframework.restdocs.payload.PayloadDocumentation.fieldWit
 import static org.springframework.restdocs.payload.PayloadDocumentation.relaxedResponseFields;
 import static org.springframework.restdocs.request.RequestDocumentation.parameterWithName;
 import static org.springframework.restdocs.request.RequestDocumentation.pathParameters;
+import static org.springframework.restdocs.request.RequestDocumentation.queryParameters;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -52,6 +53,11 @@ class LikedArtistApiDocTest extends RestDocsIntegrationSupport {
                 .andExpect(jsonPath("$.data.items[0].artistMemberId").value(artistMemberId))
                 .andDo(document("recruit/list-liked-artists",
                         preprocessResponse(prettyPrint()),
+                        queryParameters(
+                                parameterWithName("q").description("검색어 — 작가 이름·핸들 부분 일치").optional(),
+                                parameterWithName("cursor").description("커서").optional(),
+                                parameterWithName("size").description("페이지 크기 (기본 20, 최대 50)").optional()
+                        ),
                         relaxedResponseFields(
                                 fieldWithPath("code").description("응답 코드 (SUCCESS)"),
                                 fieldWithPath("data.items[].artistMemberId").description("작가 Member ID"),
@@ -62,6 +68,20 @@ class LikedArtistApiDocTest extends RestDocsIntegrationSupport {
                                 fieldWithPath("data.hasNext").description("다음 페이지 존재 여부")
                         )
                 ));
+
+        // 검색어 필터 — 저장한 작가 중 이름이 일치하는 작가만 조회된다(설계 §2.7)
+        mockMvc.perform(get("/api/recruit/liked-artists")
+                        .param("q", "관심작가대상")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + companyToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].artistMemberId").value(artistMemberId));
+
+        mockMvc.perform(get("/api/recruit/liked-artists")
+                        .param("q", "일치하지않는이름")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + companyToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items").isEmpty());
 
         mockMvc.perform(delete("/api/recruit/liked-artists/{artistMemberId}", artistMemberId)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + companyToken))

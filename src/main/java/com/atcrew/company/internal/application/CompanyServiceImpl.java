@@ -12,6 +12,7 @@ import com.atcrew.company.internal.exception.CompanyException;
 import com.atcrew.company.internal.persistence.CompanyCareerRepository;
 import com.atcrew.company.internal.persistence.CompanyRepository;
 import com.atcrew.member.MemberService;
+import com.atcrew.recruit.RecruitService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,13 +28,16 @@ class CompanyServiceImpl implements CompanyService {
     private final CompanyRepository companyRepository;
     private final CompanyCareerRepository companyCareerRepository;
     private final MemberService memberService;
+    private final RecruitService recruitService;
 
     CompanyServiceImpl(CompanyRepository companyRepository,
                        CompanyCareerRepository companyCareerRepository,
-                       MemberService memberService) {
+                       MemberService memberService,
+                       RecruitService recruitService) {
         this.companyRepository = companyRepository;
         this.companyCareerRepository = companyCareerRepository;
         this.memberService = memberService;
+        this.recruitService = recruitService;
     }
 
     @Override
@@ -46,7 +50,8 @@ class CompanyServiceImpl implements CompanyService {
         try {
             // 동시 요청으로 위 검사를 통과한 경우 uk_companies_member 제약이 최종 방어선이 된다.
             Company saved = companyRepository.saveAndFlush(Company.create(memberId, companyName));
-            return CompanyMapper.toInfo(saved, true);
+            // 방금 생성한 기업 프로필이므로 구인글 보유 여부는 조회 없이 false로 확정된다.
+            return CompanyMapper.toInfo(saved, false, true);
         } catch (DataIntegrityViolationException e) {
             throw new CompanyException(CompanyErrorCode.COMPANY_ALREADY_EXISTS, "memberId=" + memberId);
         }
@@ -57,13 +62,13 @@ class CompanyServiceImpl implements CompanyService {
     public CompanyInfo findById(String companyId, String viewerMemberId) {
         Company company = companyRepository.findById(companyId)
                 .orElseThrow(() -> new CompanyException(CompanyErrorCode.COMPANY_NOT_FOUND, companyId));
-        return CompanyMapper.toInfo(company, company.isOwnedBy(viewerMemberId));
+        return toInfo(company, company.isOwnedBy(viewerMemberId));
     }
 
     @Override
     @Transactional(readOnly = true)
     public CompanyInfo findByMemberId(String memberId) {
-        return CompanyMapper.toInfo(loadOwnedCompany(memberId), true);
+        return toInfo(loadOwnedCompany(memberId), true);
     }
 
     @Override
@@ -97,6 +102,14 @@ class CompanyServiceImpl implements CompanyService {
             throw new CompanyException(CompanyErrorCode.COMPANY_NOT_FOUND, companyId);
         }
         return CompanyMapper.toCareerInfos(companyCareerRepository.findByCompanyIdOrderByStartDateDesc(companyId));
+    }
+
+    /**
+     * 기업 마이페이지 응답 변환 — "구인글 업로드 카드" 진입점 판단에 쓰이는 공개 구인글 보유 여부를
+     * recruit 모듈 공개 API로 조회해 함께 담는다(docs/design/company-profile-module-design.md §6.2).
+     */
+    private CompanyInfo toInfo(Company company, boolean isOwner) {
+        return CompanyMapper.toInfo(company, recruitService.hasOpenJobPosting(company.getMemberId()), isOwner);
     }
 
     /** 소유 회원 기준으로 기업 프로필을 조회하고 소유자 불변식을 재확인한다. */

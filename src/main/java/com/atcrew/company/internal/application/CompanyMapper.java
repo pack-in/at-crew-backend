@@ -12,7 +12,7 @@ class CompanyMapper {
     private CompanyMapper() {
     }
 
-    static CompanyInfo toInfo(Company company, boolean isOwner) {
+    static CompanyInfo toInfo(Company company, boolean hasOpenJobPosting, boolean isOwner) {
         return new CompanyInfo(
                 company.getId(),
                 company.getMemberId(),
@@ -25,6 +25,7 @@ class CompanyMapper {
                 // Set은 순서가 보장되지 않으므로 enum 선언 순으로 정렬해 응답 순서를 고정한다.
                 company.getActivityFields().stream().sorted().toList(),
                 company.getActiveRegions().stream().sorted().toList(),
+                hasOpenJobPosting,
                 isOwner,
                 company.getCreatedAt(),
                 company.getUpdatedAt()
