@@ -5,8 +5,24 @@ services:
       - "27017:27017"
     environment:
       MONGO_INITDB_DATABASE: atcrew
+      # 글로벌 시간대 전략(docs/design/global-timezone-strategy.md §3.1) — 컨테이너 기본 시간대를 UTC로 명시 고정
+      TZ: UTC
     volumes:
       - mongodb_data:/data/db
+
+  # 검색 모듈(docs/design/search-module-design.md) — artwork 원본은 mongodb 그대로, 조회 전용 색인만 별도 보관
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.2.8
+    ports:
+      - "9200:9200"
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false" # 로컬 개발 전용 — prod는 별도 인증/네트워크 정책 적용
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+      # 글로벌 시간대 전략(docs/design/global-timezone-strategy.md §3.1) — 컨테이너 기본 시간대를 UTC로 명시 고정
+      TZ: UTC
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
 
   # MariaDB 전환(docs/design/mariadb-migration-design.md) — mongodb와 병행 운영 중(P1~P4), P5에서 mongodb 서비스 제거 예정
   mariadb:
@@ -16,10 +32,13 @@ services:
     environment:
       MARIADB_DATABASE: atcrew
       MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-atcrew_local_dev}
+      # 글로벌 시간대 전략(docs/design/global-timezone-strategy.md §3.1) — 컨테이너 기본 시간대를 UTC로 명시 고정
+      TZ: UTC
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     volumes:
       - mariadb_data:/var/lib/mysql
 
 volumes:
   mongodb_data:
+  elasticsearch_data:
   mariadb_data:

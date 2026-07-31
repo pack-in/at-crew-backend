@@ -1,10 +1,9 @@
 -- recruit 모듈 스키마 (docs/design/recruit-module-design.md §2, §8)
--- 이 저장소의 첫 Flyway 마이그레이션 — 기존 4개 모듈(artwork/community/member/auth)은 아직 MongoDB이므로
--- 이 시점의 베이스라인은 recruit 테이블만 포함한다.
+-- recruit 테이블만 포함한다(다른 모듈 스키마는 V1~V4 참조).
 --
 -- ID 전략: 애플리케이션에서 UUIDv7(com.atcrew.common.id.UuidV7Generator)로 생성한 문자열.
 -- ID 컬럼은 VARCHAR(36) CHARACTER SET latin1 COLLATE latin1_bin(ASCII 전용, 인덱스 키 절감 + 대소문자 구분 비교 보장).
--- author_member_id/applicant_member_id는 Member(MongoDB) 참조 — 모듈 경계상 FK를 걸지 않는다.
+-- author_member_id/applicant_member_id는 Member 참조 — 모듈 경계상 FK를 걸지 않는다.
 --
 -- MariaDB는 partial index(WHERE 절)를 지원하지 않으므로 §8의 partial index는 일반 복합 인덱스로 대체한다.
 

@@ -20,21 +20,22 @@ import com.atcrew.member.internal.exception.MemberException;
 import com.atcrew.member.internal.persistence.MemberRepository;
 import com.atcrew.common.logging.LogMask;
 import com.atcrew.common.response.CursorPage;
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
-import org.springframework.data.mongodb.core.FindAndModifyOptions;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -45,15 +46,13 @@ class MemberServiceImpl implements MemberService {
     private static final Logger log = LoggerFactory.getLogger(MemberServiceImpl.class);
 
     private final MemberRepository memberRepository;
-    private final MongoTemplate mongoTemplate;
     private final ApplicationEventPublisher eventPublisher;
     private final PasswordEncoder passwordEncoder;
     private final String dummyHash;
 
-    MemberServiceImpl(MemberRepository memberRepository, MongoTemplate mongoTemplate,
+    MemberServiceImpl(MemberRepository memberRepository,
                       ApplicationEventPublisher eventPublisher, PasswordEncoder passwordEncoder) {
         this.memberRepository = memberRepository;
-        this.mongoTemplate = mongoTemplate;
         this.eventPublisher = eventPublisher;
         this.passwordEncoder = passwordEncoder;
         // 기동 시 랜덤 생성 — 코드 유출 시에도 더미 입력값 예측 불가
@@ -73,7 +72,9 @@ class MemberServiceImpl implements MemberService {
             String handle = generateUniqueHandle(command.name());
             try {
                 Member member = buildMember(command, handle, terms);
-                return MemberMapper.toInfo(memberRepository.save(member));
+                // saveAndFlush로 즉시 flush — handle unique 제약 위반이 이 try 블록 안에서 동기적으로 터지게 한다.
+                // save()만 쓰면 Hibernate가 INSERT를 커밋 시점까지 지연시켜 재시도 로직이 무력화된다.
+                return MemberMapper.toInfo(memberRepository.saveAndFlush(member));
             } catch (DuplicateKeyException e) {
                 if (memberRepository.existsByLoginEmailAndAuthProvider(command.loginEmail(), command.authProvider())) {
                     throw new MemberException(MemberErrorCode.DUPLICATE_EMAIL, command.loginEmail());
@@ -101,7 +102,8 @@ class MemberServiceImpl implements MemberService {
             throw new MemberException(MemberErrorCode.DUPLICATE_HANDLE, handle);
         }
         try {
-            return MemberMapper.toInfo(memberRepository.save(Member.register(loginEmail, handle, name, creatorRole)));
+            // saveAndFlush 이유는 위 register(RegisterMemberCommand) 주석 참고.
+            return MemberMapper.toInfo(memberRepository.saveAndFlush(Member.register(loginEmail, handle, name, creatorRole)));
         } catch (DuplicateKeyException e) {
             throw new MemberException(MemberErrorCode.DUPLICATE_MEMBER_INFO);
         }
@@ -171,32 +173,45 @@ class MemberServiceImpl implements MemberService {
     @Override
     public CursorPage<MemberProfileInfo> searchProfiles(SearchProfilesCommand command) {
         int limit = command.size() + 1;
-        Criteria criteria = Criteria.where("active").is(true);
-        if (command.employmentStatuses() != null && !command.employmentStatuses().isEmpty()) {
-            criteria = criteria.and("employmentStatus").in(command.employmentStatuses().stream().map(Enum::name).toList());
-        }
-        if (command.activityField() != null) {
-            criteria = criteria.and("activityFields").is(command.activityField().name());
-        }
         ProfileSort sort = command.sort() != null ? command.sort() : ProfileSort.RECENTLY_UPDATED;
-        Sort mongoSort;
-        if (sort == ProfileSort.EXPERIENCE) {
-            mongoSort = Sort.by(Sort.Direction.DESC, "experienceRank").and(Sort.by(Sort.Direction.DESC, "updatedAt"));
-            if (command.cursor() != null) {
-                ExperienceCursor c = parseExperienceCursor(command.cursor());
-                criteria = criteria.orOperator(
-                        Criteria.where("experienceRank").lt(c.rank()),
-                        Criteria.where("experienceRank").is(c.rank()).and("updatedAt").lt(c.updatedAt()));
-            }
-        } else {
-            mongoSort = Sort.by(Sort.Direction.DESC, "updatedAt");
-            if (command.cursor() != null) {
-                criteria = criteria.and("updatedAt").lt(parseCursor(command.cursor()));
-            }
-        }
-        Query query = Query.query(criteria).with(mongoSort).limit(limit);
-        List<Member> members = mongoTemplate.find(query, Member.class);
+
+        Specification<Member> spec = buildSearchSpecification(command, sort);
+        Sort jpaSort = sort == ProfileSort.EXPERIENCE
+                ? Sort.by(Sort.Direction.DESC, "experienceRank").and(Sort.by(Sort.Direction.DESC, "updatedAt"))
+                : Sort.by(Sort.Direction.DESC, "updatedAt");
+
+        List<Member> members = memberRepository.findAll(spec, PageRequest.of(0, limit, jpaSort)).getContent();
         return toProfilePage(members, command.size(), sort);
+    }
+
+    // Mongo Criteria 동적 쿼리 → JPA Specification (docs/design/mariadb-migration-design.md §3.6)
+    private Specification<Member> buildSearchSpecification(SearchProfilesCommand command, ProfileSort sort) {
+        return (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            predicates.add(cb.isTrue(root.get("active")));
+            if (command.employmentStatuses() != null && !command.employmentStatuses().isEmpty()) {
+                predicates.add(root.get("employmentStatus").in(command.employmentStatuses()));
+            }
+            if (command.activityField() != null) {
+                predicates.add(cb.isMember(command.activityField(), root.get("activityFields")));
+            }
+            if (command.cursor() != null) {
+                predicates.add(buildCursorPredicate(root, cb, sort, command.cursor()));
+            }
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+    }
+
+    // 기존 복합 커서(keyset) 비교 로직을 SQL 표준 형태로 그대로 이식 — 정렬 기준별 분기 무변경 (§3.6)
+    private Predicate buildCursorPredicate(Root<Member> root, CriteriaBuilder cb, ProfileSort sort, String cursor) {
+        if (sort == ProfileSort.EXPERIENCE) {
+            ExperienceCursor c = parseExperienceCursor(cursor);
+            return cb.or(
+                    cb.lessThan(root.get("experienceRank"), c.rank()),
+                    cb.and(cb.equal(root.get("experienceRank"), c.rank()),
+                           cb.lessThan(root.get("updatedAt"), c.updatedAt())));
+        }
+        return cb.lessThan(root.get("updatedAt"), parseCursor(cursor));
     }
 
     private CursorPage<MemberProfileInfo> toProfilePage(List<Member> members, int size, ProfileSort sort) {
@@ -269,20 +284,17 @@ class MemberServiceImpl implements MemberService {
     }
 
     @Override
+    @Transactional
     public MemberInfo recordLogin(String memberId) {
-        // N1: findAndModify로 find + update를 단일 MongoDB 쿼리로 처리 (auditing은 updatedAt 직접 설정)
-        Query query = Query.query(Criteria.where("_id").is(memberId).and("active").is(true));
-        Update update = new Update()
-                .set("lastLoginAt", Instant.now())
-                .set("updatedAt", Instant.now());
-        FindAndModifyOptions opts = FindAndModifyOptions.options().returnNew(true);
-        Member updated = mongoTemplate.findAndModify(query, update, opts, Member.class);
-        if (updated == null) {
+        // Mongo findAndModify → 조건부 UPDATE + 영향 행 수 판별 (§3.3.1)
+        int updated = memberRepository.recordLogin(memberId, Instant.now());
+        if (updated == 0) {
             memberRepository.findById(memberId)
                     .ifPresent(m -> { throw new MemberException(MemberErrorCode.MEMBER_DEACTIVATED, memberId); });
             throw new MemberException(MemberErrorCode.MEMBER_NOT_FOUND, memberId);
         }
-        return MemberMapper.toInfo(updated);
+        return MemberMapper.toInfo(memberRepository.findById(memberId)
+                .orElseThrow(() -> new MemberException(MemberErrorCode.MEMBER_NOT_FOUND, memberId)));
     }
 
     @Override

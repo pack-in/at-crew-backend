@@ -29,8 +29,6 @@ class MemberModuleTests {
     @ServiceConnection
     static MongoDBContainer mongo = new MongoDBContainer("mongo:7");
 
-    // member 모듈 자체는 JPA를 쓰지 않지만, spring-boot-starter-data-jpa가 클래스패스에 있으면
-    // DataSourceAutoConfiguration이 모든 컨텍스트 부트스트랩에서 DataSource 빈을 요구한다.
     @Container
     @ServiceConnection
     static MariaDBContainer<?> mariadb = new MariaDBContainer<>("mariadb:11.4");

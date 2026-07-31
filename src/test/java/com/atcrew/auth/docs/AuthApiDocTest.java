@@ -17,7 +17,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * 인증 API 문서화 통합 테스트.
  *
- * <p>실제 MongoDB Testcontainer와 전체 Spring 컨텍스트를 기동해
+ * <p>실제 MariaDB Testcontainer와 전체 Spring 컨텍스트를 기동해
  * 이메일 회원가입·로그인·토큰 갱신 API의 요청/응답 구조를 REST Docs 스니펫으로 생성한다.
  */
 class AuthApiDocTest extends RestDocsIntegrationSupport {

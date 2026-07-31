@@ -6,8 +6,11 @@ import org.springframework.boot.testcontainers.service.connection.ServiceConnect
 import org.springframework.context.annotation.Import;
 import org.testcontainers.containers.MariaDBContainer;
 import org.testcontainers.containers.MongoDBContainer;
+import org.testcontainers.elasticsearch.ElasticsearchContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+
+import java.time.Duration;
 
 @SpringBootTest
 @Testcontainers
@@ -17,6 +20,13 @@ class AtCrewBackendApplicationTests {
     @Container
     @ServiceConnection
     static MongoDBContainer mongo = new MongoDBContainer("mongo:7");
+
+    @Container
+    @ServiceConnection
+    static ElasticsearchContainer elasticsearch = new ElasticsearchContainer(
+            "docker.elastic.co/elasticsearch/elasticsearch:9.2.8")
+            .withEnv("xpack.security.enabled", "false")
+            .withStartupTimeout(Duration.ofMinutes(3));
 
     @Container
     @ServiceConnection

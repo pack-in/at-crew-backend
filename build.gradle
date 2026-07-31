@@ -23,13 +23,15 @@ ext {
 
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-data-mongodb'
+	// 검색 모듈(docs/design/search-module-design.md) — Mongo/artwork 원본 데이터는 그대로 두고 조회 전용 색인만 추가
+	implementation 'org.springframework.boot:spring-boot-starter-data-elasticsearch'
 	// MariaDB 전환(docs/design/mariadb-migration-design.md) P1 — Mongo와 공존, P5에서 Mongo 의존성 제거
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	runtimeOnly 'org.mariadb.jdbc:mariadb-java-client'
-	implementation 'org.flywaydb:flyway-core'
 	// Spring Boot 4부터 Flyway 자동설정이 spring-boot-autoconfigure에서 분리됐다 —
 	// flyway-core만으로는 자동 실행되지 않으므로 이 모듈을 명시적으로 추가해야 한다.
 	implementation 'org.springframework.boot:spring-boot-flyway'
+	implementation 'org.flywaydb:flyway-core'
 	runtimeOnly 'org.flywaydb:flyway-mysql'
 	implementation 'org.springframework.boot:spring-boot-starter-web'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
@@ -51,6 +53,7 @@ dependencies {
 	testImplementation 'org.springframework.modulith:spring-modulith-docs'
 	testImplementation 'org.springframework.boot:spring-boot-testcontainers'
 	testImplementation 'org.testcontainers:testcontainers-mongodb'
+	testImplementation 'org.testcontainers:testcontainers-elasticsearch'
 	testImplementation 'org.testcontainers:testcontainers-mariadb'
 	testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
 	testImplementation 'org.springframework.restdocs:spring-restdocs-mockmvc'
@@ -66,4 +69,13 @@ dependencyManagement {
 
 tasks.named('test') {
 	useJUnitPlatform()
+	// 글로벌 시간대 전략(docs/design/global-timezone-strategy.md §3.1) — 테스트 JVM은 AtCrewBackendApplication.main()을
+	// 거치지 않아 TimeZone.setDefault(UTC)가 적용되지 않으므로 개발 환경의 로컬 시간대에 결과가 좌우되지 않도록 별도 고정.
+	jvmArgs '-Duser.timezone=UTC'
+}
+
+tasks.named('bootRun') {
+	// 글로벌 시간대 전략(docs/design/global-timezone-strategy.md §3.1) — 이중 안전장치.
+	// AtCrewBackendApplication.main()의 TimeZone.setDefault(UTC)보다 앞서 JVM 부팅 시점부터 UTC를 강제한다.
+	jvmArgs '-Duser.timezone=UTC'
 }

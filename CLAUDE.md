@@ -29,6 +29,7 @@
 
 | 문서 | 설명 |
 |------|------|
+| [docs/AT-CREW_서비스기획서_전체_20260728.xlsx](docs/AT-CREW_서비스기획서_전체_20260728.xlsx) | 정식 서비스 기획서 — 요구사항·정책·화면 목록·사용자 플로우·기능/화면 명세·QA 6개 시트. 개별 설계 문서와 상충 시 이 문서가 정본 |
 | [docs/conventions/commit.md](docs/conventions/commit.md) | 커밋 컨벤션 및 워크플로우 |
 | [docs/design/figma.md](docs/design/figma.md) | Figma 파일 링크 및 UI 페이지 목록 (**비공개**) |
 | [docs/design/auth-email-custom-redesign.md](docs/design/auth-email-custom-redesign.md) | 이메일 자체 인증 재설계 (Firebase → Custom) 설계안 |
@@ -37,6 +38,8 @@
 | [docs/design/global-timezone-strategy.md](docs/design/global-timezone-strategy.md) | 글로벌 시간대 관리 설계 — 일본·중국·영미·유럽 확장 시 UTC 저장/Member timezone 필드/직렬화 정책 변경안 |
 | [docs/design/mariadb-migration-design.md](docs/design/mariadb-migration-design.md) | MongoDB → MariaDB 전면 전환 설계 — ID 전략(String/UUIDv7), 스키마 정규화, 원자 연산 재설계, Flyway, Modulith JDBC 레지스트리, ETL·컷오버 계획 |
 | [docs/design/community-module-design.md](docs/design/community-module-design.md) | community 모듈 설계 — 커뮤니티 피드(배너·포트폴리오·작가 찾아보기), 구인글/팀원모집글은 recruit 모듈 스텁 |
+| [docs/design/search-module-design.md](docs/design/search-module-design.md) | search 모듈 설계 — Elasticsearch 기반 포트폴리오 검색, 태그 기반 다중선택 필터, 색인 동기화(이벤트+전체 재색인), 구인글/구직글/팀원모집글은 recruit 모듈 스텁 |
+| [docs/design/recruit-module-design.md](docs/design/recruit-module-design.md) | recruit 모듈 설계 — 구인글·팀원모집글·구직글 CRUD, 지원 접수/지원자 관리, 끌어올리기(boost), 관심 작가(기업 전용) |
 | [docs/design/global-country-plan-design.md](docs/design/global-country-plan-design.md) | 거주 국가(Member.countryCode) 설계 — Phase 1. Pro 플랜 노출국가(Artwork.targetCountryCodes)는 로드맵 5순위(결제/구독) 도달 후 Phase 2로 보류 |
 | [docs/testing/rest-docs-guide.md](docs/testing/rest-docs-guide.md) | MockMvc + Spring REST Docs 테스트 전략, 계층 구조, 새 API 개발 체크리스트 |
 | [docs/roadmap.md](docs/roadmap.md) | 모듈 개발 로드맵 — Figma 대비 미구현 영역 및 착수 우선순위(인증 시스템 → recruit → 기업 프로필 → 검색 → 결제 → 설정) |

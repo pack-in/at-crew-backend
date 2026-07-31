@@ -75,6 +75,49 @@ class SecurityIntegrationTest extends RestDocsIntegrationSupport {
                 .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
     }
 
+    @Test
+    void 기업_프로필_생성_토큰_없음_401() throws Exception {
+        mockMvc.perform(post("/api/companies")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"companyName\":\"앳크루스튜디오\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+    }
+
+    @Test
+    void 내_기업_프로필_조회_토큰_없음_401() throws Exception {
+        mockMvc.perform(get("/api/companies/me"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+    }
+
+    @Test
+    void 기업명_수정_토큰_없음_401() throws Exception {
+        mockMvc.perform(patch("/api/companies/me/name")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"companyName\":\"앳크루스튜디오\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+    }
+
+    @Test
+    void 기업_정보_수정_토큰_없음_401() throws Exception {
+        mockMvc.perform(patch("/api/companies/me/info")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+    }
+
+    @Test
+    void 기업_경력_추가_토큰_없음_401() throws Exception {
+        mockMvc.perform(post("/api/companies/me/careers")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+    }
+
     // ─── 섹션 2: 유효하지 않은 JWT → 401 ─────────────────────────────
 
     @Test
@@ -152,9 +195,30 @@ class SecurityIntegrationTest extends RestDocsIntegrationSupport {
     }
 
     @Test
+    void 기업_프로필_공개_조회_토큰_없이_401_아님() throws Exception {
+        // 없는 기업 ID여도 보안 필터를 통과 → 404
+        mockMvc.perform(get("/api/companies/{companyId}", UUID.randomUUID().toString()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void 기업_경력_목록_토큰_없이_401_아님() throws Exception {
+        mockMvc.perform(get("/api/companies/{companyId}/careers", UUID.randomUUID().toString()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void 헬스체크_토큰_없이_200() throws Exception {
         mockMvc.perform(get("/actuator/health"))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void 검색_토큰_없이_401_아님() throws Exception {
+        // 검색어·필터 없음 → 최초 진입 상태로 빈 결과, 401이 아님을 확인
+        mockMvc.perform(get("/api/search"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"));
     }
 
     // ─── 헬퍼 ──────────────────────────────────────────────────────────

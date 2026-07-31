@@ -27,16 +27,21 @@
 
 ## 1. 영속성 계층 결정
 
-이 저장소에 JPA 엔티티/Flyway가 도입되는 것은 recruit 모듈이 처음이다(기존 4개 모듈은 전부 MongoDB). `docs/design/mariadb-migration-design.md`의 결정 사항을 그대로 따른다:
+recruit 모듈은 처음부터 JPA/MariaDB로 짓는다. `docs/design/mariadb-migration-design.md`의 결정 사항을 그대로 따른다:
 
-- **ID**: `String`, 컬럼 `VARCHAR(36) CHARACTER SET latin1 COLLATE latin1_bin`, 애플리케이션에서 UUIDv7 생성 (§3.1). 공통 유틸 `com.atcrew.common.id.UuidV7Generator` 신규 추가(다른 신규 모듈도 재사용 가능하도록 `common`에 위치).
+> **2026-07-31 병합 반영**: 설계 시점에는 recruit이 이 저장소의 첫 JPA/Flyway 도입 모듈이었으나,
+> 병렬로 진행된 MariaDB 전환 P1~P4(community·member·auth·artwork)가 먼저 `main`에 머지되면서
+> JPA 인프라(`UuidV7Generator`, `@EnableJpaRepositories`/`@EnableJpaAuditing`, Flyway 베이스라인)는
+> 이미 공용으로 존재한다. 아래 항목 중 "신규 추가"로 적힌 부분은 기존 공용 인프라 재사용으로 대체됐다.
+
+- **ID**: `String`, 컬럼 `VARCHAR(36) CHARACTER SET latin1 COLLATE latin1_bin`, 애플리케이션에서 UUIDv7 생성 (§3.1). 공통 유틸 `com.atcrew.common.id.UuidV7Generator`를 그대로 사용(MariaDB 전환 P1에서 이미 `common`에 추가됨).
 - **정규화 기준**(§3.2): WHERE 절/검색에 쓰이는 리스트는 자식 테이블, 표시 전용 리스트는 JSON 컬럼.
   - `roles`, `genres` (List\<String\>) → 자식 테이블 (커뮤니티 피드 필터·검색 모듈에서 쓰일 가능성 높음, artwork의 `artwork_roles`/`artwork_genres`와 동일 패턴)
   - `benefitKeywords`, `referenceImages`, `recruitPurposes` → JSON 컬럼 (표시 전용, 검색 대상 아님)
 - **동시성**: `bookmarkCount`/`viewCount` 증가는 원자적 UPDATE(`UPDATE ... SET count = count + 1`)로 처리 — Mongo `$inc` 자리를 대체하는 §3.3 패턴을 그대로 따름.
 - **낙관적 락**: `JobPosting`/`TeamPosting`에 `@Version` 적용 (상태 전이 동시 수정 방지 + `Persistable` 없이 assigned-ID 신규/기존 판별 겸용, §3.1 JPA 주의점).
-- **Flyway**: `src/main/resources/db/migration/V1__recruit_schema.sql`부터 시작 (recruit이 이 저장소 첫 Flyway 마이그레이션이므로 `V1`). 기존 4개 모듈은 아직 Mongo이므로 이 시점의 Flyway 베이스라인은 recruit 테이블만 포함.
-- **JPA 설정**: `com.atcrew.common.config.JpaConfig` 신규 — `@EnableJpaRepositories(basePackages = "com.atcrew")`, `@EnableJpaAuditing`. `application-local.yml`/`application.yml`에 `spring.datasource`(MariaDB, `docker-compose.yml`의 `mariadb` 서비스 대상) 추가.
+- **Flyway**: `V5__recruit_schema.sql` ~ `V9__company_liked_artists.sql`. `V1`~`V4`는 MariaDB 전환 P1~P4가 선점했으므로 recruit 마이그레이션은 `V5`부터 이어붙인다(recruit 테이블만 포함, 다른 모듈 스키마와 FK로 얽지 않음).
+- **JPA 설정**: 별도 설정 클래스를 두지 않는다 — `AtCrewBackendApplication`에 이미 `@EnableJpaAuditing`이 선언돼 있고 리포지토리 스캔은 `@SpringBootApplication` 기본 동작으로 충분하다. 데이터소스(`spring.datasource`, `docker-compose.yml`의 `mariadb` 서비스 대상)도 `application.yml`에 이미 구성돼 있다.
 
 ---
 

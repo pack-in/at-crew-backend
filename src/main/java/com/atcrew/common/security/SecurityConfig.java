@@ -80,7 +80,14 @@ class SecurityConfig {
                             .requestMatchers(HttpMethod.GET, "/api/community/job-postings").permitAll()
                             .requestMatchers(HttpMethod.GET, "/api/community/team-recruits").permitAll()
                             .requestMatchers(HttpMethod.GET, "/api/community/banners").permitAll()
+                            .requestMatchers(HttpMethod.GET, "/api/search").permitAll()
+                            // 기업 마이페이지는 비로그인도 열람 가능 — 단, /me는 본인 전용이므로
+                            // {companyId} 공개 패턴에 가려지지 않도록 먼저 선언한다.
+                            .requestMatchers(HttpMethod.GET, "/api/companies/me").authenticated()
+                            .requestMatchers(HttpMethod.GET, "/api/companies/{companyId}").permitAll()
+                            .requestMatchers(HttpMethod.GET, "/api/companies/{companyId}/careers").permitAll()
                             .requestMatchers(HttpMethod.POST, "/internal/artwork/images/processed").permitAll()
+                            .requestMatchers(HttpMethod.POST, "/internal/search/reindex").permitAll()
                             .requestMatchers("/actuator/health", "/actuator/info").permitAll();
 
                     // recruit 모듈 — 공개 목록/상세 조회는 인증 불필요, 나머지는 인증 필요(기본 anyRequest().authenticated()).

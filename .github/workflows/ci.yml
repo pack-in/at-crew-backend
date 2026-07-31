@@ -28,6 +28,9 @@ jobs:
 
   build-and-test:
     runs-on: ubuntu-latest
+    # 글로벌 시간대 전략(docs/design/global-timezone-strategy.md §3.1) — 빌드/테스트 환경 시간대를 UTC로 명시 고정
+    env:
+      TZ: UTC
     steps:
       - uses: actions/checkout@v6
 

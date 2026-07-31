@@ -30,6 +30,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 class AuthServiceImplTest {
@@ -216,7 +217,7 @@ class AuthServiceImplTest {
     void 정상_토큰_갱신() {
         RefreshToken stored = RefreshToken.of(MEMBER_ID, REFRESH_TOKEN, Instant.now().plusSeconds(3600));
         when(jwtProvider.validateRefreshToken(REFRESH_TOKEN)).thenReturn(true);
-        when(refreshTokenRepository.findAndDeleteByTokenValue(REFRESH_TOKEN)).thenReturn(Optional.of(stored));
+        givenStoredToken(stored);
         when(memberService.findById(MEMBER_ID)).thenReturn(memberInfo(AuthProvider.EMAIL));
         when(memberService.recordLogin(MEMBER_ID)).thenReturn(memberInfo(AuthProvider.EMAIL));
 
@@ -240,7 +241,8 @@ class AuthServiceImplTest {
     @Test
     void refresh_토큰_재사용_401() {
         when(jwtProvider.validateRefreshToken(REFRESH_TOKEN)).thenReturn(true);
-        when(refreshTokenRepository.findAndDeleteByTokenValue(REFRESH_TOKEN)).thenReturn(Optional.empty());
+        when(refreshTokenRepository.findByTokenValueAndExpiresAtAfter(eq(REFRESH_TOKEN), any()))
+                .thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> authService.refresh(REFRESH_TOKEN))
                 .isInstanceOf(AuthException.class)
@@ -249,10 +251,27 @@ class AuthServiceImplTest {
     }
 
     @Test
+    void 동시_요청에_토큰을_먼저_소비당하면_401() {
+        // MariaDB 전환(§3.3.2) — 조회는 성공했으나 DELETE 영향 행 수가 0이면 이미 소비된 토큰으로 판별
+        RefreshToken stored = RefreshToken.of(MEMBER_ID, REFRESH_TOKEN, Instant.now().plusSeconds(3600));
+        when(jwtProvider.validateRefreshToken(REFRESH_TOKEN)).thenReturn(true);
+        when(refreshTokenRepository.findByTokenValueAndExpiresAtAfter(eq(REFRESH_TOKEN), any()))
+                .thenReturn(Optional.of(stored));
+        when(refreshTokenRepository.deleteByIdReturningCount(stored.getId())).thenReturn(0);
+
+        assertThatThrownBy(() -> authService.refresh(REFRESH_TOKEN))
+                .isInstanceOf(AuthException.class)
+                .satisfies(e -> assertThat(((AuthException) e).getCode())
+                        .isEqualTo(AuthErrorCode.INVALID_REFRESH_TOKEN.name()));
+
+        verify(memberService, never()).findById(anyString());
+    }
+
+    @Test
     void 탈퇴_회원_refresh_토큰_갱신_시_403_전파() {
         RefreshToken stored = RefreshToken.of(MEMBER_ID, REFRESH_TOKEN, Instant.now().plusSeconds(3600));
         when(jwtProvider.validateRefreshToken(REFRESH_TOKEN)).thenReturn(true);
-        when(refreshTokenRepository.findAndDeleteByTokenValue(REFRESH_TOKEN)).thenReturn(Optional.of(stored));
+        givenStoredToken(stored);
         when(memberService.findById(MEMBER_ID))
                 .thenThrow(new MemberException(MemberErrorCode.MEMBER_DEACTIVATED, MEMBER_ID));
 
@@ -272,6 +291,13 @@ class AuthServiceImplTest {
     }
 
     // ─── 헬퍼 ─────────────────────────────────────────────────────────
+
+    // 토큰 소비 성공 스텁 — 만료 조건 포함 조회 + DELETE 영향 행 수 1 (§3.3.2)
+    private void givenStoredToken(RefreshToken stored) {
+        when(refreshTokenRepository.findByTokenValueAndExpiresAtAfter(eq(stored.getTokenValue()), any()))
+                .thenReturn(Optional.of(stored));
+        when(refreshTokenRepository.deleteByIdReturningCount(stored.getId())).thenReturn(1);
+    }
 
     private MemberInfo memberInfo(AuthProvider provider) {
         return new MemberInfo(MEMBER_ID, "handle", EMAIL,
