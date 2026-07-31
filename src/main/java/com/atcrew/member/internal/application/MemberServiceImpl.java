@@ -1,6 +1,7 @@
 package com.atcrew.member.internal.application;
 
 import com.atcrew.member.AddCareerCommand;
+import com.atcrew.member.ArtistProfileViewedEvent;
 import com.atcrew.member.AuthProvider;
 import com.atcrew.member.CareerEntryInfo;
 import com.atcrew.member.CreatorRole;
@@ -37,6 +38,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -149,8 +151,27 @@ class MemberServiceImpl implements MemberService {
 
     @Override
     public MemberProfileInfo findProfileByHandle(String handle) {
-        return MemberMapper.toProfileInfo(memberRepository.findByHandle(handle)
-                .orElseThrow(() -> new MemberException(MemberErrorCode.MEMBER_NOT_FOUND, handle)));
+        // 주의(Spring 셀프 호출): 이 메서드를 거쳐 findProfileByHandle(handle, viewerMemberId)를 호출하면
+        // 프록시를 우회해 그 메서드의 @Transactional이 적용되지 않는다 — 호출자가 이미 트랜잭션 안에 있지
+        // 않다면 발행된 ArtistProfileViewedEvent가 버려질 수 있다. 뷰 이벤트 발행을 보장하려면
+        // findProfileByHandle(handle, viewerMemberId)를 프록시(빈)를 통해 직접 호출해야 한다
+        // (MemberController가 그렇게 호출한다). 현재 이 오버로드의 실제 호출자는 없다(하위 호환용).
+        return findProfileByHandle(handle, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public MemberProfileInfo findProfileByHandle(String handle, String viewerMemberId) {
+        Member member = memberRepository.findByHandle(handle)
+                .orElseThrow(() -> new MemberException(MemberErrorCode.MEMBER_NOT_FOUND, handle));
+        // 본인이 본인 프로필을 조회한 경우는 "작가를 조회했다"는 신호가 아니므로 이벤트를 발행하지 않는다.
+        // 비로그인 조회(viewerMemberId == null)는 발행하되, 기록 대상에서 제외할지는 구독자가 판단한다
+        // (ArtistProfileViewedEvent 참고). @Transactional readOnly로 감싸는 이유: 트랜잭션 커밋 후에만
+        // 실행되는 @ApplicationModuleListener(AFTER_COMMIT)가 트랜잭션 없이 발행된 이벤트는 그냥 버리기 때문.
+        if (!Objects.equals(viewerMemberId, member.getId())) {
+            eventPublisher.publishEvent(new ArtistProfileViewedEvent(viewerMemberId, member.getId(), Instant.now()));
+        }
+        return MemberMapper.toProfileInfo(member);
     }
 
     @Override

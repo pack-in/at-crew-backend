@@ -77,13 +77,12 @@ class LikedArtistController {
     }
 
     @Operation(summary = "작가 조회 기록", description =
-            "작가 마이페이지 조회 시 최근 본 작가 목록에 기록합니다. 같은 작가를 다시 보면 조회 시각만 갱신됩니다.")
+            "작가 마이페이지 조회 시 최근 본 작가 목록에 기록합니다. 같은 작가를 다시 보면 조회 시각만 갱신됩니다. "
+                    + "실제로는 member 모듈의 마이페이지 조회 시점에 ArtistProfileViewedEvent를 통해 자동 기록되며, "
+                    + "이 엔드포인트는 수동 기록·테스트 용도로 남겨둔다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "204", description = "기록 성공")
     @PostMapping("/recently-viewed-artists/{artistMemberId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    // TODO(모듈 연동): 설계 §2.7대로라면 작가 마이페이지 조회 시점에 자동 기록돼야 한다.
-    // member → recruit 직접 호출은 순환 의존을 만들므로, member 모듈이 마이페이지 조회 이벤트를 발행하고
-    // recruit의 리스너가 이 진입점을 호출하는 방식으로 연결한다(Spring Modulith 이벤트, member 모듈 작업 필요).
     public void recordArtistView(
             @Parameter(description = "작가 Member ID") @PathVariable @Pattern(regexp = MEMBER_ID_PATTERN, message = "작가 ID 형식이 올바르지 않습니다") String artistMemberId) {
         String companyMemberId = securityUtils.getCurrentMemberId();

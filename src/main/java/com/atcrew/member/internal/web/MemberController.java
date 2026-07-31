@@ -1,5 +1,6 @@
 package com.atcrew.member.internal.web;
 
+import com.atcrew.common.security.MemberPrincipal;
 import com.atcrew.common.security.SecurityUtils;
 import com.atcrew.member.AddCareerCommand;
 import com.atcrew.member.CareerEntryInfo;
@@ -17,6 +18,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Pattern;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -48,7 +51,8 @@ class MemberController {
     public com.atcrew.common.response.ApiResponse<MemberProfileInfo> findByHandle(
             @Parameter(description = "회원 핸들 (@ 제외)", example = "creator_kim")
             @PathVariable @Pattern(regexp = "^[a-zA-Z0-9_-]{3,30}$", message = "핸들 형식이 올바르지 않습니다") String handle) {
-        return com.atcrew.common.response.ApiResponse.success(memberService.findProfileByHandle(handle));
+        return com.atcrew.common.response.ApiResponse.success(
+                memberService.findProfileByHandle(handle, getOptionalMemberId()));
     }
 
     @Operation(summary = "이름 수정", description = "내 이름·작가명을 수정합니다. (최대 16자)")
@@ -111,5 +115,14 @@ class MemberController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deactivate() {
         memberService.deactivate(securityUtils.getCurrentMemberId());
+    }
+
+    // 공개 GET에서 로그인 여부를 판별한다 — 비로그인이면 null (artwork/company 모듈과 동일 패턴).
+    private String getOptionalMemberId() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.isAuthenticated() && auth.getPrincipal() instanceof MemberPrincipal principal) {
+            return principal.memberId();
+        }
+        return null;
     }
 }

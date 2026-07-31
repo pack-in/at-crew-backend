@@ -3,6 +3,7 @@ package com.atcrew.recruit;
 import com.atcrew.TestMongoConfig;
 import com.atcrew.common.exception.DomainException;
 import com.atcrew.member.CreatorRole;
+import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,9 +15,11 @@ import org.testcontainers.containers.MongoDBContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -177,6 +180,51 @@ class RecruitModuleTests {
         List<RecentlyViewedArtistInfo> viewed = recruitService.getRecentlyViewedArtists(companyId, null, 20).items();
         assertThat(viewed).extracting(RecentlyViewedArtistInfo::artistMemberId).containsExactly(artistId);
         assertThat(viewed.get(0).viewedAt()).isAfterOrEqualTo(firstViewedAt);
+    }
+
+    // 이슈 #37 — member 모듈의 작가 마이페이지 조회가 ArtistProfileViewedEvent를 통해
+    // recruit의 "최근 본 작가" 기록으로 자동 연결되는지 검증한다.
+    @Test
+    void 작가_마이페이지_조회시_최근_본_작가로_자동_기록된다() {
+        String companyId = registerMember("view-event-company");
+        MemberInfo artist = memberService.register(
+                "view-event-artist-" + UUID.randomUUID().toString().substring(0, 8) + "@atcrew.com",
+                "viewevent" + UUID.randomUUID().toString().substring(0, 8), "조회대상작가", CreatorRole.WEBTOON);
+
+        memberService.findProfileByHandle(artist.handle(), companyId);
+
+        awaitCondition(() -> recruitService.getRecentlyViewedArtists(companyId, null, 20).items().stream()
+                .anyMatch(v -> v.artistMemberId().equals(artist.id())));
+    }
+
+    @Test
+    void 본인_프로필_조회는_최근_본_작가로_기록되지_않는다() {
+        MemberInfo self = memberService.register(
+                "view-event-self-" + UUID.randomUUID().toString().substring(0, 8) + "@atcrew.com",
+                "viewselfevent" + UUID.randomUUID().toString().substring(0, 8), "본인조회", CreatorRole.WEBTOON);
+
+        memberService.findProfileByHandle(self.handle(), self.id());
+
+        // 비동기 이벤트 처리 대기 시간을 확보한 뒤에도 기록되지 않아야 한다.
+        sleepBriefly();
+        assertThat(recruitService.getRecentlyViewedArtists(self.id(), null, 20).items()).isEmpty();
+    }
+
+    private void awaitCondition(Supplier<Boolean> condition) {
+        Instant deadline = Instant.now().plus(Duration.ofSeconds(10));
+        while (Instant.now().isBefore(deadline)) {
+            if (condition.get()) return;
+            sleepBriefly();
+        }
+        throw new AssertionError("이벤트 반영 대기 시간 초과");
+    }
+
+    private void sleepBriefly() {
+        try {
+            Thread.sleep(300);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private List<String> publishedIds() {

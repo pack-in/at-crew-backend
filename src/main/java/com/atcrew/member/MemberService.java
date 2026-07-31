@@ -11,6 +11,14 @@ public interface MemberService {
 
     MemberProfileInfo findProfileByHandle(String handle);
 
+    /**
+     * 핸들로 회원 프로필을 조회하며, 조회자 회원 ID를 함께 받아 {@link ArtistProfileViewedEvent}를
+     * 발행한다(본인 조회는 제외, docs/design/recruit-module-design.md §2.7).
+     *
+     * @param viewerMemberId 조회자 회원 ID. 비로그인 조회면 null
+     */
+    MemberProfileInfo findProfileByHandle(String handle, String viewerMemberId);
+
     MemberInfo findByHandle(String handle);
 
     MemberInfo findByLoginEmailAndProvider(String loginEmail, AuthProvider authProvider);
