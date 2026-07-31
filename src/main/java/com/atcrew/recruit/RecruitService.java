@@ -150,4 +150,21 @@ public interface RecruitService {
 
     // 팀원모집글 지원 내역 삭제 — 작성자 본인만 가능
     void deleteTeamApplication(String memberId, String teamPostingId, String applicationId);
+
+    // === 관심 작가 (§2.7, §4.3) — 기업 계정 전용이나 기업 인증 게이팅은 아직 스텁(§7) ===
+
+    // 좋아요 저장 — 이미 저장돼 있으면 최초 저장 시각을 유지
+    void likeArtist(String companyMemberId, String artistMemberId);
+
+    // 좋아요 해제 — 저장돼 있지 않아도 성공(멱등)
+    void unlikeArtist(String companyMemberId, String artistMemberId);
+
+    // 좋아요한 작가 목록(커서) — 저장 시각 내림차순
+    CursorPage<LikedArtistInfo> getLikedArtists(String companyMemberId, String cursor, int size);
+
+    // 작가 마이페이지 조회 기록 — 같은 작가 재조회 시 조회 시각만 갱신
+    void recordArtistView(String companyMemberId, String artistMemberId);
+
+    // 최근 본 작가 목록(커서) — 조회 시각 내림차순
+    CursorPage<RecentlyViewedArtistInfo> getRecentlyViewedArtists(String companyMemberId, String cursor, int size);
 }

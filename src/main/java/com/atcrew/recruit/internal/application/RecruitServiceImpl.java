@@ -12,6 +12,8 @@ import com.atcrew.recruit.CreateTeamPostingCommand;
 import com.atcrew.recruit.JobPostingInfo;
 import com.atcrew.recruit.JobPostingStatus;
 import com.atcrew.recruit.JobSeekingPostInfo;
+import com.atcrew.recruit.LikedArtistInfo;
+import com.atcrew.recruit.RecentlyViewedArtistInfo;
 import com.atcrew.recruit.RecruitService;
 import com.atcrew.recruit.TeamPostingInfo;
 import com.atcrew.recruit.TeamPostingStatus;
@@ -42,15 +44,17 @@ class RecruitServiceImpl implements RecruitService {
     private final TeamPostingRepository teamPostingRepository;
     private final JobSeekingPostService jobSeekingPostService;
     private final ApplicationService applicationService;
+    private final LikedArtistService likedArtistService;
     private final AuthorNameResolver authorNameResolver;
 
     RecruitServiceImpl(JobPostingRepository jobPostingRepository, TeamPostingRepository teamPostingRepository,
             JobSeekingPostService jobSeekingPostService, ApplicationService applicationService,
-            AuthorNameResolver authorNameResolver) {
+            LikedArtistService likedArtistService, AuthorNameResolver authorNameResolver) {
         this.jobPostingRepository = jobPostingRepository;
         this.teamPostingRepository = teamPostingRepository;
         this.jobSeekingPostService = jobSeekingPostService;
         this.applicationService = applicationService;
+        this.likedArtistService = likedArtistService;
         this.authorNameResolver = authorNameResolver;
     }
 
@@ -394,6 +398,36 @@ class RecruitServiceImpl implements RecruitService {
         applicationService.deleteTeamApplication(memberId, teamPostingId, applicationId);
     }
 
+    // === 관심 작가 (§2.7, §4.3) — 내부 협력자 LikedArtistService에 위임 ===
+
+    @Override
+    public void likeArtist(String companyMemberId, String artistMemberId) {
+        likedArtistService.likeArtist(companyMemberId, artistMemberId);
+    }
+
+    @Override
+    public void unlikeArtist(String companyMemberId, String artistMemberId) {
+        likedArtistService.unlikeArtist(companyMemberId, artistMemberId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public CursorPage<LikedArtistInfo> getLikedArtists(String companyMemberId, String cursor, int size) {
+        return likedArtistService.getLikedArtists(companyMemberId, cursor, size);
+    }
+
+    @Override
+    public void recordArtistView(String companyMemberId, String artistMemberId) {
+        likedArtistService.recordArtistView(companyMemberId, artistMemberId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public CursorPage<RecentlyViewedArtistInfo> getRecentlyViewedArtists(String companyMemberId, String cursor,
+            int size) {
+        return likedArtistService.getRecentlyViewedArtists(companyMemberId, cursor, size);
+    }
+
     // 공개 목록은 끌어올리기 적용 글을 상단 고정하므로 (정렬 키, id) 복합 커서를 쓴다(설계 §2.1.1).
     private List<JobPosting> findPublished(String cursor, int size, Instant now) {
         Pageable pageable = PageRequest.of(0, size + 1);
@@ -401,9 +435,9 @@ class RecruitServiceImpl implements RecruitService {
             return jobPostingRepository.findPublishedFirstPage(
                     JobPostingStatus.PUBLISHED, now, Instant.EPOCH, pageable);
         }
-        BoostCursor decoded = BoostCursor.decode(cursor);
+        CompositeCursor decoded = CompositeCursor.decode(cursor);
         return jobPostingRepository.findPublishedNextPage(
-                JobPostingStatus.PUBLISHED, now, Instant.EPOCH, decoded.boostSortAt(), decoded.id(), pageable);
+                JobPostingStatus.PUBLISHED, now, Instant.EPOCH, decoded.sortAt(), decoded.id(), pageable);
     }
 
     private JobPosting getOwned(String jobPostingId, String memberId) {
@@ -424,7 +458,7 @@ class RecruitServiceImpl implements RecruitService {
 
     // 공개 목록 — 끌어올리기 상단고정 정렬에 맞춘 (정렬 키, id) 복합 커서
     private CursorPage<JobPostingInfo> toInfoPage(List<JobPosting> postings, int size, Instant now) {
-        return toInfoPage(postings, size, p -> BoostCursor.encodeOf(p.getBoostedUntil(), p.getId(), now));
+        return toInfoPage(postings, size, p -> CompositeCursor.encodeBoost(p.getBoostedUntil(), p.getId(), now));
     }
 
     private CursorPage<JobPostingInfo> toInfoPage(List<JobPosting> postings, int size,
@@ -455,7 +489,7 @@ class RecruitServiceImpl implements RecruitService {
                 .map(p -> JobPostingMapper.toCardInfo(p, authorNames.get(p.getAuthorMemberId())))
                 .toList();
         JobPosting last = page.get(page.size() - 1);
-        String nextCursor = hasNext ? BoostCursor.encodeOf(last.getBoostedUntil(), last.getId(), now) : null;
+        String nextCursor = hasNext ? CompositeCursor.encodeBoost(last.getBoostedUntil(), last.getId(), now) : null;
         return CursorPage.of(items, nextCursor);
     }
 
@@ -470,9 +504,9 @@ class RecruitServiceImpl implements RecruitService {
             return teamPostingRepository.findPublishedFirstPage(
                     TeamPostingStatus.PUBLISHED, now, Instant.EPOCH, pageable);
         }
-        BoostCursor decoded = BoostCursor.decode(cursor);
+        CompositeCursor decoded = CompositeCursor.decode(cursor);
         return teamPostingRepository.findPublishedNextPage(
-                TeamPostingStatus.PUBLISHED, now, Instant.EPOCH, decoded.boostSortAt(), decoded.id(), pageable);
+                TeamPostingStatus.PUBLISHED, now, Instant.EPOCH, decoded.sortAt(), decoded.id(), pageable);
     }
 
     private TeamPosting getOwnedTeamPosting(String teamPostingId, String memberId) {
@@ -493,7 +527,7 @@ class RecruitServiceImpl implements RecruitService {
 
     // 공개 목록 — 끌어올리기 상단고정 정렬에 맞춘 (정렬 키, id) 복합 커서
     private CursorPage<TeamPostingInfo> toTeamInfoPage(List<TeamPosting> postings, int size, Instant now) {
-        return toTeamInfoPage(postings, size, p -> BoostCursor.encodeOf(p.getBoostedUntil(), p.getId(), now));
+        return toTeamInfoPage(postings, size, p -> CompositeCursor.encodeBoost(p.getBoostedUntil(), p.getId(), now));
     }
 
     private CursorPage<TeamPostingInfo> toTeamInfoPage(List<TeamPosting> postings, int size,
@@ -524,7 +558,7 @@ class RecruitServiceImpl implements RecruitService {
                 .map(p -> TeamPostingMapper.toCardInfo(p, authorNames.get(p.getAuthorMemberId())))
                 .toList();
         TeamPosting last = page.get(page.size() - 1);
-        String nextCursor = hasNext ? BoostCursor.encodeOf(last.getBoostedUntil(), last.getId(), now) : null;
+        String nextCursor = hasNext ? CompositeCursor.encodeBoost(last.getBoostedUntil(), last.getId(), now) : null;
         return CursorPage.of(items, nextCursor);
     }
 

@@ -14,6 +14,7 @@ import org.testcontainers.containers.MongoDBContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -143,6 +144,39 @@ class RecruitModuleTests {
         recruitService.publishJobSeekingPost(authorId, draft.id());
 
         assertThat(jobSeekingPostIds()).contains(draft.id());
+    }
+
+    @Test
+    void 관심_작가_저장과_해제가_목록에_반영된다() {
+        String companyId = registerMember("liked-company");
+        String artistId = registerMember("liked-artist");
+
+        recruitService.likeArtist(companyId, artistId);
+        recruitService.likeArtist(companyId, artistId); // 재저장은 무시(멱등)
+
+        assertThat(recruitService.getLikedArtists(companyId, null, 20).items())
+                .extracting(LikedArtistInfo::artistMemberId)
+                .containsExactly(artistId);
+
+        recruitService.unlikeArtist(companyId, artistId);
+
+        assertThat(recruitService.getLikedArtists(companyId, null, 20).items()).isEmpty();
+    }
+
+    @Test
+    void 최근_본_작가는_재조회하면_조회_시각만_갱신된다() {
+        String companyId = registerMember("viewed-company");
+        String artistId = registerMember("viewed-artist");
+
+        recruitService.recordArtistView(companyId, artistId);
+        Instant firstViewedAt = recruitService.getRecentlyViewedArtists(companyId, null, 20).items()
+                .get(0).viewedAt();
+
+        recruitService.recordArtistView(companyId, artistId);
+
+        List<RecentlyViewedArtistInfo> viewed = recruitService.getRecentlyViewedArtists(companyId, null, 20).items();
+        assertThat(viewed).extracting(RecentlyViewedArtistInfo::artistMemberId).containsExactly(artistId);
+        assertThat(viewed.get(0).viewedAt()).isAfterOrEqualTo(firstViewedAt);
     }
 
     private List<String> publishedIds() {
