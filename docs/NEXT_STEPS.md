@@ -18,9 +18,12 @@ recruit는 main과 15개 커밋 격차가 있어 병합 충돌(공용 JPA 인프
 
 ## 지금 바로 처리할 것 (우선순위순)
 
-### 1. recruit REST Docs 테스트 작성 (권장 최우선)
-recruit 모듈에 `docs/testing/rest-docs-guide.md` 기준 문서화 테스트가 **전무**하다(다른 모듈은 전부 있음).
-30개+ 엔드포인트 규모라 별도 세션/PR로 다루는 게 낫다. 이슈 [#33](https://github.com/pack-in/at-crew-backend/issues/33) 체크리스트 참고.
+### 1. ~~recruit REST Docs 테스트 작성~~ — 완료 (2026-07-31, PR [#35](https://github.com/pack-in/at-crew-backend/pull/35))
+컨트롤러 5종(JobPosting/TeamPosting/JobSeekingPost/Application/LikedArtist) 각각에 `*ControllerValidationTest`
++ `*ApiDocTest` 작성, 총 69개 테스트 그린. 4개 워커 에이전트 병렬 작업 → 전체 스위트 통합 실행 시
+`JobPostingApiDocTest`의 전역 공개 목록 조회가 다른 doc 테스트와 MariaDB Testcontainer를 공유하며
+정확한 개수(`length()==1`)를 assert하다 실패하는 테스트 격리 버그를 발견해 수정(ID 포함 여부 검증으로 변경).
+이슈 [#33](https://github.com/pack-in/at-crew-backend/issues/33) 체크리스트 항목 해소.
 
 ### 2. search/company 모듈의 recruit 포트 스텁을 실구현으로 교체
 - `company.CompanyRecruitPort`(있다면) / `search.RecruitSearchPort`가 아직 Noop 스텁 — recruit이 이제
