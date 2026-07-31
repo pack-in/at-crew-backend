@@ -1,17 +1,19 @@
 package com.atcrew.recruit.internal.application;
 
 import com.atcrew.common.response.CursorPage;
-import com.atcrew.member.MemberService;
 import com.atcrew.recruit.CommunityJobPostingCardInfo;
 import com.atcrew.recruit.CommunityTeamRecruitCardInfo;
 import com.atcrew.recruit.CreateJobPostingCommand;
+import com.atcrew.recruit.CreateJobSeekingPostCommand;
 import com.atcrew.recruit.CreateTeamPostingCommand;
 import com.atcrew.recruit.JobPostingInfo;
 import com.atcrew.recruit.JobPostingStatus;
+import com.atcrew.recruit.JobSeekingPostInfo;
 import com.atcrew.recruit.RecruitService;
 import com.atcrew.recruit.TeamPostingInfo;
 import com.atcrew.recruit.TeamPostingStatus;
 import com.atcrew.recruit.UpdateJobPostingCommand;
+import com.atcrew.recruit.UpdateJobSeekingPostCommand;
 import com.atcrew.recruit.UpdateTeamPostingCommand;
 import com.atcrew.recruit.internal.domain.JobPosting;
 import com.atcrew.recruit.internal.domain.TeamPosting;
@@ -24,11 +26,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 @Service
 @Transactional
@@ -36,13 +35,15 @@ class RecruitServiceImpl implements RecruitService {
 
     private final JobPostingRepository jobPostingRepository;
     private final TeamPostingRepository teamPostingRepository;
-    private final MemberService memberService;
+    private final JobSeekingPostService jobSeekingPostService;
+    private final AuthorNameResolver authorNameResolver;
 
     RecruitServiceImpl(JobPostingRepository jobPostingRepository, TeamPostingRepository teamPostingRepository,
-            MemberService memberService) {
+            JobSeekingPostService jobSeekingPostService, AuthorNameResolver authorNameResolver) {
         this.jobPostingRepository = jobPostingRepository;
         this.teamPostingRepository = teamPostingRepository;
-        this.memberService = memberService;
+        this.jobSeekingPostService = jobSeekingPostService;
+        this.authorNameResolver = authorNameResolver;
     }
 
     @Override
@@ -260,6 +261,63 @@ class RecruitServiceImpl implements RecruitService {
         return toTeamInfoPage(postings, size);
     }
 
+    // === JobSeekingPost CRUD (§4.2) — 내부 협력자 JobSeekingPostService에 위임 ===
+
+    @Override
+    public JobSeekingPostInfo createJobSeekingPost(String memberId, CreateJobSeekingPostCommand command) {
+        return jobSeekingPostService.create(memberId, command);
+    }
+
+    @Override
+    public JobSeekingPostInfo updateJobSeekingPost(String memberId, String jobSeekingPostId,
+            UpdateJobSeekingPostCommand command) {
+        return jobSeekingPostService.update(memberId, jobSeekingPostId, command);
+    }
+
+    @Override
+    public JobSeekingPostInfo publishJobSeekingPost(String memberId, String jobSeekingPostId) {
+        return jobSeekingPostService.publish(memberId, jobSeekingPostId);
+    }
+
+    @Override
+    public JobSeekingPostInfo closeJobSeekingPost(String memberId, String jobSeekingPostId) {
+        return jobSeekingPostService.close(memberId, jobSeekingPostId);
+    }
+
+    @Override
+    public void deleteJobSeekingPost(String memberId, String jobSeekingPostId) {
+        jobSeekingPostService.delete(memberId, jobSeekingPostId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public CursorPage<JobSeekingPostInfo> getTrashedJobSeekingPosts(String memberId, String cursor, int size) {
+        return jobSeekingPostService.getTrashed(memberId, cursor, size);
+    }
+
+    @Override
+    public JobSeekingPostInfo restoreJobSeekingPost(String memberId, String jobSeekingPostId) {
+        return jobSeekingPostService.restore(memberId, jobSeekingPostId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public CursorPage<JobSeekingPostInfo> getMyJobSeekingPosts(String memberId, String cursor, int size) {
+        return jobSeekingPostService.getMine(memberId, cursor, size);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public JobSeekingPostInfo getJobSeekingPost(String jobSeekingPostId, String viewerMemberId) {
+        return jobSeekingPostService.get(jobSeekingPostId, viewerMemberId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public CursorPage<JobSeekingPostInfo> getJobSeekingPosts(String cursor, int size) {
+        return jobSeekingPostService.getPublished(cursor, size);
+    }
+
     private List<JobPosting> findPublished(String cursor, int size) {
         Pageable pageable = PageRequest.of(0, size + 1);
         return cursor == null
@@ -285,7 +343,8 @@ class RecruitServiceImpl implements RecruitService {
         }
         boolean hasNext = postings.size() > size;
         List<JobPosting> page = hasNext ? postings.subList(0, size) : postings;
-        Map<String, String> authorNames = resolveAuthorNames(page);
+        Map<String, String> authorNames = authorNameResolver.resolveAll(
+                page.stream().map(JobPosting::getAuthorMemberId).toList());
         List<JobPostingInfo> items = page.stream()
                 .map(p -> JobPostingMapper.toInfo(p, authorNames.get(p.getAuthorMemberId())))
                 .toList();
@@ -299,7 +358,8 @@ class RecruitServiceImpl implements RecruitService {
         }
         boolean hasNext = postings.size() > size;
         List<JobPosting> page = hasNext ? postings.subList(0, size) : postings;
-        Map<String, String> authorNames = resolveAuthorNames(page);
+        Map<String, String> authorNames = authorNameResolver.resolveAll(
+                page.stream().map(JobPosting::getAuthorMemberId).toList());
         List<CommunityJobPostingCardInfo> items = page.stream()
                 .map(p -> JobPostingMapper.toCardInfo(p, authorNames.get(p.getAuthorMemberId())))
                 .toList();
@@ -308,25 +368,7 @@ class RecruitServiceImpl implements RecruitService {
     }
 
     private JobPostingInfo toInfo(JobPosting jobPosting) {
-        return JobPostingMapper.toInfo(jobPosting, resolveAuthorName(jobPosting.getAuthorMemberId()));
-    }
-
-    // 페이지 내 중복 작성자에 대한 반복 조회를 피하기 위해 고유 작성자 ID만 일괄 조회한다(N+1 완화).
-    // resolveAuthorName()이 null을 반환할 수 있어 Collectors.toMap 대신 HashMap에 직접 채운다(toMap은 null 값을 허용하지 않음).
-    private Map<String, String> resolveAuthorNames(List<JobPosting> postings) {
-        Set<String> authorIds = postings.stream().map(JobPosting::getAuthorMemberId).collect(Collectors.toSet());
-        Map<String, String> authorNames = new HashMap<>();
-        authorIds.forEach(id -> authorNames.put(id, resolveAuthorName(id)));
-        return authorNames;
-    }
-
-    // 작성자 표시명 조회 실패(탈퇴 등) 시 응답 자체를 막지 않고 null로 대체
-    private String resolveAuthorName(String authorMemberId) {
-        try {
-            return memberService.findById(authorMemberId).name();
-        } catch (RuntimeException e) {
-            return null;
-        }
+        return JobPostingMapper.toInfo(jobPosting, authorNameResolver.resolve(jobPosting.getAuthorMemberId()));
     }
 
     private List<TeamPosting> findPublishedTeamPostings(String cursor, int size) {
@@ -354,7 +396,8 @@ class RecruitServiceImpl implements RecruitService {
         }
         boolean hasNext = postings.size() > size;
         List<TeamPosting> page = hasNext ? postings.subList(0, size) : postings;
-        Map<String, String> authorNames = resolveTeamAuthorNames(page);
+        Map<String, String> authorNames = authorNameResolver.resolveAll(
+                page.stream().map(TeamPosting::getAuthorMemberId).toList());
         List<TeamPostingInfo> items = page.stream()
                 .map(p -> TeamPostingMapper.toInfo(p, authorNames.get(p.getAuthorMemberId())))
                 .toList();
@@ -368,7 +411,8 @@ class RecruitServiceImpl implements RecruitService {
         }
         boolean hasNext = postings.size() > size;
         List<TeamPosting> page = hasNext ? postings.subList(0, size) : postings;
-        Map<String, String> authorNames = resolveTeamAuthorNames(page);
+        Map<String, String> authorNames = authorNameResolver.resolveAll(
+                page.stream().map(TeamPosting::getAuthorMemberId).toList());
         List<CommunityTeamRecruitCardInfo> items = page.stream()
                 .map(p -> TeamPostingMapper.toCardInfo(p, authorNames.get(p.getAuthorMemberId())))
                 .toList();
@@ -377,14 +421,6 @@ class RecruitServiceImpl implements RecruitService {
     }
 
     private TeamPostingInfo toTeamInfo(TeamPosting teamPosting) {
-        return TeamPostingMapper.toInfo(teamPosting, resolveAuthorName(teamPosting.getAuthorMemberId()));
-    }
-
-    // 페이지 내 중복 작성자에 대한 반복 조회를 피하기 위해 고유 작성자 ID만 일괄 조회한다(N+1 완화).
-    private Map<String, String> resolveTeamAuthorNames(List<TeamPosting> postings) {
-        Set<String> authorIds = postings.stream().map(TeamPosting::getAuthorMemberId).collect(Collectors.toSet());
-        Map<String, String> authorNames = new HashMap<>();
-        authorIds.forEach(id -> authorNames.put(id, resolveAuthorName(id)));
-        return authorNames;
+        return TeamPostingMapper.toInfo(teamPosting, authorNameResolver.resolve(teamPosting.getAuthorMemberId()));
     }
 }

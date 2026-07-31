@@ -93,7 +93,11 @@ class SecurityConfig {
                             .requestMatchers(HttpMethod.GET, "/api/recruit/team-postings/trash").authenticated()
                             .requestMatchers(HttpMethod.GET, "/api/recruit/team-postings/me").authenticated()
                             .requestMatchers(HttpMethod.GET, "/api/recruit/team-postings").permitAll()
-                            .requestMatchers(HttpMethod.GET, "/api/recruit/team-postings/{teamPostingId}").permitAll();
+                            .requestMatchers(HttpMethod.GET, "/api/recruit/team-postings/{teamPostingId}").permitAll()
+                            .requestMatchers(HttpMethod.GET, "/api/recruit/job-seeking-posts/trash").authenticated()
+                            .requestMatchers(HttpMethod.GET, "/api/recruit/job-seeking-posts/me").authenticated()
+                            .requestMatchers(HttpMethod.GET, "/api/recruit/job-seeking-posts").permitAll()
+                            .requestMatchers(HttpMethod.GET, "/api/recruit/job-seeking-posts/{jobSeekingPostId}").permitAll();
                     if (!isProd()) {
                         auth.requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll();
                     }

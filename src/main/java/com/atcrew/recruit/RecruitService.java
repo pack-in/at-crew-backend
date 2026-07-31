@@ -3,9 +3,7 @@ package com.atcrew.recruit;
 import com.atcrew.common.response.CursorPage;
 
 /**
- * recruit 모듈 공개 API (docs/design/recruit-module-design.md §4.1, §4.2, §6.1).
- *
- * <p>JobSeekingPost/Application 관련 메서드는 다음 단계에서 추가된다.
+ * recruit 모듈 공개 API (docs/design/recruit-module-design.md §4.1, §4.2, §4.3, §6.1).
  */
 public interface RecruitService {
 
@@ -86,4 +84,36 @@ public interface RecruitService {
 
     // 공개 목록(커서) — PUBLISHED만
     CursorPage<TeamPostingInfo> getTeamPostings(String cursor, int size);
+
+    // === JobSeekingPost CRUD (§4.2) — 승인 절차 없음, JobPosting과 대칭 구조 ===
+
+    // 작성 — command.publish()=true면 저장 직후 PUBLISHED로 게시
+    JobSeekingPostInfo createJobSeekingPost(String memberId, CreateJobSeekingPostCommand command);
+
+    // 수정 — 작성자 본인만 가능, 휴지통에 있는 구직글은 수정 불가
+    JobSeekingPostInfo updateJobSeekingPost(String memberId, String jobSeekingPostId, UpdateJobSeekingPostCommand command);
+
+    // 게시 — DRAFT/CLOSED → PUBLISHED
+    JobSeekingPostInfo publishJobSeekingPost(String memberId, String jobSeekingPostId);
+
+    // 마감 처리 — PUBLISHED → CLOSED
+    JobSeekingPostInfo closeJobSeekingPost(String memberId, String jobSeekingPostId);
+
+    // 휴지통 이동 (soft delete)
+    void deleteJobSeekingPost(String memberId, String jobSeekingPostId);
+
+    // 휴지통 목록 — 작성자 본인
+    CursorPage<JobSeekingPostInfo> getTrashedJobSeekingPosts(String memberId, String cursor, int size);
+
+    // 휴지통 복구 — DELETED → DRAFT
+    JobSeekingPostInfo restoreJobSeekingPost(String memberId, String jobSeekingPostId);
+
+    // 내 목록 — DELETED를 제외한 모든 상태
+    CursorPage<JobSeekingPostInfo> getMyJobSeekingPosts(String memberId, String cursor, int size);
+
+    // 상세 조회 — viewerMemberId가 작성자 본인이면 모든 상태 조회 가능, 그 외에는 PUBLISHED만 공개
+    JobSeekingPostInfo getJobSeekingPost(String jobSeekingPostId, String viewerMemberId);
+
+    // 공개 목록(커서) — PUBLISHED만
+    CursorPage<JobSeekingPostInfo> getJobSeekingPosts(String cursor, int size);
 }
