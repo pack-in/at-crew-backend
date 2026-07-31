@@ -1,4 +1,9 @@
 spring:
+  autoconfigure:
+    exclude:
+      # standalone MongoDB(테스트 컨테이너 포함)는 트랜잭션 미지원 — src/main/resources/application.yml과 동일 이유.
+      # 이 파일이 test classpath에서 main application.yml을 완전히 대체하므로 별도로 명시해야 함.
+      - org.springframework.modulith.events.mongodb.MongoDbTransactionAutoConfiguration
   data:
     mongodb:
       auto-index-creation: true

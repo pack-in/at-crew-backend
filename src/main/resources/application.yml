@@ -11,6 +11,18 @@ spring:
   data:
     mongodb:
       auto-index-creation: true
+  # MariaDB 전환(docs/design/mariadb-migration-design.md) P1 — Mongo와 공존, recruit 모듈부터 시작
+  datasource:
+    url: ${MARIADB_URL:jdbc:mariadb://localhost:3306/atcrew}
+    username: ${MARIADB_USERNAME:root}
+    password: ${MARIADB_PASSWORD:atcrew_local_dev}
+    driver-class-name: org.mariadb.jdbc.Driver
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate   # 스키마 소유권은 Flyway — JPA는 검증만 수행
+  flyway:
+    enabled: true
   jackson:
     time-zone: UTC
 

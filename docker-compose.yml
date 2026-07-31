@@ -8,5 +8,18 @@ services:
     volumes:
       - mongodb_data:/data/db
 
+  # MariaDB 전환(docs/design/mariadb-migration-design.md) — mongodb와 병행 운영 중(P1~P4), P5에서 mongodb 서비스 제거 예정
+  mariadb:
+    image: mariadb:11.4
+    ports:
+      - "3306:3306"
+    environment:
+      MARIADB_DATABASE: atcrew
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-atcrew_local_dev}
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - mariadb_data:/var/lib/mysql
+
 volumes:
   mongodb_data:
+  mariadb_data:
