@@ -34,6 +34,10 @@ spring:
 logging:
   pattern:
     level: "%5p [%X{requestId:-},%X{memberId:-}]"
+    # 글로벌 시간대 전략(docs/design/global-timezone-strategy.md §3.4) — 로그 타임스탬프를 UTC로 명시 고정.
+    # JVM 기본 시간대(§3.1)와 무관하게 항상 UTC로 렌더링하고, 오프셋(XXX)이 "Z"로 표기되어 관측 도구에서
+    # 리전과 무관한 단일 기준으로 상관관계 분석이 가능하다.
+    dateformat: "yyyy-MM-dd'T'HH:mm:ss.SSSXXX, UTC"
 
 management:
   endpoints:
