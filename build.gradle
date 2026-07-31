@@ -28,6 +28,8 @@ dependencies {
 	// MariaDB 전환(docs/design/mariadb-migration-design.md) P1 — Mongo와 공존, P5에서 Mongo 의존성 제거
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	runtimeOnly 'org.mariadb.jdbc:mariadb-java-client'
+	// Spring Boot 4부터 Flyway 자동설정이 spring-boot-autoconfigure에서 분리됐다 —
+	// flyway-core만으로는 자동 실행되지 않으므로 이 모듈을 명시적으로 추가해야 한다.
 	implementation 'org.springframework.boot:spring-boot-flyway'
 	implementation 'org.flywaydb:flyway-core'
 	runtimeOnly 'org.flywaydb:flyway-mysql'

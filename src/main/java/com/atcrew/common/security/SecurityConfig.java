@@ -89,6 +89,22 @@ class SecurityConfig {
                             .requestMatchers(HttpMethod.POST, "/internal/artwork/images/processed").permitAll()
                             .requestMatchers(HttpMethod.POST, "/internal/search/reindex").permitAll()
                             .requestMatchers("/actuator/health", "/actuator/info").permitAll();
+
+                    // recruit 모듈 — 공개 목록/상세 조회는 인증 불필요, 나머지는 인증 필요(기본 anyRequest().authenticated()).
+                    // 주의: /job-postings/{jobPostingId} 템플릿보다 /trash, /me 같은 리터럴 하위 경로를 먼저 선언해야
+                    // 경로 매처가 리터럴 경로를 템플릿에 잘못 매칭시켜 인증을 우회하는 것을 방지할 수 있다.
+                    auth.requestMatchers(HttpMethod.GET, "/api/recruit/job-postings/trash").authenticated()
+                            .requestMatchers(HttpMethod.GET, "/api/recruit/job-postings/me").authenticated()
+                            .requestMatchers(HttpMethod.GET, "/api/recruit/job-postings").permitAll()
+                            .requestMatchers(HttpMethod.GET, "/api/recruit/job-postings/{jobPostingId}").permitAll()
+                            .requestMatchers(HttpMethod.GET, "/api/recruit/team-postings/trash").authenticated()
+                            .requestMatchers(HttpMethod.GET, "/api/recruit/team-postings/me").authenticated()
+                            .requestMatchers(HttpMethod.GET, "/api/recruit/team-postings").permitAll()
+                            .requestMatchers(HttpMethod.GET, "/api/recruit/team-postings/{teamPostingId}").permitAll()
+                            .requestMatchers(HttpMethod.GET, "/api/recruit/job-seeking-posts/trash").authenticated()
+                            .requestMatchers(HttpMethod.GET, "/api/recruit/job-seeking-posts/me").authenticated()
+                            .requestMatchers(HttpMethod.GET, "/api/recruit/job-seeking-posts").permitAll()
+                            .requestMatchers(HttpMethod.GET, "/api/recruit/job-seeking-posts/{jobSeekingPostId}").permitAll();
                     if (!isProd()) {
                         auth.requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll();
                     }

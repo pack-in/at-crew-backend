@@ -1,7 +1,8 @@
 spring:
   autoconfigure:
     exclude:
-      # JPA(HibernateJpaConfiguration)의 transactionManager 빈과 이름이 충돌 — application.yml(main)과 동일하게 제외
+      # JPA(HibernateJpaConfiguration)의 transactionManager 빈과 이름이 충돌 — application.yml(main)과 동일하게 제외.
+      # 이 파일이 test classpath에서 main application.yml을 완전히 대체하므로 별도로 명시해야 함.
       - org.springframework.modulith.events.mongodb.MongoDbTransactionAutoConfiguration
   data:
     mongodb:
