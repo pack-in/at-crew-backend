@@ -12,7 +12,9 @@ public enum RecruitErrorCode {
     DUPLICATE_APPLICATION(HttpStatus.CONFLICT, "이미 지원한 공고입니다"),
     APPLICATION_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "모집 중인 글에만 지원할 수 있습니다"),
     SELF_APPLICATION_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "본인이 작성한 글에는 지원할 수 없습니다"),
+    BOOST_COOLDOWN(HttpStatus.CONFLICT, "이미 끌어올리기가 적용 중입니다"),
     INVALID_STATUS_TRANSITION(HttpStatus.BAD_REQUEST, "허용되지 않는 상태 전이입니다"),
+    INVALID_CURSOR(HttpStatus.BAD_REQUEST, "커서 형식이 올바르지 않습니다"),
     INVALID_AMOUNT_RANGE(HttpStatus.BAD_REQUEST, "최소 금액은 최대 금액보다 클 수 없습니다"),
     INVALID_ACTIVITY_REGION(HttpStatus.BAD_REQUEST, "온라인 활동인 경우 활동 지역을 입력할 수 없습니다");
 

@@ -8,15 +8,37 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
 import java.util.List;
 
 public interface TeamPostingRepository extends JpaRepository<TeamPosting, String> {
 
-    // 공개 목록(PUBLISHED) 첫 페이지 — id(UUIDv7)는 생성 시각순 정렬과 동일하므로 id 기준 커서로 충분
-    List<TeamPosting> findByStatusOrderByIdDesc(TeamPostingStatus status, Pageable pageable);
+    /**
+     * 공개 목록 첫 페이지 — 끌어올리기 적용 중인 글을 상단에 고정한다(설계 §2.1.1).
+     * 정렬 키는 (적용 중이면 boostedUntil, 아니면 EPOCH) 내림차순 → id 내림차순 2단이다.
+     * 정렬 키가 표현식이라 인덱스로 커버되지 않는다 — 공개 글이 크게 늘어나면 끌어올리기 스트림과
+     * 일반 스트림을 분리 조회하는 방식으로 최적화를 검토한다.
+     */
+    @Query("""
+            SELECT p FROM TeamPosting p
+            WHERE p.status = :status
+            ORDER BY CASE WHEN p.boostedUntil > :now THEN p.boostedUntil ELSE :epoch END DESC, p.id DESC
+            """)
+    List<TeamPosting> findPublishedFirstPage(@Param("status") TeamPostingStatus status, @Param("now") Instant now,
+            @Param("epoch") Instant epoch, Pageable pageable);
 
-    // 공개 목록 다음 페이지(커서 이후)
-    List<TeamPosting> findByStatusAndIdLessThanOrderByIdDesc(TeamPostingStatus status, String cursorId, Pageable pageable);
+    // 공개 목록 다음 페이지 — (정렬 키, id) 복합 커서 기준 keyset 페이지네이션
+    @Query("""
+            SELECT p FROM TeamPosting p
+            WHERE p.status = :status
+              AND (CASE WHEN p.boostedUntil > :now THEN p.boostedUntil ELSE :epoch END < :cursorBoostSortAt
+                   OR (CASE WHEN p.boostedUntil > :now THEN p.boostedUntil ELSE :epoch END = :cursorBoostSortAt
+                       AND p.id < :cursorId))
+            ORDER BY CASE WHEN p.boostedUntil > :now THEN p.boostedUntil ELSE :epoch END DESC, p.id DESC
+            """)
+    List<TeamPosting> findPublishedNextPage(@Param("status") TeamPostingStatus status, @Param("now") Instant now,
+            @Param("epoch") Instant epoch, @Param("cursorBoostSortAt") Instant cursorBoostSortAt,
+            @Param("cursorId") String cursorId, Pageable pageable);
 
     // 내 목록(DELETED 제외) 첫 페이지
     List<TeamPosting> findByAuthorMemberIdAndStatusNotOrderByIdDesc(

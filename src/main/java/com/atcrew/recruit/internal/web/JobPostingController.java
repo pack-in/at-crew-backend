@@ -157,6 +157,16 @@ class JobPostingController {
         return ApiResponse.success(recruitService.getJobPostings(cursor, resolveSize(size)));
     }
 
+    @Operation(summary = "구인글 끌어올리기", description =
+            "48시간 동안 목록 상단에 고정합니다. 작성자 본인만 가능하며, 이미 적용 중이면 409로 거부됩니다.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "적용 성공")
+    @PatchMapping("/job-postings/{jobPostingId}/boost")
+    public ApiResponse<JobPostingInfo> boostJobPosting(
+            @Parameter(description = "구인글 ID") @PathVariable @Pattern(regexp = UUID_PATTERN, message = "구인글 ID 형식이 올바르지 않습니다") String jobPostingId) {
+        String memberId = securityUtils.getCurrentMemberId();
+        return ApiResponse.success(recruitService.boostJobPosting(memberId, jobPostingId));
+    }
+
     // === 관리자 — TODO: 관리자 Role 체계 도입 후 @PreAuthorize("hasRole('ADMIN')") 추가(설계 §7) ===
 
     @Operation(summary = "[관리자] PENDING 구인글 목록")

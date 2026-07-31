@@ -26,6 +26,7 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -39,6 +40,9 @@ import java.util.List;
 @Table(name = "team_postings")
 @EntityListeners(AuditingEntityListener.class)
 public class TeamPosting {
+
+    // 끌어올리기 적용 기간이자 재적용 쿨다운(설계 §2.1.1)
+    private static final Duration BOOST_DURATION = Duration.ofHours(48);
 
     @Id
     @Column(name = "id", length = 36)
@@ -132,6 +136,9 @@ public class TeamPosting {
 
     @Column(name = "view_count", nullable = false)
     private long viewCount;
+
+    @Column(name = "boosted_until")
+    private Instant boostedUntil;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", length = 20, nullable = false)
@@ -251,6 +258,19 @@ public class TeamPosting {
         this.deletedAt = null;
     }
 
+    /**
+     * 끌어올리기 적용 — 규칙은 JobPosting과 동일하다(설계 §2.1.1).
+     */
+    public void boost(Instant now) {
+        if (status == TeamPostingStatus.DELETED) {
+            throw new RecruitException(RecruitErrorCode.INVALID_STATUS_TRANSITION, "휴지통에 있는 팀원모집글은 끌어올릴 수 없습니다");
+        }
+        if (boostedUntil != null && now.isBefore(boostedUntil)) {
+            throw new RecruitException(RecruitErrorCode.BOOST_COOLDOWN, "boostedUntil=" + boostedUntil);
+        }
+        this.boostedUntil = now.plus(BOOST_DURATION);
+    }
+
     public void checkAuthor(String memberId) {
         if (!this.authorMemberId.equals(memberId)) {
             throw new RecruitException(RecruitErrorCode.FORBIDDEN_NOT_AUTHOR);
@@ -284,6 +304,7 @@ public class TeamPosting {
     public List<String> getReferenceImages() { return List.copyOf(referenceImages); }
     public long getBookmarkCount() { return bookmarkCount; }
     public long getViewCount() { return viewCount; }
+    public Instant getBoostedUntil() { return boostedUntil; }
     public TeamPostingStatus getStatus() { return status; }
     public Instant getDeletedAt() { return deletedAt; }
     public Instant getCreatedAt() { return createdAt; }

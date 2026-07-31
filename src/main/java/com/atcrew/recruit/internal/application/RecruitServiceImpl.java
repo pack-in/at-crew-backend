@@ -29,8 +29,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 @Service
 @Transactional
@@ -55,15 +57,17 @@ class RecruitServiceImpl implements RecruitService {
     @Override
     @Transactional(readOnly = true)
     public CursorPage<CommunityJobPostingCardInfo> getJobPostingFeed(String cursor, int size) {
-        List<JobPosting> postings = findPublished(cursor, size);
-        return toCardPage(postings, size);
+        Instant now = Instant.now();
+        List<JobPosting> postings = findPublished(cursor, size, now);
+        return toCardPage(postings, size, now);
     }
 
     @Override
     @Transactional(readOnly = true)
     public CursorPage<CommunityTeamRecruitCardInfo> getTeamRecruitFeed(String cursor, int size) {
-        List<TeamPosting> postings = findPublishedTeamPostings(cursor, size);
-        return toTeamCardPage(postings, size);
+        Instant now = Instant.now();
+        List<TeamPosting> postings = findPublishedTeamPostings(cursor, size, now);
+        return toTeamCardPage(postings, size, now);
     }
 
     @Override
@@ -154,8 +158,9 @@ class RecruitServiceImpl implements RecruitService {
     @Override
     @Transactional(readOnly = true)
     public CursorPage<JobPostingInfo> getJobPostings(String cursor, int size) {
-        List<JobPosting> postings = findPublished(cursor, size);
-        return toInfoPage(postings, size);
+        Instant now = Instant.now();
+        List<JobPosting> postings = findPublished(cursor, size, now);
+        return toInfoPage(postings, size, now);
     }
 
     @Override
@@ -180,6 +185,14 @@ class RecruitServiceImpl implements RecruitService {
     public JobPostingInfo rejectJobPosting(String jobPostingId) {
         JobPosting jobPosting = findById(jobPostingId);
         jobPosting.reject();
+        return toInfo(jobPosting);
+    }
+
+    @Override
+    public JobPostingInfo boostJobPosting(String memberId, String jobPostingId) {
+        JobPosting jobPosting = getOwned(jobPostingId, memberId);
+        // TODO(결제): Polar 결제 모듈(로드맵 5번) 완성 후 "구매한 끌어올리기 개수" 확인·차감을 여기에 연결한다(설계 §2.1.1, §7).
+        jobPosting.boost(Instant.now());
         return toInfo(jobPosting);
     }
 
@@ -263,8 +276,17 @@ class RecruitServiceImpl implements RecruitService {
     @Override
     @Transactional(readOnly = true)
     public CursorPage<TeamPostingInfo> getTeamPostings(String cursor, int size) {
-        List<TeamPosting> postings = findPublishedTeamPostings(cursor, size);
-        return toTeamInfoPage(postings, size);
+        Instant now = Instant.now();
+        List<TeamPosting> postings = findPublishedTeamPostings(cursor, size, now);
+        return toTeamInfoPage(postings, size, now);
+    }
+
+    @Override
+    public TeamPostingInfo boostTeamPosting(String memberId, String teamPostingId) {
+        TeamPosting teamPosting = getOwnedTeamPosting(teamPostingId, memberId);
+        // TODO(결제): Polar 결제 모듈(로드맵 5번) 완성 후 "구매한 끌어올리기 개수" 확인·차감을 여기에 연결한다(설계 §2.1.1, §7).
+        teamPosting.boost(Instant.now());
+        return toTeamInfo(teamPosting);
     }
 
     // === JobSeekingPost CRUD (§4.2) — 내부 협력자 JobSeekingPostService에 위임 ===
@@ -372,12 +394,16 @@ class RecruitServiceImpl implements RecruitService {
         applicationService.deleteTeamApplication(memberId, teamPostingId, applicationId);
     }
 
-    private List<JobPosting> findPublished(String cursor, int size) {
+    // 공개 목록은 끌어올리기 적용 글을 상단 고정하므로 (정렬 키, id) 복합 커서를 쓴다(설계 §2.1.1).
+    private List<JobPosting> findPublished(String cursor, int size, Instant now) {
         Pageable pageable = PageRequest.of(0, size + 1);
-        return cursor == null
-                ? jobPostingRepository.findByStatusOrderByIdDesc(JobPostingStatus.PUBLISHED, pageable)
-                : jobPostingRepository.findByStatusAndIdLessThanOrderByIdDesc(
-                        JobPostingStatus.PUBLISHED, cursor, pageable);
+        if (cursor == null) {
+            return jobPostingRepository.findPublishedFirstPage(
+                    JobPostingStatus.PUBLISHED, now, Instant.EPOCH, pageable);
+        }
+        BoostCursor decoded = BoostCursor.decode(cursor);
+        return jobPostingRepository.findPublishedNextPage(
+                JobPostingStatus.PUBLISHED, now, Instant.EPOCH, decoded.boostSortAt(), decoded.id(), pageable);
     }
 
     private JobPosting getOwned(String jobPostingId, String memberId) {
@@ -391,7 +417,18 @@ class RecruitServiceImpl implements RecruitService {
                 .orElseThrow(() -> new RecruitException(RecruitErrorCode.JOB_POSTING_NOT_FOUND, jobPostingId));
     }
 
+    // 내 목록/휴지통/관리자 목록 — id 단일 커서
     private CursorPage<JobPostingInfo> toInfoPage(List<JobPosting> postings, int size) {
+        return toInfoPage(postings, size, JobPosting::getId);
+    }
+
+    // 공개 목록 — 끌어올리기 상단고정 정렬에 맞춘 (정렬 키, id) 복합 커서
+    private CursorPage<JobPostingInfo> toInfoPage(List<JobPosting> postings, int size, Instant now) {
+        return toInfoPage(postings, size, p -> BoostCursor.encodeOf(p.getBoostedUntil(), p.getId(), now));
+    }
+
+    private CursorPage<JobPostingInfo> toInfoPage(List<JobPosting> postings, int size,
+            Function<JobPosting, String> cursorExtractor) {
         if (postings.isEmpty()) {
             return CursorPage.empty();
         }
@@ -402,11 +439,11 @@ class RecruitServiceImpl implements RecruitService {
         List<JobPostingInfo> items = page.stream()
                 .map(p -> JobPostingMapper.toInfo(p, authorNames.get(p.getAuthorMemberId())))
                 .toList();
-        String nextCursor = hasNext ? page.get(page.size() - 1).getId() : null;
+        String nextCursor = hasNext ? cursorExtractor.apply(page.get(page.size() - 1)) : null;
         return CursorPage.of(items, nextCursor);
     }
 
-    private CursorPage<CommunityJobPostingCardInfo> toCardPage(List<JobPosting> postings, int size) {
+    private CursorPage<CommunityJobPostingCardInfo> toCardPage(List<JobPosting> postings, int size, Instant now) {
         if (postings.isEmpty()) {
             return CursorPage.empty();
         }
@@ -417,7 +454,8 @@ class RecruitServiceImpl implements RecruitService {
         List<CommunityJobPostingCardInfo> items = page.stream()
                 .map(p -> JobPostingMapper.toCardInfo(p, authorNames.get(p.getAuthorMemberId())))
                 .toList();
-        String nextCursor = hasNext ? page.get(page.size() - 1).getId() : null;
+        JobPosting last = page.get(page.size() - 1);
+        String nextCursor = hasNext ? BoostCursor.encodeOf(last.getBoostedUntil(), last.getId(), now) : null;
         return CursorPage.of(items, nextCursor);
     }
 
@@ -425,12 +463,16 @@ class RecruitServiceImpl implements RecruitService {
         return JobPostingMapper.toInfo(jobPosting, authorNameResolver.resolve(jobPosting.getAuthorMemberId()));
     }
 
-    private List<TeamPosting> findPublishedTeamPostings(String cursor, int size) {
+    // 공개 목록은 끌어올리기 적용 글을 상단 고정하므로 (정렬 키, id) 복합 커서를 쓴다(설계 §2.1.1).
+    private List<TeamPosting> findPublishedTeamPostings(String cursor, int size, Instant now) {
         Pageable pageable = PageRequest.of(0, size + 1);
-        return cursor == null
-                ? teamPostingRepository.findByStatusOrderByIdDesc(TeamPostingStatus.PUBLISHED, pageable)
-                : teamPostingRepository.findByStatusAndIdLessThanOrderByIdDesc(
-                        TeamPostingStatus.PUBLISHED, cursor, pageable);
+        if (cursor == null) {
+            return teamPostingRepository.findPublishedFirstPage(
+                    TeamPostingStatus.PUBLISHED, now, Instant.EPOCH, pageable);
+        }
+        BoostCursor decoded = BoostCursor.decode(cursor);
+        return teamPostingRepository.findPublishedNextPage(
+                TeamPostingStatus.PUBLISHED, now, Instant.EPOCH, decoded.boostSortAt(), decoded.id(), pageable);
     }
 
     private TeamPosting getOwnedTeamPosting(String teamPostingId, String memberId) {
@@ -444,7 +486,18 @@ class RecruitServiceImpl implements RecruitService {
                 .orElseThrow(() -> new RecruitException(RecruitErrorCode.TEAM_POSTING_NOT_FOUND, teamPostingId));
     }
 
+    // 내 목록/휴지통 — id 단일 커서
     private CursorPage<TeamPostingInfo> toTeamInfoPage(List<TeamPosting> postings, int size) {
+        return toTeamInfoPage(postings, size, TeamPosting::getId);
+    }
+
+    // 공개 목록 — 끌어올리기 상단고정 정렬에 맞춘 (정렬 키, id) 복합 커서
+    private CursorPage<TeamPostingInfo> toTeamInfoPage(List<TeamPosting> postings, int size, Instant now) {
+        return toTeamInfoPage(postings, size, p -> BoostCursor.encodeOf(p.getBoostedUntil(), p.getId(), now));
+    }
+
+    private CursorPage<TeamPostingInfo> toTeamInfoPage(List<TeamPosting> postings, int size,
+            Function<TeamPosting, String> cursorExtractor) {
         if (postings.isEmpty()) {
             return CursorPage.empty();
         }
@@ -455,11 +508,11 @@ class RecruitServiceImpl implements RecruitService {
         List<TeamPostingInfo> items = page.stream()
                 .map(p -> TeamPostingMapper.toInfo(p, authorNames.get(p.getAuthorMemberId())))
                 .toList();
-        String nextCursor = hasNext ? page.get(page.size() - 1).getId() : null;
+        String nextCursor = hasNext ? cursorExtractor.apply(page.get(page.size() - 1)) : null;
         return CursorPage.of(items, nextCursor);
     }
 
-    private CursorPage<CommunityTeamRecruitCardInfo> toTeamCardPage(List<TeamPosting> postings, int size) {
+    private CursorPage<CommunityTeamRecruitCardInfo> toTeamCardPage(List<TeamPosting> postings, int size, Instant now) {
         if (postings.isEmpty()) {
             return CursorPage.empty();
         }
@@ -470,7 +523,8 @@ class RecruitServiceImpl implements RecruitService {
         List<CommunityTeamRecruitCardInfo> items = page.stream()
                 .map(p -> TeamPostingMapper.toCardInfo(p, authorNames.get(p.getAuthorMemberId())))
                 .toList();
-        String nextCursor = hasNext ? page.get(page.size() - 1).getId() : null;
+        TeamPosting last = page.get(page.size() - 1);
+        String nextCursor = hasNext ? BoostCursor.encodeOf(last.getBoostedUntil(), last.getId(), now) : null;
         return CursorPage.of(items, nextCursor);
     }
 

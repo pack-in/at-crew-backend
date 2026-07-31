@@ -40,6 +40,7 @@ class TeamPostingMapper {
                 teamPosting.getReferenceImages(),
                 teamPosting.getBookmarkCount(),
                 teamPosting.getViewCount(),
+                teamPosting.getBoostedUntil(),
                 teamPosting.getStatus(),
                 teamPosting.getDeletedAt(),
                 teamPosting.getCreatedAt(),

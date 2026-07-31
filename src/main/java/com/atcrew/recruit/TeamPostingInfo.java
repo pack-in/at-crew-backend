@@ -36,6 +36,7 @@ public record TeamPostingInfo(
         List<String> referenceImages,                // 참고 이미지 URL 목록 (표시 전용)
         long bookmarkCount,                          // 북마크 수
         long viewCount,                               // 조회 수
+        Instant boostedUntil,                         // 끌어올리기 만료 시각 (null이거나 과거면 상단고정 아님)
         TeamPostingStatus status,                     // 상태
         Instant deletedAt,                      // 휴지통 이동 시각 (null이면 휴지통 아님)
         Instant createdAt,                       // 생성 시각

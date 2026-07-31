@@ -29,6 +29,7 @@ import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -36,12 +37,15 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 구인글 (docs/design/recruit-module-design.md §2.1). 부스트 필드는 이번 스코프에서 제외한다(§0).
+ * 구인글 (docs/design/recruit-module-design.md §2.1).
  */
 @Entity
 @Table(name = "job_postings")
 @EntityListeners(AuditingEntityListener.class)
 public class JobPosting {
+
+    // 끌어올리기 적용 기간이자 재적용 쿨다운(설계 §2.1.1)
+    private static final Duration BOOST_DURATION = Duration.ofHours(48);
 
     @Id
     @Column(name = "id", length = 36)
@@ -189,6 +193,9 @@ public class JobPosting {
 
     @Column(name = "view_count", nullable = false)
     private long viewCount;
+
+    @Column(name = "boosted_until")
+    private Instant boostedUntil;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", length = 20, nullable = false)
@@ -377,6 +384,20 @@ public class JobPosting {
         this.deletedAt = null;
     }
 
+    /**
+     * 끌어올리기 적용 — {@code boostedUntil = now + 48h}로 갱신한다(설계 §2.1.1).
+     * 적용 기간과 쿨다운이 같아 아직 적용 중이면(now < boostedUntil) 재적용을 거부한다.
+     */
+    public void boost(Instant now) {
+        if (status == JobPostingStatus.DELETED) {
+            throw new RecruitException(RecruitErrorCode.INVALID_STATUS_TRANSITION, "휴지통에 있는 구인글은 끌어올릴 수 없습니다");
+        }
+        if (boostedUntil != null && now.isBefore(boostedUntil)) {
+            throw new RecruitException(RecruitErrorCode.BOOST_COOLDOWN, "boostedUntil=" + boostedUntil);
+        }
+        this.boostedUntil = now.plus(BOOST_DURATION);
+    }
+
     public void checkAuthor(String memberId) {
         if (!this.authorMemberId.equals(memberId)) {
             throw new RecruitException(RecruitErrorCode.FORBIDDEN_NOT_AUTHOR);
@@ -428,6 +449,7 @@ public class JobPosting {
     public List<String> getReferenceImages() { return List.copyOf(referenceImages); }
     public long getBookmarkCount() { return bookmarkCount; }
     public long getViewCount() { return viewCount; }
+    public Instant getBoostedUntil() { return boostedUntil; }
     public JobPostingStatus getStatus() { return status; }
     public Instant getDeletedAt() { return deletedAt; }
     public Instant getCreatedAt() { return createdAt; }

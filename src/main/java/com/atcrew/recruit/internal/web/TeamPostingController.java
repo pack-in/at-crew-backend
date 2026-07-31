@@ -148,6 +148,16 @@ class TeamPostingController {
         return ApiResponse.success(recruitService.getTeamPostings(cursor, resolveSize(size)));
     }
 
+    @Operation(summary = "팀원모집글 끌어올리기", description =
+            "48시간 동안 목록 상단에 고정합니다. 작성자 본인만 가능하며, 이미 적용 중이면 409로 거부됩니다.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "적용 성공")
+    @PatchMapping("/team-postings/{teamPostingId}/boost")
+    public ApiResponse<TeamPostingInfo> boostTeamPosting(
+            @Parameter(description = "팀원모집글 ID") @PathVariable @Pattern(regexp = UUID_PATTERN, message = "팀원모집글 ID 형식이 올바르지 않습니다") String teamPostingId) {
+        String memberId = securityUtils.getCurrentMemberId();
+        return ApiResponse.success(recruitService.boostTeamPosting(memberId, teamPostingId));
+    }
+
     private int resolveSize(Integer size) {
         return size != null ? Math.min(size, MAX_SIZE) : DEFAULT_SIZE;
     }

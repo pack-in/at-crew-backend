@@ -45,6 +45,9 @@ public interface RecruitService {
     // 공개 목록(커서) — PUBLISHED만
     CursorPage<JobPostingInfo> getJobPostings(String cursor, int size);
 
+    // 끌어올리기 적용 — 작성자 본인만 가능, 적용 중(now < boostedUntil)이면 거부(§2.1.1)
+    JobPostingInfo boostJobPosting(String memberId, String jobPostingId);
+
     // === 관리자 (§7 — 별도 Role 체계 도입 전까지 인증된 회원 누구나 호출 가능) ===
 
     // PENDING 목록(커서)
@@ -56,7 +59,7 @@ public interface RecruitService {
     // 반려 — PENDING → CLOSED
     JobPostingInfo rejectJobPosting(String jobPostingId);
 
-    // === TeamPosting CRUD (§4.2) — 승인 절차 없음(생성 즉시 PUBLISHED), 부스트/관리자 승인 엔드포인트 없음 ===
+    // === TeamPosting CRUD (§4.2) — 승인 절차 없음(생성 즉시 PUBLISHED), 관리자 승인 엔드포인트 없음 ===
 
     // 작성 — 승인 절차 없이 저장 즉시 PUBLISHED로 게시
     TeamPostingInfo createTeamPosting(String memberId, CreateTeamPostingCommand command);
@@ -84,6 +87,9 @@ public interface RecruitService {
 
     // 공개 목록(커서) — PUBLISHED만
     CursorPage<TeamPostingInfo> getTeamPostings(String cursor, int size);
+
+    // 끌어올리기 적용 — JobPosting과 동일 규칙(§2.1.1)
+    TeamPostingInfo boostTeamPosting(String memberId, String teamPostingId);
 
     // === JobSeekingPost CRUD (§4.2) — 승인 절차 없음, JobPosting과 대칭 구조 ===
 

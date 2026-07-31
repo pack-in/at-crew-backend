@@ -58,6 +58,7 @@ class JobPostingMapper {
                 jobPosting.getReferenceImages(),
                 jobPosting.getBookmarkCount(),
                 jobPosting.getViewCount(),
+                jobPosting.getBoostedUntil(),
                 jobPosting.getStatus(),
                 jobPosting.getDeletedAt(),
                 jobPosting.getCreatedAt(),
