@@ -1,12 +1,12 @@
 package com.atcrew.artwork.internal.persistence;
 
 import com.atcrew.artwork.internal.domain.bookmark.BookmarkFolder;
-import org.springframework.data.mongodb.repository.MongoRepository;
+import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
 import java.util.Optional;
 
-public interface BookmarkFolderRepository extends MongoRepository<BookmarkFolder, String> {
+public interface BookmarkFolderRepository extends JpaRepository<BookmarkFolder, String> {
 
     List<BookmarkFolder> findByMemberIdOrderBySortOrderAsc(String memberId);
 

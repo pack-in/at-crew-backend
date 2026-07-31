@@ -1,6 +1,5 @@
 package com.atcrew.artwork.internal.application;
 
-import com.atcrew.artwork.ArtworkStatus;
 import com.atcrew.artwork.BookmarkEntryInfo;
 import com.atcrew.artwork.BookmarkFolderInfo;
 import com.atcrew.artwork.BookmarkService;
@@ -16,10 +15,7 @@ import com.atcrew.artwork.internal.persistence.BookmarkFolderRepository;
 import com.atcrew.common.response.CursorPage;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,18 +31,15 @@ class BookmarkServiceImpl implements BookmarkService {
     private final BookmarkFolderRepository folderRepository;
     private final BookmarkEntryRepository entryRepository;
     private final ArtworkRepository artworkRepository;
-    private final MongoTemplate mongoTemplate;
     private final MemberService memberService;
 
     BookmarkServiceImpl(BookmarkFolderRepository folderRepository,
                         BookmarkEntryRepository entryRepository,
                         ArtworkRepository artworkRepository,
-                        MongoTemplate mongoTemplate,
                         MemberService memberService) {
         this.folderRepository = folderRepository;
         this.entryRepository = entryRepository;
         this.artworkRepository = artworkRepository;
-        this.mongoTemplate = mongoTemplate;
         this.memberService = memberService;
     }
 
@@ -93,23 +86,22 @@ class BookmarkServiceImpl implements BookmarkService {
     public CursorPage<BookmarkEntryInfo> getBookmarks(String memberId, String folderId,
                                                        String cursor, int size) {
         int limit = size + 1;
-        Criteria criteria = Criteria.where("memberId").is(memberId);
+        Instant parsedCursor = cursor != null ? parseCursor(cursor) : null;
+
+        List<BookmarkEntry> entries;
         if (folderId != null) {
-            criteria = criteria.and("folderId").is(folderId);
+            entries = parsedCursor != null
+                    ? entryRepository.findByMemberIdAndFolderIdAndSavedAtBeforeOrderBySavedAtDesc(
+                            memberId, folderId, parsedCursor, PageRequest.of(0, limit))
+                    : entryRepository.findByMemberIdAndFolderIdOrderBySavedAtDesc(
+                            memberId, folderId, PageRequest.of(0, limit));
         } else {
-            criteria = criteria.and("folderId").isNull();
+            entries = parsedCursor != null
+                    ? entryRepository.findByMemberIdAndFolderIdIsNullAndSavedAtBeforeOrderBySavedAtDesc(
+                            memberId, parsedCursor, PageRequest.of(0, limit))
+                    : entryRepository.findByMemberIdAndFolderIdIsNullOrderBySavedAtDesc(
+                            memberId, PageRequest.of(0, limit));
         }
-        if (cursor != null) {
-            try {
-                criteria = criteria.and("savedAt").lt(Instant.ofEpochMilli(Long.parseLong(cursor)));
-            } catch (NumberFormatException e) {
-                throw new ArtworkException(ArtworkErrorCode.INVALID_CURSOR);
-            }
-        }
-        Query query = Query.query(criteria)
-                .with(Sort.by(Sort.Direction.DESC, "savedAt"))
-                .limit(limit);
-        List<BookmarkEntry> entries = mongoTemplate.find(query, BookmarkEntry.class);
 
         if (entries.isEmpty()) return CursorPage.empty();
         boolean hasNext = entries.size() > size;
@@ -189,5 +181,13 @@ class BookmarkServiceImpl implements BookmarkService {
         List<BookmarkEntry> entries = entryRepository.findByMemberIdAndArtworkIdIn(memberId, artworkIds);
         entries.forEach(e -> e.moveToFolder(targetFolderId));
         entryRepository.saveAll(entries);
+    }
+
+    private Instant parseCursor(String cursor) {
+        try {
+            return Instant.ofEpochMilli(Long.parseLong(cursor));
+        } catch (NumberFormatException e) {
+            throw new ArtworkException(ArtworkErrorCode.INVALID_CURSOR);
+        }
     }
 }

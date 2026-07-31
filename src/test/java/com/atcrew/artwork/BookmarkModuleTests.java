@@ -1,0 +1,139 @@
+package com.atcrew.artwork;
+
+import com.atcrew.TestMongoConfig;
+import com.atcrew.common.response.CursorPage;
+import com.atcrew.member.CreatorRole;
+import com.atcrew.member.MemberService;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.context.annotation.Import;
+import org.springframework.modulith.test.ApplicationModuleTest;
+import org.testcontainers.containers.MariaDBContainer;
+import org.testcontainers.containers.MongoDBContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+
+import java.util.List;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * bookmark(북마크 폴더·항목) 모듈 MariaDB 전환 검증 — Mongo Criteria 커서 페이지네이션이
+ * Spring Data JPA 파생 쿼리(§3.6)로 정확히 이식됐는지 확인한다.
+ */
+@ApplicationModuleTest(mode = ApplicationModuleTest.BootstrapMode.ALL_DEPENDENCIES)
+@Testcontainers
+@Import(TestMongoConfig.class)
+class BookmarkModuleTests {
+
+    @Container
+    @ServiceConnection
+    static MongoDBContainer mongo = new MongoDBContainer("mongo:7");
+
+    @Container
+    @ServiceConnection
+    static MariaDBContainer<?> mariadb = new MariaDBContainer<>("mariadb:11.4");
+
+    @Autowired
+    ArtworkService artworkService;
+
+    @Autowired
+    BookmarkService bookmarkService;
+
+    @Autowired
+    MemberService memberService;
+
+    @Test
+    void 폴더_생성_후_목록에서_조회된다() {
+        String memberId = registerMember();
+
+        BookmarkFolderInfo folder = bookmarkService.createFolder(memberId, "즐겨찾기");
+
+        assertThat(bookmarkService.getFolders(memberId)).extracting(BookmarkFolderInfo::id).contains(folder.id());
+    }
+
+    @Test
+    void 폴더_삭제하면_소속_북마크가_기본_폴더로_이동한다() {
+        String memberId = registerMember();
+        String authorId = registerMember();
+        ArtworkInfo artwork = uploadReadyArtwork(authorId);
+        BookmarkFolderInfo folder = bookmarkService.createFolder(memberId, "폴더1");
+        bookmarkService.saveBookmark(memberId, artwork.id(), folder.id());
+
+        bookmarkService.deleteFolder(memberId, folder.id());
+
+        CursorPage<BookmarkEntryInfo> page = bookmarkService.getBookmarks(memberId, null, null, 10);
+        assertThat(page.items()).extracting(BookmarkEntryInfo::artworkId).contains(artwork.id());
+    }
+
+    @Test
+    void 북마크_저장_후_커서_페이지네이션으로_조회된다() {
+        String memberId = registerMember();
+        String authorId = registerMember();
+        List<ArtworkInfo> artworks = List.of(
+                uploadReadyArtwork(authorId), uploadReadyArtwork(authorId), uploadReadyArtwork(authorId));
+        artworks.forEach(a -> bookmarkService.saveBookmark(memberId, a.id(), null));
+
+        CursorPage<BookmarkEntryInfo> firstPage = bookmarkService.getBookmarks(memberId, null, null, 2);
+        assertThat(firstPage.items()).hasSize(2);
+        assertThat(firstPage.nextCursor()).isNotNull();
+
+        CursorPage<BookmarkEntryInfo> secondPage = bookmarkService.getBookmarks(
+                memberId, null, firstPage.nextCursor(), 2);
+        assertThat(secondPage.items()).hasSize(1);
+
+        List<String> allIds = new java.util.ArrayList<>();
+        firstPage.items().forEach(i -> allIds.add(i.id()));
+        secondPage.items().forEach(i -> allIds.add(i.id()));
+        assertThat(allIds).doesNotHaveDuplicates().hasSize(3);
+    }
+
+    @Test
+    void 중복_북마크는_거부된다() {
+        String memberId = registerMember();
+        String authorId = registerMember();
+        ArtworkInfo artwork = uploadReadyArtwork(authorId);
+        bookmarkService.saveBookmark(memberId, artwork.id(), null);
+
+        assertThat(catchThrowableClass(() -> bookmarkService.saveBookmark(memberId, artwork.id(), null)))
+                .isNotNull();
+    }
+
+    @Test
+    void 북마크_제거_후_목록에서_사라진다() {
+        String memberId = registerMember();
+        String authorId = registerMember();
+        ArtworkInfo artwork = uploadReadyArtwork(authorId);
+        bookmarkService.saveBookmark(memberId, artwork.id(), null);
+
+        bookmarkService.removeBookmark(memberId, artwork.id());
+
+        CursorPage<BookmarkEntryInfo> page = bookmarkService.getBookmarks(memberId, null, null, 10);
+        assertThat(page.items()).extracting(BookmarkEntryInfo::artworkId).doesNotContain(artwork.id());
+    }
+
+    private Class<?> catchThrowableClass(org.assertj.core.api.ThrowableAssert.ThrowingCallable callable) {
+        return org.assertj.core.api.Assertions.catchThrowable(callable).getClass();
+    }
+
+    private ArtworkInfo uploadReadyArtwork(String authorId) {
+        List<String> imageKeys = List.of("raw/" + UUID.randomUUID() + ".png");
+        ArtworkInfo artwork = artworkService.uploadArtwork(authorId, new UploadArtworkCommand(
+                imageKeys, 0, null, ImageLayoutType.VERTICAL_SCROLL,
+                "북마크테스트 작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
+                List.of(), List.of(), List.of(),
+                AgeRating.ALL, Visibility.PUBLIC, List.of(), null, null, List.of(), List.of()));
+        artworkService.handleImageProcessedCallback(new ImageProcessedCallbackCommand(
+                artwork.id(), imageKeys.get(0), "thumb", null, "avif", ImageProcessingStatus.DONE));
+        return artworkService.getArtwork(artwork.id(), authorId);
+    }
+
+    private String registerMember() {
+        return memberService.register(
+                "bookmark-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12) + "@atcrew.com",
+                "bm" + UUID.randomUUID().toString().replace("-", "").substring(0, 10),
+                "회원", CreatorRole.WEBTOON).id();
+    }
+}
