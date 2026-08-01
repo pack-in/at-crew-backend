@@ -6,6 +6,9 @@
 > 범위 밖(추후 별도 설계): 구인글 CRUD(recruit 모듈), 기업 인증 실제 심사 플로우 및 요금제 안내(본인/기업 인증 시스템·결제 모듈), 회원 탈퇴 시 기업 프로필 처리 정책
 > 피그마 근거: UI개편_마이페이지_기업(5154:41398), UI개편_마이페이지_기업_수정페이지(5244:25813)
 > 로드맵 근거: docs/roadmap.md §3
+> **2026-08-01 갱신**: `CompanyRecruitPort`/`NoopCompanyRecruitPort` 스텁(§6.2)은 폐기됐다.
+> `CompanyServiceImpl`이 recruit 모듈의 `RecruitService.hasOpenJobPosting`을 직접 호출하고
+> `CompanyInfo.hasOpenJobPosting` 필드로 노출한다(PR #41). §6.2의 코드 블록은 설계 당시 기록으로 남긴다.
 
 ---
 

@@ -134,8 +134,9 @@ Spring Modulith JDBC 이벤트 레지스트리 교체, ETL·컷오버 계획까�
 **Figma 근거:** `UI개편_검색` (5154:41768)
 
 **진행 상황(2026-07-30):** 설계 완료, Elasticsearch 기반으로 구현 착수 — `docs/design/search-module-design.md` 참고.
-recruit/기업 프로필과 병렬 진행 중이라 별도 워크트리(`worktree-search-module`)에서 독립 진행하며,
-구인글/구직글/팀원모집글 검색은 `RecruitSearchPort` 스텁으로 남기고 recruit 모듈 완성 후 실구현으로 교체 예정.
+recruit/기업 프로필과 병렬 진행 중이라 별도 워크트리(`worktree-search-module`)에서 독립 진행했다.
+구인글/구직글/팀원모집글 검색은 최초 설계 시 `RecruitSearchPort` 스텁으로 남겼으나, 2026-08-01 실구현으로
+교체 완료(PR #41) — DB LIKE 기반, ES 색인 이관은 별도 스코프로 보류.
 
 ---
 

@@ -3,8 +3,12 @@
 > 작성일: 2026-07-30
 > 상태: 설계안 (Phase 1 구현 착수)
 > 범위: **포트폴리오(artwork) 검색만** — 텍스트 검색 + 다중선택 chip 필터(작품 분야·창작 유형·연령대·담당 업무·장르·소재 대상), Elasticsearch 색인/동기화
-> 범위 밖(추후 이관): 구인글/구직글/팀원모집글 검색 — `recruit` 모듈이 아직 없어 `RecruitSearchPort` 스텁으로 대체. 기업 계정/프로필 검색 — 피그마 검색 화면에 해당 유형 없음
+> 범위 밖(추후 이관): 구인글/구직글/팀원모집글 검색 — 설계 당시 `recruit` 모듈이 아직 없어 `RecruitSearchPort` 스텁으로 대체. 기업 계정/프로필 검색 — 피그마 검색 화면에 해당 유형 없음
 > 피그마 근거: UI개편_검색(5154:41768) — 태그 검색 필터 패널(node `5752:27908`) 실측 스크린샷 기준
+> **2026-08-01 갱신**: `RecruitSearchPort`/`NoopRecruitSearchPort` 스텁은 폐기됐다. `SearchServiceImpl`이
+> recruit 모듈의 `RecruitService`를 직접 호출해 포트폴리오와 recruit 3종을 통합 커서로 병합 검색한다
+> (PR #41, `docs/design/recruit-module-design.md` §2.7). 이 문서의 "스텁" 서술은 설계 당시 시점 기록으로
+> 남겨두되, 현재 상태는 위 갱신 노트를 기준으로 본다.
 
 ---
 
