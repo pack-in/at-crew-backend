@@ -174,9 +174,20 @@ Figma 지원자 관리 UI에서 "채용 단계"별 처리가 확인되므로 `Ap
 
 **API**: `POST/DELETE /api/recruit/liked-artists/{artistMemberId}`(토글), `GET /api/recruit/liked-artists`(검색·정렬), `GET /api/recruit/recently-viewed-artists`(정렬만, 검색 없음 — 기획서 구인구직-R05 기준 "저장된 글 N개"/"검색 결과 N개" 라벨은 좋아요 탭 전용).
 
-**검색·정렬**: 기획서 "데이터구조-R05"에 따라 좋아요한 작가 검색은 전체 검색(search 모듈, 4번 완료됨)의 작가 검색 인덱스를 그대로 재사용하되 검색 범위만 "기업이 좋아요한 작가"로 제한한다 — recruit이 별도 인덱스를 두지 않고 `RecruitService`가 좋아요 관계로 필터링한 memberId 목록을 search 모듈에 전달하는 구조. search 모듈과의 정확한 연동 인터페이스는 구현 단계에서 확정.
+**검색·정렬** (2026-08-01 구현 완료, 설계 정정): 애초 계획은 좋아요한 작가 검색을 search 모듈의 작가 검색
+인덱스에 위임하는 것이었으나, 구현 단계에서 두 가지 문제가 확인됐다 — (1) search 모듈 Phase 1 색인은
+`Artwork`만 대상이라 **작가 검색 인덱스 자체가 존재하지 않음**, (2) 이 시점에 이미 `search → recruit`
+의존(포트 연동, 이슈 #36)이 성립해 있어 `recruit → search`를 추가하면 Spring Modulith 순환 의존이 된다.
+따라서 search 대신 기존에 허용된 `recruit → member` 경로를 사용해 `MemberService.findIdsByKeyword`
+(신규, 후보 memberId 집합을 호출자가 한정 + 탈퇴 회원 제외 + 컨트롤러 미노출)로 좋아요한 작가 중 키워드
+매칭 대상을 필터링한다. recruit은 별도 검색 인덱스를 두지 않고 DB LIKE 기반으로 조회하며, Elasticsearch
+색인 이관은 별도 스코프로 남겨둔다.
 
-**모듈 경계**: 최근 본 작가 기록은 작가 마이페이지 조회 시점에 남아야 하므로, `member`(또는 별도 작가 프로필을 가진 모듈) 쪽 마이페이지 조회 엔드포인트가 호출자 계정 유형이 기업이면 recruit의 기록 API를 호출하는 이벤트/직접 호출 연동이 필요 — 구현 단계에서 순환 의존이 생기지 않도록 이벤트 발행(Spring Modulith) 방식을 우선 검토.
+**모듈 경계** (2026-08-01 구현 완료): 최근 본 작가 자동 기록은 이벤트 발행 방식으로 연동했다.
+`member.MemberServiceImpl.findProfileByHandle`가 작가 마이페이지 조회 시 `ArtistProfileViewedEvent`를
+발행(본인 조회 제외)하고, recruit의 `@ApplicationModuleListener`(`ArtistProfileViewListener`)가 이를
+구독해 `LikedArtistService.recordArtistView`를 호출한다. 비로그인 조회(`viewerMemberId == null`)는
+리스너에서 무시한다.
 
 ---
 

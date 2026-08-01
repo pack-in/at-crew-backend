@@ -26,15 +26,15 @@ recruit는 main과 15개 커밋 격차가 있어 병합 충돌(공용 JPA 인프
 정확한 개수(`length()==1`)를 assert하다 실패하는 테스트 격리 버그를 발견해 수정(ID 포함 여부 검증으로 변경).
 이슈 [#33](https://github.com/pack-in/at-crew-backend/issues/33) 체크리스트 항목 해소.
 
-### 2. search/company 모듈의 recruit 포트 스텁을 실구현으로 교체
-- `company.CompanyRecruitPort`(있다면) / `search.RecruitSearchPort`가 아직 Noop 스텁 — recruit이 이제
-  존재하므로 실제 연동 가능. `docs/roadmap.md` 4번(검색) 항목 참고.
-- 관심 작가 검색어 필터(recruit `LikedArtistService`)도 search 모듈 인덱스 연동이 TODO로 남아있음.
+### 2. ~~search/company 모듈의 recruit 포트 스텁을 실구현으로 교체~~ — 완료 (2026-08-01, PR [#41](https://github.com/pack-in/at-crew-backend/pull/41), 이슈 [#36](https://github.com/pack-in/at-crew-backend/issues/36))
+`CompanyRecruitPort`/`RecruitSearchPort` Noop 스텁 폐기, `RecruitService` 직접 주입으로 교체.
+관심 작가 검색어 필터는 설계(§2.7)와 달리 search가 아닌 `recruit → member` 경로로 구현(search에 작가
+검색 인덱스가 없고, `search → recruit` 의존이 이미 있어 반대 방향을 추가하면 순환 의존이 되기 때문).
+`docs/design/recruit-module-design.md` §2.7에 정정 반영됨.
 
-### 3. 최근 본 작가 자동 기록 연동
-recruit에 `POST /api/recruit/recently-viewed-artists/{id}` 엔드포인트는 있지만, member 모듈의 작가
-마이페이지 조회 시 자동으로 호출하는 훅이 없다(순환 의존 방지를 위해 이벤트 발행 방식 검토 필요,
-`docs/design/recruit-module-design.md` §2.7 참고).
+### 3. ~~최근 본 작가 자동 기록 연동~~ — 완료 (2026-08-01, PR [#40](https://github.com/pack-in/at-crew-backend/pull/40), 이슈 [#37](https://github.com/pack-in/at-crew-backend/issues/37))
+member 마이페이지 조회 시 `ArtistProfileViewedEvent` 발행 → recruit `@ApplicationModuleListener`가 구독해
+자동 기록.
 
 ### 4. GitHub Actions 권한 이슈 (인프라, 낮은 우선순위)
 `release-please` 워크플로우가 오늘 병합한 PR 3건 전부에서 "GitHub Actions is not permitted to create or
