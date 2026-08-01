@@ -13,6 +13,14 @@ import com.atcrew.artwork.UploadArtworkCommand;
 import com.atcrew.artwork.Visibility;
 import com.atcrew.member.CreatorRole;
 import com.atcrew.member.MemberService;
+import com.atcrew.recruit.CreateJobPostingCommand;
+import com.atcrew.recruit.JobEmploymentType;
+import com.atcrew.recruit.JobPaymentType;
+import com.atcrew.recruit.JobPaymentUnit;
+import com.atcrew.recruit.JobPostingInfo;
+import com.atcrew.recruit.JobWorkLocationType;
+import com.atcrew.recruit.JobWorkScheduleType;
+import com.atcrew.recruit.RecruitService;
 import com.atcrew.support.RestDocsIntegrationSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,6 +51,9 @@ class SearchApiDocTest extends RestDocsIntegrationSupport {
 
     @Autowired
     MemberService memberService;
+
+    @Autowired
+    RecruitService recruitService;
 
     @Test
     void 필터_검색_성공_문서화() throws Exception {
@@ -95,11 +106,54 @@ class SearchApiDocTest extends RestDocsIntegrationSupport {
     }
 
     @Test
-    void 구인글만_요청하면_recruit_모듈_미구현으로_빈_목록_문서화() throws Exception {
-        mockMvc.perform(get("/api/search").param("postTypes", "JOB_POSTING"))
+    void 구인글_유형_검색_문서화() throws Exception {
+        String token = "token" + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
+        publishedJobPosting(token + " 구인 공고");
+
+        mockMvc.perform(get("/api/search")
+                        .param("q", token)
+                        .param("postTypes", "JOB_POSTING"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.items").isEmpty())
-                .andDo(document("search/search-recruit-not-implemented"));
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].postType").value("JOB_POSTING"))
+                .andDo(document("search/search-recruit",
+                        preprocessResponse(prettyPrint()),
+                        queryParameters(
+                                parameterWithName("q").description("검색어").optional(),
+                                parameterWithName("postTypes")
+                                        .description("게시글 유형 필터 (PORTFOLIO·JOB_POSTING·JOB_SEEKING·TEAM_RECRUIT)")
+                                        .optional()
+                        ),
+                        relaxedResponseFields(
+                                fieldWithPath("code").description("응답 코드 (SUCCESS)"),
+                                fieldWithPath("data.items[].id").description("구인글 ID"),
+                                fieldWithPath("data.items[].postType").description("게시글 유형 (JOB_POSTING)"),
+                                fieldWithPath("data.items[].title").description("공고 제목"),
+                                fieldWithPath("data.items[].authorName").description("작성자 표시명").optional(),
+                                fieldWithPath("data.totalCount").description("전체 결과 건수"),
+                                fieldWithPath("data.hasNext").description("다음 페이지 존재 여부")
+                        )
+                ));
+    }
+
+    /** 작성 → 관리자 승인까지 마친 PUBLISHED 구인글을 만든다(커맨드의 submit=true라 저장 즉시 PENDING). */
+    private void publishedJobPosting(String title) {
+        String memberId = memberService.register(
+                "search-recruit-doc-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com",
+                "searchrec" + UUID.randomUUID().toString().replace("-", "").substring(0, 8),
+                "검색문서기업", CreatorRole.WEBTOON).id();
+
+        JobPostingInfo created = recruitService.createJobPosting(memberId, new CreateJobPostingCommand(
+                title, "앳크루", "대표", "웹툰", "서울", "02-000-0000", "https://example.com",
+                "회사 소개", true, true, false,
+                List.of("작화"), List.of("로맨스"), "작업 범위", null, 2, "서류 → 면접",
+                "무관", "신입", "무관", "무관",
+                JobEmploymentType.FULL_TIME, JobWorkLocationType.OFFICE, JobWorkScheduleType.FIXED,
+                null, null, true, true, true,
+                JobPaymentType.ANNUAL_SALARY, JobPaymentUnit.ANNUAL, 3000L, 4000L, true,
+                null, null, false, "복지 설명", List.of("식대"),
+                "https://img.example/thumb.png", List.of("https://img.example/ref.png"), true));
+        recruitService.approveJobPosting(created.id());
     }
 
     private void uploadReadyArtwork() throws InterruptedException {

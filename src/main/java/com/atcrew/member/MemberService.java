@@ -2,6 +2,8 @@ package com.atcrew.member;
 
 import com.atcrew.common.response.CursorPage;
 
+import java.util.List;
+
 public interface MemberService {
 
     MemberInfo register(RegisterMemberCommand command);
@@ -30,6 +32,12 @@ public interface MemberService {
      * 탈퇴 회원은 결과에서 항상 제외된다.
      */
     CursorPage<MemberProfileInfo> searchProfiles(SearchProfilesCommand command);
+
+    /**
+     * 주어진 회원 ID 중 이름 또는 핸들에 검색어가 포함된 활성 회원의 ID만 반환한다.
+     * 후보 집합을 호출자가 한정해 넘기는 용도이며(recruit "관심 작가" 검색), 탈퇴 회원은 항상 제외된다.
+     */
+    List<String> findIdsByKeyword(List<String> memberIds, String keyword);
 
     /**
      * EMAIL 활성 회원의 비밀번호 검증. timing-safe 보장 (회원 부재 시 더미 BCrypt 수행).

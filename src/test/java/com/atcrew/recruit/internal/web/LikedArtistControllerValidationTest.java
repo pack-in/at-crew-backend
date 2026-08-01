@@ -20,6 +20,7 @@ import static org.springframework.restdocs.mockmvc.MockMvcRestDocumentation.docu
 import static org.springframework.restdocs.mockmvc.MockMvcRestDocumentation.documentationConfiguration;
 import static org.springframework.restdocs.operation.preprocess.Preprocessors.prettyPrint;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -82,6 +83,14 @@ class LikedArtistControllerValidationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
                 .andDo(document("recruit/validation/unlike-artist-invalid-id-format"));
+    }
+
+    @Test
+    void 관심작가_목록_검색어_길이_초과_거부() throws Exception {
+        mockMvc.perform(get("/api/recruit/liked-artists").param("q", "가".repeat(51)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("recruit/validation/list-liked-artists-keyword-too-long"));
     }
 
     @Test

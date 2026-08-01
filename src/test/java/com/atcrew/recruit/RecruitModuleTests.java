@@ -157,13 +157,115 @@ class RecruitModuleTests {
         recruitService.likeArtist(companyId, artistId);
         recruitService.likeArtist(companyId, artistId); // 재저장은 무시(멱등)
 
-        assertThat(recruitService.getLikedArtists(companyId, null, 20).items())
+        assertThat(recruitService.getLikedArtists(companyId, null, null, 20).items())
                 .extracting(LikedArtistInfo::artistMemberId)
                 .containsExactly(artistId);
 
         recruitService.unlikeArtist(companyId, artistId);
 
-        assertThat(recruitService.getLikedArtists(companyId, null, 20).items()).isEmpty();
+        assertThat(recruitService.getLikedArtists(companyId, null, null, 20).items()).isEmpty();
+    }
+
+    @Test
+    void 관심_작가_검색어로_작가_이름을_거를_수_있다() {
+        String companyId = registerMember("liked-search-company");
+        String matchedArtistId = registerMemberWithName("liked-search-hit", "김앳크루");
+        String otherArtistId = registerMemberWithName("liked-search-miss", "박라이트");
+
+        recruitService.likeArtist(companyId, matchedArtistId);
+        recruitService.likeArtist(companyId, otherArtistId);
+
+        assertThat(recruitService.getLikedArtists(companyId, "앳크루", null, 20).items())
+                .extracting(LikedArtistInfo::artistMemberId)
+                .containsExactly(matchedArtistId);
+        assertThat(recruitService.getLikedArtists(companyId, "없는이름", null, 20).items()).isEmpty();
+        // 검색어가 없으면 저장한 작가 전체가 조회된다
+        assertThat(recruitService.getLikedArtists(companyId, null, null, 20).items())
+                .extracting(LikedArtistInfo::artistMemberId)
+                .containsExactlyInAnyOrder(matchedArtistId, otherArtistId);
+    }
+
+    @Test
+    void 공개_구인글이_있어야_구인글_보유로_판정된다() {
+        String authorId = registerMember("open-posting-author");
+
+        assertThat(recruitService.hasOpenJobPosting(authorId)).isFalse();
+
+        String jobPostingId = publishedJobPosting(authorId, "채용 중 공고");
+        assertThat(recruitService.hasOpenJobPosting(authorId)).isTrue();
+
+        recruitService.closeJobPosting(authorId, jobPostingId);
+        assertThat(recruitService.hasOpenJobPosting(authorId)).isFalse();
+    }
+
+    @Test
+    void 검색은_공개된_3종을_제목과_태그로_조회한다() {
+        // 같은 DB를 공유하는 다른 테스트의 글과 섞이지 않도록 이 테스트 전용 검색 토큰을 제목에 넣는다.
+        String token = uniqueToken();
+        String authorId = registerMember("search-author");
+        String jobPostingId = publishedJobPosting(authorId, token + " 구인 공고");
+        String teamPostingId = recruitService.createTeamPosting(authorId, teamPostingCommand()).id();
+        JobSeekingPostInfo seekingPost = recruitService.createJobSeekingPost(
+                authorId, jobSeekingPostCommand(token + " 구직글"));
+        recruitService.publishJobSeekingPost(authorId, seekingPost.id());
+
+        // 제목 검색 — 토큰이 들어간 구인글·구직글만 일치(팀원모집글 제목에는 토큰이 없다)
+        RecruitSearchPage byTitle = recruitService.searchPosts(new RecruitSearchQuery(
+                token, null, null, null, null, null, 20));
+        assertThat(byTitle.items()).extracting(RecruitSearchResultInfo::id)
+                .containsExactlyInAnyOrder(jobPostingId, seekingPost.id());
+        assertThat(byTitle.totalCount()).isEqualTo(2);
+
+        // 유형 필터 — 구직글만 조회
+        RecruitSearchPage seekingOnly = recruitService.searchPosts(new RecruitSearchQuery(
+                token, List.of(RecruitPostType.JOB_SEEKING), null, null, null, null, 20));
+        assertThat(seekingOnly.items()).extracting(RecruitSearchResultInfo::id)
+                .containsExactly(seekingPost.id());
+        assertThat(seekingOnly.items()).extracting(RecruitSearchResultInfo::postType)
+                .containsOnly(RecruitPostType.JOB_SEEKING);
+
+        // 태그 필터 — 팀원모집글 장르(액션)에는 걸리고, 구인글 장르(로맨스)에는 걸리지 않는다
+        RecruitSearchPage byGenre = recruitService.searchPosts(new RecruitSearchQuery(
+                null, null, null, List.of("액션"), null, null, 20));
+        assertThat(byGenre.items()).extracting(RecruitSearchResultInfo::id).contains(teamPostingId);
+        assertThat(byGenre.items()).extracting(RecruitSearchResultInfo::id).doesNotContain(jobPostingId);
+    }
+
+    @Test
+    void 검색은_공개되지_않은_글을_제외한다() {
+        String token = uniqueToken();
+        String authorId = registerMember("search-draft-author");
+        // 커맨드의 submit=true라 승인 전 PENDING 상태이며, 공개 검색 대상이 아니다
+        JobPostingInfo pending = recruitService.createJobPosting(authorId, jobPostingCommand(token + " 미공개 공고"));
+
+        assertThat(searchIds(token)).isEmpty();
+
+        String published = recruitService.approveJobPosting(pending.id()).id();
+
+        assertThat(searchIds(token)).containsExactly(published);
+    }
+
+    @Test
+    void 검색_결과는_커서로_이어서_조회된다() {
+        String token = uniqueToken();
+        String authorId = registerMember("search-cursor-author");
+        String firstId = publishedJobPosting(authorId, token + " 공고 1");
+        String secondId = publishedJobPosting(authorId, token + " 공고 2");
+
+        RecruitSearchPage firstPage = recruitService.searchPosts(new RecruitSearchQuery(
+                token, null, null, null, null, null, 1));
+        assertThat(firstPage.items()).hasSize(1);
+        assertThat(firstPage.hasNext()).isTrue();
+        assertThat(firstPage.totalCount()).isEqualTo(2);
+
+        RecruitSearchResultInfo last = firstPage.items().get(0);
+        RecruitSearchPage secondPage = recruitService.searchPosts(new RecruitSearchQuery(
+                token, null, null, null, last.createdAt(), last.id(), 1));
+
+        assertThat(secondPage.items()).hasSize(1);
+        assertThat(secondPage.hasNext()).isFalse();
+        assertThat(List.of(last.id(), secondPage.items().get(0).id()))
+                .containsExactlyInAnyOrder(firstId, secondId);
     }
 
     @Test
@@ -235,10 +337,24 @@ class RecruitModuleTests {
         return recruitService.getJobSeekingPosts(null, 50).items().stream().map(JobSeekingPostInfo::id).toList();
     }
 
+    // 다른 테스트의 글과 겹치지 않는 검색 토큰
+    private String uniqueToken() {
+        return "TOKEN" + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
+    }
+
+    private List<String> searchIds(String q) {
+        return recruitService.searchPosts(new RecruitSearchQuery(q, null, null, null, null, null, 20))
+                .items().stream().map(RecruitSearchResultInfo::id).toList();
+    }
+
     private String registerMember(String handlePrefix) {
+        return registerMemberWithName(handlePrefix, "테스터");
+    }
+
+    private String registerMemberWithName(String handlePrefix, String name) {
         String suffix = UUID.randomUUID().toString().substring(0, 8);
         return memberService.register(
-                handlePrefix + "-" + suffix + "@atcrew.com", handlePrefix + suffix, "테스터", CreatorRole.WEBTOON).id();
+                handlePrefix + "-" + suffix + "@atcrew.com", handlePrefix + suffix, name, CreatorRole.WEBTOON).id();
     }
 
     // 작성 → 제출 → 관리자 승인까지 마친 PUBLISHED 구인글 ID를 반환한다.
@@ -258,6 +374,13 @@ class RecruitModuleTests {
                 JobPaymentType.ANNUAL_SALARY, JobPaymentUnit.ANNUAL, 3000L, 4000L, true,
                 null, null, false, "복지 설명", List.of("식대"),
                 "https://img.example/thumb.png", List.of("https://img.example/ref.png"), true);
+    }
+
+    private CreateJobSeekingPostCommand jobSeekingPostCommand(String title) {
+        return new CreateJobSeekingPostCommand(
+                title, List.of("작화"), List.of("판타지"), "선화 위주",
+                FeedbackStyle.PERIODIC, WorkStyle.COLLABORATIVE, "협의", "포트폴리오 소개",
+                List.of("https://img.example/ref.png"), false);
     }
 
     private CreateTeamPostingCommand teamPostingCommand() {

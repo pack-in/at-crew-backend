@@ -13,6 +13,14 @@ public interface RecruitService {
     // 커뮤니티 "팀원모집글" 탭 피드 — PUBLISHED 상태만 커서 페이지네이션으로 조회
     CursorPage<CommunityTeamRecruitCardInfo> getTeamRecruitFeed(String cursor, int size);
 
+    // === 타 모듈 연동 (§6) ===
+
+    // 기업 마이페이지 "구인글 업로드 카드" 진입점 판단 — 해당 회원이 PUBLISHED 구인글을 하나라도 갖고 있는지 (company 모듈 소비)
+    boolean hasOpenJobPosting(String companyMemberId);
+
+    // 구인글/구직글/팀원모집글 통합 검색 — PUBLISHED만, (createdAt, id) keyset 페이지네이션 (search 모듈 소비)
+    RecruitSearchPage searchPosts(RecruitSearchQuery query);
+
     // === JobPosting CRUD (§4.1) ===
 
     // 작성 — command.submit()=true면 저장 직후 PENDING 제출까지 처리
@@ -159,8 +167,8 @@ public interface RecruitService {
     // 좋아요 해제 — 저장돼 있지 않아도 성공(멱등)
     void unlikeArtist(String companyMemberId, String artistMemberId);
 
-    // 좋아요한 작가 목록(커서) — 저장 시각 내림차순
-    CursorPage<LikedArtistInfo> getLikedArtists(String companyMemberId, String cursor, int size);
+    // 좋아요한 작가 목록(커서) — 저장 시각 내림차순. q가 있으면 작가 이름·핸들이 일치하는 작가만 조회한다.
+    CursorPage<LikedArtistInfo> getLikedArtists(String companyMemberId, String q, String cursor, int size);
 
     // 작가 마이페이지 조회 기록 — 같은 작가 재조회 시 조회 시각만 갱신
     void recordArtistView(String companyMemberId, String artistMemberId);

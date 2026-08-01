@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -66,14 +67,16 @@ class LikedArtistController {
     }
 
     @Operation(summary = "관심 작가 목록", description =
-            "저장 시각 내림차순으로 조회합니다. 검색어 필터는 search 모듈 연동 후 제공됩니다(설계 §2.7).")
+            "저장 시각 내림차순으로 조회합니다. 검색어(q)를 주면 저장한 작가 중 이름·핸들이 일치하는 작가만 조회합니다(설계 §2.7).")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공")
     @GetMapping("/liked-artists")
     public ApiResponse<CursorPage<LikedArtistInfo>> getLikedArtists(
+            @Parameter(description = "검색어 — 작가 이름·핸들 부분 일치") @RequestParam(required = false)
+            @Size(max = 50, message = "검색어는 50자를 넘을 수 없습니다") String q,
             @Parameter(description = "커서") @RequestParam(required = false) String cursor,
             @Parameter(description = "페이지 크기 (기본 20, 최대 50)") @RequestParam(required = false) Integer size) {
         String companyMemberId = securityUtils.getCurrentMemberId();
-        return ApiResponse.success(recruitService.getLikedArtists(companyMemberId, cursor, resolveSize(size)));
+        return ApiResponse.success(recruitService.getLikedArtists(companyMemberId, q, cursor, resolveSize(size)));
     }
 
     @Operation(summary = "작가 조회 기록", description =

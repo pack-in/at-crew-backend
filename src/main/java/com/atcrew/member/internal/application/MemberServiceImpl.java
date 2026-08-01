@@ -205,6 +205,15 @@ class MemberServiceImpl implements MemberService {
         return toProfilePage(members, command.size(), sort);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<String> findIdsByKeyword(List<String> memberIds, String keyword) {
+        if (memberIds == null || memberIds.isEmpty() || keyword == null || keyword.isBlank()) {
+            return List.of();
+        }
+        return memberRepository.findIdsByKeyword(memberIds, keyword);
+    }
+
     // Mongo Criteria 동적 쿼리 → JPA Specification (docs/design/mariadb-migration-design.md §3.6)
     private Specification<Member> buildSearchSpecification(SearchProfilesCommand command, ProfileSort sort) {
         return (root, query, cb) -> {
