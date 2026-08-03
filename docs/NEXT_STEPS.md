@@ -3,19 +3,29 @@
 > 이 문서는 세션 인수인계용 체크리스트다. 장기 로드맵 전체는 `docs/roadmap.md`가 정본이고,
 > 이 문서는 "지금 당장 뭐부터 볼지"만 정리한다. 작업 완료 후 이 파일은 삭제해도 된다.
 
-## 2026-08-03 점검 결과: 코드 변경 없음, 아래 항목 전부 그대로 유효
+## 2026-08-03 점검 결과
 
 `main` 최신 커밋이 2026-08-01 마지막 세션 종료 시점(`324ae60`)과 동일 — 그 사이 커밋 없음.
-아래 4개 항목(1~4)을 코드 grep + `gh api`로 재확인한 결과 전부 그대로 열려 있다:
-- GitHub Actions 워크플로우 권한: `gh api repos/pack-in/at-crew-backend/actions/permissions/workflow` →
-  `can_approve_pull_request_reviews: false`, `release-please` 워크플로우가 이후 모든 push에서도 계속 실패 중(이슈 #38)
-- 나머지 TODO/스텁 3건은 소스에 그대로 존재(아래 표 참고)
+GitHub Actions 권한 이슈(#38)는 `release.yml` 삭제로, 설계-구현 불일치(#39)는 문서 정정으로 해소. 나머지
+TODO/스텁 3건은 소스에 그대로 존재(아래 표 참고).
 
 부수 정리: 지난 세션에서 worker 에이전트가 남긴 로컬 잔여 브랜치(`worktree-agent-*`, `feat/recruit-rest-docs`)와
 stale remote-tracking refs를 정리했다(원격 브랜치는 이미 PR 병합 시 삭제되어 있었음).
 
 ## 완료된 것 (이력)
 
+- **2026-08-03**: 이슈 [#39](https://github.com/pack-in/at-crew-backend/issues/39) 해결 — `docs/design/global-timezone-strategy.md` §3.3.1을 실제 구현에 맞게 정정. 최초 설계는 `timezone` nullable+UTC 폴백이었으나, 구현 시 `Member.validateTimezone()`이 가입 경로(자체·소셜 공통)에서 null을 거부하도록 확정해 폴백 로직 자체가 불필요해졌다 — 버그가 아니라 더 단순한 확정 설계였음을 문서에 반영.
+- **2026-08-03**: `release.yml`(release-please) 삭제로 이슈 [#38](https://github.com/pack-in/at-crew-backend/issues/38)
+  해소. 실패 로그 확인 결과, 워크플로우 YAML에 `permissions: pull-requests: write`를 명시해도
+  "GitHub Actions is not permitted to create or approve pull requests" 에러가 발생 — 이건 조직/저장소
+  설정의 하드 게이트(`can_approve_pull_request_reviews`)이고 YAML 권한 블록으로 우회 불가함을 확인.
+  `laiteu-be`(같은 pack-in 조직)의 `auto-pr.yml`도 API로 확인하니 동일하게 `false` — 다만 마지막 성공
+  실행이 2026-07-07(조직이 이후 정책을 강화한 것으로 추정)이라 laiteu-be도 지금 트리거되면 똑같이
+  막힐 가능성이 높음. 조직 admin 권한이 없어 근본 해결은 보류하고, 대신 이슈/PR 생성은 Claude가 `gh`
+  CLI(개인 인증 토큰 사용, GITHUB_TOKEN과 무관)로 수행하고 merge/승인은 사람이 직접 하는 워크플로우로
+  전환 — release-please 자동화 자체가 불필요해져 워크플로우 파일 삭제. 조직 admin이 나중에
+  `https://github.com/organizations/pack-in/settings/actions`에서 "Allow GitHub Actions to create and
+  approve pull requests"를 풀면 재도입 검토(git 이력에 원본 파일 남아있음).
 - **2026-08-01**: search/company의 recruit 포트 스텁 → 실구현 교체(PR [#41](https://github.com/pack-in/at-crew-backend/pull/41), 이슈 [#36](https://github.com/pack-in/at-crew-backend/issues/36)), 최근 본 작가 자동 기록 이벤트 연동(PR [#40](https://github.com/pack-in/at-crew-backend/pull/40), 이슈 [#37](https://github.com/pack-in/at-crew-backend/issues/37)), 관련 설계 문서 3건 정합성 정정 — 전부 main 병합, 테스트 그린
 - **2026-07-31**: 로드맵 대규모 갱신(Polar 결제·PASS 인증·recruit 스코프 확대·i18n/관리자/OG카드 신규 항목), 글로벌 시간대 UTC 전환(PR #30), MariaDB P4(PR #32), recruit 모듈 구현(PR #34), recruit REST Docs(PR #35)
 
@@ -23,20 +33,7 @@ recruit 모듈(구인글/팀원모집글/구직글/지원/끌어올리기/관심
 
 ## 지금 바로 처리할 것 (우선순위순)
 
-### 1. GitHub Actions 권한 이슈 (인프라, 저장소 관리자만 처리 가능) — 이슈 [#38](https://github.com/pack-in/at-crew-backend/issues/38)
-`release-please` 워크플로우가 main push마다 "GitHub Actions is not permitted to create or approve pull
-requests"로 실패 중(최근 확인: 2026-08-01 이후 push 4건 전부 동일 증상). 저장소 Settings → Actions →
-General → Workflow permissions에서 "Allow GitHub Actions to create and approve pull requests" 활성화
-필요. 코드 작업이 아니라 사람이 직접 처리해야 함(오케스트레이터가 `gh api`로 확인은 했지만 저장소 보안
-설정 변경은 자동 실행하지 않음).
-
-### 2. (검토만) 설계-구현 불일치 1건 — 이슈 [#39](https://github.com/pack-in/at-crew-backend/issues/39)
-`docs/design/global-timezone-strategy.md` §3.3.1은 `Member.timezone`을 nullable+UTC 폴백으로 규정했지만
-실제 `Member.validateTimezone()`은 가입 시 필수값으로 강제한다(2026-07-15 커밋). 버그라기보다 "가입 시
-항상 값이 있어 폴백이 불필요해진" 더 단순한 설계일 가능성 — auth/member를 다음에 다룰 때 문서를 실제
-구현에 맞게 정정할지 결정 필요.
-
-### 3. recruit 검색 후속 과제 (PR #41에서 의도적으로 남긴 것)
+### 1. recruit 검색 후속 과제 (PR #41에서 의도적으로 남긴 것)
 지금 동작에 문제는 없지만, 데이터가 늘거나 기획이 확정되면 손봐야 하는 항목들이다.
 
 1. **태그 정본 목록 정규화** — recruit의 `roles`/`genres`는 작성자가 입력하는 자유 문자열이고, 검색
@@ -56,7 +53,7 @@ General → Workflow permissions에서 "Allow GitHub Actions to create and appro
 5. **`CompanyInfo.hasOpenJobPosting` 조회 비용** — 기업 프로필 단건 조회마다 recruit `exists` 쿼리가
    1회 추가된다. 목록 API가 생기면 N+1이 되므로 그때 일괄 조회/캐시 검토
 
-### 4. 코드에 남아 있는 스텁·TODO 지도 (착수 전 참고용)
+### 2. 코드에 남아 있는 스텁·TODO 지도 (착수 전 참고용)
 다른 모듈 작업 시 함께 풀어야 하는 것들. 각 항목 옆이 선행 조건이다. (2026-08-03 grep으로 전부 재확인)
 
 | 위치 | 내용 | 선행 |
@@ -89,4 +86,4 @@ General → Workflow permissions에서 "Allow GitHub Actions to create and appro
 - `docs/AT-CREW_서비스기획서_전체_20260728.xlsx` — 서비스 기획서 정본(요구사항/정책/화면/플로우/기능명세/QA)
 - `docs/design/recruit-module-design.md` — recruit 모듈 상세 설계(2026-08-01 갱신 완료)
 - `docs/design/mariadb-migration-design.md` — MariaDB 전환 상세(§6 P5·P6 미착수, §13에 artwork 전환 함정 기록)
-- `docs/design/global-timezone-strategy.md` — 시간대 설계(확정 상태, 이슈 #39 문서 정합성 검토 잔여)
+- `docs/design/global-timezone-strategy.md` — 시간대 설계(확정 상태, 이슈 #39 문서 정합성 정정 완료)
