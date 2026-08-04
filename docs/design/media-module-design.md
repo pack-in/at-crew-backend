@@ -374,3 +374,14 @@ API 브레이킹 체인지가 아니다. 클라이언트가 요청에 넣는 값
   Worker 롤아웃 순서 오류(§9.2), 테스트 커버리지 전무(§9.1-9), API 호환성 미명시(§10.4).
 - community 배너/company 로고가 실제로 이 파이프라인을 필요로 하는 시점은 아직 로드맵에 없음 — 그때
   세 번째 소비자로 §8 구조에 추가하면 된다(신규 `MediaOwnerType` 값만 늘리면 됨).
+- (해결, 2026-08-04) Task B·C 구현 과정에서 발견된 3건을 §4에 `MediaService.deleteAssetsForOwner`를
+  신설해 해결: ①영구삭제 후 `media_assets` 행 잔존 → `ArtworkEventListener.onPermanentlyDeleted`가 R2
+  삭제 성패와 무관하게 호출 ②recruit 전체 이미지 삭제 시 정리가 다음 등록까지 미뤄지던 것 →
+  `RecruitImageService.replace()`의 `NO_IMAGES` 분기에서 즉시 호출. ③배포 시점에 이미 PROCESSING
+  중이던 작품이 신·구 webhook 어느 경로로도 콜백을 매칭 못 하던 문제 → `V12__backfill_media_assets_
+  from_pending_artwork_images.sql`로 `artwork_images.processing_status='PENDING'` 행을 media_assets에
+  백필(빈 DB에서는 no-op).
+- (범위 밖으로 확정, 2026-08-04) 동일 게시글/작품에 대한 webhook 2건이 동시에 처리되면 READY 전환을
+  둘 다 놓칠 수 있는 경쟁 조건(read-then-write, 락 없음)이 artwork·recruit 리스너 모두에 있다. 이건
+  media 모듈 도입으로 생긴 회귀가 아니라 원래 artwork 콜백 처리부터 있던 노출 수준과 동일하다 —
+  이미지 처리 전반의 락킹 재설계가 필요한 별도 과제라 이번 스코프에서 다루지 않는다.

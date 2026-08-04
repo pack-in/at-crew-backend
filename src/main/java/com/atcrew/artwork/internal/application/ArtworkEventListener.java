@@ -5,6 +5,7 @@ import com.atcrew.artwork.ArtworkPermanentlyDeletedEvent;
 import com.atcrew.artwork.Visibility;
 import com.atcrew.artwork.internal.domain.artwork.Artwork;
 import com.atcrew.artwork.internal.persistence.ArtworkRepository;
+import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaService;
 import com.atcrew.member.MemberDeactivatedEvent;
 import org.slf4j.Logger;
@@ -56,5 +57,8 @@ class ArtworkEventListener {
                 mediaService.markOrphaned(event.allImageKeys());
             }
         }
+        // R2 삭제 성공 여부와 무관하게 media_assets 행은 정리한다 — 영구 삭제된 작품은 더 이상
+        // Worker 콜백을 받을 일이 없으므로 메타데이터를 남겨둘 이유가 없다.
+        mediaService.deleteAssetsForOwner(MediaOwnerType.ARTWORK, event.artworkId());
     }
 }

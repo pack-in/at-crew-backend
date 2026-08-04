@@ -2,6 +2,7 @@ package com.atcrew.artwork.internal.application;
 
 import com.atcrew.artwork.ArtworkPermanentlyDeletedEvent;
 import com.atcrew.artwork.internal.persistence.ArtworkRepository;
+import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaService;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationEventPublisher;
@@ -34,6 +35,7 @@ class ArtworkEventListenerTest {
 
         verify(mediaService).deleteFiles(keys);
         verify(mediaService, never()).markOrphaned(anyList());
+        verify(mediaService).deleteAssetsForOwner(MediaOwnerType.ARTWORK, "artwork-1");
     }
 
     @Test
@@ -47,11 +49,22 @@ class ArtworkEventListenerTest {
     }
 
     @Test
+    void R2_삭제_실패해도_media_assets_행은_정리한다() {
+        List<String> keys = List.of("raw/1.png");
+        doThrow(new IllegalStateException("R2 삭제 실패")).when(mediaService).deleteFiles(keys);
+
+        listener.onPermanentlyDeleted(new ArtworkPermanentlyDeletedEvent("artwork-1", keys));
+
+        verify(mediaService).deleteAssetsForOwner(MediaOwnerType.ARTWORK, "artwork-1");
+    }
+
+    @Test
     void 삭제할_키가_없으면_고아_적재도_하지_않는다() {
         doThrow(new IllegalStateException("R2 삭제 실패")).when(mediaService).deleteFiles(List.of());
 
         listener.onPermanentlyDeleted(new ArtworkPermanentlyDeletedEvent("artwork-1", List.of()));
 
         verify(mediaService, never()).markOrphaned(anyList());
+        verify(mediaService).deleteAssetsForOwner(MediaOwnerType.ARTWORK, "artwork-1");
     }
 }

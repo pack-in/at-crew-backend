@@ -1,6 +1,7 @@
 package com.atcrew.media.internal.application;
 
 import com.atcrew.media.*;
+import com.atcrew.media.internal.domain.MediaAsset;
 import com.atcrew.media.internal.infra.storage.ArtworkStoragePort;
 import com.atcrew.media.internal.persistence.MediaAssetRepository;
 import com.atcrew.media.internal.persistence.OrphanedMediaKeyRepository;
@@ -11,7 +12,17 @@ import static org.mockito.Mockito.*;
 
 class MediaServiceImplTest {
     private final ArtworkStoragePort storage = mock(ArtworkStoragePort.class);
-    private final MediaService service = new MediaServiceImpl(mock(MediaAssetRepository.class), mock(OrphanedMediaKeyRepository.class), storage, mock(ImageProcessingWorker.class));
+    private final MediaAssetRepository assets = mock(MediaAssetRepository.class);
+    private final MediaService service = new MediaServiceImpl(assets, mock(OrphanedMediaKeyRepository.class), storage, mock(ImageProcessingWorker.class));
+
+    @Test void deleteAssetsForOwnerRemovesAllMatchingRows() {
+        var existing = List.of(MediaAsset.pending(MediaOwnerType.ARTWORK, "artwork-1", 0, "raw/1.jpg", MediaVariantProfile.STANDARD_WITH_ADULT_BLUR));
+        when(assets.findByOwnerTypeAndOwnerIdOrderByOrdinalAsc(MediaOwnerType.ARTWORK, "artwork-1")).thenReturn(existing);
+
+        service.deleteAssetsForOwner(MediaOwnerType.ARTWORK, "artwork-1");
+
+        verify(assets).deleteAll(existing);
+    }
 
     @Test void presignAcceptsOneToTwentySupportedImageTypes() {
         when(storage.generatePresignedPutUrl(anyString(), eq("image/jpeg"))).thenReturn("https://upload.example");

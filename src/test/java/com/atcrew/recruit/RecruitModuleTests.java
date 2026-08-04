@@ -5,6 +5,7 @@ import com.atcrew.common.exception.DomainException;
 import com.atcrew.media.MediaAssetProcessedEvent;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaProcessingStatus;
+import com.atcrew.media.MediaService;
 import com.atcrew.member.CreatorRole;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
@@ -65,6 +66,9 @@ class RecruitModuleTests {
 
     @Autowired
     JobSeekingPostImageRepository jobSeekingPostImageRepository;
+
+    @Autowired
+    MediaService mediaService;
 
     @Autowired
     ApplicationEventPublisher eventPublisher;
@@ -371,6 +375,65 @@ class RecruitModuleTests {
         JobPostingInfo processed = recruitService.getJobPosting(created.id(), authorId);
         assertThat(processed.thumbnailImage()).isEqualTo("original/thumb.avif");
         assertThat(processed.referenceImages()).containsExactly("original/ref.avif");
+    }
+
+    // 이슈: 전체 이미지 삭제 시 media_assets 행 정리가 다음 등록 때까지 미뤄지던 문제를 고쳤다
+    // (docs/design/media-module-design.md §11 — MediaService.deleteAssetsForOwner 신설).
+    @Test
+    void 구인글_이미지를_전부_지우면_media_assets_행도_즉시_정리된다() {
+        String authorId = registerMember("media-clear-author");
+        String thumbnailKey = presignKey();
+        JobPostingInfo created = recruitService.createJobPosting(authorId,
+                jobPostingCommand("이미지 지울 구인글", thumbnailKey, List.of()));
+        assertThat(mediaService.getAssets(MediaOwnerType.JOB_POSTING, created.id())).isNotEmpty();
+
+        recruitService.updateJobPosting(authorId, created.id(), new UpdateJobPostingCommand(
+                null,   // title
+                null,   // companyName
+                null,   // ceoName
+                null,   // industry
+                null,   // address
+                null,   // contact
+                null,   // websiteUrl
+                null,   // companyDescription
+                null,   // isBusinessRegistered
+                null,   // isResumeRequired
+                null,   // isCoverLetterRequired
+                null,   // roles
+                null,   // genres
+                null,   // workScope
+                null,   // deadline
+                null,   // recruitCount
+                null,   // hiringProcess
+                null,   // education
+                null,   // experience
+                null,   // age
+                null,   // gender
+                null,   // employmentType
+                null,   // workLocationType
+                null,   // workScheduleType
+                null,   // coreTimeStart
+                null,   // coreTimeEnd
+                null,   // hasOvertimePay
+                null,   // hasSocialInsurance
+                null,   // hasContract
+                null,   // paymentType
+                null,   // paymentUnit
+                null,   // minAmount
+                null,   // maxAmount
+                null,   // isNegotiable
+                null,   // mgAmount
+                null,   // rsRatio
+                null,   // hasBuyout
+                null,   // benefitDescription
+                null,   // benefitKeywords
+                "",     // thumbnailImage — 빈 문자열로 지움
+                List.of() // referenceImages — 빈 리스트로 지움
+        ));
+
+        assertThat(jobPostingImageRepository.findByPostingIdOrderByOrdinalAsc(created.id())).isEmpty();
+        assertThat(mediaService.getAssets(MediaOwnerType.JOB_POSTING, created.id())).isEmpty();
+        assertThat(imageProcessingStatusOf(created.id())).isEqualTo(RecruitImageProcessingStatus.READY);
     }
 
     // 설계 §5·§10.3 — READY 전환 조건은 "전부 DONE"이 아니라 "PENDING 없음 + DONE 1개 이상"이다.

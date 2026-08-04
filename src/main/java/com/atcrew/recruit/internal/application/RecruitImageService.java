@@ -97,9 +97,10 @@ class RecruitImageService {
             return ImageSyncResult.UNCHANGED;
         }
         if (newKeys.isEmpty()) {
-            // 이미지를 모두 지운 경우. media는 새 키가 없으면 교체 API를 받지 않으므로 파일만 고아 처리한다.
-            // 남은 media_assets 행은 다음 이미지 등록 시 replaceAndTriggerProcessing이 정리한다.
+            // 이미지를 모두 지운 경우. media는 새 키가 없으면 교체 API를 받지 않으므로 파일 고아 처리와
+            // media_assets 행 삭제를 직접 호출한다(등록될 때까지 미루지 않음).
             mediaService.markOrphaned(derivedKeysOf(existing));
+            mediaService.deleteAssetsForOwner(ownerType, postingId);
             deleteImages(ownerType, postingId);
             return ImageSyncResult.NO_IMAGES;
         }

@@ -47,6 +47,9 @@ class MediaServiceImpl implements MediaService {
         return assets.findByOwnerTypeAndOwnerIdOrderByOrdinalAsc(ownerType, ownerId).stream()
                 .map(a -> new MediaAssetInfo(a.getOriginalKey(), a.getThumbKey(), a.getThumbAdultKey(), a.getOriginalAvifKey(), a.getProcessingStatus())).toList();
     }
+    @Override @Transactional public void deleteAssetsForOwner(MediaOwnerType ownerType, String ownerId) {
+        assets.deleteAll(assets.findByOwnerTypeAndOwnerIdOrderByOrdinalAsc(ownerType, ownerId));
+    }
     @Override public void deleteFiles(List<String> keys) { storagePort.deleteFiles(keys); }
     @Override @Transactional public void markOrphaned(List<String> keys) { if (keys != null && keys.stream().anyMatch(k -> k != null && !k.isBlank())) orphans.save(OrphanedMediaKey.ofKeys(keys)); }
     private static void validate(MediaOwnerType ownerType, String ownerId, List<String> imageKeys, MediaVariantProfile profile) {
