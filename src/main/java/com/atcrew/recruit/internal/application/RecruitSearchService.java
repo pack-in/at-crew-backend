@@ -1,5 +1,6 @@
 package com.atcrew.recruit.internal.application;
 
+import com.atcrew.media.MediaOwnerType;
 import com.atcrew.recruit.RecruitPostType;
 import com.atcrew.recruit.RecruitSearchPage;
 import com.atcrew.recruit.RecruitSearchQuery;
@@ -35,11 +36,13 @@ class RecruitSearchService {
 
     private final RecruitSearchQueryRepository recruitSearchQueryRepository;
     private final AuthorNameResolver authorNameResolver;
+    private final RecruitImageService recruitImageService;
 
     RecruitSearchService(RecruitSearchQueryRepository recruitSearchQueryRepository,
-            AuthorNameResolver authorNameResolver) {
+            AuthorNameResolver authorNameResolver, RecruitImageService recruitImageService) {
         this.recruitSearchQueryRepository = recruitSearchQueryRepository;
         this.authorNameResolver = authorNameResolver;
+        this.recruitImageService = recruitImageService;
     }
 
     RecruitSearchPage search(RecruitSearchQuery query) {
@@ -76,11 +79,32 @@ class RecruitSearchService {
 
         Map<String, String> authorNames = authorNameResolver.resolveAll(
                 page.stream().map(Candidate::authorMemberId).toList());
+        // 카드 썸네일도 상세 응답과 같은 규칙으로 자식 테이블에서 조립한다(설계 §10.4) — 페이지에 남은 건만 조회한다.
+        Map<String, PostingImages> jobImages = recruitImageService.loadAll(MediaOwnerType.JOB_POSTING,
+                idsOf(page, RecruitPostType.JOB_POSTING));
+        Map<String, PostingImages> teamImages = recruitImageService.loadAll(MediaOwnerType.TEAM_POSTING,
+                idsOf(page, RecruitPostType.TEAM_RECRUIT));
         List<RecruitSearchResultInfo> items = page.stream()
-                .map(c -> new RecruitSearchResultInfo(c.id(), c.postType(), c.title(), c.thumbnailUrl(),
+                .map(c -> new RecruitSearchResultInfo(c.id(), c.postType(), c.title(),
+                        thumbnailOf(c, jobImages, teamImages),
                         c.authorMemberId(), authorNames.get(c.authorMemberId()), c.createdAt()))
                 .toList();
         return new RecruitSearchPage(items, hasNext, totalCount);
+    }
+
+    private static List<String> idsOf(List<Candidate> page, RecruitPostType postType) {
+        return page.stream().filter(c -> c.postType() == postType).map(Candidate::id).toList();
+    }
+
+    // 자식 행이 없으면(이 변경 이전 데이터) 후보가 들고 있던 기존 컬럼 값으로 폴백한다.
+    private static String thumbnailOf(Candidate candidate, Map<String, PostingImages> jobImages,
+            Map<String, PostingImages> teamImages) {
+        PostingImages images = switch (candidate.postType()) {
+            case JOB_POSTING -> jobImages.get(candidate.id());
+            case TEAM_RECRUIT -> teamImages.get(candidate.id());
+            case JOB_SEEKING -> null;   // 구직글은 썸네일 자체가 없다(설계 §2.3)
+        };
+        return images != null ? images.thumbnailImage() : candidate.thumbnailUrl();
     }
 
     /** 3종 조회 결과를 하나로 병합하기 위한 내부 표현 — 작성자 표시명 조회 전 단계다. */

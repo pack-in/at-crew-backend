@@ -1,6 +1,7 @@
 package com.atcrew.recruit.internal.application;
 
 import com.atcrew.common.response.CursorPage;
+import com.atcrew.media.MediaOwnerType;
 import com.atcrew.recruit.CreateJobSeekingPostCommand;
 import com.atcrew.recruit.JobSeekingPostInfo;
 import com.atcrew.recruit.JobSeekingPostStatus;
@@ -27,10 +28,13 @@ class JobSeekingPostService {
 
     private final JobSeekingPostRepository jobSeekingPostRepository;
     private final AuthorNameResolver authorNameResolver;
+    private final RecruitImageService recruitImageService;
 
-    JobSeekingPostService(JobSeekingPostRepository jobSeekingPostRepository, AuthorNameResolver authorNameResolver) {
+    JobSeekingPostService(JobSeekingPostRepository jobSeekingPostRepository, AuthorNameResolver authorNameResolver,
+            RecruitImageService recruitImageService) {
         this.jobSeekingPostRepository = jobSeekingPostRepository;
         this.authorNameResolver = authorNameResolver;
+        this.recruitImageService = recruitImageService;
     }
 
     JobSeekingPostInfo create(String memberId, CreateJobSeekingPostCommand command) {
@@ -38,7 +42,13 @@ class JobSeekingPostService {
         if (command.publish()) {
             post.publish();
         }
-        return toInfo(jobSeekingPostRepository.save(post));
+        JobSeekingPost saved = jobSeekingPostRepository.save(post);
+        // 구직글은 썸네일 없이 참고 이미지만 쓴다 — presign으로 발급받은 key를 media 모듈에 등록한다(설계 §10.3).
+        RecruitImageService.apply(
+                recruitImageService.register(MediaOwnerType.JOB_SEEKING_POST, saved.getId(),
+                        null, command.referenceImages()),
+                saved::markImageProcessingPending, saved::markImageProcessingReady);
+        return toInfo(saved);
     }
 
     JobSeekingPostInfo update(String memberId, String postId, UpdateJobSeekingPostCommand command) {
@@ -47,6 +57,13 @@ class JobSeekingPostService {
             throw new RecruitException(RecruitErrorCode.JOB_SEEKING_POST_NOT_FOUND, postId);
         }
         post.updateContent(command);
+        // 부분 업데이트라 이미지 필드를 실제로 보낸 요청만 media 재등록 대상이다(설계 §10.3).
+        if (command.referenceImages() != null) {
+            RecruitImageService.apply(
+                    recruitImageService.replace(MediaOwnerType.JOB_SEEKING_POST, postId,
+                            null, post.getReferenceImages()),
+                    post::markImageProcessingPending, post::markImageProcessingReady);
+        }
         return toInfo(post); // 트랜잭션 커밋 시점 dirty checking — 명시적 save() 불필요
     }
 
@@ -127,7 +144,8 @@ class JobSeekingPostService {
     }
 
     private JobSeekingPostInfo toInfo(JobSeekingPost post) {
-        return JobSeekingPostMapper.toInfo(post, authorNameResolver.resolve(post.getAuthorMemberId()));
+        return JobSeekingPostMapper.toInfo(post, authorNameResolver.resolve(post.getAuthorMemberId()),
+                recruitImageService.load(MediaOwnerType.JOB_SEEKING_POST, post.getId()));
     }
 
     private CursorPage<JobSeekingPostInfo> toInfoPage(List<JobSeekingPost> posts, int size) {
@@ -138,8 +156,10 @@ class JobSeekingPostService {
         List<JobSeekingPost> page = hasNext ? posts.subList(0, size) : posts;
         Map<String, String> authorNames = authorNameResolver.resolveAll(
                 page.stream().map(JobSeekingPost::getAuthorMemberId).toList());
+        Map<String, PostingImages> images = recruitImageService.loadAll(
+                MediaOwnerType.JOB_SEEKING_POST, page.stream().map(JobSeekingPost::getId).toList());
         List<JobSeekingPostInfo> items = page.stream()
-                .map(p -> JobSeekingPostMapper.toInfo(p, authorNames.get(p.getAuthorMemberId())))
+                .map(p -> JobSeekingPostMapper.toInfo(p, authorNames.get(p.getAuthorMemberId()), images.get(p.getId())))
                 .toList();
         String nextCursor = hasNext ? page.get(page.size() - 1).getId() : null;
         return CursorPage.of(items, nextCursor);

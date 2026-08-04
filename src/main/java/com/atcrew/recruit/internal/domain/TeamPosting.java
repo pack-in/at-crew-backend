@@ -147,6 +147,11 @@ public class TeamPosting {
     @Column(name = "status", length = 20, nullable = false)
     private TeamPostingStatus status;
 
+    // 발행 상태(status)와 독립된 이미지 처리 축 (설계 §10.2) — 둘을 합치지 않는다.
+    @Enumerated(EnumType.STRING)
+    @Column(name = "image_processing_status", length = 20, nullable = false)
+    private RecruitImageProcessingStatus imageProcessingStatus;
+
     @Column(name = "deleted_at")
     private Instant deletedAt;
 
@@ -196,6 +201,8 @@ public class TeamPosting {
         teamPosting.bookmarkCount = 0L;
         teamPosting.viewCount = 0L;
         teamPosting.status = TeamPostingStatus.PUBLISHED;
+        // 이미지 등록 여부는 서비스가 media 모듈에 위임한 뒤 markImageProcessingPending()으로 표시한다.
+        teamPosting.imageProcessingStatus = RecruitImageProcessingStatus.READY;
         teamPosting.validateActivityRegionInvariant();
         return teamPosting;
     }
@@ -274,6 +281,16 @@ public class TeamPosting {
         this.boostedUntil = now.plus(BOOST_DURATION);
     }
 
+    /** 이미지를 media 모듈에 새로 등록해 Worker 처리를 기다리는 상태로 표시한다(설계 §10.2). */
+    public void markImageProcessingPending() {
+        this.imageProcessingStatus = RecruitImageProcessingStatus.PENDING;
+    }
+
+    /** 처리할 이미지가 없거나 {@link RecruitPostingImage#readyFor} 조건을 만족했을 때 호출한다. */
+    public void markImageProcessingReady() {
+        this.imageProcessingStatus = RecruitImageProcessingStatus.READY;
+    }
+
     public void checkAuthor(String memberId) {
         if (!this.authorMemberId.equals(memberId)) {
             throw new RecruitException(RecruitErrorCode.FORBIDDEN_NOT_AUTHOR);
@@ -309,6 +326,7 @@ public class TeamPosting {
     public long getViewCount() { return viewCount; }
     public Instant getBoostedUntil() { return boostedUntil; }
     public TeamPostingStatus getStatus() { return status; }
+    public RecruitImageProcessingStatus getImageProcessingStatus() { return imageProcessingStatus; }
     public Instant getDeletedAt() { return deletedAt; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
