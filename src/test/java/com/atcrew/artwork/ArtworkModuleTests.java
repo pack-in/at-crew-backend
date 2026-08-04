@@ -1,6 +1,9 @@
 package com.atcrew.artwork;
 
 import com.atcrew.TestMongoConfig;
+import com.atcrew.media.MediaOwnerType;
+import com.atcrew.media.MediaProcessingStatus;
+import com.atcrew.media.internal.application.MediaCallbackService;
 import com.atcrew.member.CreatorRole;
 import com.atcrew.member.MemberService;
 import org.junit.jupiter.api.Test;
@@ -13,15 +16,24 @@ import org.testcontainers.containers.MongoDBContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.BooleanSupplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * artwork 모듈 MariaDB 전환 검증 — MongoDB(@Document) → JPA(@Entity) 전환 후
- * 자식 엔티티(images/materials) 매핑과 이미지·자재 교체 시의 2단계 flush 패턴(§3.3.2 계열, 신규 발견)을 검증한다.
+ * artwork 모듈 통합 검증.
+ *
+ * <p>MariaDB 전환 — MongoDB(@Document) → JPA(@Entity) 전환 후 자식 엔티티(images/materials) 매핑과
+ * 이미지·자재 교체 시의 2단계 flush 패턴(§3.3.2 계열, 신규 발견)을 검증한다.
+ *
+ * <p>media 모듈 추출(docs/design/media-module-design.md §9.1-9) — 업로드/수정/삭제/복구 흐름이
+ * media 위임 이후에도 그대로 동작하는지, 그리고 webhook 콜백 → {@code MediaAssetProcessedEvent} →
+ * artwork 리스너 상태 갱신 경로가 이어지는지를 검증한다.
  */
 @ApplicationModuleTest(mode = ApplicationModuleTest.BootstrapMode.ALL_DEPENDENCIES)
 @Testcontainers
@@ -41,6 +53,10 @@ class ArtworkModuleTests {
 
     @Autowired
     MemberService memberService;
+
+    // Worker webhook이 도달하는 지점 — 여기서 MediaAssetProcessedEvent가 발행되고 artwork 리스너가 이를 소비한다.
+    @Autowired
+    MediaCallbackService mediaCallbackService;
 
     @Test
     void 작품_업로드_후_모든_필드가_그대로_조회된다() {
@@ -118,11 +134,40 @@ class ArtworkModuleTests {
     }
 
     @Test
+    void 이미지_처리_콜백이_media를_거쳐_작품_상태와_변환결과에_반영된다() {
+        String memberId = registerAuthor();
+        ArtworkInfo uploaded = uploadMinimal(memberId, "raw/c1.png");
+
+        processImage(uploaded.id(), "raw/c1.png", MediaProcessingStatus.DONE);
+
+        awaitReady(memberId, uploaded.id());
+        ArtworkInfo found = artworkService.getArtwork(uploaded.id(), memberId);
+        assertThat(found.images()).hasSize(1);
+        assertThat(found.images().get(0).thumbKey()).isEqualTo("thumb/c1.avif");
+        assertThat(found.images().get(0).originalAvifKey()).isEqualTo("original/c1.avif");
+        assertThat(found.images().get(0).processingStatus()).isEqualTo(ImageProcessingStatus.DONE);
+    }
+
+    @Test
+    void 이미지_일부가_실패해도_나머지가_성공하면_READY로_전환된다() {
+        String memberId = registerAuthor();
+        ArtworkInfo uploaded = uploadMinimal(memberId, "raw/p1.png", "raw/p2.png");
+
+        processImage(uploaded.id(), "raw/p1.png", MediaProcessingStatus.DONE);
+        processImage(uploaded.id(), "raw/p2.png", MediaProcessingStatus.FAILED);
+
+        awaitReady(memberId, uploaded.id());
+        ArtworkInfo found = artworkService.getArtwork(uploaded.id(), memberId);
+        assertThat(found.images()).extracting(ArtworkImageInfo::processingStatus)
+                .containsExactly(ImageProcessingStatus.DONE, ImageProcessingStatus.FAILED);
+    }
+
+    @Test
     void 삭제_후_복원하면_이전_공개범위로_돌아온다() {
         String memberId = registerAuthor();
         ArtworkInfo uploaded = uploadMinimal(memberId, "raw/x.png");
-        artworkService.handleImageProcessedCallback(new ImageProcessedCallbackCommand(
-                uploaded.id(), "raw/x.png", "thumb", null, "avif", ImageProcessingStatus.DONE));
+        processImage(uploaded.id(), "raw/x.png", MediaProcessingStatus.DONE);
+        awaitReady(memberId, uploaded.id());
 
         artworkService.deleteArtwork(memberId, uploaded.id());
         artworkService.restoreArtworks(memberId, List.of(uploaded.id()));
@@ -139,14 +184,44 @@ class ArtworkModuleTests {
         // 이미지 처리 완료 상태로 만들어 둔다 — permanentlyDeleteArtworks의 allKeys 조합에 List.of()를 쓰는
         // 기존(Mongo 시절부터의) 로직은 처리되지 않은 null 키가 섞이면 NPE가 나는 사전 존재 결함이라
         // 이번 마이그레이션 범위 밖으로 두고, 테스트에서는 트리거하지 않도록 우회한다.
-        artworkService.handleImageProcessedCallback(new ImageProcessedCallbackCommand(
-                uploaded.id(), "raw/y.png", "thumb", "thumb-adult", "avif", ImageProcessingStatus.DONE));
+        processImage(uploaded.id(), "raw/y.png", MediaProcessingStatus.DONE);
+        awaitReady(memberId, uploaded.id());
         artworkService.deleteArtwork(memberId, uploaded.id());
 
         artworkService.permanentlyDeleteArtworks(memberId, List.of(uploaded.id()));
 
         assertThatThrownBy(() -> artworkService.getArtwork(uploaded.id(), memberId))
                 .isInstanceOf(RuntimeException.class);
+    }
+
+    /** Worker webhook 1건을 재현한다 — media가 자산 상태를 갱신하고 MediaAssetProcessedEvent를 발행한다. */
+    private void processImage(String artworkId, String imageKey, MediaProcessingStatus status) {
+        boolean done = status == MediaProcessingStatus.DONE;
+        String name = imageKey.substring(imageKey.indexOf('/') + 1, imageKey.lastIndexOf('.'));
+        mediaCallbackService.process(MediaOwnerType.ARTWORK, artworkId, imageKey,
+                done ? "thumb/" + name + ".avif" : null,
+                done ? "thumb-adult/" + name + ".avif" : null,
+                done ? "original/" + name + ".avif" : null,
+                status);
+    }
+
+    /** artwork 리스너는 @ApplicationModuleListener(비동기)라 상태 반영까지 폴링한다. */
+    private void awaitReady(String memberId, String artworkId) {
+        awaitCondition(() -> artworkService.getArtworkStatus(memberId, artworkId) == ArtworkStatus.READY);
+    }
+
+    private void awaitCondition(BooleanSupplier condition) {
+        Instant deadline = Instant.now().plus(Duration.ofSeconds(15));
+        while (Instant.now().isBefore(deadline)) {
+            if (condition.getAsBoolean()) return;
+            try {
+                Thread.sleep(200);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(e);
+            }
+        }
+        throw new AssertionError("상태 반영 대기 시간 초과");
     }
 
     private ArtworkInfo uploadMinimal(String memberId, String... imageKeys) {

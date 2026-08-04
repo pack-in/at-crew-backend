@@ -16,7 +16,6 @@ public enum ArtworkErrorCode {
     BOOKMARK_FOLDER_NAME_BLANK(HttpStatus.BAD_REQUEST, "폴더명은 공백만 입력할 수 없습니다"),
     BOOKMARK_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 북마크한 작품입니다"),
     BOOKMARK_NOT_FOUND(HttpStatus.NOT_FOUND, "북마크를 찾을 수 없습니다"),
-    INTERNAL_SECRET_INVALID(HttpStatus.UNAUTHORIZED, "내부 요청 인증에 실패했습니다"),
     PRESIGN_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "업로드 URL 생성에 실패했습니다"),
     INVALID_CURSOR(HttpStatus.BAD_REQUEST, "유효하지 않은 커서 값입니다");
 

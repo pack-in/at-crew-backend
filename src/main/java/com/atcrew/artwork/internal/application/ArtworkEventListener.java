@@ -4,10 +4,9 @@ import com.atcrew.artwork.ArtworkChangedEvent;
 import com.atcrew.artwork.ArtworkPermanentlyDeletedEvent;
 import com.atcrew.artwork.Visibility;
 import com.atcrew.artwork.internal.domain.artwork.Artwork;
-import com.atcrew.artwork.internal.infra.storage.ArtworkStoragePort;
 import com.atcrew.artwork.internal.persistence.ArtworkRepository;
-import com.atcrew.artwork.internal.persistence.OrphanedImageKeyRepository;
-import com.atcrew.artwork.internal.domain.artwork.OrphanedImageKey;
+import com.atcrew.media.MediaOwnerType;
+import com.atcrew.media.MediaService;
 import com.atcrew.member.MemberDeactivatedEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,17 +23,14 @@ class ArtworkEventListener {
     private static final Logger log = LoggerFactory.getLogger(ArtworkEventListener.class);
 
     private final ArtworkRepository artworkRepository;
-    private final ArtworkStoragePort storagePort;
-    private final OrphanedImageKeyRepository orphanedRepo;
+    private final MediaService mediaService;
     private final ApplicationEventPublisher eventPublisher;
 
     ArtworkEventListener(ArtworkRepository artworkRepository,
-                         ArtworkStoragePort storagePort,
-                         OrphanedImageKeyRepository orphanedRepo,
+                         MediaService mediaService,
                          ApplicationEventPublisher eventPublisher) {
         this.artworkRepository = artworkRepository;
-        this.storagePort = storagePort;
-        this.orphanedRepo = orphanedRepo;
+        this.mediaService = mediaService;
         this.eventPublisher = eventPublisher;
     }
 
@@ -52,14 +48,17 @@ class ArtworkEventListener {
     @EventListener
     public void onPermanentlyDeleted(ArtworkPermanentlyDeletedEvent event) {
         try {
-            storagePort.deleteFiles(event.allImageKeys());
+            mediaService.deleteFiles(event.allImageKeys());
             log.info("영구 삭제 R2 파일 제거: artworkId={} keyCount={}",
                     event.artworkId(), event.allImageKeys().size());
         } catch (Exception e) {
-            log.error("R2 파일 삭제 실패 — orphanedImageKeys에 적재: artworkId={}", event.artworkId(), e);
+            log.error("R2 파일 삭제 실패 — media 고아 키 정리 큐에 적재: artworkId={}", event.artworkId(), e);
             if (!event.allImageKeys().isEmpty()) {
-                orphanedRepo.save(OrphanedImageKey.ofKeys(event.allImageKeys()));
+                mediaService.markOrphaned(event.allImageKeys());
             }
         }
+        // R2 삭제 성공 여부와 무관하게 media_assets 행은 정리한다 — 영구 삭제된 작품은 더 이상
+        // Worker 콜백을 받을 일이 없으므로 메타데이터를 남겨둘 이유가 없다.
+        mediaService.deleteAssetsForOwner(MediaOwnerType.ARTWORK, event.artworkId());
     }
 }

@@ -86,6 +86,9 @@ class SecurityConfig {
                             .requestMatchers(HttpMethod.GET, "/api/companies/me").authenticated()
                             .requestMatchers(HttpMethod.GET, "/api/companies/{companyId}").permitAll()
                             .requestMatchers(HttpMethod.GET, "/api/companies/{companyId}/careers").permitAll()
+                            .requestMatchers(HttpMethod.POST, "/internal/media/images/processed").permitAll()
+                            // 구 경로 — Worker 전환 기간 한정 shim(docs/design/media-module-design.md §9.2).
+                            // Worker가 새 형식으로 전환된 뒤 LegacyArtworkCallbackController와 함께 제거한다.
                             .requestMatchers(HttpMethod.POST, "/internal/artwork/images/processed").permitAll()
                             .requestMatchers(HttpMethod.POST, "/internal/search/reindex").permitAll()
                             .requestMatchers("/actuator/health", "/actuator/info").permitAll();

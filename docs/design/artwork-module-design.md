@@ -272,6 +272,11 @@ ArtworkStatus  : PROCESSING / READY / DELETED
 
 ## 5. 이미지 업로드 플로우
 
+> **2026-08-03 이관 예정**: 이 섹션이 서술하는 Presigned URL 발급·Worker 트리거·webhook·재시도·고아파일
+> 정리는 recruit도 필요로 하게 되어 범용 `media` 모듈로 추출하기로 결정했다(`docs/design/media-module-design.md`).
+> artwork 도메인 로직(성인 blur 적용 여부, `Artwork.status` 전이, 대표 이미지 인덱스)은 그대로 남고,
+> 인프라(§5.1~5.3, §6.7, §10.1~10.3)만 media로 옮겨간다. 아래 서술은 이관 전 원본 설계로 보존한다.
+
 ### 5.1 아키텍처 결정
 
 **Presigned URL + Cloudflare Worker 비동기 avif 변환**을 사용한다.
@@ -467,6 +472,9 @@ PATCH /api/bookmarks/move
 
 ### 6.7 내부 Webhook (Cloudflare Worker → 서버)
 
+> **2026-08-03 이관 예정**: `/internal/artwork/images/processed`는 `/internal/media/images/processed`로
+> 이관되고 `artworkId` 필드는 `ownerType`+`ownerId`로 일반화된다 — `docs/design/media-module-design.md` §6.
+
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
 | POST | `/internal/artwork/images/processed` | Worker 처리 완료 콜백 |
@@ -568,6 +576,10 @@ PUBLIC ──▶ LINK_ONLY ──▶ PRIVATE
 ---
 
 ## 10. 구현 결정 사항
+
+> **2026-08-03 이관 예정**: §10.1(Worker 트리거)·§10.2(재시도)·§10.3(고아파일 정리)는 `media` 모듈로
+> 이관된다. 재시도는 `Artwork.status` 간접 조회 대신 `MediaAsset` 테이블 직접 스캔으로 단순화됨 —
+> `docs/design/media-module-design.md` §7.
 
 ### 10.1 Worker 트리거 방식 — 서버 → Worker 직접 호출 (@Async)
 

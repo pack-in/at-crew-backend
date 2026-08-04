@@ -86,6 +86,11 @@ public class JobSeekingPost {
     @Column(name = "status", length = 20, nullable = false)
     private JobSeekingPostStatus status;
 
+    // 발행 상태(status)와 독립된 이미지 처리 축 (설계 §10.2) — 둘을 합치지 않는다.
+    @Enumerated(EnumType.STRING)
+    @Column(name = "image_processing_status", length = 20, nullable = false)
+    private RecruitImageProcessingStatus imageProcessingStatus;
+
     @Column(name = "deleted_at")
     private Instant deletedAt;
 
@@ -118,6 +123,8 @@ public class JobSeekingPost {
         post.portfolioDescription = command.portfolioDescription();
         post.referenceImages = new ArrayList<>(command.referenceImages() != null ? command.referenceImages() : List.of());
         post.status = JobSeekingPostStatus.DRAFT;
+        // 이미지 등록 여부는 서비스가 media 모듈에 위임한 뒤 markImageProcessingPending()으로 표시한다.
+        post.imageProcessingStatus = RecruitImageProcessingStatus.READY;
         return post;
     }
 
@@ -168,6 +175,16 @@ public class JobSeekingPost {
         this.deletedAt = null;
     }
 
+    /** 이미지를 media 모듈에 새로 등록해 Worker 처리를 기다리는 상태로 표시한다(설계 §10.2). */
+    public void markImageProcessingPending() {
+        this.imageProcessingStatus = RecruitImageProcessingStatus.PENDING;
+    }
+
+    /** 처리할 이미지가 없거나 {@link RecruitPostingImage#readyFor} 조건을 만족했을 때 호출한다. */
+    public void markImageProcessingReady() {
+        this.imageProcessingStatus = RecruitImageProcessingStatus.READY;
+    }
+
     public void checkAuthor(String memberId) {
         if (!this.authorMemberId.equals(memberId)) {
             throw new RecruitException(RecruitErrorCode.FORBIDDEN_NOT_AUTHOR);
@@ -186,6 +203,7 @@ public class JobSeekingPost {
     public String getPortfolioDescription() { return portfolioDescription; }
     public List<String> getReferenceImages() { return List.copyOf(referenceImages); }
     public JobSeekingPostStatus getStatus() { return status; }
+    public RecruitImageProcessingStatus getImageProcessingStatus() { return imageProcessingStatus; }
     public Instant getDeletedAt() { return deletedAt; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }

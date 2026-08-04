@@ -7,10 +7,12 @@ import com.atcrew.artwork.ArtworkRole;
 import com.atcrew.artwork.ArtworkService;
 import com.atcrew.artwork.CreativeType;
 import com.atcrew.artwork.ImageLayoutType;
-import com.atcrew.artwork.ImageProcessedCallbackCommand;
-import com.atcrew.artwork.ImageProcessingStatus;
+import com.atcrew.artwork.ArtworkStatus;
 import com.atcrew.artwork.UploadArtworkCommand;
 import com.atcrew.artwork.Visibility;
+import com.atcrew.media.MediaOwnerType;
+import com.atcrew.media.MediaProcessingStatus;
+import com.atcrew.media.internal.application.MediaCallbackService;
 import com.atcrew.member.CreatorRole;
 import com.atcrew.member.MemberService;
 import com.atcrew.recruit.CreateJobPostingCommand;
@@ -54,6 +56,9 @@ class SearchApiDocTest extends RestDocsIntegrationSupport {
 
     @Autowired
     RecruitService recruitService;
+
+    @Autowired
+    MediaCallbackService mediaCallbackService;
 
     @Test
     void 필터_검색_성공_문서화() throws Exception {
@@ -171,8 +176,25 @@ class SearchApiDocTest extends RestDocsIntegrationSupport {
                 AgeRating.ALL, Visibility.PUBLIC, List.of(), null, null, List.of(), List.of()
         ));
 
-        artworkService.handleImageProcessedCallback(new ImageProcessedCallbackCommand(
-                artwork.id(), imageKeys.get(0), "thumb-key", null, "orig.avif", ImageProcessingStatus.DONE));
+        // media webhook → MediaAssetProcessedEvent → artwork 리스너(비동기)로 READY 전환된다.
+        mediaCallbackService.process(MediaOwnerType.ARTWORK, artwork.id(), imageKeys.get(0),
+                "thumb-key", null, "orig.avif", MediaProcessingStatus.DONE);
+        awaitReady(memberId, artwork.id());
+    }
+
+    /** artwork 리스너는 @ApplicationModuleListener(비동기)라 READY 반영까지 폴링한다. */
+    private void awaitReady(String memberId, String artworkId) {
+        Instant deadline = Instant.now().plus(Duration.ofSeconds(15));
+        while (Instant.now().isBefore(deadline)) {
+            if (artworkService.getArtworkStatus(memberId, artworkId) == ArtworkStatus.READY) return;
+            try {
+                Thread.sleep(200);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(e);
+            }
+        }
+        throw new AssertionError("READY 전환 대기 시간 초과");
     }
 
     private void awaitIndexed() throws InterruptedException {
