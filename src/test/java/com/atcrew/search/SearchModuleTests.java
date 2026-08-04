@@ -8,10 +8,12 @@ import com.atcrew.artwork.ArtworkRole;
 import com.atcrew.artwork.ArtworkService;
 import com.atcrew.artwork.CreativeType;
 import com.atcrew.artwork.ImageLayoutType;
-import com.atcrew.artwork.ImageProcessedCallbackCommand;
-import com.atcrew.artwork.ImageProcessingStatus;
+import com.atcrew.artwork.ArtworkStatus;
 import com.atcrew.artwork.UploadArtworkCommand;
 import com.atcrew.artwork.Visibility;
+import com.atcrew.media.MediaOwnerType;
+import com.atcrew.media.MediaProcessingStatus;
+import com.atcrew.media.internal.application.MediaCallbackService;
 import com.atcrew.member.CreatorRole;
 import com.atcrew.member.MemberService;
 import com.atcrew.recruit.CreateJobPostingCommand;
@@ -86,6 +88,9 @@ class SearchModuleTests {
 
     @Autowired
     ArtworkReindexService reindexService;
+
+    @Autowired
+    MediaCallbackService mediaCallbackService;
 
     @Test
     void 전체_재색인_후에도_기존_작품이_검색된다() {
@@ -260,8 +265,10 @@ class SearchModuleTests {
                 ageRating, Visibility.PUBLIC, List.of(), null, null, List.of(), List.of()
         ));
 
-        artworkService.handleImageProcessedCallback(new ImageProcessedCallbackCommand(
-                artwork.id(), imageKeys.get(0), "thumb-key", null, "orig.avif", ImageProcessingStatus.DONE));
+        // media webhook → MediaAssetProcessedEvent → artwork 리스너(비동기)로 READY 전환된다.
+        mediaCallbackService.process(MediaOwnerType.ARTWORK, artwork.id(), imageKeys.get(0),
+                "thumb-key", null, "orig.avif", MediaProcessingStatus.DONE);
+        awaitCondition(() -> artworkService.getArtworkStatus(memberId, artwork.id()) == ArtworkStatus.READY);
 
         return artwork;
     }

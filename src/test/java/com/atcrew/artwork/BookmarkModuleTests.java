@@ -2,6 +2,9 @@ package com.atcrew.artwork;
 
 import com.atcrew.TestMongoConfig;
 import com.atcrew.common.response.CursorPage;
+import com.atcrew.media.MediaOwnerType;
+import com.atcrew.media.MediaProcessingStatus;
+import com.atcrew.media.internal.application.MediaCallbackService;
 import com.atcrew.member.CreatorRole;
 import com.atcrew.member.MemberService;
 import org.junit.jupiter.api.Test;
@@ -14,6 +17,8 @@ import org.testcontainers.containers.MongoDBContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -44,6 +49,9 @@ class BookmarkModuleTests {
 
     @Autowired
     MemberService memberService;
+
+    @Autowired
+    MediaCallbackService mediaCallbackService;
 
     @Test
     void 폴더_생성_후_목록에서_조회된다() {
@@ -125,9 +133,26 @@ class BookmarkModuleTests {
                 "북마크테스트 작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
                 List.of(), List.of(), List.of(),
                 AgeRating.ALL, Visibility.PUBLIC, List.of(), null, null, List.of(), List.of()));
-        artworkService.handleImageProcessedCallback(new ImageProcessedCallbackCommand(
-                artwork.id(), imageKeys.get(0), "thumb", null, "avif", ImageProcessingStatus.DONE));
+        // media webhook → MediaAssetProcessedEvent → artwork 리스너(비동기)로 READY 전환된다.
+        mediaCallbackService.process(MediaOwnerType.ARTWORK, artwork.id(), imageKeys.get(0),
+                "thumb", null, "avif", MediaProcessingStatus.DONE);
+        awaitReady(authorId, artwork.id());
         return artworkService.getArtwork(artwork.id(), authorId);
+    }
+
+    /** artwork 리스너는 @ApplicationModuleListener(비동기)라 READY 반영까지 폴링한다. */
+    private void awaitReady(String memberId, String artworkId) {
+        Instant deadline = Instant.now().plus(Duration.ofSeconds(15));
+        while (Instant.now().isBefore(deadline)) {
+            if (artworkService.getArtworkStatus(memberId, artworkId) == ArtworkStatus.READY) return;
+            try {
+                Thread.sleep(200);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(e);
+            }
+        }
+        throw new AssertionError("READY 전환 대기 시간 초과");
     }
 
     private String registerMember() {

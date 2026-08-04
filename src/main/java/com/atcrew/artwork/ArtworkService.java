@@ -32,8 +32,6 @@ public interface ArtworkService {
 
     void permanentlyDeleteArtworks(String memberId, List<String> artworkIds);
 
-    void handleImageProcessedCallback(ImageProcessedCallbackCommand command);
-
     /**
      * 검색 색인용 조회 — 뷰어 권한 검사 없이 조회한다. 호출 측(search 모듈)이 status/visibility를 보고
      * 색인 여부를 직접 판단한다(docs/design/search-module-design.md §5.1). 삭제된 작품은 빈 Optional.
