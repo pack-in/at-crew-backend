@@ -8,7 +8,10 @@ class JobSeekingPostMapper {
     private JobSeekingPostMapper() {
     }
 
-    static JobSeekingPostInfo toInfo(JobSeekingPost post, String authorName) {
+    // images가 null이면(자식 행이 없는 과거 데이터) 기존 컬럼으로 폴백한다(설계 §10.4).
+    static JobSeekingPostInfo toInfo(JobSeekingPost post, String authorName, PostingImages images) {
+        PostingImages resolved = images != null ? images
+                : PostingImages.legacy(null, post.getReferenceImages());
         return new JobSeekingPostInfo(
                 post.getId(),
                 post.getAuthorMemberId(),
@@ -21,7 +24,7 @@ class JobSeekingPostMapper {
                 post.getWorkStyle(),
                 post.getDesiredRate(),
                 post.getPortfolioDescription(),
-                post.getReferenceImages(),
+                resolved.referenceImages(),
                 post.getStatus(),
                 post.getDeletedAt(),
                 post.getCreatedAt(),

@@ -2,14 +2,26 @@ package com.atcrew.recruit;
 
 import com.atcrew.TestMongoConfig;
 import com.atcrew.common.exception.DomainException;
+import com.atcrew.media.MediaAssetProcessedEvent;
+import com.atcrew.media.MediaOwnerType;
+import com.atcrew.media.MediaProcessingStatus;
 import com.atcrew.member.CreatorRole;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
+import com.atcrew.recruit.internal.domain.RecruitImageProcessingStatus;
+import com.atcrew.recruit.internal.domain.RecruitImageRole;
+import com.atcrew.recruit.internal.domain.RecruitPostingImage;
+import com.atcrew.recruit.internal.persistence.JobPostingImageRepository;
+import com.atcrew.recruit.internal.persistence.JobPostingRepository;
+import com.atcrew.recruit.internal.persistence.JobSeekingPostImageRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Import;
 import org.springframework.modulith.test.ApplicationModuleTest;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.MariaDBContainer;
 import org.testcontainers.containers.MongoDBContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -23,6 +35,7 @@ import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 // recruit은 member 공개 API에 의존하므로 추이적 의존성까지 부트스트랩한다(CommunityModuleTests와 동일 이유).
 @ApplicationModuleTest(mode = ApplicationModuleTest.BootstrapMode.ALL_DEPENDENCIES)
@@ -43,6 +56,21 @@ class RecruitModuleTests {
 
     @Autowired
     MemberService memberService;
+
+    @Autowired
+    JobPostingRepository jobPostingRepository;
+
+    @Autowired
+    JobPostingImageRepository jobPostingImageRepository;
+
+    @Autowired
+    JobSeekingPostImageRepository jobSeekingPostImageRepository;
+
+    @Autowired
+    ApplicationEventPublisher eventPublisher;
+
+    @Autowired
+    PlatformTransactionManager transactionManager;
 
     @Test
     void 끌어올린_구인글이_공개_목록_상단에_노출된다() {
@@ -312,6 +340,119 @@ class RecruitModuleTests {
         assertThat(recruitService.getRecentlyViewedArtists(self.id(), null, 20).items()).isEmpty();
     }
 
+    // === 이미지 업로드 파이프라인 (docs/design/media-module-design.md §10) ===
+
+    @Test
+    void 구인글_이미지는_처리_전에는_원본키_처리_후에는_AVIF키로_응답한다() {
+        String authorId = registerMember("media-job-author");
+        String thumbnailKey = presignKey();
+        String referenceKey = presignKey();
+
+        JobPostingInfo created = recruitService.createJobPosting(authorId,
+                jobPostingCommand("이미지 구인글", thumbnailKey, List.of(referenceKey)));
+
+        // 처리 전에는 업로드 원본 key를 그대로 돌려준다(설계 §10.4 폴백)
+        assertThat(created.thumbnailImage()).isEqualTo(thumbnailKey);
+        assertThat(created.referenceImages()).containsExactly(referenceKey);
+        assertThat(imageProcessingStatusOf(created.id())).isEqualTo(RecruitImageProcessingStatus.PENDING);
+
+        // 자식 테이블에 THUMBNAIL/REFERENCE 행이 PENDING으로 적재된다(§10.1)
+        assertThat(jobPostingImageRepository.findByPostingIdOrderByOrdinalAsc(created.id()))
+                .extracting(RecruitPostingImage::getRole, RecruitPostingImage::getOriginalKey,
+                        RecruitPostingImage::getProcessingStatus)
+                .containsExactly(
+                        tuple(RecruitImageRole.THUMBNAIL, thumbnailKey, MediaProcessingStatus.PENDING),
+                        tuple(RecruitImageRole.REFERENCE, referenceKey, MediaProcessingStatus.PENDING));
+
+        publishProcessed(created.id(), thumbnailKey, "original/thumb.avif", MediaProcessingStatus.DONE);
+        publishProcessed(created.id(), referenceKey, "original/ref.avif", MediaProcessingStatus.DONE);
+        awaitCondition(() -> imageProcessingStatusOf(created.id()) == RecruitImageProcessingStatus.READY);
+
+        JobPostingInfo processed = recruitService.getJobPosting(created.id(), authorId);
+        assertThat(processed.thumbnailImage()).isEqualTo("original/thumb.avif");
+        assertThat(processed.referenceImages()).containsExactly("original/ref.avif");
+    }
+
+    // 설계 §5·§10.3 — READY 전환 조건은 "전부 DONE"이 아니라 "PENDING 없음 + DONE 1개 이상"이다.
+    @Test
+    void 이미지_일부가_실패해도_나머지가_성공하면_READY로_전환된다() {
+        String authorId = registerMember("media-partial-author");
+        String thumbnailKey = presignKey();
+        String referenceKey = presignKey();
+
+        JobPostingInfo created = recruitService.createJobPosting(authorId,
+                jobPostingCommand("부분 실패 구인글", thumbnailKey, List.of(referenceKey)));
+
+        // 참고 이미지만 먼저 실패 — 아직 썸네일이 PENDING이라 READY로 넘어가면 안 된다.
+        publishProcessed(created.id(), referenceKey, null, MediaProcessingStatus.FAILED);
+        awaitCondition(() -> processingStatusOf(created.id(), referenceKey) == MediaProcessingStatus.FAILED);
+        assertThat(imageProcessingStatusOf(created.id())).isEqualTo(RecruitImageProcessingStatus.PENDING);
+
+        // 썸네일이 성공하면 PENDING이 사라지고 DONE이 하나 있으므로 READY.
+        publishProcessed(created.id(), thumbnailKey, "original/thumb.avif", MediaProcessingStatus.DONE);
+        awaitCondition(() -> imageProcessingStatusOf(created.id()) == RecruitImageProcessingStatus.READY);
+
+        JobPostingInfo processed = recruitService.getJobPosting(created.id(), authorId);
+        assertThat(processed.thumbnailImage()).isEqualTo("original/thumb.avif");
+        // 실패한 이미지는 변환본이 없으므로 업로드 원본 key로 폴백한다.
+        assertThat(processed.referenceImages()).containsExactly(referenceKey);
+    }
+
+    @Test
+    void 구직글_이미지를_교체하면_자식행이_새_키로_대체되고_다시_PENDING이_된다() {
+        String authorId = registerMember("media-seeking-author");
+        String firstKey = presignKey();
+        JobSeekingPostInfo created = recruitService.createJobSeekingPost(authorId, new CreateJobSeekingPostCommand(
+                "이미지 구직글", List.of("작화"), List.of("판타지"), "선화 위주",
+                FeedbackStyle.PERIODIC, WorkStyle.COLLABORATIVE, "협의", "포트폴리오 소개",
+                List.of(firstKey), false));
+
+        publishProcessed(MediaOwnerType.JOB_SEEKING_POST, created.id(), firstKey, "original/first.avif",
+                MediaProcessingStatus.DONE);
+        awaitCondition(() -> jobSeekingPostImageRepository.findByPostingIdOrderByOrdinalAsc(created.id()).stream()
+                .allMatch(RecruitPostingImage::isDone));
+
+        String secondKey = presignKey();
+        JobSeekingPostInfo updated = recruitService.updateJobSeekingPost(authorId, created.id(),
+                new UpdateJobSeekingPostCommand(null, null, null, null, null, null, null, null,
+                        List.of(secondKey)));
+
+        assertThat(updated.referenceImages()).containsExactly(secondKey);
+        assertThat(jobSeekingPostImageRepository.findByPostingIdOrderByOrdinalAsc(created.id()))
+                .extracting(RecruitPostingImage::getOriginalKey, RecruitPostingImage::getProcessingStatus)
+                .containsExactly(tuple(secondKey, MediaProcessingStatus.PENDING));
+    }
+
+    // presign이 발급하는 key 형태(raw/<uuid>.jpg)를 흉내낸다.
+    private String presignKey() {
+        return "raw/" + UUID.randomUUID() + ".jpg";
+    }
+
+    private RecruitImageProcessingStatus imageProcessingStatusOf(String jobPostingId) {
+        return jobPostingRepository.findById(jobPostingId).orElseThrow().getImageProcessingStatus();
+    }
+
+    private MediaProcessingStatus processingStatusOf(String jobPostingId, String originalKey) {
+        return jobPostingImageRepository.findByPostingIdOrderByOrdinalAsc(jobPostingId).stream()
+                .filter(i -> originalKey.equals(i.getOriginalKey()))
+                .findFirst().orElseThrow()
+                .getProcessingStatus();
+    }
+
+    private void publishProcessed(String postingId, String imageKey, String originalAvifKey,
+            MediaProcessingStatus status) {
+        publishProcessed(MediaOwnerType.JOB_POSTING, postingId, imageKey, originalAvifKey, status);
+    }
+
+    // @ApplicationModuleListener는 트랜잭션 커밋 이후에 동작하므로 이벤트를 트랜잭션 안에서 발행한다.
+    private void publishProcessed(MediaOwnerType ownerType, String postingId, String imageKey,
+            String originalAvifKey, MediaProcessingStatus status) {
+        String thumbKey = originalAvifKey != null ? "thumb/" + UUID.randomUUID() + ".avif" : null;
+        new TransactionTemplate(transactionManager).executeWithoutResult(tx ->
+                eventPublisher.publishEvent(new MediaAssetProcessedEvent(
+                        ownerType, postingId, imageKey, thumbKey, null, originalAvifKey, status)));
+    }
+
     private void awaitCondition(Supplier<Boolean> condition) {
         Instant deadline = Instant.now().plus(Duration.ofSeconds(10));
         while (Instant.now().isBefore(deadline)) {
@@ -364,6 +505,11 @@ class RecruitModuleTests {
     }
 
     private CreateJobPostingCommand jobPostingCommand(String title) {
+        return jobPostingCommand(title, "https://img.example/thumb.png", List.of("https://img.example/ref.png"));
+    }
+
+    private CreateJobPostingCommand jobPostingCommand(String title, String thumbnailImage,
+            List<String> referenceImages) {
         return new CreateJobPostingCommand(
                 title, "앳크루", "대표", "웹툰", "서울", "02-000-0000", "https://example.com",
                 "회사 소개", true, true, false,
@@ -373,7 +519,7 @@ class RecruitModuleTests {
                 null, null, true, true, true,
                 JobPaymentType.ANNUAL_SALARY, JobPaymentUnit.ANNUAL, 3000L, 4000L, true,
                 null, null, false, "복지 설명", List.of("식대"),
-                "https://img.example/thumb.png", List.of("https://img.example/ref.png"), true);
+                thumbnailImage, referenceImages, true);
     }
 
     private CreateJobSeekingPostCommand jobSeekingPostCommand(String title) {

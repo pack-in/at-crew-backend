@@ -8,7 +8,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-@Component
+// artwork에 같은 단순명의 클래스가 남아 있는 동안의 빈 이름 충돌 회피 — artwork 정리 후에는 불필요.
+@Component("mediaOrphanImageCleanupScheduler")
 class OrphanImageCleanupScheduler {
     private static final Logger log = LoggerFactory.getLogger(OrphanImageCleanupScheduler.class);
     private final OrphanedMediaKeyRepository orphans; private final ArtworkStoragePort storagePort;

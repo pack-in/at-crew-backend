@@ -10,7 +10,14 @@ class JobPostingMapper {
     private JobPostingMapper() {
     }
 
-    static JobPostingInfo toInfo(JobPosting jobPosting, String authorName) {
+    // images가 null이면(자식 행이 없는 과거 데이터) 기존 컬럼으로 폴백한다(설계 §10.4).
+    private static PostingImages resolve(JobPosting jobPosting, PostingImages images) {
+        return images != null ? images
+                : PostingImages.legacy(jobPosting.getThumbnailImage(), jobPosting.getReferenceImages());
+    }
+
+    static JobPostingInfo toInfo(JobPosting jobPosting, String authorName, PostingImages images) {
+        PostingImages resolved = resolve(jobPosting, images);
         return new JobPostingInfo(
                 jobPosting.getId(),
                 jobPosting.getAuthorMemberId(),
@@ -54,8 +61,8 @@ class JobPostingMapper {
                 jobPosting.isHasBuyout(),
                 jobPosting.getBenefitDescription(),
                 jobPosting.getBenefitKeywords(),
-                jobPosting.getThumbnailImage(),
-                jobPosting.getReferenceImages(),
+                resolved.thumbnailImage(),
+                resolved.referenceImages(),
                 jobPosting.getBookmarkCount(),
                 jobPosting.getViewCount(),
                 jobPosting.getBoostedUntil(),
@@ -66,10 +73,10 @@ class JobPostingMapper {
         );
     }
 
-    static CommunityJobPostingCardInfo toCardInfo(JobPosting jobPosting, String authorName) {
+    static CommunityJobPostingCardInfo toCardInfo(JobPosting jobPosting, String authorName, PostingImages images) {
         return new CommunityJobPostingCardInfo(
                 jobPosting.getId(),
-                jobPosting.getThumbnailImage(),
+                resolve(jobPosting, images).thumbnailImage(),
                 jobPosting.getTitle(),
                 jobPosting.getCompanyName(),
                 authorName,

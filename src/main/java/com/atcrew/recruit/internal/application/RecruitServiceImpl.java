@@ -1,6 +1,7 @@
 package com.atcrew.recruit.internal.application;
 
 import com.atcrew.common.response.CursorPage;
+import com.atcrew.media.MediaOwnerType;
 import com.atcrew.recruit.ApplicationInfo;
 import com.atcrew.recruit.ApplicationReviewStatus;
 import com.atcrew.recruit.CommunityJobPostingCardInfo;
@@ -49,11 +50,12 @@ class RecruitServiceImpl implements RecruitService {
     private final LikedArtistService likedArtistService;
     private final RecruitSearchService recruitSearchService;
     private final AuthorNameResolver authorNameResolver;
+    private final RecruitImageService recruitImageService;
 
     RecruitServiceImpl(JobPostingRepository jobPostingRepository, TeamPostingRepository teamPostingRepository,
             JobSeekingPostService jobSeekingPostService, ApplicationService applicationService,
             LikedArtistService likedArtistService, RecruitSearchService recruitSearchService,
-            AuthorNameResolver authorNameResolver) {
+            AuthorNameResolver authorNameResolver, RecruitImageService recruitImageService) {
         this.jobPostingRepository = jobPostingRepository;
         this.teamPostingRepository = teamPostingRepository;
         this.jobSeekingPostService = jobSeekingPostService;
@@ -61,6 +63,7 @@ class RecruitServiceImpl implements RecruitService {
         this.likedArtistService = likedArtistService;
         this.recruitSearchService = recruitSearchService;
         this.authorNameResolver = authorNameResolver;
+        this.recruitImageService = recruitImageService;
     }
 
     @Override
@@ -100,6 +103,11 @@ class RecruitServiceImpl implements RecruitService {
             jobPosting.submitForApproval();
         }
         JobPosting saved = jobPostingRepository.save(jobPosting);
+        // 이미지는 presign으로 발급받은 key로 들어온다 — media 모듈에 등록해 Worker 변환을 트리거한다(설계 §10.3).
+        RecruitImageService.apply(
+                recruitImageService.register(MediaOwnerType.JOB_POSTING, saved.getId(),
+                        command.thumbnailImage(), command.referenceImages()),
+                saved::markImageProcessingPending, saved::markImageProcessingReady);
         return toInfo(saved);
     }
 
@@ -110,6 +118,13 @@ class RecruitServiceImpl implements RecruitService {
             throw new RecruitException(RecruitErrorCode.JOB_POSTING_NOT_FOUND, jobPostingId);
         }
         jobPosting.updateContent(command);
+        // 부분 업데이트라 이미지 필드를 실제로 보낸 요청만 media 재등록 대상이다(설계 §10.3).
+        if (command.thumbnailImage() != null || command.referenceImages() != null) {
+            RecruitImageService.apply(
+                    recruitImageService.replace(MediaOwnerType.JOB_POSTING, jobPostingId,
+                            jobPosting.getThumbnailImage(), jobPosting.getReferenceImages()),
+                    jobPosting::markImageProcessingPending, jobPosting::markImageProcessingReady);
+        }
         return toInfo(jobPosting); // 트랜잭션 커밋 시점 dirty checking — 명시적 save() 불필요
     }
 
@@ -225,6 +240,11 @@ class RecruitServiceImpl implements RecruitService {
     public TeamPostingInfo createTeamPosting(String memberId, CreateTeamPostingCommand command) {
         TeamPosting teamPosting = TeamPosting.create(memberId, command);
         TeamPosting saved = teamPostingRepository.save(teamPosting);
+        // 이미지는 presign으로 발급받은 key로 들어온다 — media 모듈에 등록해 Worker 변환을 트리거한다(설계 §10.3).
+        RecruitImageService.apply(
+                recruitImageService.register(MediaOwnerType.TEAM_POSTING, saved.getId(),
+                        command.thumbnailImage(), command.referenceImages()),
+                saved::markImageProcessingPending, saved::markImageProcessingReady);
         return toTeamInfo(saved);
     }
 
@@ -235,6 +255,13 @@ class RecruitServiceImpl implements RecruitService {
             throw new RecruitException(RecruitErrorCode.TEAM_POSTING_NOT_FOUND, teamPostingId);
         }
         teamPosting.updateContent(command);
+        // 부분 업데이트라 이미지 필드를 실제로 보낸 요청만 media 재등록 대상이다(설계 §10.3).
+        if (command.thumbnailImage() != null || command.referenceImages() != null) {
+            RecruitImageService.apply(
+                    recruitImageService.replace(MediaOwnerType.TEAM_POSTING, teamPostingId,
+                            teamPosting.getThumbnailImage(), teamPosting.getReferenceImages()),
+                    teamPosting::markImageProcessingPending, teamPosting::markImageProcessingReady);
+        }
         return toTeamInfo(teamPosting); // 트랜잭션 커밋 시점 dirty checking — 명시적 save() 불필요
     }
 
@@ -489,8 +516,10 @@ class RecruitServiceImpl implements RecruitService {
         List<JobPosting> page = hasNext ? postings.subList(0, size) : postings;
         Map<String, String> authorNames = authorNameResolver.resolveAll(
                 page.stream().map(JobPosting::getAuthorMemberId).toList());
+        Map<String, PostingImages> images = recruitImageService.loadAll(
+                MediaOwnerType.JOB_POSTING, page.stream().map(JobPosting::getId).toList());
         List<JobPostingInfo> items = page.stream()
-                .map(p -> JobPostingMapper.toInfo(p, authorNames.get(p.getAuthorMemberId())))
+                .map(p -> JobPostingMapper.toInfo(p, authorNames.get(p.getAuthorMemberId()), images.get(p.getId())))
                 .toList();
         String nextCursor = hasNext ? cursorExtractor.apply(page.get(page.size() - 1)) : null;
         return CursorPage.of(items, nextCursor);
@@ -504,8 +533,10 @@ class RecruitServiceImpl implements RecruitService {
         List<JobPosting> page = hasNext ? postings.subList(0, size) : postings;
         Map<String, String> authorNames = authorNameResolver.resolveAll(
                 page.stream().map(JobPosting::getAuthorMemberId).toList());
+        Map<String, PostingImages> images = recruitImageService.loadAll(
+                MediaOwnerType.JOB_POSTING, page.stream().map(JobPosting::getId).toList());
         List<CommunityJobPostingCardInfo> items = page.stream()
-                .map(p -> JobPostingMapper.toCardInfo(p, authorNames.get(p.getAuthorMemberId())))
+                .map(p -> JobPostingMapper.toCardInfo(p, authorNames.get(p.getAuthorMemberId()), images.get(p.getId())))
                 .toList();
         JobPosting last = page.get(page.size() - 1);
         String nextCursor = hasNext ? CompositeCursor.encodeBoost(last.getBoostedUntil(), last.getId(), now) : null;
@@ -513,7 +544,8 @@ class RecruitServiceImpl implements RecruitService {
     }
 
     private JobPostingInfo toInfo(JobPosting jobPosting) {
-        return JobPostingMapper.toInfo(jobPosting, authorNameResolver.resolve(jobPosting.getAuthorMemberId()));
+        return JobPostingMapper.toInfo(jobPosting, authorNameResolver.resolve(jobPosting.getAuthorMemberId()),
+                recruitImageService.load(MediaOwnerType.JOB_POSTING, jobPosting.getId()));
     }
 
     // 공개 목록은 끌어올리기 적용 글을 상단 고정하므로 (정렬 키, id) 복합 커서를 쓴다(설계 §2.1.1).
@@ -558,8 +590,10 @@ class RecruitServiceImpl implements RecruitService {
         List<TeamPosting> page = hasNext ? postings.subList(0, size) : postings;
         Map<String, String> authorNames = authorNameResolver.resolveAll(
                 page.stream().map(TeamPosting::getAuthorMemberId).toList());
+        Map<String, PostingImages> images = recruitImageService.loadAll(
+                MediaOwnerType.TEAM_POSTING, page.stream().map(TeamPosting::getId).toList());
         List<TeamPostingInfo> items = page.stream()
-                .map(p -> TeamPostingMapper.toInfo(p, authorNames.get(p.getAuthorMemberId())))
+                .map(p -> TeamPostingMapper.toInfo(p, authorNames.get(p.getAuthorMemberId()), images.get(p.getId())))
                 .toList();
         String nextCursor = hasNext ? cursorExtractor.apply(page.get(page.size() - 1)) : null;
         return CursorPage.of(items, nextCursor);
@@ -573,8 +607,10 @@ class RecruitServiceImpl implements RecruitService {
         List<TeamPosting> page = hasNext ? postings.subList(0, size) : postings;
         Map<String, String> authorNames = authorNameResolver.resolveAll(
                 page.stream().map(TeamPosting::getAuthorMemberId).toList());
+        Map<String, PostingImages> images = recruitImageService.loadAll(
+                MediaOwnerType.TEAM_POSTING, page.stream().map(TeamPosting::getId).toList());
         List<CommunityTeamRecruitCardInfo> items = page.stream()
-                .map(p -> TeamPostingMapper.toCardInfo(p, authorNames.get(p.getAuthorMemberId())))
+                .map(p -> TeamPostingMapper.toCardInfo(p, authorNames.get(p.getAuthorMemberId()), images.get(p.getId())))
                 .toList();
         TeamPosting last = page.get(page.size() - 1);
         String nextCursor = hasNext ? CompositeCursor.encodeBoost(last.getBoostedUntil(), last.getId(), now) : null;
@@ -582,6 +618,7 @@ class RecruitServiceImpl implements RecruitService {
     }
 
     private TeamPostingInfo toTeamInfo(TeamPosting teamPosting) {
-        return TeamPostingMapper.toInfo(teamPosting, authorNameResolver.resolve(teamPosting.getAuthorMemberId()));
+        return TeamPostingMapper.toInfo(teamPosting, authorNameResolver.resolve(teamPosting.getAuthorMemberId()),
+                recruitImageService.load(MediaOwnerType.TEAM_POSTING, teamPosting.getId()));
     }
 }
