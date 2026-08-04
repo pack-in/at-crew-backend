@@ -18,8 +18,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
-// artwork에 같은 단순명의 클래스가 남아 있는 동안의 빈 이름 충돌 회피 — artwork 정리 후에는 불필요.
-@Component("mediaR2StorageAdapter")
+@Component
 class R2StorageAdapter implements ArtworkStoragePort {
     private static final Logger log = LoggerFactory.getLogger(R2StorageAdapter.class);
     private final R2Properties props; private final S3Presigner presigner; private final S3Client s3Client;

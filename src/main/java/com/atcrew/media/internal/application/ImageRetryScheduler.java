@@ -10,8 +10,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.stream.Collectors;
 
-// artwork에 같은 단순명의 클래스가 남아 있는 동안의 빈 이름 충돌 회피 — artwork 정리 후에는 불필요.
-@Component("mediaImageRetryScheduler")
+@Component
 class ImageRetryScheduler {
     private static final Logger log = LoggerFactory.getLogger(ImageRetryScheduler.class);
     private final MediaAssetRepository assets; private final ImageProcessingWorker worker;
