@@ -61,7 +61,7 @@ recruit 모듈(구인글/팀원모집글/구직글/지원/끌어올리기/관심
 | `RecruitServiceImpl` boostJobPosting/boostTeamPosting | 끌어올리기 구매 개수 확인·차감 | 로드맵 5(Polar 결제) |
 | `JobPostingController` 관리자 섹션, `BannerController` | 인증만 요구, Role 검증 없음 | 로드맵 8(관리자 Role 체계) |
 | `Company.verified` | 항상 false, API 미노출 | 로드맵 1(기업 인증) |
-| recruit 이미지 필드 | URL 문자열 저장만, 업로드 API 없음 | artwork Presigned URL 파이프라인 재사용 |
+| recruit 이미지 필드 | URL 문자열 저장만, 업로드 API 없음 | `media` 모듈 추출 후 적용(2026-08-03 정정, `docs/design/media-module-design.md`) — artwork 인프라 직접 재사용은 모듈 경계상 불가능하다고 확인됨 |
 | `ArtworkField.PRINT_COMIC` | 피그마는 `WEBNOVEL` — enum 교체 + 데이터 마이그레이션 필요 | 피그마 정본 확인 |
 | `ActiveRegion`(company) | 피그마에서 옵션 값 특정 실패 | 피그마 확인 |
 | search 분석기 | Phase 1은 `standard`, nori 도입 미정 | 검색 품질 이슈 발생 시 |

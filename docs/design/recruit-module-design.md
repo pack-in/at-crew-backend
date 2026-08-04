@@ -295,7 +295,12 @@ boolean isCompanyAccount(String memberId);
 - **기업 인증 게이팅**: 없음. 로그인한 모든 Member가 JobPosting/TeamPosting 작성 가능. 기업 프로필 모듈 완료 후 §6.3 인터페이스로 연동.
 - **성인 인증 게이팅**: recruit 콘텐츠 자체는 성인물 게이팅 대상이 아니므로(Figma 기준 구인/구직 콘텐츠에 연령 제한 없음) 해당 없음.
 - **관리자 권한**: `JobPosting` PENDING 승인/반려 엔드포인트는 있으나, 별도 관리자 역할(Role) 체계가 member 모듈에 없으므로 이번 스코프에서는 `@PreAuthorize` 없이 인증만 요구하는 최소 구현으로 두고 TODO 주석으로 명시. 관리자 역할 체계는 로드맵 범위 밖(별도 결정 필요) — 실제 운영 반영 전 필수 후속 작업.
-- **이미지 업로드**: `thumbnailImage`/`referenceImages`는 URL 문자열 저장만 지원(직접 업로드 API 없음). artwork 모듈의 Presigned URL + Worker 파이프라인 재사용은 후속 스코프.
+- **이미지 업로드**: `thumbnailImage`/`referenceImages`는 URL 문자열 저장만 지원(직접 업로드 API 없음).
+  **2026-08-03 정정**: 애초 "artwork 모듈의 Presigned URL + Worker 파이프라인 재사용"으로 적었으나, artwork의
+  Worker/webhook/재시도 구현은 `internal` 캡슐화라 재사용 불가하고 도메인 로직과도 강결합돼 있음을 확인.
+  대신 그 인프라를 범용 `media` 모듈로 추출해 artwork·recruit이 함께 소비하는 구조로 재설계함
+  (`docs/design/media-module-design.md` §10에 recruit 적용 계획 — 신규 자식 테이블 3개, `imageProcessingStatus`
+  필드, `MediaAssetProcessedEvent` 리스너). 여전히 후속 스코프.
 
 ---
 
