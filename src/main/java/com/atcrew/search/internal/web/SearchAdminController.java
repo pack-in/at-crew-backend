@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 
-/** 검색 인덱스 전체 재색인 트리거 — artwork의 내부 콜백 인증 패턴({@code ArtworkInternalController})과 동일. */
+/** 검색 인덱스 전체 재색인 트리거 — media의 내부 콜백 인증 패턴({@code MediaInternalController})과 동일. */
 @Hidden
 @RestController
 @RequestMapping("/internal/search")

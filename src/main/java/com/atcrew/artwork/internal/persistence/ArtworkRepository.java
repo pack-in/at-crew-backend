@@ -14,9 +14,6 @@ public interface ArtworkRepository extends JpaRepository<Artwork, String>, JpaSp
     // 탈퇴 회원 작품 일괄 처리
     List<Artwork> findAllByAuthorId(String authorId);
 
-    // Worker 재시도 스케줄러 — 지정 시각 이전부터 PROCESSING 상태인 작품
-    List<Artwork> findByStatusAndUpdatedAtBefore(ArtworkStatus status, Instant threshold);
-
     // getMyArtworks — 커서 있음/없음
     List<Artwork> findByAuthorIdAndStatusNotAndCreatedAtBeforeOrderByCreatedAtDesc(
             String authorId, ArtworkStatus status, Instant cursor, Pageable pageable);

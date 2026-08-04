@@ -6,8 +6,6 @@ import com.atcrew.artwork.ArtworkInfo;
 import com.atcrew.artwork.ArtworkService;
 import com.atcrew.artwork.ArtworkStatus;
 import com.atcrew.artwork.ArtworkSummaryInfo;
-import com.atcrew.artwork.ImageProcessedCallbackCommand;
-import com.atcrew.artwork.ImageProcessingStatus;
 import com.atcrew.artwork.MaterialData;
 import com.atcrew.artwork.PresignedUrlInfo;
 import com.atcrew.artwork.UpdateArtworkCommand;
@@ -16,15 +14,14 @@ import com.atcrew.artwork.Visibility;
 import com.atcrew.artwork.ArtworkChangedEvent;
 import com.atcrew.artwork.ArtworkPermanentlyDeletedEvent;
 import com.atcrew.artwork.internal.domain.artwork.Artwork;
-import com.atcrew.artwork.internal.domain.artwork.ArtworkImage;
 import com.atcrew.artwork.internal.domain.artwork.Material;
-import com.atcrew.artwork.internal.domain.artwork.OrphanedImageKey;
 import com.atcrew.artwork.internal.exception.ArtworkErrorCode;
 import com.atcrew.artwork.internal.exception.ArtworkException;
-import com.atcrew.artwork.internal.infra.storage.ArtworkStoragePort;
 import com.atcrew.artwork.internal.persistence.ArtworkRepository;
-import com.atcrew.artwork.internal.persistence.OrphanedImageKeyRepository;
 import com.atcrew.common.response.CursorPage;
+import com.atcrew.media.MediaOwnerType;
+import com.atcrew.media.MediaService;
+import com.atcrew.media.MediaVariantProfile;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
 import jakarta.persistence.criteria.Predicate;
@@ -51,28 +48,24 @@ class ArtworkServiceImpl implements ArtworkService {
     private static final List<String> ALLOWED_CONTENT_TYPES = List.of("image/jpeg", "image/png", "image/webp");
 
     private final ArtworkRepository artworkRepository;
-    private final OrphanedImageKeyRepository orphanedRepo;
     private final MemberService memberService;
-    private final ArtworkStoragePort storagePort;
-    private final ImageProcessingWorker imageProcessingWorker;
+    private final MediaService mediaService;
     private final ApplicationEventPublisher eventPublisher;
 
     ArtworkServiceImpl(ArtworkRepository artworkRepository,
-                       OrphanedImageKeyRepository orphanedRepo,
                        MemberService memberService,
-                       ArtworkStoragePort storagePort,
-                       ImageProcessingWorker imageProcessingWorker,
+                       MediaService mediaService,
                        ApplicationEventPublisher eventPublisher) {
         this.artworkRepository = artworkRepository;
-        this.orphanedRepo = orphanedRepo;
         this.memberService = memberService;
-        this.storagePort = storagePort;
-        this.imageProcessingWorker = imageProcessingWorker;
+        this.mediaService = mediaService;
         this.eventPublisher = eventPublisher;
     }
 
     @Override
     public List<PresignedUrlInfo> generatePresignedUrls(int count, List<String> contentTypes) {
+        // 발급 자체는 media에 위임하지만(docs/design/media-module-design.md §9.1-3), 입력 검증은 여기 남긴다 —
+        // media는 IllegalArgumentException을 던지므로 그대로 흘리면 기존 400 ARTWORK 에러코드가 500으로 바뀐다.
         if (count < 1 || count > 20) {
             throw new ArtworkException(ArtworkErrorCode.INVALID_IMAGE_COUNT);
         }
@@ -84,14 +77,9 @@ class ArtworkServiceImpl implements ArtworkService {
                 throw new ArtworkException(ArtworkErrorCode.INVALID_CONTENT_TYPE, ct);
             }
         }
-        List<PresignedUrlInfo> result = new ArrayList<>();
-        for (int i = 0; i < count; i++) {
-            String ext = contentTypes.get(i).split("/")[1];
-            String key = "raw/" + java.util.UUID.randomUUID() + "." + ext;
-            String url = storagePort.generatePresignedPutUrl(key, contentTypes.get(i));
-            result.add(new PresignedUrlInfo(key, url));
-        }
-        return result;
+        return mediaService.generatePresignedUrls(count, contentTypes).stream()
+                .map(info -> new PresignedUrlInfo(info.key(), info.uploadUrl()))
+                .toList();
     }
 
     @Override
@@ -120,7 +108,8 @@ class ArtworkServiceImpl implements ArtworkService {
                 materials
         );
         Artwork saved = artworkRepository.save(artwork);
-        imageProcessingWorker.triggerAsync(saved.getId(), command.imageKeys());
+        mediaService.registerAndTriggerProcessing(MediaOwnerType.ARTWORK, saved.getId(),
+                command.imageKeys(), MediaVariantProfile.STANDARD_WITH_ADULT_BLUR);
         eventPublisher.publishEvent(new ArtworkChangedEvent(saved.getId()));
         MemberInfo author = memberService.findById(memberId);
         log.info("작품 업로드 완료: artworkId={} memberId={}", saved.getId(), memberId);
@@ -182,7 +171,8 @@ class ArtworkServiceImpl implements ArtworkService {
 
         Artwork saved = artworkRepository.save(artwork);
         if (command.imageKeys() != null) {
-            imageProcessingWorker.triggerAsync(saved.getId(), command.imageKeys());
+            mediaService.replaceAndTriggerProcessing(MediaOwnerType.ARTWORK, saved.getId(),
+                    command.imageKeys(), MediaVariantProfile.STANDARD_WITH_ADULT_BLUR);
         }
         eventPublisher.publishEvent(new ArtworkChangedEvent(saved.getId()));
         MemberInfo author = memberService.findById(memberId);
@@ -193,10 +183,10 @@ class ArtworkServiceImpl implements ArtworkService {
     // Hibernate가 같은 flush에서 신규 INSERT를 기존 DELETE보다 먼저 실행해
     // uk_ai_order(artwork_id, ordinal) 유니크 제약과 충돌하는 것을 막기 위함
     // (docs/design/mariadb-migration-design.md §3.3.2 RefreshToken과 동일 계열의 함정, 이번 전환에서 신규 발견).
+    // 교체로 버려지는 R2 key의 고아 처리는 mediaService.replaceAndTriggerProcessing이 담당한다.
     private void replaceImages(Artwork artwork, List<String> newImageKeys, Integer representativeImageIndex) {
-        List<ArtworkImage> orphaned = artwork.detachImages();
+        artwork.detachImages();
         artworkRepository.saveAndFlush(artwork);
-        orphanedRepo.saveAll(orphaned.stream().map(OrphanedImageKey::from).toList());
         int newRepIndex = representativeImageIndex != null ? representativeImageIndex : 0;
         artwork.attachImages(newImageKeys, newRepIndex);
     }
@@ -318,24 +308,6 @@ class ArtworkServiceImpl implements ArtworkService {
             eventPublisher.publishEvent(new ArtworkPermanentlyDeletedEvent(artwork.getId(), allKeys));
             eventPublisher.publishEvent(new ArtworkChangedEvent(artwork.getId()));
         }
-    }
-
-    @Override
-    @Transactional
-    public void handleImageProcessedCallback(ImageProcessedCallbackCommand command) {
-        Artwork artwork = findArtworkById(command.artworkId());
-        boolean success = command.status() == ImageProcessingStatus.DONE;
-        artwork.markImageProcessed(
-                command.imageKey(),
-                command.thumbKey(),
-                command.thumbAdultKey(),
-                command.originalAvifKey(),
-                success
-        );
-        artworkRepository.save(artwork);
-        eventPublisher.publishEvent(new ArtworkChangedEvent(command.artworkId()));
-        log.debug("이미지 처리 콜백: artworkId={} imageKey={} status={}",
-                command.artworkId(), command.imageKey(), command.status());
     }
 
     @Override

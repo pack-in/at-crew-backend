@@ -34,9 +34,13 @@ class MediaServiceImpl implements MediaService {
     @Override @Transactional public void replaceAndTriggerProcessing(MediaOwnerType ownerType, String ownerId,
             List<String> newImageKeys, MediaVariantProfile variantProfile) {
         var previous = assets.findByOwnerTypeAndOwnerIdOrderByOrdinalAsc(ownerType, ownerId);
-        var oldKeys = previous.stream().flatMap(a -> List.of(a.getOriginalKey(), a.getThumbKey(), a.getThumbAdultKey(), a.getOriginalAvifKey()).stream()).filter(k -> k != null && !k.isBlank()).toList();
+        // 아직 처리되지 않은 자산은 thumb/avif key가 null이라 List.of로 묶으면 NPE가 난다 — Stream.of로 받아 걸러낸다.
+        var oldKeys = previous.stream().flatMap(a -> java.util.stream.Stream.of(a.getOriginalKey(), a.getThumbKey(), a.getThumbAdultKey(), a.getOriginalAvifKey())).filter(k -> k != null && !k.isBlank()).toList();
         if (!oldKeys.isEmpty()) orphans.save(OrphanedMediaKey.ofKeys(oldKeys));
+        // 삭제를 flush로 먼저 확정한 뒤 새 행을 넣는다 — 같은 flush에 묶이면 Hibernate가 INSERT를 DELETE보다
+        // 먼저 실행해 uk_ma_owner_order와 충돌한다(설계 §2.1이 artwork에서 그대로 옮겨오라고 명시한 2단계 패턴).
         assets.deleteAll(previous);
+        assets.flush();
         registerAndTriggerProcessing(ownerType, ownerId, newImageKeys, variantProfile);
     }
     @Override @Transactional(readOnly = true) public List<MediaAssetInfo> getAssets(MediaOwnerType ownerType, String ownerId) {
