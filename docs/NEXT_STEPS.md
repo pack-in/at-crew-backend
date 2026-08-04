@@ -1,7 +1,17 @@
-# 다음 세션 시작 가이드 (2026-08-03 점검 시점)
+# 다음 세션 시작 가이드 (2026-08-04 점검 시점)
 
 > 이 문서는 세션 인수인계용 체크리스트다. 장기 로드맵 전체는 `docs/roadmap.md`가 정본이고,
 > 이 문서는 "지금 당장 뭐부터 볼지"만 정리한다. 작업 완료 후 이 파일은 삭제해도 된다.
+
+## 2026-08-04 점검 결과
+
+media 모듈 추출(이슈 [#42](https://github.com/pack-in/at-crew-backend/issues/42), PR
+[#43](https://github.com/pack-in/at-crew-backend/pull/43)) main 병합 완료. **가장 중요한 후속 조치**:
+recruit 이미지 업로드가 실제로 동작하려면 Cloudflare Worker 스크립트가 트리거/콜백 페이로드를
+`artworkId` 단일 필드에서 `ownerType`+`ownerId`로 받도록 바뀌어야 한다 — 이 레포 밖 작업이라 다음
+세션이 사용자와 함께 Worker 관리 위치(수동 dashboard vs 별도 저장소의 wrangler CI)부터 확인해야
+한다. 롤아웃 순서는 `docs/design/media-module-design.md` §9.2에 정리돼 있다(서버 선배포 → Worker
+배포 → 구 경로 제거 — 순서를 반대로 하면 기존 artwork 업로드가 깨진다는 걸 로컬 검증으로 확인함).
 
 ## 2026-08-03 점검 결과
 
@@ -14,6 +24,15 @@ stale remote-tracking refs를 정리했다(원격 브랜치는 이미 PR 병합 
 
 ## 완료된 것 (이력)
 
+- **2026-08-04**: media 모듈 추출 — artwork에 내장된 Presigned URL/Worker/webhook/재시도/고아정리
+  파이프라인을 범용 `media` 모듈로 뽑아 artwork·recruit이 공용 소비하도록 재설계(이슈
+  [#42](https://github.com/pack-in/at-crew-backend/issues/42), PR
+  [#43](https://github.com/pack-in/at-crew-backend/pull/43)). recruit 게시글(구인글/팀원모집글/구직글)
+  이미지 업로드도 이번에 같이 구현됨(자식 테이블 3개, 발행 상태와 독립된 imageProcessingStatus).
+  설계 QA·병합 과정에서 결함 다수 발견해 반영 완료(READY 전환 조건, Worker 롤아웃 순서, 영구삭제 후
+  media_assets 잔존, 빈 이름 충돌 등 — 상세는 `docs/design/media-module-design.md` §11). main 병합,
+  전체 `./gradlew build` 그린, CI 통과. **미완료**: Cloudflare Worker 스크립트 배포(위 점검 결과 참고),
+  동시 webhook 경쟁 조건(artwork 원본부터 있던 기존 위험 수준이라 의도적으로 범위 밖).
 - **2026-08-03**: 이슈 [#39](https://github.com/pack-in/at-crew-backend/issues/39) 해결 — `docs/design/global-timezone-strategy.md` §3.3.1을 실제 구현에 맞게 정정. 최초 설계는 `timezone` nullable+UTC 폴백이었으나, 구현 시 `Member.validateTimezone()`이 가입 경로(자체·소셜 공통)에서 null을 거부하도록 확정해 폴백 로직 자체가 불필요해졌다 — 버그가 아니라 더 단순한 확정 설계였음을 문서에 반영.
 - **2026-08-03**: `release.yml`(release-please) 삭제로 이슈 [#38](https://github.com/pack-in/at-crew-backend/issues/38)
   해소. 실패 로그 확인 결과, 워크플로우 YAML에 `permissions: pull-requests: write`를 명시해도
@@ -61,7 +80,6 @@ recruit 모듈(구인글/팀원모집글/구직글/지원/끌어올리기/관심
 | `RecruitServiceImpl` boostJobPosting/boostTeamPosting | 끌어올리기 구매 개수 확인·차감 | 로드맵 5(Polar 결제) |
 | `JobPostingController` 관리자 섹션, `BannerController` | 인증만 요구, Role 검증 없음 | 로드맵 8(관리자 Role 체계) |
 | `Company.verified` | 항상 false, API 미노출 | 로드맵 1(기업 인증) |
-| recruit 이미지 필드 | URL 문자열 저장만, 업로드 API 없음 | `media` 모듈 추출 후 적용(2026-08-03 정정, `docs/design/media-module-design.md`) — artwork 인프라 직접 재사용은 모듈 경계상 불가능하다고 확인됨 |
 | `ArtworkField.PRINT_COMIC` | 피그마는 `WEBNOVEL` — enum 교체 + 데이터 마이그레이션 필요 | 피그마 정본 확인 |
 | `ActiveRegion`(company) | 피그마에서 옵션 값 특정 실패 | 피그마 확인 |
 | search 분석기 | Phase 1은 `standard`, nori 도입 미정 | 검색 품질 이슈 발생 시 |
