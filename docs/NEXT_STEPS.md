@@ -8,10 +8,19 @@
 media 모듈 추출(이슈 [#42](https://github.com/pack-in/at-crew-backend/issues/42), PR
 [#43](https://github.com/pack-in/at-crew-backend/pull/43)) main 병합 완료. **가장 중요한 후속 조치**:
 recruit 이미지 업로드가 실제로 동작하려면 Cloudflare Worker 스크립트가 트리거/콜백 페이로드를
-`artworkId` 단일 필드에서 `ownerType`+`ownerId`로 받도록 바뀌어야 한다 — 이 레포 밖 작업이라 다음
-세션이 사용자와 함께 Worker 관리 위치(수동 dashboard vs 별도 저장소의 wrangler CI)부터 확인해야
-한다. 롤아웃 순서는 `docs/design/media-module-design.md` §9.2에 정리돼 있다(서버 선배포 → Worker
-배포 → 구 경로 제거 — 순서를 반대로 하면 기존 artwork 업로드가 깨진다는 걸 로컬 검증으로 확인함).
+`artworkId` 단일 필드에서 `ownerType`+`ownerId`로 받도록 바뀌어야 한다. 롤아웃 순서는
+`docs/design/media-module-design.md` §9.2에 정리돼 있다(서버 선배포 → Worker 배포 → 구 경로 제거 —
+순서를 반대로 하면 기존 artwork 업로드가 깨진다는 걸 로컬 검증으로 확인함).
+
+**2026-08-05**: Worker 관리 위치를 이 레포 `cloudflare-worker/`(wrangler로 버전관리)로 확정하고
+스캐폴드(`wrangler.toml`, `src/index.js`, `README.md`)를 작성했다. `src/index.js`는
+`ownerType`/`ownerId`/`imageKeys`/`variantProfile` 신규 계약, Cloudflare Images 바인딩(`env.IMAGES`)으로
+원본 avif 변환·3:4 294px 썸네일 크롭·성인물 blur(20)까지 구현한 상태 — **미검증**(실제 Cloudflare
+계정에 배포해본 적 없음). 남은 건 전부 이 레포 밖 사용자 작업: Cloudflare 계정 생성, `wrangler login`,
+R2 버킷 생성(`at-crew-media` — artwork·recruit 공용, 버킷 이름은 2026-08-05 세션에서 `atcrew-artwork` →
+`atcrew-media` → `at-crew-media`로 정정), 시크릿 등록(`wrangler secret put`), `wrangler dev --remote`로 로컬
+검증, `wrangler deploy`, 서버 쪽 `WORKER_TRIGGER_URL`/`R2_*`/`WORKER_CALLBACK_SECRET`/
+`ARTWORK_INTERNAL_SECRET` 환경변수 실제 값 채우기. 상세 절차는 `cloudflare-worker/README.md` 참고.
 
 ## 2026-08-03 점검 결과
 
