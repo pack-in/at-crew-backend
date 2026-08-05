@@ -68,4 +68,9 @@ public interface TeamPostingRepository extends JpaRepository<TeamPosting, String
     @Modifying
     @Query("UPDATE TeamPosting p SET p.bookmarkCount = p.bookmarkCount + 1 WHERE p.id = :id")
     void incrementBookmarkCount(@Param("id") String id);
+
+    // getPostsForReindex(TEAM_RECRUIT) — 생성순 오름차순, 커서 있음/없음
+    List<TeamPosting> findByCreatedAtAfterOrderByCreatedAtAsc(Instant cursor, Pageable pageable);
+
+    List<TeamPosting> findAllByOrderByCreatedAtAsc(Pageable pageable);
 }

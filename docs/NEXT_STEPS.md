@@ -68,14 +68,14 @@ recruit 모듈(구인글/팀원모집글/구직글/지원/끌어올리기/관심
    필터 chip은 `ArtworkRole` enum이다. 지금은 enum 상수 이름으로만 문자열 비교하므로 실질적으로 거의
    매칭되지 않는다. Notion 태그 정본 목록이 확정되면 양쪽을 같은 어휘로 정규화해야 한다
    (`SearchQuery.java` TODO, `search-module-design.md` §9-2와 동일 과제)
-2. **recruit 검색의 ES 색인 이관 검토** — 현재 제목 `LIKE '%q%'` + 태그 EXISTS 조인이라 인덱스를 타지
-   않는다. 공개 글이 늘면 artwork처럼 색인 파이프라인으로 옮기는 편이 낫다
-   (`RecruitSearchQueryRepository` 클래스 주석에 근거 기록)
+2. **recruit 검색의 ES 색인 이관** — 완료함(2026-08-05). RDB `LIKE` + EXISTS 서브쿼리 기반이던
+   `RecruitSearchService`/`RecruitSearchQueryRepository`(recruit 모듈)를 삭제하고, artwork와 동일하게
+   `search` 모듈이 `recruit_posts` ES 인덱스를 소유·질의하도록 이관함 — `RecruitSearchIndexer`/
+   `RecruitReindexService`/`search.internal.persistence.RecruitSearchQueryRepository` 참고
 3. **병합 검색의 알려진 제약** — 포트폴리오와 recruit을 함께 요청하면 (a) 정렬은 항상 최신순 고정
    (관련도 점수를 소스 간 비교할 수 없음), (b) 작품 분야·창작 유형·연령대·소재 대상 필터가 걸리면
-   recruit은 결과에서 제외, (c) 커서가 `(createdAtMillis, id)` 값 기반이라 서로 다른 소스의 항목이
-   **밀리초까지 동일**하면 경계에서 한 건이 밀릴 수 있다. 기획상 문제가 되면 소스별 서브커서 방식으로
-   재설계 필요
+   recruit은 결과에서 제외. (a)(b)는 의도된 동작. (c) 커서 밀리초 충돌 경계 누락 문제는 소스별
+   서브커서(`MergedSearchCursor`) 방식으로 재설계해 해소함 — `SearchServiceImpl.searchMerged` 참고
 4. **관심 작가 검색 후보 로딩** — `q`가 있으면 해당 기업이 좋아요한 작가 ID를 전부 읽어 member 모듈에
    넘기고 `IN` 절로 페이지네이션한다. 좋아요 규모가 커지면(수천 건) 개선 필요
 5. **`CompanyInfo.hasOpenJobPosting` 조회 비용** — 기업 프로필 단건 조회마다 recruit `exists` 쿼리가

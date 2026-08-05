@@ -15,8 +15,9 @@ import com.atcrew.recruit.JobPostingStatus;
 import com.atcrew.recruit.JobSeekingPostInfo;
 import com.atcrew.recruit.LikedArtistInfo;
 import com.atcrew.recruit.RecentlyViewedArtistInfo;
-import com.atcrew.recruit.RecruitSearchPage;
-import com.atcrew.recruit.RecruitSearchQuery;
+import com.atcrew.recruit.RecruitIndexInfo;
+import com.atcrew.recruit.RecruitPostChangedEvent;
+import com.atcrew.recruit.RecruitPostType;
 import com.atcrew.recruit.RecruitService;
 import com.atcrew.recruit.TeamPostingInfo;
 import com.atcrew.recruit.TeamPostingStatus;
@@ -29,6 +30,7 @@ import com.atcrew.recruit.internal.exception.RecruitErrorCode;
 import com.atcrew.recruit.internal.exception.RecruitException;
 import com.atcrew.recruit.internal.persistence.JobPostingRepository;
 import com.atcrew.recruit.internal.persistence.TeamPostingRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -37,6 +39,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Function;
 
 @Service
@@ -48,22 +51,23 @@ class RecruitServiceImpl implements RecruitService {
     private final JobSeekingPostService jobSeekingPostService;
     private final ApplicationService applicationService;
     private final LikedArtistService likedArtistService;
-    private final RecruitSearchService recruitSearchService;
     private final AuthorNameResolver authorNameResolver;
     private final RecruitImageService recruitImageService;
+    private final ApplicationEventPublisher eventPublisher;
 
     RecruitServiceImpl(JobPostingRepository jobPostingRepository, TeamPostingRepository teamPostingRepository,
             JobSeekingPostService jobSeekingPostService, ApplicationService applicationService,
-            LikedArtistService likedArtistService, RecruitSearchService recruitSearchService,
-            AuthorNameResolver authorNameResolver, RecruitImageService recruitImageService) {
+            LikedArtistService likedArtistService,
+            AuthorNameResolver authorNameResolver, RecruitImageService recruitImageService,
+            ApplicationEventPublisher eventPublisher) {
         this.jobPostingRepository = jobPostingRepository;
         this.teamPostingRepository = teamPostingRepository;
         this.jobSeekingPostService = jobSeekingPostService;
         this.applicationService = applicationService;
         this.likedArtistService = likedArtistService;
-        this.recruitSearchService = recruitSearchService;
         this.authorNameResolver = authorNameResolver;
         this.recruitImageService = recruitImageService;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -92,8 +96,22 @@ class RecruitServiceImpl implements RecruitService {
 
     @Override
     @Transactional(readOnly = true)
-    public RecruitSearchPage searchPosts(RecruitSearchQuery query) {
-        return recruitSearchService.search(query);
+    public Optional<RecruitIndexInfo> getPostForIndexing(RecruitPostType postType, String postId) {
+        return switch (postType) {
+            case JOB_POSTING -> jobPostingRepository.findById(postId).map(this::toIndexInfo);
+            case TEAM_RECRUIT -> teamPostingRepository.findById(postId).map(this::toIndexInfo);
+            case JOB_SEEKING -> jobSeekingPostService.getForIndexing(postId);
+        };
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public CursorPage<RecruitIndexInfo> getPostsForReindex(RecruitPostType postType, String cursor, int size) {
+        return switch (postType) {
+            case JOB_POSTING -> jobPostingsForReindex(cursor, size);
+            case TEAM_RECRUIT -> teamPostingsForReindex(cursor, size);
+            case JOB_SEEKING -> jobSeekingPostService.getForReindex(cursor, size);
+        };
     }
 
     @Override
@@ -108,6 +126,7 @@ class RecruitServiceImpl implements RecruitService {
                 recruitImageService.register(MediaOwnerType.JOB_POSTING, saved.getId(),
                         command.thumbnailImage(), command.referenceImages()),
                 saved::markImageProcessingPending, saved::markImageProcessingReady);
+        publishJobPostingChanged(saved.getId());
         return toInfo(saved);
     }
 
@@ -125,6 +144,7 @@ class RecruitServiceImpl implements RecruitService {
                             jobPosting.getThumbnailImage(), jobPosting.getReferenceImages()),
                     jobPosting::markImageProcessingPending, jobPosting::markImageProcessingReady);
         }
+        publishJobPostingChanged(jobPostingId);
         return toInfo(jobPosting); // 트랜잭션 커밋 시점 dirty checking — 명시적 save() 불필요
     }
 
@@ -132,6 +152,7 @@ class RecruitServiceImpl implements RecruitService {
     public JobPostingInfo submitJobPosting(String memberId, String jobPostingId) {
         JobPosting jobPosting = getOwned(jobPostingId, memberId);
         jobPosting.submitForApproval();
+        publishJobPostingChanged(jobPostingId);
         return toInfo(jobPosting);
     }
 
@@ -139,6 +160,7 @@ class RecruitServiceImpl implements RecruitService {
     public JobPostingInfo closeJobPosting(String memberId, String jobPostingId) {
         JobPosting jobPosting = getOwned(jobPostingId, memberId);
         jobPosting.close();
+        publishJobPostingChanged(jobPostingId);
         return toInfo(jobPosting);
     }
 
@@ -146,6 +168,7 @@ class RecruitServiceImpl implements RecruitService {
     public void deleteJobPosting(String memberId, String jobPostingId) {
         JobPosting jobPosting = getOwned(jobPostingId, memberId);
         jobPosting.moveToTrash();
+        publishJobPostingChanged(jobPostingId);
     }
 
     @Override
@@ -164,6 +187,7 @@ class RecruitServiceImpl implements RecruitService {
     public JobPostingInfo restoreJobPosting(String memberId, String jobPostingId) {
         JobPosting jobPosting = getOwned(jobPostingId, memberId);
         jobPosting.restore();
+        publishJobPostingChanged(jobPostingId);
         return toInfo(jobPosting);
     }
 
@@ -216,6 +240,7 @@ class RecruitServiceImpl implements RecruitService {
     public JobPostingInfo approveJobPosting(String jobPostingId) {
         JobPosting jobPosting = findById(jobPostingId);
         jobPosting.approve();
+        publishJobPostingChanged(jobPostingId);
         return toInfo(jobPosting);
     }
 
@@ -223,6 +248,7 @@ class RecruitServiceImpl implements RecruitService {
     public JobPostingInfo rejectJobPosting(String jobPostingId) {
         JobPosting jobPosting = findById(jobPostingId);
         jobPosting.reject();
+        publishJobPostingChanged(jobPostingId);
         return toInfo(jobPosting);
     }
 
@@ -231,6 +257,7 @@ class RecruitServiceImpl implements RecruitService {
         JobPosting jobPosting = getOwned(jobPostingId, memberId);
         // TODO(결제): Polar 결제 모듈(로드맵 5번) 완성 후 "구매한 끌어올리기 개수" 확인·차감을 여기에 연결한다(설계 §2.1.1, §7).
         jobPosting.boost(Instant.now());
+        publishJobPostingChanged(jobPostingId);
         return toInfo(jobPosting);
     }
 
@@ -245,6 +272,7 @@ class RecruitServiceImpl implements RecruitService {
                 recruitImageService.register(MediaOwnerType.TEAM_POSTING, saved.getId(),
                         command.thumbnailImage(), command.referenceImages()),
                 saved::markImageProcessingPending, saved::markImageProcessingReady);
+        publishTeamPostingChanged(saved.getId());
         return toTeamInfo(saved);
     }
 
@@ -262,6 +290,7 @@ class RecruitServiceImpl implements RecruitService {
                             teamPosting.getThumbnailImage(), teamPosting.getReferenceImages()),
                     teamPosting::markImageProcessingPending, teamPosting::markImageProcessingReady);
         }
+        publishTeamPostingChanged(teamPostingId);
         return toTeamInfo(teamPosting); // 트랜잭션 커밋 시점 dirty checking — 명시적 save() 불필요
     }
 
@@ -269,6 +298,7 @@ class RecruitServiceImpl implements RecruitService {
     public TeamPostingInfo closeTeamPosting(String memberId, String teamPostingId) {
         TeamPosting teamPosting = getOwnedTeamPosting(teamPostingId, memberId);
         teamPosting.close();
+        publishTeamPostingChanged(teamPostingId);
         return toTeamInfo(teamPosting);
     }
 
@@ -276,6 +306,7 @@ class RecruitServiceImpl implements RecruitService {
     public void deleteTeamPosting(String memberId, String teamPostingId) {
         TeamPosting teamPosting = getOwnedTeamPosting(teamPostingId, memberId);
         teamPosting.moveToTrash();
+        publishTeamPostingChanged(teamPostingId);
     }
 
     @Override
@@ -294,6 +325,7 @@ class RecruitServiceImpl implements RecruitService {
     public TeamPostingInfo restoreTeamPosting(String memberId, String teamPostingId) {
         TeamPosting teamPosting = getOwnedTeamPosting(teamPostingId, memberId);
         teamPosting.restore();
+        publishTeamPostingChanged(teamPostingId);
         return toTeamInfo(teamPosting);
     }
 
@@ -336,6 +368,7 @@ class RecruitServiceImpl implements RecruitService {
         TeamPosting teamPosting = getOwnedTeamPosting(teamPostingId, memberId);
         // TODO(결제): Polar 결제 모듈(로드맵 5번) 완성 후 "구매한 끌어올리기 개수" 확인·차감을 여기에 연결한다(설계 §2.1.1, §7).
         teamPosting.boost(Instant.now());
+        publishTeamPostingChanged(teamPostingId);
         return toTeamInfo(teamPosting);
     }
 
@@ -620,5 +653,89 @@ class RecruitServiceImpl implements RecruitService {
     private TeamPostingInfo toTeamInfo(TeamPosting teamPosting) {
         return TeamPostingMapper.toInfo(teamPosting, authorNameResolver.resolve(teamPosting.getAuthorMemberId()),
                 recruitImageService.load(MediaOwnerType.TEAM_POSTING, teamPosting.getId()));
+    }
+
+    private void publishJobPostingChanged(String jobPostingId) {
+        eventPublisher.publishEvent(new RecruitPostChangedEvent(jobPostingId, RecruitPostType.JOB_POSTING));
+    }
+
+    private void publishTeamPostingChanged(String teamPostingId) {
+        eventPublisher.publishEvent(new RecruitPostChangedEvent(teamPostingId, RecruitPostType.TEAM_RECRUIT));
+    }
+
+    private RecruitIndexInfo toIndexInfo(JobPosting jobPosting) {
+        return new RecruitIndexInfo(
+                jobPosting.getId(),
+                RecruitPostType.JOB_POSTING,
+                jobPosting.getTitle(),
+                jobPosting.getRoles(),
+                jobPosting.getGenres(),
+                jobPosting.getAuthorMemberId(),
+                authorNameResolver.resolve(jobPosting.getAuthorMemberId()),
+                indexThumbnailOf(MediaOwnerType.JOB_POSTING, jobPosting.getId(), jobPosting.getThumbnailImage()),
+                jobPosting.getStatus().name(),
+                jobPosting.getCreatedAt(),
+                jobPosting.getUpdatedAt()
+        );
+    }
+
+    private RecruitIndexInfo toIndexInfo(TeamPosting teamPosting) {
+        return new RecruitIndexInfo(
+                teamPosting.getId(),
+                RecruitPostType.TEAM_RECRUIT,
+                teamPosting.getTitle(),
+                teamPosting.getRoles(),
+                teamPosting.getGenres(),
+                teamPosting.getAuthorMemberId(),
+                authorNameResolver.resolve(teamPosting.getAuthorMemberId()),
+                indexThumbnailOf(MediaOwnerType.TEAM_POSTING, teamPosting.getId(), teamPosting.getThumbnailImage()),
+                teamPosting.getStatus().name(),
+                teamPosting.getCreatedAt(),
+                teamPosting.getUpdatedAt()
+        );
+    }
+
+    // 자식 테이블 행이 있으면 변환본(AVIF) 키, 없으면(과거 데이터) 기존 컬럼으로 폴백한다(설계 §10.4).
+    private String indexThumbnailOf(MediaOwnerType ownerType, String postingId, String legacyThumbnail) {
+        PostingImages images = recruitImageService.load(ownerType, postingId);
+        return images != null ? images.thumbnailImage() : legacyThumbnail;
+    }
+
+    private CursorPage<RecruitIndexInfo> jobPostingsForReindex(String cursor, int size) {
+        int limit = size + 1;
+        List<JobPosting> postings = cursor != null
+                ? jobPostingRepository.findByCreatedAtAfterOrderByCreatedAtAsc(parseIndexCursor(cursor), PageRequest.of(0, limit))
+                : jobPostingRepository.findAllByOrderByCreatedAtAsc(PageRequest.of(0, limit));
+        if (postings.isEmpty()) {
+            return CursorPage.empty();
+        }
+        boolean hasNext = postings.size() > size;
+        List<JobPosting> page = hasNext ? postings.subList(0, size) : postings;
+        List<RecruitIndexInfo> items = page.stream().map(this::toIndexInfo).toList();
+        String nextCursor = hasNext ? String.valueOf(page.get(page.size() - 1).getCreatedAt().toEpochMilli()) : null;
+        return CursorPage.of(items, nextCursor);
+    }
+
+    private CursorPage<RecruitIndexInfo> teamPostingsForReindex(String cursor, int size) {
+        int limit = size + 1;
+        List<TeamPosting> postings = cursor != null
+                ? teamPostingRepository.findByCreatedAtAfterOrderByCreatedAtAsc(parseIndexCursor(cursor), PageRequest.of(0, limit))
+                : teamPostingRepository.findAllByOrderByCreatedAtAsc(PageRequest.of(0, limit));
+        if (postings.isEmpty()) {
+            return CursorPage.empty();
+        }
+        boolean hasNext = postings.size() > size;
+        List<TeamPosting> page = hasNext ? postings.subList(0, size) : postings;
+        List<RecruitIndexInfo> items = page.stream().map(this::toIndexInfo).toList();
+        String nextCursor = hasNext ? String.valueOf(page.get(page.size() - 1).getCreatedAt().toEpochMilli()) : null;
+        return CursorPage.of(items, nextCursor);
+    }
+
+    private Instant parseIndexCursor(String cursor) {
+        try {
+            return Instant.ofEpochMilli(Long.parseLong(cursor));
+        } catch (NumberFormatException e) {
+            throw new RecruitException(RecruitErrorCode.INVALID_CURSOR, cursor);
+        }
     }
 }

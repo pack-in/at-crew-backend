@@ -24,7 +24,12 @@ import com.atcrew.recruit.JobPostingInfo;
 import com.atcrew.recruit.JobWorkLocationType;
 import com.atcrew.recruit.JobWorkScheduleType;
 import com.atcrew.recruit.RecruitService;
+import com.atcrew.recruit.TeamActivityDuration;
+import com.atcrew.recruit.TeamWeeklyActivityTime;
+import com.atcrew.recruit.TeamWorkLocationType;
+import com.atcrew.recruit.CreateTeamPostingCommand;
 import com.atcrew.search.internal.application.ArtworkReindexService;
+import com.atcrew.search.internal.application.RecruitReindexService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
@@ -90,6 +95,9 @@ class SearchModuleTests {
     ArtworkReindexService reindexService;
 
     @Autowired
+    RecruitReindexService recruitReindexService;
+
+    @Autowired
     MediaCallbackService mediaCallbackService;
 
     @Test
@@ -138,11 +146,14 @@ class SearchModuleTests {
         String authorId = registerMember();
         String jobPostingId = publishedJobPosting(authorId, token + " 구인 공고");
 
+        // RecruitSearchIndexer도 ArtworkSearchIndexer와 동일하게 @ApplicationModuleListener(비동기)라 폴링한다.
+        List<SearchResultItem> found = awaitSearchResult(() -> searchService.search(new SearchQuery(
+                token, List.of(PostType.JOB_POSTING), null, null, null, null, null, null, null, null, 20)));
+
+        assertThat(found).extracting(SearchResultItem::id).containsExactly(jobPostingId);
+        assertThat(found).extracting(SearchResultItem::postType).containsOnly(PostType.JOB_POSTING);
         SearchPage<SearchResultItem> page = searchService.search(new SearchQuery(
                 token, List.of(PostType.JOB_POSTING), null, null, null, null, null, null, null, null, 20));
-
-        assertThat(page.items()).extracting(SearchResultItem::id).containsExactly(jobPostingId);
-        assertThat(page.items()).extracting(SearchResultItem::postType).containsOnly(PostType.JOB_POSTING);
         assertThat(page.totalCount()).isEqualTo(1);
     }
 
@@ -153,7 +164,7 @@ class SearchModuleTests {
         String jobPostingId = publishedJobPosting(authorId, token + " 구인 공고");
         ArtworkInfo artwork = uploadReadyArtwork(ArtworkField.WEBTOON, CreativeType.ORIGINAL,
                 List.of(ArtworkRole.SKETCH), List.of("드라마"), AgeRating.ALL, token + " 포트폴리오");
-        // 구인글은 즉시 조회되지만 작품 색인은 비동기라, 두 소스가 모두 반영될 때까지 기다린다
+        // 두 소스 모두 @ApplicationModuleListener(비동기) 색인이라, 둘 다 반영될 때까지 기다린다
         awaitCondition(() -> searchService.search(mergedQuery(token, 20)).items().size() == 2);
 
         SearchPage<SearchResultItem> page = searchService.search(mergedQuery(token, 20));
@@ -187,6 +198,91 @@ class SearchModuleTests {
 
         assertThat(page.items()).isEmpty();
         assertThat(page.totalCount()).isZero();
+    }
+
+    @Test
+    void recruit_승인되지_않은_구인글은_검색에서_제외된다() {
+        String token = uniqueToken();
+        String authorId = registerMember();
+        // 커맨드의 submit=true라 저장 즉시 PENDING이며, 공개 검색 대상이 아니다
+        JobPostingInfo pending = recruitService.createJobPosting(authorId, jobPostingCommand(token + " 미공개 공고"));
+
+        SearchPage<SearchResultItem> beforeApproval = searchService.search(recruitQuery(token, 20));
+        assertThat(beforeApproval.items()).isEmpty();
+
+        String publishedId = recruitService.approveJobPosting(pending.id()).id();
+
+        List<SearchResultItem> found = awaitSearchResult(() -> searchService.search(recruitQuery(token, 20)));
+        assertThat(found).extracting(SearchResultItem::id).containsExactly(publishedId);
+    }
+
+    @Test
+    void recruit_장르_태그_필터가_적용된다() {
+        String token = uniqueToken();
+        String authorId = registerMember();
+        String matchingGenre = token + "-액션";
+        String teamPostingId = recruitService.createTeamPosting(authorId, teamPostingCommand(matchingGenre)).id();
+        publishedJobPosting(authorId, token + " 구인 공고"); // 장르가 다른 구인글 — 필터에 걸리지 않아야 한다
+
+        List<SearchResultItem> byGenre = awaitSearchResult(() -> searchService.search(new SearchQuery(
+                null, null, null, null, null, null, List.of(matchingGenre), null, null, null, 20)));
+
+        assertThat(byGenre).extracting(SearchResultItem::id).containsExactly(teamPostingId);
+    }
+
+    @Test
+    void recruit_검색_결과는_커서로_이어서_조회되고_hasNext와_totalCount가_정확하다() {
+        String token = uniqueToken();
+        String authorId = registerMember();
+        String firstId = publishedJobPosting(authorId, token + " 공고 1");
+        String secondId = publishedJobPosting(authorId, token + " 공고 2");
+
+        awaitCondition(() -> searchService.search(recruitQuery(token, 20)).items().size() == 2);
+
+        SearchPage<SearchResultItem> fullPage = searchService.search(recruitQuery(token, 20));
+        assertThat(fullPage.totalCount()).isEqualTo(2);
+        assertThat(fullPage.hasNext()).isFalse();
+
+        SearchPage<SearchResultItem> firstPage = searchService.search(recruitQuery(token, 1));
+        assertThat(firstPage.items()).hasSize(1);
+        assertThat(firstPage.hasNext()).isTrue();
+        assertThat(firstPage.totalCount()).isEqualTo(2);
+
+        SearchPage<SearchResultItem> secondPage = searchService.search(new SearchQuery(
+                token, List.of(PostType.JOB_POSTING, PostType.JOB_SEEKING, PostType.TEAM_RECRUIT),
+                null, null, null, null, null, null, null, firstPage.nextCursor(), 1));
+        assertThat(secondPage.items()).hasSize(1);
+        assertThat(secondPage.hasNext()).isFalse();
+        assertThat(List.of(firstPage.items().get(0).id(), secondPage.items().get(0).id()))
+                .containsExactlyInAnyOrder(firstId, secondId);
+    }
+
+    @Test
+    void recruit_전체_재색인_후에도_기존_구인글이_검색된다() {
+        String token = uniqueToken();
+        String authorId = registerMember();
+        String jobPostingId = publishedJobPosting(authorId, token + " 재색인 공고");
+        awaitSearchResult(() -> searchService.search(recruitQuery(token, 20)));
+
+        // alias(recruit_posts)를 새 물리 인덱스로 원자적으로 전환 — docs/design/search-module-design.md §5.3
+        recruitReindexService.reindexAll();
+
+        SearchPage<SearchResultItem> found = searchService.search(recruitQuery(token, 20));
+        assertThat(found.items()).extracting(SearchResultItem::id).containsExactly(jobPostingId);
+    }
+
+    private SearchQuery recruitQuery(String q, int size) {
+        return new SearchQuery(q, List.of(PostType.JOB_POSTING, PostType.JOB_SEEKING, PostType.TEAM_RECRUIT),
+                null, null, null, null, null, null, null, null, size);
+    }
+
+    private CreateTeamPostingCommand teamPostingCommand(String genre) {
+        return new CreateTeamPostingCommand(
+                "팀원 모집", false, false, false, "팀장", "010-0000-0000", "팀 소개",
+                List.of("공모전"), TeamWorkLocationType.ONLINE, null,
+                List.of("배경"), List.of(genre), false, true, null, null, 3, "포트폴리오 심사",
+                TeamActivityDuration.THREE_MONTHS, TeamWeeklyActivityTime.TWO_TO_THREE_TIMES,
+                "프로젝트 소개", "https://img.example/team.png", List.of());
     }
 
     @Test
@@ -233,7 +329,13 @@ class SearchModuleTests {
 
     // 작성 → 관리자 승인까지 마친 PUBLISHED 구인글 ID를 반환한다(커맨드의 submit=true라 저장 즉시 PENDING).
     private String publishedJobPosting(String authorMemberId, String title) {
-        JobPostingInfo created = recruitService.createJobPosting(authorMemberId, new CreateJobPostingCommand(
+        JobPostingInfo created = recruitService.createJobPosting(authorMemberId, jobPostingCommand(title));
+        return recruitService.approveJobPosting(created.id()).id();
+    }
+
+    // submit=true라 저장 즉시 PENDING — 검색 노출 전 상태를 검증할 때는 approveJobPosting을 호출하지 않는다.
+    private CreateJobPostingCommand jobPostingCommand(String title) {
+        return new CreateJobPostingCommand(
                 title, "앳크루", "대표", "웹툰", "서울", "02-000-0000", "https://example.com",
                 "회사 소개", true, true, false,
                 List.of("작화"), List.of("로맨스"), "작업 범위", null, 2, "서류 → 면접",
@@ -242,8 +344,7 @@ class SearchModuleTests {
                 null, null, true, true, true,
                 JobPaymentType.ANNUAL_SALARY, JobPaymentUnit.ANNUAL, 3000L, 4000L, true,
                 null, null, false, "복지 설명", List.of("식대"),
-                "https://img.example/thumb.png", List.of("https://img.example/ref.png"), true));
-        return recruitService.approveJobPosting(created.id()).id();
+                "https://img.example/thumb.png", List.of("https://img.example/ref.png"), true);
     }
 
     private ArtworkInfo uploadReadyArtwork(ArtworkField field, CreativeType creativeType,

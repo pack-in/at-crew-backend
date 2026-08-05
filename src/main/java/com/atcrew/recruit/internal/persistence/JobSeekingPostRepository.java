@@ -6,6 +6,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
+import java.time.Instant;
 import java.util.List;
 
 // 검색(RecruitSearchQueryRepository)은 조건 조합이 동적이라 Specification으로 조회한다.
@@ -34,4 +35,9 @@ public interface JobSeekingPostRepository extends JpaRepository<JobSeekingPost, 
     // 휴지통 목록 다음 페이지
     List<JobSeekingPost> findByAuthorMemberIdAndStatusAndIdLessThanOrderByIdDesc(
             String authorMemberId, JobSeekingPostStatus status, String cursorId, Pageable pageable);
+
+    // getForReindex(JOB_SEEKING) — 생성순 오름차순, 커서 있음/없음
+    List<JobSeekingPost> findByCreatedAtAfterOrderByCreatedAtAsc(Instant cursor, Pageable pageable);
+
+    List<JobSeekingPost> findAllByOrderByCreatedAtAsc(Pageable pageable);
 }
