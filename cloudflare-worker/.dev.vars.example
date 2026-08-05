@@ -1,0 +1,3 @@
+CALLBACK_SECRET=dev-internal-secret
+INTERNAL_SECRET=dev-internal-secret
+SERVER_CALLBACK_URL=http://localhost:8080/internal/media/images/processed

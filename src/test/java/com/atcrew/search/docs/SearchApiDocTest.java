@@ -115,6 +115,9 @@ class SearchApiDocTest extends RestDocsIntegrationSupport {
         String token = "token" + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
         publishedJobPosting(token + " 구인 공고");
 
+        // RecruitSearchIndexer도 ArtworkSearchIndexer와 동일하게 @ApplicationModuleListener(비동기)라 폴링한다.
+        awaitRecruitIndexed(token);
+
         mockMvc.perform(get("/api/search")
                         .param("q", token)
                         .param("postTypes", "JOB_POSTING"))
@@ -199,6 +202,22 @@ class SearchApiDocTest extends RestDocsIntegrationSupport {
 
     private void awaitIndexed() throws InterruptedException {
         // ArtworkSearchIndexer가 비동기로 색인을 반영할 시간을 확보한다
-        Thread.sleep(Duration.ofSeconds(3).toMillis());
+        Thread.sleep(Duration.ofSeconds(8).toMillis());
+    }
+
+    /** RecruitSearchIndexer의 @ApplicationModuleListener는 비동기라, 색인 반영까지 폴링한다. */
+    private void awaitRecruitIndexed(String token) throws Exception {
+        Instant deadline = Instant.now().plus(Duration.ofSeconds(30));
+        while (Instant.now().isBefore(deadline)) {
+            String body = mockMvc.perform(get("/api/search")
+                            .param("q", token)
+                            .param("postTypes", "JOB_POSTING"))
+                    .andReturn().getResponse().getContentAsString();
+            if (objectMapper.readTree(body).path("data").path("items").size() > 0) {
+                return;
+            }
+            Thread.sleep(300);
+        }
+        throw new AssertionError("색인 반영 대기 시간 초과");
     }
 }

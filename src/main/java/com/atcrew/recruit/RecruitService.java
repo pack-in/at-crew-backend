@@ -2,6 +2,8 @@ package com.atcrew.recruit;
 
 import com.atcrew.common.response.CursorPage;
 
+import java.util.Optional;
+
 /**
  * recruit 모듈 공개 API (docs/design/recruit-module-design.md §4.1, §4.2, §4.3, §6.1).
  */
@@ -18,8 +20,12 @@ public interface RecruitService {
     // 기업 마이페이지 "구인글 업로드 카드" 진입점 판단 — 해당 회원이 PUBLISHED 구인글을 하나라도 갖고 있는지 (company 모듈 소비)
     boolean hasOpenJobPosting(String companyMemberId);
 
-    // 구인글/구직글/팀원모집글 통합 검색 — PUBLISHED만, (createdAt, id) keyset 페이지네이션 (search 모듈 소비)
-    RecruitSearchPage searchPosts(RecruitSearchQuery query);
+    // 검색 색인 단건 재조회 — search 모듈이 RecruitPostChangedEvent 수신 시 호출 (artwork의
+    // getArtworkForIndexing과 동일 계약, docs/design/search-module-design.md §5.1)
+    Optional<RecruitIndexInfo> getPostForIndexing(RecruitPostType postType, String postId);
+
+    // 검색 전체 재색인 배치 조회 — 유형별로 개별 커서를 순회한다(artwork의 getArtworksForReindex와 동일 계약)
+    CursorPage<RecruitIndexInfo> getPostsForReindex(RecruitPostType postType, String cursor, int size);
 
     // === JobPosting CRUD (§4.1) ===
 

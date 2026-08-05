@@ -16,8 +16,8 @@ import java.util.stream.Collectors;
  * <p>정렬 모드에 따라 값 개수가 다르다 — RELEVANCE: [score, createdAtMillis, id], LATEST: [createdAtMillis, id].
  * 타입 변환은 정렬 모드를 아는 {@link ArtworkSearchQueryRepository}가 담당한다.
  *
- * <p>포트폴리오와 recruit 결과를 함께 노출할 때는 두 소스가 같은 커서를 공유해야 하므로(최신순 병합)
- * 서비스 계층도 이 인코딩을 사용한다.
+ * <p>포트폴리오와 recruit를 함께 노출하는 병합검색은 두 소스의 id가 서로 무관해 이 커서를 공유할 수 없다 —
+ * 소스별로 이 클래스가 만든 커서 문자열을 그대로 {@link MergedSearchCursor}에 담아 독립적으로 페이지네이션한다.
  */
 public class SearchCursor {
 

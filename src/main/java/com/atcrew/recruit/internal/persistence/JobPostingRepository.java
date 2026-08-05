@@ -76,4 +76,9 @@ public interface JobPostingRepository extends JpaRepository<JobPosting, String>,
     @Modifying
     @Query("UPDATE JobPosting p SET p.bookmarkCount = p.bookmarkCount + 1 WHERE p.id = :id")
     void incrementBookmarkCount(@Param("id") String id);
+
+    // getPostsForReindex(JOB_POSTING) — 생성순 오름차순, 커서 있음/없음
+    List<JobPosting> findByCreatedAtAfterOrderByCreatedAtAsc(Instant cursor, Pageable pageable);
+
+    List<JobPosting> findAllByOrderByCreatedAtAsc(Pageable pageable);
 }

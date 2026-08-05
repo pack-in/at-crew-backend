@@ -8,10 +8,19 @@
 media 모듈 추출(이슈 [#42](https://github.com/pack-in/at-crew-backend/issues/42), PR
 [#43](https://github.com/pack-in/at-crew-backend/pull/43)) main 병합 완료. **가장 중요한 후속 조치**:
 recruit 이미지 업로드가 실제로 동작하려면 Cloudflare Worker 스크립트가 트리거/콜백 페이로드를
-`artworkId` 단일 필드에서 `ownerType`+`ownerId`로 받도록 바뀌어야 한다 — 이 레포 밖 작업이라 다음
-세션이 사용자와 함께 Worker 관리 위치(수동 dashboard vs 별도 저장소의 wrangler CI)부터 확인해야
-한다. 롤아웃 순서는 `docs/design/media-module-design.md` §9.2에 정리돼 있다(서버 선배포 → Worker
-배포 → 구 경로 제거 — 순서를 반대로 하면 기존 artwork 업로드가 깨진다는 걸 로컬 검증으로 확인함).
+`artworkId` 단일 필드에서 `ownerType`+`ownerId`로 받도록 바뀌어야 한다. 롤아웃 순서는
+`docs/design/media-module-design.md` §9.2에 정리돼 있다(서버 선배포 → Worker 배포 → 구 경로 제거 —
+순서를 반대로 하면 기존 artwork 업로드가 깨진다는 걸 로컬 검증으로 확인함).
+
+**2026-08-05**: Worker 관리 위치를 이 레포 `cloudflare-worker/`(wrangler로 버전관리)로 확정하고
+스캐폴드(`wrangler.toml`, `src/index.js`, `README.md`)를 작성했다. `src/index.js`는
+`ownerType`/`ownerId`/`imageKeys`/`variantProfile` 신규 계약, Cloudflare Images 바인딩(`env.IMAGES`)으로
+원본 avif 변환·3:4 294px 썸네일 크롭·성인물 blur(20)까지 구현한 상태 — **미검증**(실제 Cloudflare
+계정에 배포해본 적 없음). 남은 건 전부 이 레포 밖 사용자 작업: Cloudflare 계정 생성, `wrangler login`,
+R2 버킷 생성(`at-crew-media` — artwork·recruit 공용, 버킷 이름은 2026-08-05 세션에서 `atcrew-artwork` →
+`atcrew-media` → `at-crew-media`로 정정), 시크릿 등록(`wrangler secret put`), `wrangler dev --remote`로 로컬
+검증, `wrangler deploy`, 서버 쪽 `WORKER_TRIGGER_URL`/`R2_*`/`WORKER_CALLBACK_SECRET`/
+`ARTWORK_INTERNAL_SECRET` 환경변수 실제 값 채우기. 상세 절차는 `cloudflare-worker/README.md` 참고.
 
 ## 2026-08-03 점검 결과
 
@@ -59,14 +68,14 @@ recruit 모듈(구인글/팀원모집글/구직글/지원/끌어올리기/관심
    필터 chip은 `ArtworkRole` enum이다. 지금은 enum 상수 이름으로만 문자열 비교하므로 실질적으로 거의
    매칭되지 않는다. Notion 태그 정본 목록이 확정되면 양쪽을 같은 어휘로 정규화해야 한다
    (`SearchQuery.java` TODO, `search-module-design.md` §9-2와 동일 과제)
-2. **recruit 검색의 ES 색인 이관 검토** — 현재 제목 `LIKE '%q%'` + 태그 EXISTS 조인이라 인덱스를 타지
-   않는다. 공개 글이 늘면 artwork처럼 색인 파이프라인으로 옮기는 편이 낫다
-   (`RecruitSearchQueryRepository` 클래스 주석에 근거 기록)
+2. **recruit 검색의 ES 색인 이관** — 완료함(2026-08-05). RDB `LIKE` + EXISTS 서브쿼리 기반이던
+   `RecruitSearchService`/`RecruitSearchQueryRepository`(recruit 모듈)를 삭제하고, artwork와 동일하게
+   `search` 모듈이 `recruit_posts` ES 인덱스를 소유·질의하도록 이관함 — `RecruitSearchIndexer`/
+   `RecruitReindexService`/`search.internal.persistence.RecruitSearchQueryRepository` 참고
 3. **병합 검색의 알려진 제약** — 포트폴리오와 recruit을 함께 요청하면 (a) 정렬은 항상 최신순 고정
    (관련도 점수를 소스 간 비교할 수 없음), (b) 작품 분야·창작 유형·연령대·소재 대상 필터가 걸리면
-   recruit은 결과에서 제외, (c) 커서가 `(createdAtMillis, id)` 값 기반이라 서로 다른 소스의 항목이
-   **밀리초까지 동일**하면 경계에서 한 건이 밀릴 수 있다. 기획상 문제가 되면 소스별 서브커서 방식으로
-   재설계 필요
+   recruit은 결과에서 제외. (a)(b)는 의도된 동작. (c) 커서 밀리초 충돌 경계 누락 문제는 소스별
+   서브커서(`MergedSearchCursor`) 방식으로 재설계해 해소함 — `SearchServiceImpl.searchMerged` 참고
 4. **관심 작가 검색 후보 로딩** — `q`가 있으면 해당 기업이 좋아요한 작가 ID를 전부 읽어 member 모듈에
    넘기고 `IN` 절로 페이지네이션한다. 좋아요 규모가 커지면(수천 건) 개선 필요
 5. **`CompanyInfo.hasOpenJobPosting` 조회 비용** — 기업 프로필 단건 조회마다 recruit `exists` 쿼리가

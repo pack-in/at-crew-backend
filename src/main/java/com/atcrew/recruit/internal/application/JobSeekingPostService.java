@@ -5,18 +5,24 @@ import com.atcrew.media.MediaOwnerType;
 import com.atcrew.recruit.CreateJobSeekingPostCommand;
 import com.atcrew.recruit.JobSeekingPostInfo;
 import com.atcrew.recruit.JobSeekingPostStatus;
+import com.atcrew.recruit.RecruitIndexInfo;
+import com.atcrew.recruit.RecruitPostChangedEvent;
+import com.atcrew.recruit.RecruitPostType;
 import com.atcrew.recruit.UpdateJobSeekingPostCommand;
 import com.atcrew.recruit.internal.domain.JobSeekingPost;
 import com.atcrew.recruit.internal.exception.RecruitErrorCode;
 import com.atcrew.recruit.internal.exception.RecruitException;
 import com.atcrew.recruit.internal.persistence.JobSeekingPostRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * 구직글 CRUD (docs/design/recruit-module-design.md §2.3, §4.2).
@@ -29,12 +35,14 @@ class JobSeekingPostService {
     private final JobSeekingPostRepository jobSeekingPostRepository;
     private final AuthorNameResolver authorNameResolver;
     private final RecruitImageService recruitImageService;
+    private final ApplicationEventPublisher eventPublisher;
 
     JobSeekingPostService(JobSeekingPostRepository jobSeekingPostRepository, AuthorNameResolver authorNameResolver,
-            RecruitImageService recruitImageService) {
+            RecruitImageService recruitImageService, ApplicationEventPublisher eventPublisher) {
         this.jobSeekingPostRepository = jobSeekingPostRepository;
         this.authorNameResolver = authorNameResolver;
         this.recruitImageService = recruitImageService;
+        this.eventPublisher = eventPublisher;
     }
 
     JobSeekingPostInfo create(String memberId, CreateJobSeekingPostCommand command) {
@@ -48,6 +56,7 @@ class JobSeekingPostService {
                 recruitImageService.register(MediaOwnerType.JOB_SEEKING_POST, saved.getId(),
                         null, command.referenceImages()),
                 saved::markImageProcessingPending, saved::markImageProcessingReady);
+        publishChanged(saved.getId());
         return toInfo(saved);
     }
 
@@ -64,23 +73,27 @@ class JobSeekingPostService {
                             null, post.getReferenceImages()),
                     post::markImageProcessingPending, post::markImageProcessingReady);
         }
+        publishChanged(postId);
         return toInfo(post); // 트랜잭션 커밋 시점 dirty checking — 명시적 save() 불필요
     }
 
     JobSeekingPostInfo publish(String memberId, String postId) {
         JobSeekingPost post = getOwned(postId, memberId);
         post.publish();
+        publishChanged(postId);
         return toInfo(post);
     }
 
     JobSeekingPostInfo close(String memberId, String postId) {
         JobSeekingPost post = getOwned(postId, memberId);
         post.close();
+        publishChanged(postId);
         return toInfo(post);
     }
 
     void delete(String memberId, String postId) {
         getOwned(postId, memberId).moveToTrash();
+        publishChanged(postId);
     }
 
     @Transactional(readOnly = true)
@@ -97,6 +110,7 @@ class JobSeekingPostService {
     JobSeekingPostInfo restore(String memberId, String postId) {
         JobSeekingPost post = getOwned(postId, memberId);
         post.restore();
+        publishChanged(postId);
         return toInfo(post);
     }
 
@@ -130,6 +144,56 @@ class JobSeekingPostService {
                 : jobSeekingPostRepository.findByStatusAndIdLessThanOrderByIdDesc(
                         JobSeekingPostStatus.PUBLISHED, cursor, pageable);
         return toInfoPage(posts, size);
+    }
+
+    @Transactional(readOnly = true)
+    Optional<RecruitIndexInfo> getForIndexing(String postId) {
+        return jobSeekingPostRepository.findById(postId).map(this::toIndexInfo);
+    }
+
+    @Transactional(readOnly = true)
+    CursorPage<RecruitIndexInfo> getForReindex(String cursor, int size) {
+        int limit = size + 1;
+        List<JobSeekingPost> posts = cursor != null
+                ? jobSeekingPostRepository.findByCreatedAtAfterOrderByCreatedAtAsc(parseCursor(cursor), PageRequest.of(0, limit))
+                : jobSeekingPostRepository.findAllByOrderByCreatedAtAsc(PageRequest.of(0, limit));
+        if (posts.isEmpty()) {
+            return CursorPage.empty();
+        }
+        boolean hasNext = posts.size() > size;
+        List<JobSeekingPost> page = hasNext ? posts.subList(0, size) : posts;
+        List<RecruitIndexInfo> items = page.stream().map(this::toIndexInfo).toList();
+        String nextCursor = hasNext ? String.valueOf(page.get(page.size() - 1).getCreatedAt().toEpochMilli()) : null;
+        return CursorPage.of(items, nextCursor);
+    }
+
+    private void publishChanged(String postId) {
+        eventPublisher.publishEvent(new RecruitPostChangedEvent(postId, RecruitPostType.JOB_SEEKING));
+    }
+
+    // 구직글은 썸네일이 없다(설계 §2.3) — thumbnailKey는 항상 null.
+    private RecruitIndexInfo toIndexInfo(JobSeekingPost post) {
+        return new RecruitIndexInfo(
+                post.getId(),
+                RecruitPostType.JOB_SEEKING,
+                post.getTitle(),
+                post.getRoles(),
+                post.getGenres(),
+                post.getAuthorMemberId(),
+                authorNameResolver.resolve(post.getAuthorMemberId()),
+                null,
+                post.getStatus().name(),
+                post.getCreatedAt(),
+                post.getUpdatedAt()
+        );
+    }
+
+    private Instant parseCursor(String cursor) {
+        try {
+            return Instant.ofEpochMilli(Long.parseLong(cursor));
+        } catch (NumberFormatException e) {
+            throw new RecruitException(RecruitErrorCode.INVALID_CURSOR, cursor);
+        }
     }
 
     private JobSeekingPost getOwned(String postId, String memberId) {
