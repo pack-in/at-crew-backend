@@ -12,7 +12,7 @@ Cloudflare Worker. 계약은 `docs/design/media-module-design.md` §6~7 참고.
 cd cloudflare-worker
 npm install
 npx wrangler login                      # 브라우저에서 Cloudflare 로그인
-npx wrangler r2 bucket create at-crew-media   # 버킷이 이미 있으면 생략
+npx wrangler r2 bucket create at-crew-storage   # 버킷이 이미 있으면 생략
 ```
 
 시크릿 등록 (값은 서버 `.env`의 `WORKER_CALLBACK_SECRET`/`ARTWORK_INTERNAL_SECRET`과 동일해야 함):

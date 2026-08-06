@@ -2,12 +2,16 @@ name = "at-crew-media-worker"
 main = "src/index.js"
 compatibility_date = "2026-08-05"
 
+# 계정이 여러 개인 경우(danhandev 개인 계정 vs sehandev-account 팀 공용 계정) 매번 선택 프롬프트가
+# 뜨는 걸 막기 위해 고정. at-crew-storage 버킷이 있는 sehandev-account로 지정함.
+account_id = "8ffe00cd867bc560cfef7b6ab0711b14"
+
 # R2 버킷 바인딩 — 서버(application.yml의 cloudflare.r2.bucket)와 반드시 같은 버킷 이름이어야 한다.
 # artwork·recruit(구인글/팀원모집글/구직글) 이미지가 전부 이 한 버킷을 공유한다 — media 모듈은
 # ownerId를 불투명 문자열로만 다루고 소유 타입별로 버킷을 나누지 않는다.
 [[r2_buckets]]
 binding = "MEDIA_BUCKET"
-bucket_name = "at-crew-media"
+bucket_name = "at-crew-storage"
 
 # Cloudflare Images 변환 바인딩 — resize/crop/blur/avif 인코딩을 코드 없이 처리한다.
 [images]
