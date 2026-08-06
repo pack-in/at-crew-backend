@@ -79,11 +79,12 @@ async function processOne(env, ownerType, ownerId, imageKey, variantProfile) {
   }
 }
 
-function encodeOriginal(env, bytes) {
-  return env.IMAGES.input(bytes).output({ format: "image/avif", quality: AVIF_QUALITY }).response();
+async function encodeOriginal(env, bytes) {
+  const result = await env.IMAGES.input(bytes).output({ format: "image/avif", quality: AVIF_QUALITY });
+  return result.response();
 }
 
-function encodeThumb(env, bytes, { blur }) {
+async function encodeThumb(env, bytes, { blur }) {
   let pipeline = env.IMAGES.input(bytes).transform({
     width: THUMB_WIDTH,
     height: THUMB_HEIGHT,
@@ -91,7 +92,8 @@ function encodeThumb(env, bytes, { blur }) {
     gravity: "auto",
   });
   if (blur) pipeline = pipeline.transform({ blur: ADULT_BLUR });
-  return pipeline.output({ format: "image/avif", quality: AVIF_QUALITY }).response();
+  const result = await pipeline.output({ format: "image/avif", quality: AVIF_QUALITY });
+  return result.response();
 }
 
 async function callback(env, body) {
