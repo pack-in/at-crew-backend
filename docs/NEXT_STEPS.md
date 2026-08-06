@@ -5,22 +5,31 @@
 
 ## 2026-08-06 진행 상황
 
-Cloudflare 계정·R2·Worker 로컬 검증까지 완료했다.
+Cloudflare Worker 배포 및 전체 파이프라인(트리거→이미지 변환→콜백) 검증까지 완료했다.
 
 - R2 버킷은 팀 공용 계정 `sehandev-account`(Account ID `8ffe00cd867bc560cfef7b6ab0711b14`)에
   `at-crew-storage`라는 이름으로 이미 2026-07-11에 만들어져 있었음 — 애초에 개인 계정
   `Danhandev@gmail.com's Account`가 아니라 이 계정을 썼어야 했다. `wrangler.toml`에 `account_id`를
   고정해 매번 계정 선택 프롬프트가 안 뜨게 함. `application.yml`/`wrangler.toml`/README의 버킷 이름도
   설계 당시 가정했던 `at-crew-media`에서 실제 버킷명 `at-crew-storage`로 전부 정정함.
-- `wrangler dev --remote`로 실제 Cloudflare Images를 통해 이미지 변환 파이프라인을 검증함(테스트 이미지
-  업로드 → Worker 트리거 → 변환된 original/thumb/thumb-adult 다운로드 → 육안 확인, 정상). 이 과정에서
+- `wrangler dev --remote`로 실제 Cloudflare Images를 통해 이미지 변환 파이프라인을 먼저 검증함(테스트
+  이미지 업로드 → Worker 트리거 → 변환된 original/thumb/thumb-adult 다운로드 → 육안 확인, 정상). 이 과정에서
   `src/index.js`의 실버그 발견: `env.IMAGES...output({...})`이 Promise를 반환하는데 `await` 없이 바로
   `.response()`를 체이닝해서 "response is not a function" 에러 발생 — `encodeOriginal`/`encodeThumb`를
-  `async` 함수로 바꾸고 `output()` 결과를 `await`한 뒤 `.response()`를 호출하도록 수정함(수정 완료,
-  커밋 전).
-- **미완료**: 실제 `wrangler deploy`(아직 로컬 dev 검증만 함), 콜백 검증(로컬 서버를 안 띄운 상태로
-  테스트해서 `SERVER_CALLBACK_URL` 왕복은 아직 안 봄 — 실 서버 붙여서 확인 필요), 프로덕션 시크릿 등록
-  (`wrangler secret put`), 서버 `.env`의 `WORKER_TRIGGER_URL` 채우기(배포 후 나오는 workers.dev URL).
+  `async` 함수로 바꾸고 `output()` 결과를 `await`한 뒤 `.response()`를 호출하도록 수정(커밋 완료).
+- `wrangler deploy`로 실배포 완료 — `https://at-crew-media-worker.sehandev.workers.dev`. 프로덕션
+  시크릿(`CALLBACK_SECRET`/`INTERNAL_SECRET`/`SERVER_CALLBACK_URL`)도 `wrangler secret put`으로 등록함.
+  로컬 서버를 `cloudflared tunnel --url http://localhost:8080`로 임시 공개해 배포된 Worker가 실제로
+  콜백을 보내는지까지 왕복 검증함 — Worker 트리거(202) → Cloudflare Images 처리 → R2 저장 → 터널 경유
+  콜백 → 서버 `X-Internal-Secret` 검증(204) 전부 확인, `MediaCallbackService.process()`가 매칭되는
+  `media_assets` 행이 없을 때 조용히 no-op하는 것도 코드로 확인(정상 설계 — 예외 아님).
+- **다음 세션 시작 전 확인**: 배포된 Worker의 `SERVER_CALLBACK_URL` 시크릿이 위 검증 때 쓴 임시
+  `trycloudflare.com` 터널 주소를 그대로 가리키고 있다 — 그 터널 터미널을 닫으면 배포된 Worker의
+  콜백은 다시 실패한다. 실제 운영에서는 로드맵 P6(prod 호스팅 확정)에서 서버가 고정 공인 URL을
+  가진 뒤 `wrangler secret put SERVER_CALLBACK_URL`로 재등록해야 함. 그 전까지는 이 상태가
+  "로컬 개발 중 수동 검증 가능" 정도의 임시 상태임을 인지할 것.
+- 테스트로 R2에 올린 `raw/test.jpg`, `raw/test-prod.jpg`와 그 변환 결과물은 정리 필요(안 지웠으면
+  `wrangler r2 object delete`로 삭제).
 
 ## 2026-08-04 점검 결과
 
