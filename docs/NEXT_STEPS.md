@@ -3,6 +3,25 @@
 > 이 문서는 세션 인수인계용 체크리스트다. 장기 로드맵 전체는 `docs/roadmap.md`가 정본이고,
 > 이 문서는 "지금 당장 뭐부터 볼지"만 정리한다. 작업 완료 후 이 파일은 삭제해도 된다.
 
+## 2026-08-06 진행 상황
+
+Cloudflare 계정·R2·Worker 로컬 검증까지 완료했다.
+
+- R2 버킷은 팀 공용 계정 `sehandev-account`(Account ID `8ffe00cd867bc560cfef7b6ab0711b14`)에
+  `at-crew-storage`라는 이름으로 이미 2026-07-11에 만들어져 있었음 — 애초에 개인 계정
+  `Danhandev@gmail.com's Account`가 아니라 이 계정을 썼어야 했다. `wrangler.toml`에 `account_id`를
+  고정해 매번 계정 선택 프롬프트가 안 뜨게 함. `application.yml`/`wrangler.toml`/README의 버킷 이름도
+  설계 당시 가정했던 `at-crew-media`에서 실제 버킷명 `at-crew-storage`로 전부 정정함.
+- `wrangler dev --remote`로 실제 Cloudflare Images를 통해 이미지 변환 파이프라인을 검증함(테스트 이미지
+  업로드 → Worker 트리거 → 변환된 original/thumb/thumb-adult 다운로드 → 육안 확인, 정상). 이 과정에서
+  `src/index.js`의 실버그 발견: `env.IMAGES...output({...})`이 Promise를 반환하는데 `await` 없이 바로
+  `.response()`를 체이닝해서 "response is not a function" 에러 발생 — `encodeOriginal`/`encodeThumb`를
+  `async` 함수로 바꾸고 `output()` 결과를 `await`한 뒤 `.response()`를 호출하도록 수정함(수정 완료,
+  커밋 전).
+- **미완료**: 실제 `wrangler deploy`(아직 로컬 dev 검증만 함), 콜백 검증(로컬 서버를 안 띄운 상태로
+  테스트해서 `SERVER_CALLBACK_URL` 왕복은 아직 안 봄 — 실 서버 붙여서 확인 필요), 프로덕션 시크릿 등록
+  (`wrangler secret put`), 서버 `.env`의 `WORKER_TRIGGER_URL` 채우기(배포 후 나오는 workers.dev URL).
+
 ## 2026-08-04 점검 결과
 
 media 모듈 추출(이슈 [#42](https://github.com/pack-in/at-crew-backend/issues/42), PR
