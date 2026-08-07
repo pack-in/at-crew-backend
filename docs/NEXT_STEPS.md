@@ -19,7 +19,10 @@
 (EC2 #2: elasticsearch), `deploy/nginx/api.at-crew.com.conf`, `deploy/deploy.sh`, `deploy/.env.example`
 전부 커밋 완료 — 상세는 `deploy/README.md`. 도메인은 `api.at-crew.com` 확정, Cloudflare SSL 모드는
 Flexible 전제. **다음 세션에서 IAM 키 받으면**: EC2 #1/#2 생성 → 보안 그룹 설정(§ 위 "비용 관리" 참고,
-ES는 퍼블릭 IP 없이 앱 서버 보안 그룹만 9200 허용) → `deploy/README.md`의 "최초 1회 설정" 그대로 진행
+ES는 퍼블릭 IP 없이 앱 서버 보안 그룹만 9200 허용) → `deploy/README.md`의 "최초 1회 설정" 그대로 진행. **prod 보안 결정 2건도 반영 완료**: Swagger UI/API
+문서는 prod에서 비활성화(`application-prod.yml`의 `springdoc.api-docs/swagger-ui.enabled: false` —
+SecurityConfig가 `/swagger-ui/**`를 permitAll로 열어둬서 꺼두지 않으면 API 스펙이 공개됨), `CORS_ALLOWED_ORIGINS`
+는 `https://at-crew.com`(끝 슬래시 없이 — Origin 헤더 규격상 슬래시 붙으면 매칭 안 됨)으로 확정
 → `deploy/.env.example`을 `.env`로 복사해 실값 채우기 → Cloudflare DNS A레코드 연결 → Worker
 `SERVER_CALLBACK_URL` 재등록.
 
