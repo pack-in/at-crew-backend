@@ -3,6 +3,27 @@
 > 이 문서는 세션 인수인계용 체크리스트다. 장기 로드맵 전체는 `docs/roadmap.md`가 정본이고,
 > 이 문서는 "지금 당장 뭐부터 볼지"만 정리한다. 작업 완료 후 이 파일은 삭제해도 된다.
 
+## 2026-08-07 진행 상황 (EC2 프로비저닝 완료)
+
+**AWS IAM 인증 완료·EC2 2대 실제 생성 완료**: root(sehandev)로부터 전용 IAM 사용자(`at-crew-be`,
+Account `820010786587`) Access Key 발급받아 `aws configure` 완료(리전 `ap-northeast-2` — laiteu
+인스턴스로 실제 확인함, 추정 아니었음). laiteu와 같은 기본 VPC(`vpc-9f11ccf4`) 재사용해 EC2 #1(앱+MariaDB,
+`i-0987d8df61c4b84d3`, 탄력적 IP `43.201.142.212`)·EC2 #2(Elasticsearch, `i-07b421fdc2d3f5aff`,
+프라이빗 IP `172.31.25.215`만) 생성. 보안 그룹·키페어(`at-crew-key`)까지 다 만들고 SSH 왕복(앱 서버 직접,
+검색 서버는 앱 서버 경유) 검증 완료. 상세는 `deploy/README.md` "프로비저닝된 리소스" 표.
+
+- **중간에 뚫린 구멍 하나 있었음**: 검색 서버 보안 그룹에 SSH를 "내 홈 IP"로만 열었는데, 그 서버는
+  애초에 퍼블릭 IP가 없어서 홈 IP로는 절대 못 닿는 구성이었다 — 실제 SSH 테스트(앱 서버 경유)를 해보고서야
+  발견, 앱 서버의 보안 그룹을 소스로 하는 규칙으로 교체해 해결. **교훈**: 보안 그룹 규칙은 "말이 되는지"
+  눈으로만 보지 말고 실제 접속 테스트로 확인할 것 — 특히 프라이빗 서브넷 리소스는 "누구 IP를 허용하느냐"보다
+  "애초에 그 경로로 패킷이 갈 수 있느냐"부터 따져야 함.
+- AMI는 Amazon Linux 2023(Ubuntu 아님) — `deploy/README.md` 초안이 `apt` 기준으로 잘못 적혀 있던 걸
+  `dnf`로 정정함.
+- **다음 세션**: `deploy/README.md` "최초 1회 설정" 순서대로 두 서버에 Docker/nginx 설치 → `.env` 실값
+  채우기(`ELASTICSEARCH_URIS`는 이미 채워둠) → Cloudflare DNS 연결(`api.at-crew.com`, 도메인 접근 권한은
+  아직 root한테 요청 안 한 상태 — 뒤로 미뤄둠) → Worker `SERVER_CALLBACK_URL` 재등록 → `deploy/deploy.sh`로
+  첫 배포.
+
 ## 2026-08-07 진행 상황 (병렬 워크트리 작업 2건 완료)
 
 **로드맵 #6 설정 나머지 — 완료** (커밋 `66958b7`/`5e608c6`/`26ab7dd`, 병합 `97a177c`): 로그아웃(`POST
