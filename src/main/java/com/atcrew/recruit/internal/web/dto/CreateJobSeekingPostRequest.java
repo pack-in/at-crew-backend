@@ -1,16 +1,19 @@
 package com.atcrew.recruit.internal.web.dto;
 
+import com.atcrew.artwork.ArtworkRole;
+import com.atcrew.artwork.Genre;
 import com.atcrew.recruit.FeedbackStyle;
 import com.atcrew.recruit.WorkStyle;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 import java.util.List;
 
 public record CreateJobSeekingPostRequest(
         @NotBlank @Size(max = 200) String title,                                        // 구직글 제목
-        @Size(max = 20) List<@NotBlank @Size(max = 100) String> roles,                  // 희망 역할
-        @Size(max = 20) List<@NotBlank @Size(max = 100) String> genres,                 // 희망 장르
+        @Size(max = 20) List<@NotNull ArtworkRole> roles,                               // 희망 역할
+        @Size(max = 20) List<@NotNull Genre> genres,                                    // 희망 장르
         @Size(max = 200) String drawingStyle,                                           // 작화 스타일
         FeedbackStyle preferredFeedbackStyle,                                           // 선호 피드백 방식
         WorkStyle workStyle,                                                            // 작업 스타일

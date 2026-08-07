@@ -107,7 +107,7 @@ public class Artwork {
     private ArtworkField artworkField;        // 작품 분야 (단일 선택)
     private CreativeType creativeType;        // 창작 유형 (단일 선택)
     private List<ArtworkRole> roles;          // 담당 업무 (다중 선택)
-    private List<String> genres;              // 장르 (다중 선택, 자유 입력)
+    private List<Genre> genres;               // 장르 (다중 선택, 정본 29종)
     private List<String> tags;                // 작품 태그 — 카드에 최대 7개 표시
 
     // 제작 정보
@@ -312,7 +312,7 @@ ArtworkStatus  : PROCESSING / READY / DELETED
      "artworkField": "WEBTOON",
      "creativeType": "ORIGINAL",
      "roles": ["ARTWORK", "COLORING"],
-     "genres": ["로맨스판타지"],
+     "genres": ["ROMANCE_FANTASY"],
      "tags": ["웹툰", "판타지", "연재중"],
      "ageRating": "ALL",
      "visibility": "PUBLIC",

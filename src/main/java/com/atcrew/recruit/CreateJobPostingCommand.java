@@ -1,5 +1,8 @@
 package com.atcrew.recruit;
 
+import com.atcrew.artwork.ArtworkRole;
+import com.atcrew.artwork.Genre;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -21,8 +24,8 @@ public record CreateJobPostingCommand(
         boolean isBusinessRegistered,           // 사업자등록 여부
         boolean isResumeRequired,               // 이력서 필수 여부
         boolean isCoverLetterRequired,          // 자기소개서 필수 여부
-        List<String> roles,                     // 모집 역할
-        List<String> genres,                    // 모집 장르
+        List<ArtworkRole> roles,                // 모집 역할
+        List<Genre> genres,                     // 모집 장르
         String workScope,                       // 작업 범위
         LocalDate deadline,                     // 마감일 (null이면 상시모집)
         Integer recruitCount,                   // 모집 인원

@@ -73,7 +73,7 @@ com.atcrew.artwork.internal/               ← 모듈 외부에서 직접 접근
 | `artworkField` | enum | ILLUSTRATION / WEBTOON / PRINT_COMIC / ANIMATION / ETC |
 | `creativeType` | enum | ORIGINAL / SECONDARY / FAN_ART / OC / COMMISSION |
 | `roles` | `List<ArtworkRole>` | 담당업무 (22종, 아래 표 참고) |
-| `genres` | `List<String>` | 장르 태그 (직접 입력 포함) |
+| `genres` | `List<Genre>` | 장르 태그 (정본 29종, 자유 입력 불가) |
 | `tags` | `List<String>` | 일반 태그 (최대 7개) |
 | `tools` | `List<String>` | 사용 도구 |
 | `workDuration` | `WorkDuration` | 작업 기간 (개월/일/시간/분) |
@@ -324,7 +324,7 @@ R2 업로드 완료 후 작품 메타데이터를 저장. 바로 `PROCESSING` �
   "artworkField": "ILLUSTRATION",
   "creativeType": "ORIGINAL",
   "roles": ["LINEART", "COLORING"],
-  "genres": ["판타지"],
+  "genres": ["FANTASY"],
   "tags": ["드래곤", "판타지"],
   "ageRating": "ALL",
   "visibility": "PUBLIC",

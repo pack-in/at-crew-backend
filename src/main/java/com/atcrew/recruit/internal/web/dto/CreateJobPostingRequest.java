@@ -1,5 +1,7 @@
 package com.atcrew.recruit.internal.web.dto;
 
+import com.atcrew.artwork.ArtworkRole;
+import com.atcrew.artwork.Genre;
 import com.atcrew.recruit.JobEmploymentType;
 import com.atcrew.recruit.JobPaymentType;
 import com.atcrew.recruit.JobPaymentUnit;
@@ -11,6 +13,7 @@ import jakarta.validation.constraints.FutureOrPresent;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
@@ -30,8 +33,8 @@ public record CreateJobPostingRequest(
         boolean isBusinessRegistered,
         boolean isResumeRequired,
         boolean isCoverLetterRequired,
-        @Size(max = 20) List<@NotBlank @Size(max = 100) String> roles,
-        @Size(max = 20) List<@NotBlank @Size(max = 100) String> genres,
+        @Size(max = 20) List<@NotNull ArtworkRole> roles,
+        @Size(max = 20) List<@NotNull Genre> genres,
         @Size(max = 500) String workScope,
         @FutureOrPresent LocalDate deadline,
         @Min(1) @Max(9999) Integer recruitCount,

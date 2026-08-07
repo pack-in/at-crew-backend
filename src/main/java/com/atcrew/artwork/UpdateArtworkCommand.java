@@ -12,7 +12,7 @@ public record UpdateArtworkCommand(
         ArtworkField artworkField,
         CreativeType creativeType,
         List<ArtworkRole> roles,
-        List<String> genres,
+        List<Genre> genres,
         List<String> tags,
         AgeRating ageRating,
         List<String> tools,

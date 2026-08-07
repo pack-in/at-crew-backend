@@ -45,8 +45,8 @@ class JobPostingApiDocTest extends RestDocsIntegrationSupport {
                         relaxedRequestFields(
                                 fieldWithPath("title").description("공고 제목 (최대 200자)"),
                                 fieldWithPath("companyName").description("회사명"),
-                                fieldWithPath("roles").description("모집 역할 목록"),
-                                fieldWithPath("genres").description("모집 장르 목록"),
+                                fieldWithPath("roles").description("모집 역할 목록 — 정본 담당 업무 enum 이름 (TOTAL_ARTWORK·LINEART·COLORING·BACKGROUND 등 ArtworkRole 22종)"),
+                                fieldWithPath("genres").description("모집 장르 목록 — 정본 장르 enum 이름 (FANTASY·ROMANCE_FANTASY·ACTION·BL 등 Genre 29종)"),
                                 fieldWithPath("deadline").description("마감일 (yyyy-MM-dd, null이면 상시모집)"),
                                 fieldWithPath("recruitCount").description("모집 인원"),
                                 fieldWithPath("employmentType").description("고용 형태 (FULL_TIME·OUTSOURCING·CONTRACT_TO_FULL·CONTRACT)"),
@@ -396,8 +396,8 @@ class JobPostingApiDocTest extends RestDocsIntegrationSupport {
         body.put("isBusinessRegistered", true);
         body.put("isResumeRequired", true);
         body.put("isCoverLetterRequired", false);
-        body.put("roles", List.of("채색"));
-        body.put("genres", List.of("로맨스"));
+        body.put("roles", List.of("COLORING"));
+        body.put("genres", List.of("ROMANCE_FANTASY"));
         body.put("workScope", "표지 채색 및 배경 작업");
         body.put("deadline", "2099-12-31");
         body.put("recruitCount", 2);

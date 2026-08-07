@@ -57,6 +57,7 @@ public class ArtworkSearchDocument {
     @Field(type = FieldType.Keyword)
     private String ageRating;
 
+    // 정본 태그(ArtworkRole/Genre/MaterialTarget)의 enum 상수 이름을 색인한다 — 필터도 같은 이름으로 매칭한다(§9-2).
     @Field(type = FieldType.Keyword)
     private List<String> roles;
 

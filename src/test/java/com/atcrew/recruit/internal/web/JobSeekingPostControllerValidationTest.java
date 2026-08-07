@@ -1,5 +1,6 @@
 package com.atcrew.recruit.internal.web;
 
+import com.atcrew.artwork.ArtworkRole;
 import com.atcrew.common.security.SecurityUtils;
 import com.atcrew.common.web.GlobalExceptionHandler;
 import com.atcrew.recruit.RecruitService;
@@ -15,7 +16,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.validation.beanvalidation.MethodValidationPostProcessor;
 
-import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -91,10 +92,7 @@ class JobSeekingPostControllerValidationTest {
 
     @Test
     void 작성_희망역할_21개_초과_거부() throws Exception {
-        List<String> roles = new ArrayList<>();
-        for (int i = 0; i < 21; i++) {
-            roles.add("역할" + i);
-        }
+        List<String> roles = Arrays.stream(ArtworkRole.values()).limit(21).map(Enum::name).toList();
         mockMvc.perform(post("/api/recruit/job-seeking-posts")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
@@ -105,14 +103,14 @@ class JobSeekingPostControllerValidationTest {
     }
 
     @Test
-    void 작성_희망역할_빈_문자열_포함_거부() throws Exception {
+    void 작성_희망역할_정본에_없는_값_거부() throws Exception {
         mockMvc.perform(post("/api/recruit/job-seeking-posts")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                Map.of("title", "구직글 제목", "publish", false, "roles", List.of("일러스트", "   ")))))
+                                Map.of("title", "구직글 제목", "publish", false, "roles", List.of("LINEART", "일러스트")))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
-                .andDo(document("recruit/validation/create-job-seeking-post-blank-role"));
+                .andDo(document("recruit/validation/create-job-seeking-post-unknown-role"));
     }
 
     @Test

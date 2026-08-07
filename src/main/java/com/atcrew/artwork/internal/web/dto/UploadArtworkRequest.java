@@ -4,6 +4,7 @@ import com.atcrew.artwork.AgeRating;
 import com.atcrew.artwork.ArtworkField;
 import com.atcrew.artwork.ArtworkRole;
 import com.atcrew.artwork.CreativeType;
+import com.atcrew.artwork.Genre;
 import com.atcrew.artwork.ImageLayoutType;
 import com.atcrew.artwork.Visibility;
 import com.atcrew.artwork.WorkDuration;
@@ -26,7 +27,7 @@ public record UploadArtworkRequest(
         @NotNull ArtworkField artworkField,
         @NotNull CreativeType creativeType,
         @NotEmpty List<ArtworkRole> roles,
-        List<String> genres,
+        List<Genre> genres,
         @Size(max = 7) List<String> tags,
         @NotNull AgeRating ageRating,
         @NotNull Visibility visibility,

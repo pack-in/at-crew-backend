@@ -1,5 +1,8 @@
 package com.atcrew.recruit;
 
+import com.atcrew.artwork.ArtworkRole;
+import com.atcrew.artwork.Genre;
+
 import java.time.Instant;
 import java.util.List;
 
@@ -15,8 +18,8 @@ public record RecruitIndexInfo(
         String id,
         RecruitPostType postType,
         String title,
-        List<String> roles,
-        List<String> genres,
+        List<ArtworkRole> roles,
+        List<Genre> genres,
         String authorId,
         String authorName,
         String thumbnailKey,
