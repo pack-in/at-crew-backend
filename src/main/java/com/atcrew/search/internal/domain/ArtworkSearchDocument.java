@@ -11,7 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * artwork 색인 문서. 원본은 MongoDB {@code artworks} 컬렉션이며, 이 문서는 조회 전용 색인이다
+ * artwork 색인 문서. 원본은 MariaDB {@code artworks} 테이블이며, 이 문서는 조회 전용 색인이다
  * (docs/design/search-module-design.md §3). {@code artworkId}를 문서 ID로 그대로 사용한다.
  *
  * <p>인덱스명 {@code artworks}는 실제로는 alias다 — 물리 인덱스는 {@code artworks_v1}처럼 버전이 붙고,

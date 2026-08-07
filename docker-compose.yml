@@ -1,16 +1,5 @@
 services:
-  mongodb:
-    image: mongo:7
-    ports:
-      - "27017:27017"
-    environment:
-      MONGO_INITDB_DATABASE: atcrew
-      # 글로벌 시간대 전략(docs/design/global-timezone-strategy.md §3.1) — 컨테이너 기본 시간대를 UTC로 명시 고정
-      TZ: UTC
-    volumes:
-      - mongodb_data:/data/db
-
-  # 검색 모듈(docs/design/search-module-design.md) — artwork 원본은 mongodb 그대로, 조회 전용 색인만 별도 보관
+  # 검색 모듈(docs/design/search-module-design.md) — artwork 원본은 mariadb 그대로, 조회 전용 색인만 별도 보관
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:9.2.8
     ports:
@@ -24,7 +13,7 @@ services:
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
 
-  # MariaDB 전환(docs/design/mariadb-migration-design.md) — mongodb와 병행 운영 중(P1~P4), P5에서 mongodb 서비스 제거 예정
+  # MariaDB 전환(docs/design/mariadb-migration-design.md) — 도메인 데이터와 Modulith 이벤트 레지스트리를 함께 보관
   mariadb:
     image: mariadb:11.4
     ports:
@@ -39,6 +28,5 @@ services:
       - mariadb_data:/var/lib/mysql
 
 volumes:
-  mongodb_data:
   elasticsearch_data:
   mariadb_data:
