@@ -26,8 +26,11 @@ docker build -t "$APP_IMAGE" .
 docker push "$APP_IMAGE"
 
 echo "2/3 원격(EC2 #1)에서 새 이미지 받고 재기동"
+# 서버(Amazon Linux 2023)엔 docker compose 플러그인이 없어 standalone docker-compose(하이픈) 바이너리를
+# 따로 설치해뒀다(deploy/README.md 참고) — 로컬에 docker compose(플러그인)가 있어도 원격 명령은 반드시
+# 하이픈 버전으로 맞춘다.
 ssh -i "$SSH_KEY" "$APP_HOST" "cd $REMOTE_DEPLOY_DIR && \
-  APP_IMAGE=$APP_IMAGE docker compose -f docker-compose.app.yml pull app && \
-  APP_IMAGE=$APP_IMAGE docker compose -f docker-compose.app.yml up -d"
+  APP_IMAGE=$APP_IMAGE docker-compose -f docker-compose.app.yml pull app && \
+  APP_IMAGE=$APP_IMAGE docker-compose -f docker-compose.app.yml up -d"
 
-echo "3/3 완료. 로그 확인: ssh -i $SSH_KEY $APP_HOST 'cd $REMOTE_DEPLOY_DIR && docker compose -f docker-compose.app.yml logs -f app'"
+echo "3/3 완료. 로그 확인: ssh -i $SSH_KEY $APP_HOST 'cd $REMOTE_DEPLOY_DIR && docker-compose -f docker-compose.app.yml logs -f app'"
