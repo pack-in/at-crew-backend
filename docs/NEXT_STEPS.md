@@ -19,10 +19,24 @@ Account `820010786587`) Access Key 발급받아 `aws configure` 완료(리전 `a
   "애초에 그 경로로 패킷이 갈 수 있느냐"부터 따져야 함.
 - AMI는 Amazon Linux 2023(Ubuntu 아님) — `deploy/README.md` 초안이 `apt` 기준으로 잘못 적혀 있던 걸
   `dnf`로 정정함.
-- **다음 세션**: `deploy/README.md` "최초 1회 설정" 순서대로 두 서버에 Docker/nginx 설치 → `.env` 실값
-  채우기(`ELASTICSEARCH_URIS`는 이미 채워둠) → Cloudflare DNS 연결(`api.at-crew.com`, 도메인 접근 권한은
-  아직 root한테 요청 안 한 상태 — 뒤로 미뤄둠) → Worker `SERVER_CALLBACK_URL` 재등록 → `deploy/deploy.sh`로
-  첫 배포.
+**서버 소프트웨어 설치까지 완료 (같은 날 이어서 진행)**:
+- EC2 #1: Docker+docker-compose(v2.29.7 standalone 바이너리, dnf에 compose 플러그인이 없어서)+nginx 설치,
+  `nginx/api.at-crew.com.conf` 적용해 기동 확인(`/etc/nginx/conf.d/`). `~/at-crew-backend/deploy/`에
+  `docker-compose.app.yml`·`.env.example` 업로드해둠 — 아직 `.env`로 채우지 않음.
+- EC2 #2: Docker+docker-compose 설치, `docker.elastic.co/elasticsearch/elasticsearch:9.2.8` 이미지까지
+  받아서 실제로 띄우고 앱 서버에서 `172.31.25.215:9200` 접근되는 것까지 검증 완료.
+- **⚠️ 설계에서 놓쳤던 것 — 프라이빗 서브넷은 아웃바운드도 막힌다**: EC2 #2가 처음부터 퍼블릭 IP가
+  없다 보니 dnf 저장소도 GitHub도 전혀 못 닿아서(NAT Gateway 없음) `dnf install docker`부터 실패했다.
+  "퍼블릭 IP 없음 = 인바운드만 차단"이라고 생각했는데 아웃바운드(인터넷 나가는 것) 자체가 막히는 거였음 —
+  NAT Gateway는 상시 과금이라 안 쓰기로 한 결정은 유지하고, 대신 **설치·이미지 pull 때만 임시로 탄력적
+  IP를 붙였다가 끝나면 바로 뗌**(ES는 이미지만 로컬에 캐시되면 이후 재시작 때 인터넷이 필요 없음)으로
+  해결. 지금은 다시 완전히 프라이빗 상태로 돌아가 있음(`PublicIpAddress: None` 확인함). **다음에 이
+  서버에 뭔가 더 설치해야 하면 이 패턴을 반복할 것.**
+- **다음 세션(사용자 직접 필요)**: `.env`는 R2 키·JWT 시크릿·Firebase 서비스 계정 JSON 등 로컬에만 있는
+  실제 비밀값이 필요해서 에이전트가 대신 채울 수 없음 — `deploy/.env.example`을 참고해서 EC2 #1의
+  `~/at-crew-backend/deploy/.env`로 직접 채워 넣을 것(scp로 옮기고 git에는 올리지 말 것). 그 다음
+  Cloudflare DNS 연결(`api.at-crew.com`, 도메인 접근 권한은 아직 root한테 요청 안 함) → Worker
+  `SERVER_CALLBACK_URL` 재등록 → `deploy/deploy.sh`로 첫 배포.
 
 ## 2026-08-07 진행 상황 (병렬 워크트리 작업 2건 완료)
 
