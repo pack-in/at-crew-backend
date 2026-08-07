@@ -22,7 +22,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * 구인글(JobPosting) API 문서화 통합 테스트.
  *
- * <p>전체 Spring 컨텍스트(MongoDB·MariaDB Testcontainer)를 기동해 작성→제출→관리자 승인→조회→끌어올리기→
+ * <p>전체 Spring 컨텍스트(MariaDB Testcontainer)를 기동해 작성→제출→관리자 승인→조회→끌어올리기→
  * 마감→삭제→복구로 이어지는 구인글 생명주기 전체를 REST Docs 스니펫으로 생성한다.
  */
 class JobPostingApiDocTest extends RestDocsIntegrationSupport {

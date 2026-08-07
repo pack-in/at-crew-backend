@@ -1,6 +1,5 @@
 package com.atcrew.search;
 
-import com.atcrew.TestMongoConfig;
 import com.atcrew.artwork.AgeRating;
 import com.atcrew.artwork.ArtworkField;
 import com.atcrew.artwork.ArtworkInfo;
@@ -33,10 +32,8 @@ import com.atcrew.search.internal.application.RecruitReindexService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.springframework.context.annotation.Import;
 import org.springframework.modulith.test.ApplicationModuleTest;
 import org.testcontainers.containers.MariaDBContainer;
-import org.testcontainers.containers.MongoDBContainer;
 import org.testcontainers.elasticsearch.ElasticsearchContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -61,12 +58,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @ApplicationModuleTest(mode = ApplicationModuleTest.BootstrapMode.ALL_DEPENDENCIES)
 @Testcontainers
-@Import(TestMongoConfig.class)
 class SearchModuleTests {
-
-    @Container
-    @ServiceConnection
-    static MongoDBContainer mongo = new MongoDBContainer("mongo:7");
 
     @Container
     @ServiceConnection

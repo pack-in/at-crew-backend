@@ -1,14 +1,12 @@
 package com.atcrew.auth.internal.persistence;
 
 import com.atcrew.SharedContainersConfig;
-import com.atcrew.TestMongoConfig;
 import com.atcrew.auth.internal.domain.RefreshToken;
 import com.atcrew.common.id.UuidV7Generator;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
-import org.springframework.context.annotation.Import;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -32,7 +30,6 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @ImportTestcontainers(SharedContainersConfig.class)
-@Import(TestMongoConfig.class)
 class AuthPersistenceConcurrencyTest {
 
     // LoginAttemptLimiter.WINDOW_SECONDS와 동일한 차단 윈도우(10분)

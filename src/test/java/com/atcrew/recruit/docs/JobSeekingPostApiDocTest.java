@@ -22,7 +22,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * 구직글 API 문서화 통합 테스트.
  *
- * <p>전체 Spring 컨텍스트(MongoDB·MariaDB Testcontainer)를 기동해 구직글 작성·수정·게시·조회·상태전이·
+ * <p>전체 Spring 컨텍스트(MariaDB Testcontainer)를 기동해 구직글 작성·수정·게시·조회·상태전이·
  * 휴지통 API의 요청/응답 구조를 REST Docs 스니펫으로 생성한다.
  * JobSeekingPost는 관리자 승인 절차가 없으며, 별도의 publish 엔드포인트로 DRAFT/CLOSED에서
  * PUBLISHED로 전이한다(설계 §4.2).

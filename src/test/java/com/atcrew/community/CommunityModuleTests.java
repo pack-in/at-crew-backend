@@ -1,15 +1,12 @@
 package com.atcrew.community;
 
-import com.atcrew.TestMongoConfig;
 import com.atcrew.member.CreatorRole;
 import com.atcrew.member.MemberService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.springframework.context.annotation.Import;
 import org.springframework.modulith.test.ApplicationModuleTest;
 import org.testcontainers.containers.MariaDBContainer;
-import org.testcontainers.containers.MongoDBContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
@@ -21,12 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 // 그 모듈들의 추이적 의존성(PasswordEncoder 등 common.security 빈)까지 부트스트랩되지 않는다.
 @ApplicationModuleTest(mode = ApplicationModuleTest.BootstrapMode.ALL_DEPENDENCIES)
 @Testcontainers
-@Import(TestMongoConfig.class)
 class CommunityModuleTests {
-
-    @Container
-    @ServiceConnection
-    static MongoDBContainer mongo = new MongoDBContainer("mongo:7");
 
     @Container
     @ServiceConnection

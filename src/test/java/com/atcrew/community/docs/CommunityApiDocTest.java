@@ -28,7 +28,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * 커뮤니티 API 문서화 통합 테스트.
  *
- * <p>실제 MongoDB Testcontainer와 전체 Spring 컨텍스트를 기동해
+ * <p>실제 MariaDB Testcontainer와 전체 Spring 컨텍스트를 기동해
  * 배너·작가 찾아보기·구인글/팀원모집글 탭의 요청/응답 구조를 REST Docs 스니펫으로 생성한다.
  */
 class CommunityApiDocTest extends RestDocsIntegrationSupport {

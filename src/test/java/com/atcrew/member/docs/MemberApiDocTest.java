@@ -23,7 +23,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * 회원 API 문서화 통합 테스트.
  *
- * <p>실제 MongoDB Testcontainer와 전체 Spring 컨텍스트를 기동해
+ * <p>실제 MariaDB Testcontainer와 전체 Spring 컨텍스트를 기동해
  * 핸들 조회·이름 수정·경력 추가 API의 요청/응답 구조를 REST Docs 스니펫으로 생성한다.
  */
 class MemberApiDocTest extends RestDocsIntegrationSupport {

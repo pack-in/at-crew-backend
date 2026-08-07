@@ -1,6 +1,5 @@
 package com.atcrew.artwork;
 
-import com.atcrew.TestMongoConfig;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaProcessingStatus;
 import com.atcrew.media.internal.application.MediaCallbackService;
@@ -9,10 +8,8 @@ import com.atcrew.member.MemberService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.springframework.context.annotation.Import;
 import org.springframework.modulith.test.ApplicationModuleTest;
 import org.testcontainers.containers.MariaDBContainer;
-import org.testcontainers.containers.MongoDBContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
@@ -37,12 +34,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 @ApplicationModuleTest(mode = ApplicationModuleTest.BootstrapMode.ALL_DEPENDENCIES)
 @Testcontainers
-@Import(TestMongoConfig.class)
 class ArtworkModuleTests {
-
-    @Container
-    @ServiceConnection
-    static MongoDBContainer mongo = new MongoDBContainer("mongo:7");
 
     @Container
     @ServiceConnection

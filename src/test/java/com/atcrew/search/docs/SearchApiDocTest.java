@@ -43,7 +43,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * 검색 API 문서화 통합 테스트.
  *
- * <p>실제 MongoDB·Elasticsearch Testcontainer와 전체 Spring 컨텍스트를 기동해
+ * <p>실제 MariaDB·Elasticsearch Testcontainer와 전체 Spring 컨텍스트를 기동해
  * 필터 조합 검색과 최초 진입(결과 미노출) 상태의 요청/응답 구조를 REST Docs 스니펫으로 생성한다.
  */
 class SearchApiDocTest extends RestDocsIntegrationSupport {

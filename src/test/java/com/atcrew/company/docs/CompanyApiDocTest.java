@@ -22,7 +22,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * 기업 프로필 API 문서화 통합 테스트.
  *
- * <p>전체 Spring 컨텍스트(MongoDB·MariaDB Testcontainer)를 기동해 기업 프로필 생성·조회·수정·경력 관리
+ * <p>전체 Spring 컨텍스트(MariaDB Testcontainer)를 기동해 기업 프로필 생성·조회·수정·경력 관리
  * API의 요청/응답 구조를 REST Docs 스니펫으로 생성한다.
  */
 class CompanyApiDocTest extends RestDocsIntegrationSupport {
