@@ -82,6 +82,8 @@ class ArtworkModuleTests {
         assertThat(found.videoLinks()).containsExactly("https://youtube.com/watch?v=1");
         assertThat(found.materials()).hasSize(1);
         assertThat(found.materials().get(0).name()).isEqualTo("배경소스");
+        // 소재 대상은 JSON 컬럼에 enum 이름 배열로 저장된다 — 왕복 매핑까지 검증한다.
+        assertThat(found.materials().get(0).targets()).containsExactly(MaterialTarget.BACKGROUND);
         assertThat(found.materials().get(0).attachmentKeys()).containsExactly("raw/mat.png");
         assertThat(found.status()).isEqualTo(ArtworkStatus.PROCESSING);
     }
