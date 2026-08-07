@@ -70,12 +70,15 @@ class RecruitMediaEventListener {
         }
     }
 
+    // ARTWORK는 onMediaAssetProcessed 진입 시점에 이미 걸러지므로 두 switch 문 모두 다루지 않는다
+    // (값을 반환하지 않는 switch 문이라 exhaustive할 필요가 없다 — RecruitImageService의 switch 식과
+    // 다른 지점: 표준 예외를 던지는 대신 case 자체를 생략해 도달 불가 분기를 만들지 않는다).
     private void lockPosting(MediaOwnerType ownerType, String postingId) {
         switch (ownerType) {
             case JOB_POSTING -> jobPostingRepository.findByIdForUpdate(postingId);
             case TEAM_POSTING -> teamPostingRepository.findByIdForUpdate(postingId);
             case JOB_SEEKING_POST -> jobSeekingPostRepository.findByIdForUpdate(postingId);
-            case ARTWORK -> throw new IllegalStateException("도달 불가 — ARTWORK는 진입 시점에 걸러진다");
+            case ARTWORK -> { }
         }
     }
 
@@ -87,7 +90,7 @@ class RecruitMediaEventListener {
                     .ifPresent(TeamPosting::markImageProcessingReady);
             case JOB_SEEKING_POST -> jobSeekingPostRepository.findById(postingId)
                     .ifPresent(JobSeekingPost::markImageProcessingReady);
-            case ARTWORK -> throw new IllegalStateException("도달 불가 — ARTWORK는 진입 시점에 걸러진다");
+            case ARTWORK -> { }
         }
     }
 }
