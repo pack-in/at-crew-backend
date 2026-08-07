@@ -14,6 +14,15 @@
 - **비용 관리**: 사용자가 직접 예산 알림을 걸 수 있도록 IAM에 AWSBudgetsFullAccess + Billing 콘솔 접근 토글도 같이 요청함. NAT Gateway 사용 금지(비용 폭탄 원인), Elasticsearch EC2는 퍼블릭 IP 없이 프라이빗으로(2024년부터 AWS가 퍼블릭 IPv4 자체에 과금) — 다음 세션에서 실제 프로비저닝 시 지킬 것.
 - **미완료**: root(sehandev)로부터 IAM 키 발급 대기 중. 발급되면 `aws configure`(로컬에서 직접, 채팅에 키 값 붙여넣지 말 것 — 지난 세션에 한 번 실수로 노출됨) → EC2 프로비저닝(앱+MariaDB, Elasticsearch) 순서로 진행.
 
+**배포 스캐폴드 준비 완료 (2026-08-07, IAM 키 대기 중 미리 작업)**: `Dockerfile`(로컬에서 실제 빌드+컨테이너
+기동까지 검증 완료), `deploy/docker-compose.app.yml`(EC2 #1: app+mariadb), `deploy/docker-compose.search.yml`
+(EC2 #2: elasticsearch), `deploy/nginx/api.at-crew.com.conf`, `deploy/deploy.sh`, `deploy/.env.example`
+전부 커밋 완료 — 상세는 `deploy/README.md`. 도메인은 `api.at-crew.com` 확정, Cloudflare SSL 모드는
+Flexible 전제. **다음 세션에서 IAM 키 받으면**: EC2 #1/#2 생성 → 보안 그룹 설정(§ 위 "비용 관리" 참고,
+ES는 퍼블릭 IP 없이 앱 서버 보안 그룹만 9200 허용) → `deploy/README.md`의 "최초 1회 설정" 그대로 진행
+→ `deploy/.env.example`을 `.env`로 복사해 실값 채우기 → Cloudflare DNS A레코드 연결 → Worker
+`SERVER_CALLBACK_URL` 재등록.
+
 **로드맵 P5(이벤트 레지스트리 JDBC 전환 + Mongo 제거) — 완료 (2026-08-07, 백그라운드 워커)**: 전체 테스트 310개 그린, gitleaks 클린, 4개 커밋(`8d316d2`/`db94c78`/`7661857`/`270c999`). `spring-modulith-events-jdbc-2.0.6.jar`의 공식 v2 MariaDB 스키마를 그대로 복사해 `V13__modulith_event_publication.sql`로 커밋(설계 문서가 지정한 V2는 이미 다른 마이그레이션이 선점해 V13으로 채번). UUID 왕복·스키마 타입·재기동 재발행 3가지를 검증하는 `EventPublicationRegistryTest` 신규 작성(재발행 옵션을 false로 끄면 테스트가 실패하는 것까지 네거티브 컨트롤로 확인). 중간에 Gradle daemon stall이 2회 있었는데, 원인은 전날 세션에서 안 끈 `./gradlew bootRun`이 데몬을 점유한 것(P5 자체 버그 아님) — 프로세스 종료로 해결.
 
 **⚠️ P5에서 발견한 실제 결함 — 이미지 처리 동시성 레이스 → ✅ 수정 완료 (2026-08-07)**: Mongo 이벤트 레지스트리 시절엔 발행 등록에 Mongo 왕복이 끼어 리스너 호출이 우연히 직렬화됐었는데, JDBC 전환으로 그 우연한 보호막이 사라지면서 표면화됨. `RecruitMediaEventListener`/`ArtworkMediaEventListener`가 같은 게시글의 이미지 이벤트 두 건을 각각 `REQUIRES_NEW` 트랜잭션으로 처리할 때 서로의 갱신을 못 보고 경합하면 양쪽 다 `readyFor()` false로 남아 **게시글이 PENDING에 영구히 갇힐 수 있었음** — 실제 프로덕션에서 Cloudflare Worker가 이미지별 webhook을 동시에 보내면 바로 재현되는 시나리오였다. 부모 행 `PESSIMISTIC_WRITE` 락(`findByIdForUpdate`)으로 리스너 실행을 직렬화해 수정하고, 실제 동시 발행 경합 테스트 2건을 추가했다(네거티브 컨트롤로 락 제거 시 재현 확인). 상세는 아래 "지금 바로 처리할 것" 0번.
