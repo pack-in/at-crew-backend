@@ -127,10 +127,13 @@ recruit 모듈(구인글/팀원모집글/구직글/지원/끌어올리기/관심
 ### 1. recruit 검색 후속 과제 (PR #41에서 의도적으로 남긴 것)
 지금 동작에 문제는 없지만, 데이터가 늘거나 기획이 확정되면 손봐야 하는 항목들이다.
 
-1. **태그 정본 목록 정규화** — recruit의 `roles`/`genres`는 작성자가 입력하는 자유 문자열이고, 검색
-   필터 chip은 `ArtworkRole` enum이다. 지금은 enum 상수 이름으로만 문자열 비교하므로 실질적으로 거의
-   매칭되지 않는다. Notion 태그 정본 목록이 확정되면 양쪽을 같은 어휘로 정규화해야 한다
-   (`SearchQuery.java` TODO, `search-module-design.md` §9-2와 동일 과제)
+1. **태그 정본 목록 정규화** — 완료함(2026-08-07). Notion 정본 목록으로 `com.atcrew.artwork.Genre`(29종)·
+   `com.atcrew.artwork.MaterialTarget`(7종) enum을 신설하고, `Artwork.genres`/`Material.targets`와
+   recruit 3종(`JobPosting`/`TeamPosting`/`JobSeekingPost`)의 `roles`/`genres`, `SearchQuery`,
+   요청 DTO까지 전 계층을 enum으로 통일했다. recruit의 자유 텍스트가 `ArtworkRole.name()` 필터와
+   매칭되지 않던 것이 근본 원인이었고 이로써 해소됨. 담당 업무(`ArtworkRole`)·연령대(`AgeRating`)는
+   이미 정본과 일치해 변경하지 않았다. 정본 밖 값 정리는 `V14`/`V15` 마이그레이션이 담당하며,
+   `SearchQuery.java` TODO와 `search-module-design.md` §1.4/§9-2 항목도 함께 해소함
 2. **recruit 검색의 ES 색인 이관** — 완료함(2026-08-05). RDB `LIKE` + EXISTS 서브쿼리 기반이던
    `RecruitSearchService`/`RecruitSearchQueryRepository`(recruit 모듈)를 삭제하고, artwork와 동일하게
    `search` 모듈이 `recruit_posts` ES 인덱스를 소유·질의하도록 이관함 — `RecruitSearchIndexer`/
