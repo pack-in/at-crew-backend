@@ -29,7 +29,12 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.function.Supplier;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -290,18 +295,34 @@ class RecruitModuleTests {
                         tuple(RecruitImageRole.THUMBNAIL, thumbnailKey, MediaProcessingStatus.PENDING),
                         tuple(RecruitImageRole.REFERENCE, referenceKey, MediaProcessingStatus.PENDING));
 
-        // 같은 게시글의 이미지 이벤트 두 건을 연달아 던지면 두 리스너 트랜잭션이 겹쳐 서로의 갱신을 보지 못하고
-        // READY 전이가 유실된다(media → 소유 모듈 준비완료 집계의 사전 존재 경합). MariaDB 전환 P5에서
-        // 이벤트 레지스트리가 빨라지며 표면화된 문제로, 프로덕션 리스너 수정은 별도 과제다 —
-        // 이 테스트는 첫 이미지 반영을 확인한 뒤 두 번째를 발행해 도착 순서를 고정한다.
         publishProcessed(created.id(), thumbnailKey, "original/thumb.avif", MediaProcessingStatus.DONE);
-        awaitCondition(() -> processingStatusOf(created.id(), thumbnailKey) == MediaProcessingStatus.DONE);
         publishProcessed(created.id(), referenceKey, "original/ref.avif", MediaProcessingStatus.DONE);
         awaitCondition(() -> imageProcessingStatusOf(created.id()) == RecruitImageProcessingStatus.READY);
 
         JobPostingInfo processed = recruitService.getJobPosting(created.id(), authorId);
         assertThat(processed.thumbnailImage()).isEqualTo("original/thumb.avif");
         assertThat(processed.referenceImages()).containsExactly("original/ref.avif");
+    }
+
+    // 동시성 시맨틱 검증 (docs/design/mariadb-migration-design.md §7 리스크 3 — 스레드 2개 경합).
+    // 같은 게시글의 이미지 처리완료 이벤트가 동시에 도착하면 두 리스너 트랜잭션이 겹친다 —
+    // RecruitMediaEventListener가 부모 게시글 행을 비관적 락으로 직렬화하지 않으면 서로의 갱신을
+    // 보지 못한 채 readyFor를 판정해 READY 전이가 영구 유실된다.
+    @Test
+    void 같은_구인글의_이미지_이벤트가_동시에_도착해도_READY로_전이된다() throws Exception {
+        String authorId = registerMember("media-race-author");
+        String thumbnailKey = presignKey();
+        String referenceKey = presignKey();
+        JobPostingInfo created = recruitService.createJobPosting(authorId,
+                jobPostingCommand("동시 이벤트 구인글", thumbnailKey, List.of(referenceKey)));
+
+        publishConcurrently(
+                () -> publishProcessed(created.id(), thumbnailKey, "original/thumb.avif", MediaProcessingStatus.DONE),
+                () -> publishProcessed(created.id(), referenceKey, "original/ref.avif", MediaProcessingStatus.DONE));
+
+        awaitCondition(() -> imageProcessingStatusOf(created.id()) == RecruitImageProcessingStatus.READY);
+        assertThat(processingStatusOf(created.id(), thumbnailKey)).isEqualTo(MediaProcessingStatus.DONE);
+        assertThat(processingStatusOf(created.id(), referenceKey)).isEqualTo(MediaProcessingStatus.DONE);
     }
 
     // 이슈: 전체 이미지 삭제 시 media_assets 행 정리가 다음 등록 때까지 미뤄지던 문제를 고쳤다
@@ -441,6 +462,27 @@ class RecruitModuleTests {
         new TransactionTemplate(transactionManager).executeWithoutResult(tx ->
                 eventPublisher.publishEvent(new MediaAssetProcessedEvent(
                         ownerType, postingId, imageKey, thumbKey, null, originalAvifKey, status)));
+    }
+
+    /** 두 이벤트를 같은 순간에 발행해 두 리스너 트랜잭션이 실제로 겹치게 만든다 (§7 리스크 3). */
+    private void publishConcurrently(Runnable first, Runnable second) throws Exception {
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        CountDownLatch startSignal = new CountDownLatch(1);
+        try {
+            List<Future<Object>> futures = Stream.of(first, second)
+                    .map(action -> pool.submit(() -> {
+                        startSignal.await();
+                        action.run();
+                        return null;
+                    }))
+                    .toList();
+            startSignal.countDown();
+            for (Future<?> future : futures) {
+                future.get();
+            }
+        } finally {
+            pool.shutdown();
+        }
     }
 
     private void awaitCondition(Supplier<Boolean> condition) {

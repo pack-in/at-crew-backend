@@ -17,7 +17,12 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.function.BooleanSupplier;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -154,6 +159,25 @@ class ArtworkModuleTests {
                 .containsExactly(ImageProcessingStatus.DONE, ImageProcessingStatus.FAILED);
     }
 
+    // 동시성 시맨틱 검증 (docs/design/mariadb-migration-design.md §7 리스크 3 — 스레드 2개 경합).
+    // 같은 작품의 이미지 처리완료 이벤트가 동시에 도착하면 두 리스너 트랜잭션이 겹친다 —
+    // ArtworkMediaEventListener가 부모 작품 행을 비관적 락으로 직렬화하지 않으면 서로의 갱신을
+    // 보지 못한 채 READY 판정을 놓쳐 작품이 PROCESSING에 갇힌다.
+    @Test
+    void 같은_작품의_이미지_이벤트가_동시에_도착해도_READY로_전환된다() throws Exception {
+        String memberId = registerAuthor();
+        ArtworkInfo uploaded = uploadMinimal(memberId, "raw/r1.png", "raw/r2.png");
+
+        processConcurrently(
+                () -> processImage(uploaded.id(), "raw/r1.png", MediaProcessingStatus.DONE),
+                () -> processImage(uploaded.id(), "raw/r2.png", MediaProcessingStatus.DONE));
+
+        awaitReady(memberId, uploaded.id());
+        ArtworkInfo found = artworkService.getArtwork(uploaded.id(), memberId);
+        assertThat(found.images()).extracting(ArtworkImageInfo::processingStatus)
+                .containsExactly(ImageProcessingStatus.DONE, ImageProcessingStatus.DONE);
+    }
+
     @Test
     void 삭제_후_복원하면_이전_공개범위로_돌아온다() {
         String memberId = registerAuthor();
@@ -200,6 +224,27 @@ class ArtworkModuleTests {
     /** artwork 리스너는 @ApplicationModuleListener(비동기)라 상태 반영까지 폴링한다. */
     private void awaitReady(String memberId, String artworkId) {
         awaitCondition(() -> artworkService.getArtworkStatus(memberId, artworkId) == ArtworkStatus.READY);
+    }
+
+    /** 두 webhook 콜백을 같은 순간에 재현해 두 리스너 트랜잭션이 실제로 겹치게 만든다 (§7 리스크 3). */
+    private void processConcurrently(Runnable first, Runnable second) throws Exception {
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        CountDownLatch startSignal = new CountDownLatch(1);
+        try {
+            List<Future<Object>> futures = Stream.of(first, second)
+                    .map(action -> pool.submit(() -> {
+                        startSignal.await();
+                        action.run();
+                        return null;
+                    }))
+                    .toList();
+            startSignal.countDown();
+            for (Future<?> future : futures) {
+                future.get();
+            }
+        } finally {
+            pool.shutdown();
+        }
     }
 
     private void awaitCondition(BooleanSupplier condition) {

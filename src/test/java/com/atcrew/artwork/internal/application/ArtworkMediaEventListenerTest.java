@@ -38,7 +38,7 @@ class ArtworkMediaEventListenerTest {
     @Test
     void ARTWORK_이벤트를_받으면_이미지_처리결과를_반영하고_변경이벤트를_발행한다() {
         Artwork artwork = artworkWith("raw/1.png");
-        when(artworkRepository.findById("artwork-1")).thenReturn(Optional.of(artwork));
+        when(artworkRepository.findByIdForUpdate("artwork-1")).thenReturn(Optional.of(artwork));
 
         listener.onMediaAssetProcessed(new MediaAssetProcessedEvent(MediaOwnerType.ARTWORK, "artwork-1",
                 "raw/1.png", "thumb/1.avif", "thumb-adult/1.avif", "original/1.avif", MediaProcessingStatus.DONE));
@@ -53,7 +53,7 @@ class ArtworkMediaEventListenerTest {
     @Test
     void FAILED_이벤트는_해당_이미지만_실패로_표시한다() {
         Artwork artwork = artworkWith("raw/1.png", "raw/2.png");
-        when(artworkRepository.findById("artwork-1")).thenReturn(Optional.of(artwork));
+        when(artworkRepository.findByIdForUpdate("artwork-1")).thenReturn(Optional.of(artwork));
 
         listener.onMediaAssetProcessed(new MediaAssetProcessedEvent(MediaOwnerType.ARTWORK, "artwork-1",
                 "raw/1.png", null, null, null, MediaProcessingStatus.FAILED));
@@ -67,13 +67,13 @@ class ArtworkMediaEventListenerTest {
         listener.onMediaAssetProcessed(new MediaAssetProcessedEvent(MediaOwnerType.JOB_POSTING, "posting-1",
                 "raw/1.png", "thumb/1.avif", null, "original/1.avif", MediaProcessingStatus.DONE));
 
-        verify(artworkRepository, never()).findById(anyString());
+        verify(artworkRepository, never()).findByIdForUpdate(anyString());
         verify(eventPublisher, never()).publishEvent(any());
     }
 
     @Test
     void 존재하지_않는_작품의_이벤트는_무시한다() {
-        when(artworkRepository.findById("사라진작품")).thenReturn(Optional.empty());
+        when(artworkRepository.findByIdForUpdate("사라진작품")).thenReturn(Optional.empty());
 
         listener.onMediaAssetProcessed(new MediaAssetProcessedEvent(MediaOwnerType.ARTWORK, "사라진작품",
                 "raw/1.png", "thumb/1.avif", null, "original/1.avif", MediaProcessingStatus.DONE));
