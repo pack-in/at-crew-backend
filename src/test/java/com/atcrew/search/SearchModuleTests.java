@@ -213,12 +213,14 @@ class SearchModuleTests {
     void recruit_장르_태그_필터가_적용된다() {
         String token = uniqueToken();
         String authorId = registerMember();
-        String matchingGenre = token + "-액션";
-        String teamPostingId = recruitService.createTeamPosting(authorId, teamPostingCommand(matchingGenre)).id();
-        publishedJobPosting(authorId, token + " 구인 공고"); // 장르가 다른 구인글 — 필터에 걸리지 않아야 한다
+        // 장르가 정본 enum이라 토큰으로 유일한 장르를 만들 수 없다 — 검색어(token)로 이번 테스트가 만든
+        // 두 글로 범위를 좁힌 뒤, 서로 다른 장르 중 하나로 필터가 걸리는지 검증한다.
+        String teamPostingId = recruitService
+                .createTeamPosting(authorId, teamPostingCommand(token + " 팀원 모집", Genre.ACTION)).id();
+        publishedJobPosting(authorId, token + " 구인 공고"); // 장르가 다른(ROMANCE_FANTASY) 구인글 — 걸리지 않아야 한다
 
         List<SearchResultItem> byGenre = awaitSearchResult(() -> searchService.search(new SearchQuery(
-                null, null, null, null, null, null, List.of(matchingGenre), null, null, null, 20)));
+                token, null, null, null, null, null, List.of(Genre.ACTION.name()), null, null, null, 20)));
 
         assertThat(byGenre).extracting(SearchResultItem::id).containsExactly(teamPostingId);
     }
@@ -269,11 +271,11 @@ class SearchModuleTests {
                 null, null, null, null, null, null, null, null, size);
     }
 
-    private CreateTeamPostingCommand teamPostingCommand(String genre) {
+    private CreateTeamPostingCommand teamPostingCommand(String title, Genre genre) {
         return new CreateTeamPostingCommand(
-                "팀원 모집", false, false, false, "팀장", "010-0000-0000", "팀 소개",
+                title, false, false, false, "팀장", "010-0000-0000", "팀 소개",
                 List.of("공모전"), TeamWorkLocationType.ONLINE, null,
-                List.of("배경"), List.of(genre), false, true, null, null, 3, "포트폴리오 심사",
+                List.of(ArtworkRole.BACKGROUND), List.of(genre), false, true, null, null, 3, "포트폴리오 심사",
                 TeamActivityDuration.THREE_MONTHS, TeamWeeklyActivityTime.TWO_TO_THREE_TIMES,
                 "프로젝트 소개", "https://img.example/team.png", List.of());
     }
@@ -331,7 +333,7 @@ class SearchModuleTests {
         return new CreateJobPostingCommand(
                 title, "앳크루", "대표", "웹툰", "서울", "02-000-0000", "https://example.com",
                 "회사 소개", true, true, false,
-                List.of("작화"), List.of("로맨스"), "작업 범위", null, 2, "서류 → 면접",
+                List.of(ArtworkRole.TOTAL_ARTWORK), List.of(Genre.ROMANCE_FANTASY), "작업 범위", null, 2, "서류 → 면접",
                 "무관", "신입", "무관", "무관",
                 JobEmploymentType.FULL_TIME, JobWorkLocationType.OFFICE, JobWorkScheduleType.FIXED,
                 null, null, true, true, true,

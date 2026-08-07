@@ -1,5 +1,8 @@
 package com.atcrew.recruit;
 
+import com.atcrew.artwork.ArtworkRole;
+import com.atcrew.artwork.Genre;
+
 import java.util.List;
 
 /**
@@ -8,8 +11,8 @@ import java.util.List;
  */
 public record CreateJobSeekingPostCommand(
         String title,                          // 구직글 제목
-        List<String> roles,                    // 희망 역할
-        List<String> genres,                   // 희망 장르
+        List<ArtworkRole> roles,               // 희망 역할
+        List<Genre> genres,                    // 희망 장르
         String drawingStyle,                   // 작화 스타일
         FeedbackStyle preferredFeedbackStyle,  // 선호 피드백 방식
         WorkStyle workStyle,                   // 작업 스타일

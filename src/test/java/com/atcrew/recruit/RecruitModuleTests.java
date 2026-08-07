@@ -1,5 +1,7 @@
 package com.atcrew.recruit;
 
+import com.atcrew.artwork.ArtworkRole;
+import com.atcrew.artwork.Genre;
 import com.atcrew.common.exception.DomainException;
 import com.atcrew.media.MediaAssetProcessedEvent;
 import com.atcrew.media.MediaOwnerType;
@@ -166,7 +168,7 @@ class RecruitModuleTests {
     void 구직글은_게시해야_공개_목록에_노출된다() {
         String authorId = registerMember("seeking-author");
         JobSeekingPostInfo draft = recruitService.createJobSeekingPost(authorId, new CreateJobSeekingPostCommand(
-                "구직글 제목", List.of("작화"), List.of("판타지"), "선화 위주",
+                "구직글 제목", List.of(ArtworkRole.TOTAL_ARTWORK), List.of(Genre.FANTASY), "선화 위주",
                 FeedbackStyle.PERIODIC, WorkStyle.COLLABORATIVE, "협의", "포트폴리오 소개",
                 List.of("https://img.example/ref.png"), false));
 
@@ -414,7 +416,7 @@ class RecruitModuleTests {
         String authorId = registerMember("media-seeking-author");
         String firstKey = presignKey();
         JobSeekingPostInfo created = recruitService.createJobSeekingPost(authorId, new CreateJobSeekingPostCommand(
-                "이미지 구직글", List.of("작화"), List.of("판타지"), "선화 위주",
+                "이미지 구직글", List.of(ArtworkRole.TOTAL_ARTWORK), List.of(Genre.FANTASY), "선화 위주",
                 FeedbackStyle.PERIODIC, WorkStyle.COLLABORATIVE, "협의", "포트폴리오 소개",
                 List.of(firstKey), false));
 
@@ -535,7 +537,7 @@ class RecruitModuleTests {
         return new CreateJobPostingCommand(
                 title, "앳크루", "대표", "웹툰", "서울", "02-000-0000", "https://example.com",
                 "회사 소개", true, true, false,
-                List.of("작화"), List.of("로맨스"), "작업 범위", null, 2, "서류 → 면접",
+                List.of(ArtworkRole.TOTAL_ARTWORK), List.of(Genre.ROMANCE_FANTASY), "작업 범위", null, 2, "서류 → 면접",
                 "무관", "신입", "무관", "무관",
                 JobEmploymentType.FULL_TIME, JobWorkLocationType.OFFICE, JobWorkScheduleType.FIXED,
                 null, null, true, true, true,
@@ -546,7 +548,7 @@ class RecruitModuleTests {
 
     private CreateJobSeekingPostCommand jobSeekingPostCommand(String title) {
         return new CreateJobSeekingPostCommand(
-                title, List.of("작화"), List.of("판타지"), "선화 위주",
+                title, List.of(ArtworkRole.TOTAL_ARTWORK), List.of(Genre.FANTASY), "선화 위주",
                 FeedbackStyle.PERIODIC, WorkStyle.COLLABORATIVE, "협의", "포트폴리오 소개",
                 List.of("https://img.example/ref.png"), false);
     }
@@ -555,7 +557,7 @@ class RecruitModuleTests {
         return new CreateTeamPostingCommand(
                 "팀원 모집", false, false, false, "팀장", "010-0000-0000", "팀 소개",
                 List.of("공모전"), TeamWorkLocationType.ONLINE, null,
-                List.of("배경"), List.of("액션"), false, true, null, null, 3, "포트폴리오 심사",
+                List.of(ArtworkRole.BACKGROUND), List.of(Genre.ACTION), false, true, null, null, 3, "포트폴리오 심사",
                 TeamActivityDuration.THREE_MONTHS, TeamWeeklyActivityTime.TWO_TO_THREE_TIMES,
                 "프로젝트 소개", "https://img.example/team.png", List.of());
     }
