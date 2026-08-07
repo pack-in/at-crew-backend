@@ -89,6 +89,10 @@ public class Member implements Persistable<String> {
     // ISO 3166-1 alpha-2 국가 코드(예: "KR", "JP"). 거주 국가 — 가입 시 필수 수집, 설정에서 변경 가능.
     private String countryCode;
 
+    // 설정 화면 "성인 콘텐츠 표시" 토글. 기본 false(끔).
+    // 순수 표시 설정이며, 본인 인증 완료 여부에 따른 실제 콘텐츠 접근 게이팅은 별도 과제다(PASS 본인인증).
+    private boolean adultContentVisible = false;
+
     @Enumerated(EnumType.STRING)
     private EmploymentStatus employmentStatus = EmploymentStatus.PREPARING;
 
@@ -277,6 +281,23 @@ public class Member implements Persistable<String> {
         }
     }
 
+    /**
+     * 마케팅 수신 동의를 변경한다(설정 화면 토글). 가입 시 1회성으로 받은 값을 이후에도 켜고 끌 수 있다.
+     * 개발·테스트 전용 가입 경로({@link #register})로 만들어진 회원은 약관 정보가 없으므로
+     * 필수 약관은 미동의로 둔 채 마케팅 값만 담은 동의 정보를 새로 만든다.
+     */
+    public void updateMarketingAgreement(boolean agreed) {
+        assertActive();
+        this.termsAgreement = termsAgreement != null
+                ? termsAgreement.withMarketingNotification(agreed)
+                : TermsAgreement.of(false, false, false, agreed);
+    }
+
+    public void updateAdultContentVisible(boolean visible) {
+        assertActive();
+        this.adultContentVisible = visible;
+    }
+
     private static final int MAX_CAREER_COUNT = 50;
 
     public CareerEntryInfo addCareer(String workTitle, String role, LocalDate startDate,
@@ -335,6 +356,8 @@ public class Member implements Persistable<String> {
     public String getTools() { return tools; }
     public String getTimezone() { return timezone; }
     public String getCountryCode() { return countryCode; }
+    public boolean isMarketingAgreed() { return termsAgreement != null && termsAgreement.marketingNotification(); }
+    public boolean isAdultContentVisible() { return adultContentVisible; }
     public List<CareerEntryInfo> getCareers() { return careers.stream().map(this::toCareerInfo).toList(); }
     public boolean isActive() { return active; }
     public Instant getDeletedAt() { return deletedAt; }

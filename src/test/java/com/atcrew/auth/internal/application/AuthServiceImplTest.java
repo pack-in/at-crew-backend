@@ -304,7 +304,7 @@ class AuthServiceImplTest {
                 provider,
                 "테스트", null, null, List.of(), null, List.of(), List.of(),
                 5, 5, null, null, null, List.of(),
-                true, null, null, Instant.now(), Instant.now(), "Asia/Seoul", "KR");
+                true, null, null, Instant.now(), Instant.now(), "Asia/Seoul", "KR", false, false);
     }
 
     private AuthException catchAuthException(Runnable action) {
