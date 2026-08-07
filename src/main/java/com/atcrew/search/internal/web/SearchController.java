@@ -4,6 +4,8 @@ import com.atcrew.artwork.AgeRating;
 import com.atcrew.artwork.ArtworkField;
 import com.atcrew.artwork.ArtworkRole;
 import com.atcrew.artwork.CreativeType;
+import com.atcrew.artwork.Genre;
+import com.atcrew.artwork.MaterialTarget;
 import com.atcrew.common.response.ApiResponse;
 import com.atcrew.search.PostType;
 import com.atcrew.search.SearchPage;
@@ -58,8 +60,8 @@ class SearchController {
             @Parameter(description = "창작 유형 필터 (다중선택)") @RequestParam(required = false) List<CreativeType> creativeTypes,
             @Parameter(description = "연령대 필터 (다중선택)") @RequestParam(required = false) List<AgeRating> ageRatings,
             @Parameter(description = "담당 업무 필터 (다중선택)") @RequestParam(required = false) List<ArtworkRole> roles,
-            @Parameter(description = "장르 필터 (다중선택)") @RequestParam(required = false) List<String> genres,
-            @Parameter(description = "소재 대상 필터 (다중선택)") @RequestParam(required = false) List<String> materialTargets,
+            @Parameter(description = "장르 필터 (다중선택)") @RequestParam(required = false) List<Genre> genres,
+            @Parameter(description = "소재 대상 필터 (다중선택)") @RequestParam(required = false) List<MaterialTarget> materialTargets,
             @Parameter(description = "정렬 기준 (기본: 검색어 있으면 RELEVANCE, 없으면 LATEST)")
             @RequestParam(required = false) SearchSort sort,
             @Parameter(description = "커서") @RequestParam(required = false) String cursor,

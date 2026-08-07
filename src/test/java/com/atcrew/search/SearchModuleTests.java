@@ -220,7 +220,7 @@ class SearchModuleTests {
         publishedJobPosting(authorId, token + " 구인 공고"); // 장르가 다른(ROMANCE_FANTASY) 구인글 — 걸리지 않아야 한다
 
         List<SearchResultItem> byGenre = awaitSearchResult(() -> searchService.search(new SearchQuery(
-                token, null, null, null, null, null, List.of(Genre.ACTION.name()), null, null, null, 20)));
+                token, null, null, null, null, null, List.of(Genre.ACTION), null, null, null, 20)));
 
         assertThat(byGenre).extracting(SearchResultItem::id).containsExactly(teamPostingId);
     }

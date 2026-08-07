@@ -81,10 +81,10 @@ public class RecruitSearchQueryRepository {
             bool.must(m -> m.matchAll(ma -> ma));
         }
         addPostTypeFilter(bool, query.postTypes());
-        // 담당 업무 필터는 enum이지만 recruit의 태그는 작성자가 입력한 자유 문자열이라 상수 이름으로 비교한다 —
-        // 정본 태그 목록이 확정되면 함께 정규화한다(docs/design/search-module-design.md §9-2).
+        // recruit 게시글의 roles/genres도 artwork와 같은 정본 enum이라, 양쪽 모두 상수 이름으로 색인·비교한다
+        // (docs/design/search-module-design.md §9-2).
         addTerms(bool, "roles", names(query.roles()));
-        addTerms(bool, "genres", query.genres());
+        addTerms(bool, "genres", names(query.genres()));
         return Query.of(q -> q.bool(bool.build()));
     }
 
