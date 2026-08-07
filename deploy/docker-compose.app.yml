@@ -12,6 +12,13 @@ services:
     volumes:
       - mariadb_data:/var/lib/mysql
     # 외부에 포트를 노출하지 않는다 — app 컨테이너가 같은 docker 네트워크에서 서비스명(mariadb)으로 접근.
+    healthcheck:
+      # depends_on만으로는 컨테이너 "시작"만 기다리고 MariaDB가 실제 접속 가능한 시점은 안 기다린다 —
+      # 첫 배포 때 app이 초기화 중인 MariaDB에 Connection refused로 붙었다가 죽는 걸 실제로 겪고 추가함.
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
 
   app:
     image: ${APP_IMAGE}
@@ -22,11 +29,18 @@ services:
       # .env의 MARIADB_HOST/PORT(로컬 기본값 localhost:3306)를 컨테이너 네트워크 기준으로 덮어쓴다.
       MARIADB_HOST: mariadb
       MARIADB_PORT: 3306
+      # .env의 값은 호스트(EC2) 파일 경로다 — 컨테이너 안에서는 안 보이므로 아래 볼륨으로 마운트한
+      # 컨테이너 내부 경로로 덮어쓴다(실제 배포 중 FileNotFoundException으로 발견).
+      FIREBASE_CREDENTIALS_PATH: /app/firebase-credentials.json
+    volumes:
+      # deploy/ 디렉토리에 firebase-credentials.json이라는 이름으로 올려둔 파일을 그대로 마운트한다.
+      - ./firebase-credentials.json:/app/firebase-credentials.json:ro
     ports:
       # nginx(호스트에 직접 설치)만 접근하면 되므로 루프백에만 바인딩 — 8080을 외부에 직접 노출하지 않는다.
       - "127.0.0.1:8080:8080"
     depends_on:
-      - mariadb
+      mariadb:
+        condition: service_healthy
 
 volumes:
   mariadb_data:
