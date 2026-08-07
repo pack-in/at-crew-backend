@@ -3,7 +3,28 @@
 > 이 문서는 세션 인수인계용 체크리스트다. 장기 로드맵 전체는 `docs/roadmap.md`가 정본이고,
 > 이 문서는 "지금 당장 뭐부터 볼지"만 정리한다. 작업 완료 후 이 파일은 삭제해도 된다.
 
-## 2026-08-07 진행 상황
+## 2026-08-07 진행 상황 (병렬 워크트리 작업 2건 완료)
+
+**로드맵 #6 설정 나머지 — 완료** (커밋 `66958b7`/`5e608c6`/`26ab7dd`, 병합 `97a177c`): 로그아웃(`POST
+/api/auth/logout`), 비밀번호 변경(`POST /api/auth/email/password-change`, EMAIL provider 전용),
+마케팅 동의·성인 콘텐츠 표시 토글(`PATCH /api/members/me/marketing-agreement`·`/adult-content`) 4개
+엔드포인트 신설. `MemberInfo`에 두 필드 읽기 경로 추가. 비밀번호 변경 성공 시 전체 refresh token 폐기
+(재로그인 필요 — 프론트 UX 확인 필요할 수 있음). 본인/기업 인증(로드맵 1)·언어 칩(로드맵 7)·카카오 문의는
+의도적으로 스코프 밖.
+
+**recruit 검색 태그 정규화 — 완료** (커밋 `b3201a7`~`c33f13d`, 병합 `f1e952a`): Notion 정본 목록 기준
+`Genre`(29종)·`MaterialTarget`(7종) enum 신설. **핵심 버그 수정**: recruit(JobPosting/TeamPosting/
+JobSeekingPost)의 `roles`가 애초에 `List<String>` 자유텍스트였던 게 검색 필터(`ArtworkRole.name()`) 매칭
+불가의 진짜 원인이었음 — `List<ArtworkRole>`로 교정(Artwork.roles는 원래도 정상이었음). recruit
+생성/수정 API가 이제 자유 문자열 대신 enum 상수명을 요구함(**API 계약 변경** — 프론트 연동 시 확인 필요).
+
+**⚠️ 병합 중 발견·수정**: 두 워크트리가 서로 모르는 채 각자 `V14`를 채번해 Flyway 버전이 충돌했음
+(`V14__artwork_tag_enum_normalization.sql` vs `V14__member_adult_content_visible.sql`) — 병합 직후
+`MemberModuleTests`로 실제 마이그레이션 적용을 검증하다가 발견, 후자를 `V16`으로 재채번해 해소(커밋
+`4804e54`). **교훈**: 여러 워크트리를 병렬로 돌릴 땐 병합 후 반드시 Flyway 버전 충돌부터 확인할 것
+(`ls db/migration | sort`로 중복 번호 눈으로 확인 + Testcontainers 테스트 1개 실행으로 실제 기동 검증).
+
+## 2026-08-07 진행 상황 (이전 항목)
 
 **prod 인프라 구성 확정** (`docs/design/mariadb-migration-design.md` §10-1에 상세 근거 반영):
 - **EC2 1대**: 앱 서버 + MariaDB 같이 운영(laiteu와 동일한 self-hosted 패턴, RDS 안 씀 — 포트폴리오 목적상 관리형 DB 운영 경험이 필요 없다고 판단해 비용 우선)
