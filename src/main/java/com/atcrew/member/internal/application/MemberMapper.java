@@ -56,7 +56,9 @@ class MemberMapper {
                 member.getCreatedAt(),
                 member.getUpdatedAt(),
                 member.getTimezone(),
-                member.getCountryCode()
+                member.getCountryCode(),
+                member.isMarketingAgreed(),
+                member.isAdultContentVisible()
         );
     }
 }

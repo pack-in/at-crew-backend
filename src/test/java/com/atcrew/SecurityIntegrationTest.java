@@ -76,6 +76,42 @@ class SecurityIntegrationTest extends RestDocsIntegrationSupport {
     }
 
     @Test
+    void 마케팅_동의_변경_토큰_없음_401() throws Exception {
+        mockMvc.perform(patch("/api/members/me/marketing-agreement")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"agreed\":true}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+    }
+
+    @Test
+    void 성인_콘텐츠_설정_변경_토큰_없음_401() throws Exception {
+        mockMvc.perform(patch("/api/members/me/adult-content")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"visible\":true}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+    }
+
+    @Test
+    void 로그아웃_토큰_없음_401() throws Exception {
+        mockMvc.perform(post("/api/auth/logout")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"refreshToken\":\"some.refresh.token\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+    }
+
+    @Test
+    void 비밀번호_변경_토큰_없음_401() throws Exception {
+        mockMvc.perform(post("/api/auth/email/password-change")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentPassword\":\"Secure1!\",\"newPassword\":\"Changed1!\",\"newPasswordConfirm\":\"Changed1!\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+    }
+
+    @Test
     void 기업_프로필_생성_토큰_없음_401() throws Exception {
         mockMvc.perform(post("/api/companies")
                         .contentType(MediaType.APPLICATION_JSON)

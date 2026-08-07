@@ -8,7 +8,9 @@ import com.atcrew.member.MemberProfileInfo;
 import com.atcrew.member.MemberService;
 import com.atcrew.member.UpdateInfoCommand;
 import com.atcrew.member.internal.web.dto.AddCareerRequest;
+import com.atcrew.member.internal.web.dto.UpdateAdultContentRequest;
 import com.atcrew.member.internal.web.dto.UpdateInfoRequest;
+import com.atcrew.member.internal.web.dto.UpdateMarketingAgreementRequest;
 import com.atcrew.member.internal.web.dto.UpdateNameRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -79,6 +81,30 @@ class MemberController {
                 request.activityFields(), request.experienceLevel(), request.activeRegions(),
                 request.totalSlotCount(), request.availableSlotCount(), request.teamExperiences(),
                 request.contact(), request.sns(), request.tools(), request.timezone(), request.countryCode()));
+    }
+
+    @Operation(summary = "마케팅 수신 동의 변경",
+            description = "설정 화면의 마케팅 정보 수신 동의 토글입니다. 가입 시 받은 동의를 이후에도 켜고 끌 수 있습니다.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "변경 성공"),
+            @ApiResponse(responseCode = "401", description = "인증 필요")
+    })
+    @PatchMapping("/me/marketing-agreement")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void updateMarketingAgreement(@RequestBody @Valid UpdateMarketingAgreementRequest request) {
+        memberService.updateMarketingAgreement(securityUtils.getCurrentMemberId(), request.agreed());
+    }
+
+    @Operation(summary = "성인 콘텐츠 표시 설정 변경",
+            description = "설정 화면의 성인 콘텐츠 표시 토글입니다. 표시 설정만 저장하며 본인 인증 여부와는 무관합니다.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "변경 성공"),
+            @ApiResponse(responseCode = "401", description = "인증 필요")
+    })
+    @PatchMapping("/me/adult-content")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void updateAdultContentVisible(@RequestBody @Valid UpdateAdultContentRequest request) {
+        memberService.updateAdultContentVisible(securityUtils.getCurrentMemberId(), request.visible());
     }
 
     @Operation(summary = "경력 추가", description = "참여작 정보를 경력으로 추가합니다.")

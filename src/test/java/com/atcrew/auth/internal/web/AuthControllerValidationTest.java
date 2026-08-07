@@ -1,6 +1,7 @@
 package com.atcrew.auth.internal.web;
 
 import com.atcrew.auth.AuthService;
+import com.atcrew.common.security.SecurityUtils;
 import com.atcrew.common.web.GlobalExceptionHandler;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,13 +35,15 @@ class AuthControllerValidationTest {
     MockMvc mockMvc;
     ObjectMapper objectMapper;
     AuthService authService;
+    SecurityUtils securityUtils;
 
     @BeforeEach
     void setUp(RestDocumentationContextProvider restDoc) {
         authService = mock(AuthService.class);
+        securityUtils = mock(SecurityUtils.class);
         objectMapper = new ObjectMapper();
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new AuthController(authService))
+                .standaloneSetup(new AuthController(authService, securityUtils))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .apply(documentationConfiguration(restDoc)
                         .operationPreprocessors()
@@ -185,7 +188,60 @@ class AuthControllerValidationTest {
                 .andDo(document("auth/validation/refresh-blank-token"));
     }
 
+    // ─── POST /api/auth/logout ────────────────────────────────────────
+
+    @Test
+    void 로그아웃_토큰_blank_400() throws Exception {
+        mockMvc.perform(post("/api/auth/logout")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("refreshToken", ""))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("auth/validation/logout-blank-token"));
+    }
+
+    // ─── POST /api/auth/email/password-change ─────────────────────────
+
+    @Test
+    void 비밀번호_변경_현재_비밀번호_blank_400() throws Exception {
+        mockMvc.perform(post("/api/auth/email/password-change")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(passwordChangeBody("", "NewPass1!", "NewPass1!")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("auth/validation/password-change-blank-current"));
+    }
+
+    @Test
+    void 비밀번호_변경_새_비밀번호_정책_위반_400() throws Exception {
+        mockMvc.perform(post("/api/auth/email/password-change")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(passwordChangeBody("OldPass1!", "short", "short")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("auth/validation/password-change-invalid-policy"));
+    }
+
+    @Test
+    void 비밀번호_변경_확인값_불일치_400() throws Exception {
+        mockMvc.perform(post("/api/auth/email/password-change")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(passwordChangeBody("OldPass1!", "NewPass1!", "Different1!")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("auth/validation/password-change-confirm-mismatch"));
+    }
+
     // ─── 헬퍼 ─────────────────────────────────────────────────────────
+
+    private String passwordChangeBody(String current, String next, String confirm) throws Exception {
+        return objectMapper.writeValueAsString(Map.of(
+                "currentPassword", current,
+                "newPassword", next,
+                "newPasswordConfirm", confirm
+        ));
+    }
+
 
     private String registerBody(String email, String password, String passwordConfirm, String name) throws Exception {
         return objectMapper.writeValueAsString(Map.of(

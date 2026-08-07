@@ -61,6 +61,11 @@ public record MemberInfo(
 
         // === 시간대·국가 ===
         String timezone,   // IANA tz ID, 예: "Asia/Tokyo"
-        String countryCode // ISO 3166-1 alpha-2, 거주 국가. 예: "KR"
+        String countryCode, // ISO 3166-1 alpha-2, 거주 국가. 예: "KR"
+
+        // === 설정 [피그마: 설정 화면 토글] ===
+        // 본인 계정에만 반환되는 값이라 공개 프로필(MemberProfileInfo)에는 포함하지 않는다.
+        boolean marketingAgreed,     // 마케팅 정보 수신 동의
+        boolean adultContentVisible  // 성인 콘텐츠 표시
 ) {
 }
