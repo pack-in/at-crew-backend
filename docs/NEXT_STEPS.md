@@ -16,7 +16,7 @@
 
 **로드맵 P5(이벤트 레지스트리 JDBC 전환 + Mongo 제거) — 완료 (2026-08-07, 백그라운드 워커)**: 전체 테스트 310개 그린, gitleaks 클린, 4개 커밋(`8d316d2`/`db94c78`/`7661857`/`270c999`). `spring-modulith-events-jdbc-2.0.6.jar`의 공식 v2 MariaDB 스키마를 그대로 복사해 `V13__modulith_event_publication.sql`로 커밋(설계 문서가 지정한 V2는 이미 다른 마이그레이션이 선점해 V13으로 채번). UUID 왕복·스키마 타입·재기동 재발행 3가지를 검증하는 `EventPublicationRegistryTest` 신규 작성(재발행 옵션을 false로 끄면 테스트가 실패하는 것까지 네거티브 컨트롤로 확인). 중간에 Gradle daemon stall이 2회 있었는데, 원인은 전날 세션에서 안 끈 `./gradlew bootRun`이 데몬을 점유한 것(P5 자체 버그 아님) — 프로세스 종료로 해결.
 
-**⚠️ P5에서 발견한 실제 결함 — 이미지 처리 동시성 레이스 (후속 조치 필요, 우선순위 1번 항목에 추가함)**: Mongo 이벤트 레지스트리 시절엔 발행 등록에 Mongo 왕복이 끼어 리스너 호출이 우연히 직렬화됐었는데, JDBC 전환으로 그 우연한 보호막이 사라지면서 표면화됨. `RecruitMediaEventListener`/`ArtworkMediaEventListener`가 같은 게시글의 이미지 이벤트 두 건을 각각 `REQUIRES_NEW` 트랜잭션으로 처리할 때 서로의 갱신을 못 보고 경합하면 양쪽 다 `readyFor()` false로 남아 **게시글이 PENDING에 영구히 갇힐 수 있음** — 실제 프로덕션에서 Cloudflare Worker가 이미지별 webhook을 동시에 보내면 바로 재현되는 시나리오. 락 전략(부모 행 `PESSIMISTIC_WRITE` 등)은 설계 판단이 필요해 워커가 프로덕션 코드는 건드리지 않았음. 상세는 아래 "지금 바로 처리할 것" 1번.
+**⚠️ P5에서 발견한 실제 결함 — 이미지 처리 동시성 레이스 → ✅ 수정 완료 (2026-08-07)**: Mongo 이벤트 레지스트리 시절엔 발행 등록에 Mongo 왕복이 끼어 리스너 호출이 우연히 직렬화됐었는데, JDBC 전환으로 그 우연한 보호막이 사라지면서 표면화됨. `RecruitMediaEventListener`/`ArtworkMediaEventListener`가 같은 게시글의 이미지 이벤트 두 건을 각각 `REQUIRES_NEW` 트랜잭션으로 처리할 때 서로의 갱신을 못 보고 경합하면 양쪽 다 `readyFor()` false로 남아 **게시글이 PENDING에 영구히 갇힐 수 있었음** — 실제 프로덕션에서 Cloudflare Worker가 이미지별 webhook을 동시에 보내면 바로 재현되는 시나리오였다. 부모 행 `PESSIMISTIC_WRITE` 락(`findByIdForUpdate`)으로 리스너 실행을 직렬화해 수정하고, 실제 동시 발행 경합 테스트 2건을 추가했다(네거티브 컨트롤로 락 제거 시 재현 확인). 상세는 아래 "지금 바로 처리할 것" 0번.
 
 **참고(범위 밖)**: `SearchApiDocTest` 간헐 실패는 P5 이전부터 있던 기존 결함(공유 Elasticsearch Testcontainer가 컨텍스트 종료 시 같이 죽는 구조적 flakiness) — P5와 무관, stash 비교로 확인됨. 싱글톤 컨테이너 패턴 도입 등 별도 정리 필요.
 
@@ -106,14 +106,23 @@ recruit 모듈(구인글/팀원모집글/구직글/지원/끌어올리기/관심
 
 ## 지금 바로 처리할 것 (우선순위순)
 
-### 0. 이미지 처리 동시성 레이스 수정 (P5에서 발견, prod 배포 전 최우선)
+### 0. ~~이미지 처리 동시성 레이스 수정~~ — ✅ 수정 완료 (2026-08-07)
 `RecruitMediaEventListener`/`ArtworkMediaEventListener`가 같은 게시글의 이미지 이벤트 두 건을 각각
 `REQUIRES_NEW` 트랜잭션으로 동시 처리하면 서로의 갱신을 못 보고 경합해 양쪽 다 `readyFor()` false로
-남는다 — **게시글이 PENDING에 영구히 갇히는 결함**. Mongo 이벤트 레지스트리 시절엔 우연히 직렬화돼
-드러나지 않았는데, P5(JDBC 전환)로 그 우연한 보호막이 사라지며 표면화됨(2026-08-07). 실제 Cloudflare
-Worker가 이미지별 webhook을 동시에 보내는 상황에서 바로 재현된다 — **EC2 배포 전에 반드시 고칠 것**.
-락 전략(부모 행 `PESSIMISTIC_WRITE` 직렬화 등)은 설계 판단이 필요해 아직 미착수. 재현 테스트는
-`RecruitModuleTests`/`ArtworkModuleTests`에 도착 순서를 고정해 우회해둔 상태(실제 수정 아님).
+남던 결함(**게시글이 PENDING에 영구히 갇힘**). Mongo 이벤트 레지스트리 시절엔 우연히 직렬화돼
+드러나지 않았는데 P5(JDBC 전환)로 그 보호막이 사라지며 표면화됐다.
+
+**수정**: 부모 행에 `PESSIMISTIC_WRITE` 락을 걸어 같은 게시글/작품에 대한 리스너 실행을 직렬화한다.
+`ArtworkRepository`/`JobPostingRepository`/`TeamPostingRepository`/`JobSeekingPostRepository`에
+락 전용 `findByIdForUpdate`를 신설하고(기존 `findById`는 다른 호출부 컨텐션을 피하려 그대로 둠),
+두 리스너가 이미지 상태를 읽기 전에 이 메서드로 부모 행을 잠근다. locking read는 REPEATABLE READ
+스냅샷과 무관하게 항상 최신 커밋을 읽으므로, 락을 기다린 두 번째 트랜잭션은 첫 트랜잭션의 갱신을 보고
+정상적으로 READY로 전이한다.
+
+**검증**: `RecruitModuleTests.같은_구인글의_이미지_이벤트가_동시에_도착해도_READY로_전이된다`,
+`ArtworkModuleTests.같은_작품의_이미지_이벤트가_동시에_도착해도_READY로_전환된다` —
+`ExecutorService` + `CountDownLatch`로 두 이벤트를 실제 동시 발행하는 경합 테스트(설계 §7 리스크 3).
+락을 일시 제거하면 두 테스트가 재현성 있게 실패하는 것까지 네거티브 컨트롤로 확인했다.
 
 ### 1. recruit 검색 후속 과제 (PR #41에서 의도적으로 남긴 것)
 지금 동작에 문제는 없지만, 데이터가 늘거나 기획이 확정되면 손봐야 하는 항목들이다.
