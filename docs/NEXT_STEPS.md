@@ -3,6 +3,23 @@
 > 이 문서는 세션 인수인계용 체크리스트다. 장기 로드맵 전체는 `docs/roadmap.md`가 정본이고,
 > 이 문서는 "지금 당장 뭐부터 볼지"만 정리한다. 작업 완료 후 이 파일은 삭제해도 된다.
 
+## 2026-08-07 진행 상황
+
+**prod 인프라 구성 확정** (`docs/design/mariadb-migration-design.md` §10-1에 상세 근거 반영):
+- **EC2 1대**: 앱 서버 + MariaDB 같이 운영(laiteu와 동일한 self-hosted 패턴, RDS 안 씀 — 포트폴리오 목적상 관리형 DB 운영 경험이 필요 없다고 판단해 비용 우선)
+- **EC2 1대**: Elasticsearch 전용(리소스 경합 방지 위해 앱 서버와 분리, 자체관리)
+- **Cloudflare R2**: 미디어 스토리지(기존 결정 유지)
+- **AWS 계정**: laiteu와 같은 계정(`sehandev` 소유) 재사용. at-crew 전용 IAM 사용자(EC2FullAccess + RDS~~FullAccess~~ 불필요해짐 + AWSBudgetsFullAccess + Billing 정보 접근 토글) 발급을 계정 소유자에게 요청한 상태 — **RDS 정책은 안 써도 되니 요청 문구에서 빼도 됨**, 이 부분은 다음 세션에서 재확인 필요.
+- **기각된 대안**: Cloudflare D1 — SQLite 기반이라 JDBC 드라이버가 없어 JPA/Hibernate 앱에서 연결 자체가 불가능(Worker 바인딩/HTTP API 전용). "테넌트별 다중 DB 샤딩" 철학이라 이 프로젝트의 단일 스키마 모듈형 모놀리식과도 안 맞음. 비용 절감 병목은 DB가 아니라 EC2 컴퓨팅이라 실익도 작음.
+- **비용 관리**: 사용자가 직접 예산 알림을 걸 수 있도록 IAM에 AWSBudgetsFullAccess + Billing 콘솔 접근 토글도 같이 요청함. NAT Gateway 사용 금지(비용 폭탄 원인), Elasticsearch EC2는 퍼블릭 IP 없이 프라이빗으로(2024년부터 AWS가 퍼블릭 IPv4 자체에 과금) — 다음 세션에서 실제 프로비저닝 시 지킬 것.
+- **미완료**: root(sehandev)로부터 IAM 키 발급 대기 중. 발급되면 `aws configure`(로컬에서 직접, 채팅에 키 값 붙여넣지 말 것 — 지난 세션에 한 번 실수로 노출됨) → EC2 프로비저닝(앱+MariaDB, Elasticsearch) 순서로 진행.
+
+**로드맵 P5(이벤트 레지스트리 JDBC 전환 + Mongo 제거) — 완료 (2026-08-07, 백그라운드 워커)**: 전체 테스트 310개 그린, gitleaks 클린, 4개 커밋(`8d316d2`/`db94c78`/`7661857`/`270c999`). `spring-modulith-events-jdbc-2.0.6.jar`의 공식 v2 MariaDB 스키마를 그대로 복사해 `V13__modulith_event_publication.sql`로 커밋(설계 문서가 지정한 V2는 이미 다른 마이그레이션이 선점해 V13으로 채번). UUID 왕복·스키마 타입·재기동 재발행 3가지를 검증하는 `EventPublicationRegistryTest` 신규 작성(재발행 옵션을 false로 끄면 테스트가 실패하는 것까지 네거티브 컨트롤로 확인). 중간에 Gradle daemon stall이 2회 있었는데, 원인은 전날 세션에서 안 끈 `./gradlew bootRun`이 데몬을 점유한 것(P5 자체 버그 아님) — 프로세스 종료로 해결.
+
+**⚠️ P5에서 발견한 실제 결함 — 이미지 처리 동시성 레이스 (후속 조치 필요, 우선순위 1번 항목에 추가함)**: Mongo 이벤트 레지스트리 시절엔 발행 등록에 Mongo 왕복이 끼어 리스너 호출이 우연히 직렬화됐었는데, JDBC 전환으로 그 우연한 보호막이 사라지면서 표면화됨. `RecruitMediaEventListener`/`ArtworkMediaEventListener`가 같은 게시글의 이미지 이벤트 두 건을 각각 `REQUIRES_NEW` 트랜잭션으로 처리할 때 서로의 갱신을 못 보고 경합하면 양쪽 다 `readyFor()` false로 남아 **게시글이 PENDING에 영구히 갇힐 수 있음** — 실제 프로덕션에서 Cloudflare Worker가 이미지별 webhook을 동시에 보내면 바로 재현되는 시나리오. 락 전략(부모 행 `PESSIMISTIC_WRITE` 등)은 설계 판단이 필요해 워커가 프로덕션 코드는 건드리지 않았음. 상세는 아래 "지금 바로 처리할 것" 1번.
+
+**참고(범위 밖)**: `SearchApiDocTest` 간헐 실패는 P5 이전부터 있던 기존 결함(공유 Elasticsearch Testcontainer가 컨텍스트 종료 시 같이 죽는 구조적 flakiness) — P5와 무관, stash 비교로 확인됨. 싱글톤 컨테이너 패턴 도입 등 별도 정리 필요.
+
 ## 2026-08-06 진행 상황
 
 Cloudflare Worker 배포 및 전체 파이프라인(트리거→이미지 변환→콜백) 검증까지 완료했다.
@@ -88,6 +105,15 @@ stale remote-tracking refs를 정리했다(원격 브랜치는 이미 PR 병합 
 recruit 모듈(구인글/팀원모집글/구직글/지원/끌어올리기/관심작가/포트연동/최근본작가) 스코프는 이제 전부 완료 상태다.
 
 ## 지금 바로 처리할 것 (우선순위순)
+
+### 0. 이미지 처리 동시성 레이스 수정 (P5에서 발견, prod 배포 전 최우선)
+`RecruitMediaEventListener`/`ArtworkMediaEventListener`가 같은 게시글의 이미지 이벤트 두 건을 각각
+`REQUIRES_NEW` 트랜잭션으로 동시 처리하면 서로의 갱신을 못 보고 경합해 양쪽 다 `readyFor()` false로
+남는다 — **게시글이 PENDING에 영구히 갇히는 결함**. Mongo 이벤트 레지스트리 시절엔 우연히 직렬화돼
+드러나지 않았는데, P5(JDBC 전환)로 그 우연한 보호막이 사라지며 표면화됨(2026-08-07). 실제 Cloudflare
+Worker가 이미지별 webhook을 동시에 보내는 상황에서 바로 재현된다 — **EC2 배포 전에 반드시 고칠 것**.
+락 전략(부모 행 `PESSIMISTIC_WRITE` 직렬화 등)은 설계 판단이 필요해 아직 미착수. 재현 테스트는
+`RecruitModuleTests`/`ArtworkModuleTests`에 도착 순서를 고정해 우회해둔 상태(실제 수정 아님).
 
 ### 1. recruit 검색 후속 과제 (PR #41에서 의도적으로 남긴 것)
 지금 동작에 문제는 없지만, 데이터가 늘거나 기획이 확정되면 손봐야 하는 항목들이다.
