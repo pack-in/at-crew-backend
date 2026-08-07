@@ -3,6 +3,36 @@
 > 이 문서는 세션 인수인계용 체크리스트다. 장기 로드맵 전체는 `docs/roadmap.md`가 정본이고,
 > 이 문서는 "지금 당장 뭐부터 볼지"만 정리한다. 작업 완료 후 이 파일은 삭제해도 된다.
 
+## 2026-08-07 진행 상황 (🎉 첫 배포 성공)
+
+**EC2 #1에서 앱+MariaDB가 실제로 돌아가고, nginx를 거쳐 실제 API가 응답하는 것까지 확인 완료**
+(`curl -H 'Host: api.at-crew.com' http://127.0.0.1/api/community/banners` → `200 {"code":"SUCCESS","data":[]}`).
+`deploy/deploy.sh`로 빌드→푸시→배포 파이프라인 자체도 왕복 검증됨. 그 과정에서 **prod 프로필로 실제
+기동한 게 이번이 처음이라, 로컬/테스트에서는 한 번도 안 걸렸던 결함 3개**를 찾아 고쳤다:
+
+1. **`SecurityConfig`의 `requiresChannel()`이 런타임에 죽음** — `if (isProd()) { requiresChannel(...) }`
+   블록이 참조하는 `ChannelDecisionManager`가 Spring Security 7.0.5에 없어 `NoClassDefFoundError`로
+   앱이 아예 기동을 못 했다. 게다가 이 코드는 애초에 우리 아키텍처와도 안 맞았음 — Cloudflare Flexible
+   모드는 origin에 평문 HTTP로 전달하는데 origin이 HTTPS를 강제하면 Cloudflare발 트래픽이 전부 막힌다.
+   블록 전체를 제거(HSTS 헤더는 그대로 유지 — 그건 브라우저 대상이라 무관). 커밋 `0aa5c39`.
+2. **`docker-compose.app.yml`의 `depends_on`이 "컨테이너 시작"만 기다리고 "MariaDB가 실제 접속
+   가능한 시점"은 안 기다림** — 첫 배포 때 app이 초기화 중인 MariaDB에 `Connection refused`로 붙었다가
+   죽었다(`restart: always`로 우연히 살아남는 구조였음). `mariadb`에 healthcheck 추가하고 app이
+   `condition: service_healthy`로 기다리게 함.
+3. **Firebase 자격증명 경로가 호스트 경로라 컨테이너 안에서 안 보임** — `.env`의
+   `FIREBASE_CREDENTIALS_PATH`는 EC2 호스트 파일시스템 기준인데, 앱은 Docker 컨테이너 안에서 돌아서
+   그 경로가 안 보여 `FileNotFoundException`. `deploy/firebase-credentials.json`을 컨테이너 안
+   `/app/firebase-credentials.json`으로 볼륨 마운트하고 경로를 그걸로 강제 덮어씀.
+
+2·3번 커밋 `858ac3b`. **교훈**: 로컬 테스트가 아무리 그린이어도 `SPRING_PROFILES_ACTIVE=prod`로 실제
+기동해보기 전까지는 prod 전용 분기(`isProd()` 같은)가 안전하다고 확신할 수 없다 — 이번 것들 전부
+"코드는 있었지만 이번이 최초 실행"이었던 경로에서 나왔다.
+
+**아직 남은 것**: Cloudflare DNS 연결(`api.at-crew.com`, 도메인 접근 권한 아직 요청 안 함) → Worker
+`SERVER_CALLBACK_URL`을 진짜 도메인으로 재등록(지금은 임시 tunnel 상태) → `deploy/README.md`의 "Spring
+Data Elasticsearch/Doc" 관련 회원가입·게시글 CRUD 등 실제 기능 스모크 테스트(지금은 헬스체크·빈 목록
+조회만 확인함) → EC2 #2(검색 서버)의 xpack.security 등 남은 하드닝 항목 재검토.
+
 ## 2026-08-07 진행 상황 (EC2 프로비저닝 완료)
 
 **AWS IAM 인증 완료·EC2 2대 실제 생성 완료**: root(sehandev)로부터 전용 IAM 사용자(`at-crew-be`,
