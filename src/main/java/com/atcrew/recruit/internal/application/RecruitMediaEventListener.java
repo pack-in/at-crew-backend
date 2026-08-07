@@ -49,6 +49,11 @@ class RecruitMediaEventListener {
         if (event.ownerType() == MediaOwnerType.ARTWORK) {
             return;
         }
+        // 같은 게시글의 이미지 이벤트가 동시에 들어오면 각 트랜잭션이 서로의 갱신을 못 본 채 readyFor를
+        // 판정해 READY 전이가 영구 유실될 수 있다 — 부모 게시글 행에 비관적 락을 걸어 직렬화한다
+        // (동시성 레이스 수정, docs/NEXT_STEPS.md "지금 바로 처리할 것" 0번).
+        lockPosting(event.ownerType(), event.ownerId());
+
         List<? extends RecruitPostingImage> images =
                 recruitImageService.findImages(event.ownerType(), event.ownerId());
         images.stream()
@@ -62,6 +67,15 @@ class RecruitMediaEventListener {
         // 부분 실패 허용 — PENDING이 하나도 없고 DONE이 하나 이상이면 READY (설계 §5·§10.3).
         if (RecruitPostingImage.readyFor(images)) {
             markReady(event.ownerType(), event.ownerId());
+        }
+    }
+
+    private void lockPosting(MediaOwnerType ownerType, String postingId) {
+        switch (ownerType) {
+            case JOB_POSTING -> jobPostingRepository.findByIdForUpdate(postingId);
+            case TEAM_POSTING -> teamPostingRepository.findByIdForUpdate(postingId);
+            case JOB_SEEKING_POST -> jobSeekingPostRepository.findByIdForUpdate(postingId);
+            case ARTWORK -> throw new IllegalStateException("도달 불가 — ARTWORK는 진입 시점에 걸러진다");
         }
     }
 

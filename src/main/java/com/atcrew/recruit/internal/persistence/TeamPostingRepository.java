@@ -2,19 +2,31 @@ package com.atcrew.recruit.internal.persistence;
 
 import com.atcrew.recruit.TeamPostingStatus;
 import com.atcrew.recruit.internal.domain.TeamPosting;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 // 검색(RecruitSearchQueryRepository)은 조건 조합이 동적이라 Specification으로 조회한다.
 public interface TeamPostingRepository extends JpaRepository<TeamPosting, String>,
         JpaSpecificationExecutor<TeamPosting> {
+
+    /**
+     * 이미지 처리완료 이벤트가 같은 팀원모집글에 대해 동시에 여러 건 들어와도 READY 판정이 서로의
+     * 갱신을 놓치지 않도록 부모 행에 비관적 락을 건다 — {@code RecruitMediaEventListener} 전용
+     * (동시성 레이스 수정, docs/NEXT_STEPS.md "지금 바로 처리할 것" 0번).
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT p FROM TeamPosting p WHERE p.id = :id")
+    Optional<TeamPosting> findByIdForUpdate(@Param("id") String id);
 
     /**
      * 공개 목록 첫 페이지 — 끌어올리기 적용 중인 글을 상단에 고정한다(설계 §2.1.1).

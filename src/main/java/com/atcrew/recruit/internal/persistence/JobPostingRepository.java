@@ -2,18 +2,30 @@ package com.atcrew.recruit.internal.persistence;
 
 import com.atcrew.recruit.JobPostingStatus;
 import com.atcrew.recruit.internal.domain.JobPosting;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 // 검색(RecruitSearchQueryRepository)은 조건 조합이 동적이라 Specification으로 조회한다.
 public interface JobPostingRepository extends JpaRepository<JobPosting, String>, JpaSpecificationExecutor<JobPosting> {
+
+    /**
+     * 이미지 처리완료 이벤트가 같은 구인글에 대해 동시에 여러 건 들어와도 READY 판정이 서로의 갱신을
+     * 놓치지 않도록 부모 행에 비관적 락을 건다 — {@code RecruitMediaEventListener} 전용
+     * (동시성 레이스 수정, docs/NEXT_STEPS.md "지금 바로 처리할 것" 0번).
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT p FROM JobPosting p WHERE p.id = :id")
+    Optional<JobPosting> findByIdForUpdate(@Param("id") String id);
 
     // 기업 마이페이지 "구인글 업로드 카드" 진입점 판단 — 공개 중인 구인글 보유 여부(§6.2)
     boolean existsByAuthorMemberIdAndStatus(String authorMemberId, JobPostingStatus status);

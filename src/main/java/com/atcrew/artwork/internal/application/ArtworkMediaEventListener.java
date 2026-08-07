@@ -39,7 +39,9 @@ class ArtworkMediaEventListener {
         if (event.ownerType() != MediaOwnerType.ARTWORK) {
             return;
         }
-        artworkRepository.findById(event.ownerId()).ifPresentOrElse(artwork -> {
+        // 같은 작품의 이미지 이벤트가 동시에 들어오면 각 트랜잭션이 서로의 갱신을 못 본 채 readyFor를
+        // 판정해 READY 전이가 영구 유실될 수 있다 — findByIdForUpdate로 부모 행을 잠가 직렬화한다.
+        artworkRepository.findByIdForUpdate(event.ownerId()).ifPresentOrElse(artwork -> {
             artwork.markImageProcessed(
                     event.imageKey(),
                     event.thumbKey(),
