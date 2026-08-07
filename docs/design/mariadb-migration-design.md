@@ -263,7 +263,7 @@ LIMIT ?;
 
 ### 3.8 Spring Modulith 이벤트 레지스트리 — JDBC 전환
 
-**결정**: `spring-modulith-starter-mongodb` → `spring-modulith-starter-jdbc` 교체. `event_publication` 테이블 스키마는 **Modulith 자동 생성(`spring.modulith.events.jdbc.schema-initialization.enabled`)을 끄고 Flyway 마이그레이션으로 직접 관리**한다 — Modulith 배포 산출물(jar) 안의 MariaDB용 스키마 SQL을 그대로 복사해 `V2__modulith_event_publication.sql`로 커밋한다. `republish-outstanding-events-on-restart: true`(prod)는 유지.
+**결정**: `spring-modulith-starter-mongodb` → `spring-modulith-starter-jdbc` 교체. `event_publication` 테이블 스키마는 **Modulith 자동 생성(`spring.modulith.events.jdbc.schema-initialization.enabled`)을 끄고 Flyway 마이그레이션으로 직접 관리**한다 — Modulith 배포 산출물(jar) 안의 MariaDB용 스키마 SQL을 그대로 복사해 커밋한다(P5 실제 채번은 `V13__modulith_event_publication.sql`, §6). `republish-outstanding-events-on-restart: true`(prod)는 유지.
 
 **근거**: 프로덕션 스키마의 진실이 두 곳(Flyway + Modulith 자동 생성)으로 갈라지면 `ddl-auto: validate`류의 검증이 불가능해진다. 버전 업그레이드로 Modulith가 스키마를 바꿀 때도 Flyway 마이그레이션으로 명시적으로 반영하는 것이 안전하다.
 
@@ -362,7 +362,7 @@ LIMIT ?;
 | **P2. community 파일럿 전환** ✅ 완료 | Banner 엔티티·리포지토리·bulk 시프트(§3.3.3)를 JPA로 전환. **가장 작고(애그리게잇 1개), 다른 모듈이 참조하지 않으며, 관리자 전용 기능이라 사고 반경이 최소** — 여기서 JPA 매핑·Flyway·테스트 패턴을 확립해 이후 모듈의 템플릿으로 삼는다. member부터 시작하지 않는 이유: member는 auth·artwork·community가 전부 참조하는 중심 모듈이라 패턴 미검증 상태에서 손대면 실패 비용이 가장 크다 | **쉬움** — 모듈 하나, PR 단위 revert 가능 |
 | **P3. member 전환** ✅ 완료 | Member + 자식 테이블 4종, searchProfiles Specification + keyset(§3.6), recordLogin(§3.3.1), `@Version`. 가장 큰 단일 작업 — P2에서 검증된 패턴 적용 | **보통** — PR revert 가능하나 후속 P4가 의존 |
 | **P4. auth·artwork 전환** ✅ 완료 | RefreshToken 소비(§3.3.2), LoginAttemptLimiter(§3.3.4), TTL 정리 배치(§3.5.2) / Artwork + 자식 테이블, 북마크 커서 쿼리, Worker 재시도 쿼리(`@Query` JPQL 치환). 두 모듈은 상호 독립이라 병렬 PR 가능 | **보통** |
-| **P5. 이벤트 레지스트리·정리** | modulith-starter-jdbc 교체 + UUID 검증 테스트(§3.8), `MongoConfig`·IndexInitializer 3종 삭제, **Mongo 의존성·docker-compose mongo 서비스 최종 제거**, 전체 테스트 스위트 회귀(기존 `/test` 커맨드 기준 전체 녹색) — 이 시점에는 아직 로컬/CI에서만 검증된 상태 | **어려움 시작** — 여기서부터 Mongo 경로가 소멸. P5 머지 전이 마지막 무비용 회귀 지점 |
+| **P5. 이벤트 레지스트리·정리** ✅ 완료 | modulith-starter-jdbc 교체 + UUID 검증 테스트(§3.8, `EventPublicationRegistryTest`), `MongoConfig`·`@EnableMongoAuditing`·`TestMongoConfig` 삭제(IndexInitializer 3종은 P2~P4에서 이미 제거됨), **Mongo 의존성·docker-compose mongo 서비스 최종 제거**, 전체 테스트 스위트 회귀. P5 진행 중 발견한 이슈: (1) 마이그레이션 번호가 이미 V12까지 사용 중이라 §3.8이 지정한 `V2__modulith_event_publication.sql`을 **`V13__modulith_event_publication.sql`로 채번**했다(내용은 §3.8 지시대로 jar의 공식 스키마 복사). (2) Modulith 2.0.6의 `spring.modulith.events.jdbc.use-legacy-structure` 기본값이 false라 **v1이 아닌 v2 스키마**(`STATUS`/`COMPLETION_ATTEMPTS`/`LAST_RESUBMISSION_DATE` 3컬럼 추가)를 복사해야 한다 — v1을 쓰면 조회 SQL이 없는 컬럼을 참조해 런타임에 깨진다. (3) `EVENT_PUBLICATION_ARCHIVE`는 완료 모드가 `archive`일 때만 필요해(기본값 `update`) 생성하지 않았다 | **어려움 시작** — 여기서부터 Mongo 경로가 소멸. P5 머지 전이 마지막 무비용 회귀 지점 |
 | **P6. prod 연결** | `application-prod.yml`에 실 MariaDB 접속 정보 채움(§8 호스팅 형태 확정 후), 배포. 실사용자 데이터가 없으므로 ETL·점검 창·롤백 시한 불필요(§5) — 배포가 곧 컷오버 | **쉬움** — 데이터 이관이 없어 순수 배포 리스크만 존재 |
 
 각 Phase는 독립 PR(들)로 리뷰하고, P2~P4 기간 중 main에서 진행되는 기능 개발과의 충돌을 줄이기 위해 **전환 기간 중 신규 기능은 전환 브랜치 기준으로 작업**하는 팀 규칙이 필요하다(§8).
@@ -399,14 +399,14 @@ LIMIT ?;
 
 ## 10. 미결정 사항 (Open Questions)
 
-1. **MariaDB 호스팅 형태** — managed(RDS/SkySQL 등) vs self-hosted. 백업·PITR(point-in-time recovery) 전략과 `application-prod.yml` 접속 설정이 여기 걸린다(§5의 prod 연결 단계에서 확정 필요).
+1. ~~**MariaDB 호스팅 형태**~~ — **해결(2026-08-07, P6 착수 전)**: self-hosted 확정. EC2 한 대에 앱+MariaDB를 같이 올리고(laiteu와 동일 패턴), Elasticsearch는 리소스 경합(JVM 힙 경쟁) 방지를 위해 별도 EC2로 분리. 관리형(RDS) 대비 백업·장애조치를 직접 챙겨야 하는 트레이드오프가 있으나, 포트폴리오 목적상 "관리형 DB 운영 경험"을 보여줄 필요가 없다고 판단해 비용 절감을 우선함(사용자 판단, 2026-08-07). **Cloudflare D1은 기각** — SQLite 기반이라 JDBC 드라이버 자체가 없고 Worker 바인딩/HTTP API로만 접근 가능해, 지금의 JPA/Hibernate/Flyway 기반 구조를 통째로 재작성해야 함(P1~P5 전환 작업 자체가 무의미해짐). 설계 철학도 "테넌트별 다중 DB 샤딩"으로 이 프로젝트의 단일 스키마 모듈형 모놀리식과 반대 방향. 비용 절감의 실제 병목은 DB 종류가 아니라 EC2 컴퓨팅이라 실익도 없음. 스토리지는 Cloudflare R2(이미 결정), 인프라는 AWS 유지(같은 계정, laiteu와 동일).
 2. **라이트(laiteu) Mongo 데이터의 필드 매핑** — §1.1/§5-3에서 재정의된 별도 이관 문제. 라이트 서비스 종료 일정이 잡히면 별도 문서로 설계.
 3. ~~**UUIDv7 생성 방식**~~ — **해결(P2)**: 라이브러리 추가 없이 직접 구현(`com.atcrew.common.id.UuidV7Generator`, RFC 9562, ms 타임스탬프+SecureRandom). 전 모듈 공용.
 4. **`uk_be_member_artwork`(중복 북마크 방지) DB 제약 승격 여부** — 실사용자 데이터가 없으므로 기존 데이터 중복 스캔은 불필요, 로컬 전환 시 바로 제약으로 적용 가능할 것으로 보이나 §4에서 최종 확정.
 5. **QueryDSL 재검토 트리거** — 동적 쿼리 3개 이상(recruit 모듈 검색 예상) 시점에 Specification 유지 vs QueryDSL 도입 재평가 (§3.6).
 6. **전환 기간 중 기능 개발 기준 브랜치 합의** — §7-7. 팀 운영 결정 사항(단, §9 결정으로 신규 모듈 착수 자체가 미뤄지므로 실질적 충돌 범위는 줄어든다).
 7. **`Member.countryCode` 병합 시점** — [global-country-plan-design.md](global-country-plan-design.md) 구현이 이 문서의 P3(member 전환)보다 먼저 끝나면 Mongo `Member`에 필드가 먼저 생기고, 그 반대면 MariaDB 스키마(§3.2/§4)에 바로 반영된다. 어느 쪽이 먼저 끝나든 필드 자체(String, 카탈로그 검증)는 동일하므로 순서에 따른 재작업은 없다.
-8. **V2(`event_publication`) 마이그레이션 SQL** — P1에서 작성하지 않음. spring-modulith-starter-jdbc를 P5에서 추가한 직후, 해당 jar에 포함된 MariaDB 공식 스키마 SQL을 그대로 복사해 `V2__modulith_event_publication.sql`로 커밋할 것(§3.8의 UUID 컬럼 타입 검증 경고와 동일한 이유로 추측 작성 금지).
+8. ~~**V2(`event_publication`) 마이그레이션 SQL**~~ — **해결(P5)**: `spring-modulith-events-jdbc-2.0.6.jar`의 `org/springframework/modulith/events/jdbc/schemas/v2/schema-mariadb.sql`을 그대로 복사해 커밋했다. 채번은 V2가 이미 사용 중이라 `V13__modulith_event_publication.sql`이 됐다(§6 P5 행).
 
 ## 11. P2에서 발견한 Spring Boot 4 / Modulith 관련 함정 (다음 Phase 참고용)
 
