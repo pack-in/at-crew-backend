@@ -1,0 +1,32 @@
+# EC2 #1(앱 서버) 전용 — 앱 컨테이너와 MariaDB를 같이 띄운다(self-hosted, laiteu와 동일 패턴).
+# docs/design/mariadb-migration-design.md §10-1 참고. Elasticsearch는 별도 EC2(docker-compose.search.yml).
+services:
+  mariadb:
+    image: mariadb:11.4
+    restart: always
+    environment:
+      MARIADB_DATABASE: atcrew
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD}
+      TZ: UTC
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    # 외부에 포트를 노출하지 않는다 — app 컨테이너가 같은 docker 네트워크에서 서비스명(mariadb)으로 접근.
+
+  app:
+    image: ${APP_IMAGE}
+    restart: always
+    env_file:
+      - .env
+    environment:
+      # .env의 MARIADB_HOST/PORT(로컬 기본값 localhost:3306)를 컨테이너 네트워크 기준으로 덮어쓴다.
+      MARIADB_HOST: mariadb
+      MARIADB_PORT: 3306
+    ports:
+      # nginx(호스트에 직접 설치)만 접근하면 되므로 루프백에만 바인딩 — 8080을 외부에 직접 노출하지 않는다.
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      - mariadb
+
+volumes:
+  mariadb_data:
