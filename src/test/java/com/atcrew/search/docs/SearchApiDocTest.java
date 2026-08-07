@@ -6,6 +6,7 @@ import com.atcrew.artwork.ArtworkInfo;
 import com.atcrew.artwork.ArtworkRole;
 import com.atcrew.artwork.ArtworkService;
 import com.atcrew.artwork.CreativeType;
+import com.atcrew.artwork.Genre;
 import com.atcrew.artwork.ImageLayoutType;
 import com.atcrew.artwork.ArtworkStatus;
 import com.atcrew.artwork.UploadArtworkCommand;
@@ -175,7 +176,7 @@ class SearchApiDocTest extends RestDocsIntegrationSupport {
                 imageKeys, 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 "검색문서화 작품", "설명",
                 ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL, List.of(ArtworkRole.LINEART),
-                List.of("BL"), List.of("태그"),
+                List.of(Genre.BL), List.of("태그"),
                 AgeRating.ALL, Visibility.PUBLIC, List.of(), null, null, List.of(), List.of()
         ));
 

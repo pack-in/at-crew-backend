@@ -6,6 +6,7 @@ import com.atcrew.artwork.ArtworkInfo;
 import com.atcrew.artwork.ArtworkRole;
 import com.atcrew.artwork.ArtworkService;
 import com.atcrew.artwork.CreativeType;
+import com.atcrew.artwork.Genre;
 import com.atcrew.artwork.ImageLayoutType;
 import com.atcrew.artwork.ArtworkStatus;
 import com.atcrew.artwork.UploadArtworkCommand;
@@ -95,7 +96,7 @@ class SearchModuleTests {
     @Test
     void 전체_재색인_후에도_기존_작품이_검색된다() {
         ArtworkInfo artwork = uploadReadyArtwork(ArtworkField.ANIMATION, CreativeType.COMMISSION,
-                List.of(ArtworkRole.BACKGROUND), List.of("SF"), AgeRating.ALL);
+                List.of(ArtworkRole.BACKGROUND), List.of(Genre.SF), AgeRating.ALL);
         awaitSearchResult(() -> searchService.search(queryWithArtworkField(ArtworkField.ANIMATION)));
 
         // alias(artworks)를 새 물리 인덱스로 원자적으로 전환 — docs/design/search-module-design.md §5.3
@@ -109,7 +110,7 @@ class SearchModuleTests {
     @Test
     void 업로드된_작품이_비동기로_색인되어_검색에_노출된다() {
         ArtworkInfo artwork = uploadReadyArtwork(ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
-                List.of(ArtworkRole.LINEART), List.of("BL"), AgeRating.ALL);
+                List.of(ArtworkRole.LINEART), List.of(Genre.BL), AgeRating.ALL);
 
         List<SearchResultItem> found = awaitSearchResult(
                 () -> searchService.search(queryWithArtworkField(ArtworkField.ILLUSTRATION)));
@@ -120,7 +121,7 @@ class SearchModuleTests {
     @Test
     void 필터가_일치하지_않으면_결과에서_제외된다() {
         uploadReadyArtwork(ArtworkField.WEBTOON, CreativeType.ORIGINAL,
-                List.of(ArtworkRole.LINEART), List.of("판타지"), AgeRating.ALL);
+                List.of(ArtworkRole.LINEART), List.of(Genre.FANTASY), AgeRating.ALL);
 
         // 색인 반영을 기다린 뒤(존재 확인) 다른 필터로는 조회되지 않는지 검증
         awaitSearchResult(() -> searchService.search(queryWithArtworkField(ArtworkField.WEBTOON)));
@@ -155,7 +156,7 @@ class SearchModuleTests {
         String authorId = registerMember();
         String jobPostingId = publishedJobPosting(authorId, token + " 구인 공고");
         ArtworkInfo artwork = uploadReadyArtwork(ArtworkField.WEBTOON, CreativeType.ORIGINAL,
-                List.of(ArtworkRole.SKETCH), List.of("드라마"), AgeRating.ALL, token + " 포트폴리오");
+                List.of(ArtworkRole.SKETCH), List.of(Genre.DRAMA), AgeRating.ALL, token + " 포트폴리오");
         // 두 소스 모두 @ApplicationModuleListener(비동기) 색인이라, 둘 다 반영될 때까지 기다린다
         awaitCondition(() -> searchService.search(mergedQuery(token, 20)).items().size() == 2);
 
@@ -289,7 +290,7 @@ class SearchModuleTests {
     @Test
     void 비공개로_전환하면_색인에서_제거된다() {
         ArtworkInfo artwork = uploadReadyArtwork(ArtworkField.PRINT_COMIC, CreativeType.FAN_ART,
-                List.of(ArtworkRole.COLORING), List.of("액션"), AgeRating.ALL);
+                List.of(ArtworkRole.COLORING), List.of(Genre.ACTION), AgeRating.ALL);
 
         awaitSearchResult(() -> searchService.search(queryWithArtworkField(ArtworkField.PRINT_COMIC)));
 
@@ -340,13 +341,13 @@ class SearchModuleTests {
     }
 
     private ArtworkInfo uploadReadyArtwork(ArtworkField field, CreativeType creativeType,
-                                            List<ArtworkRole> roles, List<String> genres, AgeRating ageRating) {
+                                            List<ArtworkRole> roles, List<Genre> genres, AgeRating ageRating) {
         return uploadReadyArtwork(field, creativeType, roles, genres, ageRating,
                 "검색테스트 작품 " + Instant.now().toEpochMilli());
     }
 
     private ArtworkInfo uploadReadyArtwork(ArtworkField field, CreativeType creativeType,
-                                            List<ArtworkRole> roles, List<String> genres, AgeRating ageRating,
+                                            List<ArtworkRole> roles, List<Genre> genres, AgeRating ageRating,
                                             String title) {
         String memberId = registerMember();
 

@@ -62,10 +62,10 @@ class ArtworkModuleTests {
         ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, new UploadArtworkCommand(
                 List.of("raw/1.png", "raw/2.png"), 1, "raw/thumb.png", ImageLayoutType.VERTICAL_SCROLL,
                 "제목", "설명", ArtworkField.WEBTOON, CreativeType.ORIGINAL,
-                List.of(ArtworkRole.LINEART, ArtworkRole.COLORING), List.of("판타지", "액션"), List.of("태그1", "태그2"),
+                List.of(ArtworkRole.LINEART, ArtworkRole.COLORING), List.of(Genre.FANTASY, Genre.ACTION), List.of("태그1", "태그2"),
                 AgeRating.ALL, Visibility.PUBLIC, List.of("clip studio"),
                 new WorkDuration(1, 2, 3, 4), 12, List.of("https://youtube.com/watch?v=1"),
-                List.of(new MaterialData("배경소스", List.of("배경"), List.of("raw/mat.png"), List.of("https://acon3d.com/x")))
+                List.of(new MaterialData("배경소스", List.of(MaterialTarget.BACKGROUND), List.of("raw/mat.png"), List.of("https://acon3d.com/x")))
         ));
 
         ArtworkInfo found = artworkService.getArtwork(uploaded.id(), memberId);
@@ -74,7 +74,7 @@ class ArtworkModuleTests {
         assertThat(found.images()).hasSize(2);
         assertThat(found.representativeImageIndex()).isEqualTo(1);
         assertThat(found.roles()).containsExactlyInAnyOrder(ArtworkRole.LINEART, ArtworkRole.COLORING);
-        assertThat(found.genres()).containsExactlyInAnyOrder("판타지", "액션");
+        assertThat(found.genres()).containsExactlyInAnyOrder(Genre.FANTASY, Genre.ACTION);
         assertThat(found.tags()).containsExactlyInAnyOrder("태그1", "태그2");
         assertThat(found.tools()).containsExactly("clip studio");
         assertThat(found.workDuration()).isEqualTo(new WorkDuration(1, 2, 3, 4));
@@ -105,12 +105,12 @@ class ArtworkModuleTests {
         String memberId = registerAuthor();
         ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, baseUploadCommand(
                 List.of("raw/1.png"),
-                List.of(new MaterialData("옛소재", List.of("배경"), List.of(), List.of()))));
+                List.of(new MaterialData("옛소재", List.of(MaterialTarget.BACKGROUND), List.of(), List.of()))));
 
         ArtworkInfo updated = artworkService.updateArtwork(memberId, uploaded.id(), new UpdateArtworkCommand(
                 null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-                List.of(new MaterialData("새소재1", List.of("캐릭터"), List.of(), List.of()),
-                        new MaterialData("새소재2", List.of("소품"), List.of(), List.of()))));
+                List.of(new MaterialData("새소재1", List.of(MaterialTarget.CHARACTER), List.of(), List.of()),
+                        new MaterialData("새소재2", List.of(MaterialTarget.ACCESSORY), List.of(), List.of()))));
 
         assertThat(updated.materials()).extracting(MaterialInfo::name)
                 .containsExactly("새소재1", "새소재2");

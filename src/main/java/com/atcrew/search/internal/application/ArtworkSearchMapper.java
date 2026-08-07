@@ -15,12 +15,14 @@ class ArtworkSearchMapper {
     }
 
     static ArtworkSearchDocument toDocument(ArtworkInfo info) {
+        // ES에는 enum 상수 이름(keyword)으로 색인한다 — 필터도 같은 이름으로 매칭한다(§9-2).
         List<String> materialTargets = info.materials() == null ? List.of()
                 : info.materials().stream()
                         .map(MaterialInfo::targets)
                         .filter(java.util.Objects::nonNull)
                         .flatMap(List::stream)
                         .distinct()
+                        .map(Enum::name)
                         .collect(Collectors.toList());
 
         String thumbnailKey;
@@ -46,7 +48,7 @@ class ArtworkSearchMapper {
                 info.creativeType() != null ? info.creativeType().name() : null,
                 info.ageRating() != null ? info.ageRating().name() : null,
                 info.roles() == null ? List.of() : info.roles().stream().map(Enum::name).toList(),
-                info.genres(),
+                info.genres() == null ? List.of() : info.genres().stream().map(Enum::name).toList(),
                 materialTargets,
                 thumbnailKey,
                 thumbnailAdultKey,
