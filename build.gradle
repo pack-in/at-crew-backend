@@ -22,10 +22,9 @@ ext {
 }
 
 dependencies {
-	implementation 'org.springframework.boot:spring-boot-starter-data-mongodb'
-	// 검색 모듈(docs/design/search-module-design.md) — Mongo/artwork 원본 데이터는 그대로 두고 조회 전용 색인만 추가
+	// 검색 모듈(docs/design/search-module-design.md) — artwork 원본 데이터는 그대로 두고 조회 전용 색인만 추가
 	implementation 'org.springframework.boot:spring-boot-starter-data-elasticsearch'
-	// MariaDB 전환(docs/design/mariadb-migration-design.md) P1 — Mongo와 공존, P5에서 Mongo 의존성 제거
+	// MariaDB 전환(docs/design/mariadb-migration-design.md) — P5에서 Mongo 의존성 완전 제거 완료
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	runtimeOnly 'org.mariadb.jdbc:mariadb-java-client'
 	// Spring Boot 4부터 Flyway 자동설정이 spring-boot-autoconfigure에서 분리됐다 —
@@ -42,7 +41,9 @@ dependencies {
 	runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
 	runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
 	implementation 'org.springframework.modulith:spring-modulith-starter-core'
-	implementation 'org.springframework.modulith:spring-modulith-starter-mongodb'
+	// Modulith 이벤트 레지스트리(docs/design/mariadb-migration-design.md §3.8) — event_publication을 MariaDB에 저장.
+	// 스키마는 Modulith 자동 생성을 끄고 Flyway(V13)가 단독 관리한다.
+	implementation 'org.springframework.modulith:spring-modulith-starter-jdbc'
 	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
 	implementation platform('software.amazon.awssdk:bom:2.31.5')
 	implementation 'software.amazon.awssdk:s3'
@@ -52,7 +53,6 @@ dependencies {
 	testImplementation 'org.springframework.modulith:spring-modulith-starter-test'
 	testImplementation 'org.springframework.modulith:spring-modulith-docs'
 	testImplementation 'org.springframework.boot:spring-boot-testcontainers'
-	testImplementation 'org.testcontainers:testcontainers-mongodb'
 	testImplementation 'org.testcontainers:testcontainers-elasticsearch'
 	testImplementation 'org.testcontainers:testcontainers-mariadb'
 	testImplementation 'org.testcontainers:testcontainers-junit-jupiter'

@@ -1,15 +1,6 @@
-spring:
-  mongodb:
-    uri: ${MONGODB_URI}
-    database: ${MONGODB_DATABASE}
-  data:
-    mongodb:
-      auto-index-creation: false
-      transactions:
-        enabled: true  # 레플리카셋 환경 — MongoTransactionManager 활성화
-
 spring.modulith:
   events:
+    # 미완료 이벤트 재발행 — 기동 시 event_publication의 completion_date가 비어 있는 행을 다시 발행한다
     republish-outstanding-events-on-restart: true
 
 cors:

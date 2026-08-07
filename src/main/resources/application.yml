@@ -1,19 +1,9 @@
 spring:
   application:
     name: at-crew-backend
-  autoconfigure:
-    exclude:
-      # standalone MongoDB(로컬 포함)는 트랜잭션 미지원 — prod에서는 MongoConfig가 MongoTransactionManager를 직접 등록
-      - org.springframework.modulith.events.mongodb.MongoDbTransactionAutoConfiguration
-  mongodb:
-    uri: ${MONGODB_URI:mongodb://localhost:27017}
-    database: ${MONGODB_DATABASE:atcrew}
-  data:
-    mongodb:
-      auto-index-creation: true
   elasticsearch:
     uris: ${ELASTICSEARCH_URIS:http://localhost:9200}
-  # MariaDB 전환(docs/design/mariadb-migration-design.md) — Mongo와 병행 중(P1~P4), prod 접속 정보는 P6에서 채움
+  # MariaDB 전환(docs/design/mariadb-migration-design.md) — prod 접속 정보는 P6에서 채움
   datasource:
     url: jdbc:mariadb://${MARIADB_HOST:localhost}:${MARIADB_PORT:3306}/${MARIADB_DATABASE:atcrew}?connectionTimeZone=UTC
     username: ${MARIADB_USERNAME:root}
@@ -30,6 +20,13 @@ spring:
     locations: classpath:db/migration
   jackson:
     time-zone: UTC
+  # Modulith 이벤트 레지스트리(docs/design/mariadb-migration-design.md §3.8) —
+  # event_publication 스키마의 유일한 진실은 Flyway(V13)이므로 Modulith 자동 생성은 끈다.
+  modulith:
+    events:
+      jdbc:
+        schema-initialization:
+          enabled: false
 
 logging:
   pattern:
@@ -76,5 +73,3 @@ artwork:
 search:
   internal:
     secret: ${SEARCH_INTERNAL_SECRET:dev-internal-secret}
-
-# republish-outstanding-events-on-restart 는 레플리카셋 필요 → application-prod.yml 참고
