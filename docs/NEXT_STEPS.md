@@ -28,10 +28,29 @@
 기동해보기 전까지는 prod 전용 분기(`isProd()` 같은)가 안전하다고 확신할 수 없다 — 이번 것들 전부
 "코드는 있었지만 이번이 최초 실행"이었던 경로에서 나왔다.
 
-**아직 남은 것**: Cloudflare DNS 연결(`api.at-crew.com`, 도메인 접근 권한 아직 요청 안 함) → Worker
-`SERVER_CALLBACK_URL`을 진짜 도메인으로 재등록(지금은 임시 tunnel 상태) → `deploy/README.md`의 "Spring
-Data Elasticsearch/Doc" 관련 회원가입·게시글 CRUD 등 실제 기능 스모크 테스트(지금은 헬스체크·빈 목록
-조회만 확인함) → EC2 #2(검색 서버)의 xpack.security 등 남은 하드닝 항목 재검토.
+## 2026-08-10 진행 상황
+
+**DNS 연결 + 인증 플로우 전체 스모크 테스트 성공**: root가 `at-crew.com` DNS 편집 권한으로
+`api.at-crew.com` A레코드(Proxied)를 EC2 #1 탄력적 IP로 연결해줌. Worker `SERVER_CALLBACK_URL`도
+`https://api.at-crew.com/internal/media/images/processed`로 재등록 완료(더 이상 임시 tunnel 아님).
+
+- **Cloudflare→origin 연결이 521(Web Server Is Down)로 처음엔 실패** — 원인은 SSL/TLS 모드가
+  Flexible이 아니었던 것(nginx가 80만 열어둔 상태라 Full류 모드면 Cloudflare가 443으로 origin에
+  못 붙음). root한테 Flexible로 변경 요청해서 해소.
+- **Cloudflare 멤버 권한 정리 필요성 발견**: DNS 편집("Authentication error")과 SSL/TLS 설정(메뉴
+  자체가 안 보임) 둘 다 막혀 있어서 매번 root한테 요청해야 했다 — AWS IAM 자기 자신 키 관리 권한
+  부재와 같은 패턴. 앞으로 반복 요청을 줄이려고 **남은 프로젝트 기간에 필요할 걸로 예상되는 권한을
+  한 번에 정리해서 root한테 요청**함(AWS: IAM 자기 자신 자격증명 관리, Cloudflare: at-crew.com
+  DNS+SSL/TLS 편집 또는 Administrator role). 응답 대기 중.
+- **회원가입 → 로그인 → 인증 API(성인 콘텐츠 표시 토글) → 재로그인으로 값 영속 확인 → DB 직접 정리**
+  전체 플로우를 실제 prod 서버에서 왕복 검증 완료. `POST /api/auth/email/register`(201, JWT+UUIDv7
+  발급) → `POST /api/auth/email/login` → `PATCH /api/members/me/adult-content`(204, JWT 인증
+  통과) → 재로그인해서 `adultContentVisible: true` 반영 확인 → 테스트 계정은 MariaDB에서 직접 삭제
+  (소프트 삭제 API 대신 hard delete — 실사용자 탈퇴가 아니라 순수 테스트 쓰레기라서). 배포 파이프라인
+  전체(nginx→앱→MariaDB, JWT 발급/검증, Flyway 스키마)가 실사용 흐름으로 검증된 상태.
+
+**남은 것**: root 응답 대기(권한) → EC2 #2 xpack.security 등 하드닝 재검토 → recruit/artwork
+게시글 CRUD·이미지 업로드(Cloudflare Worker 경유) 스모크 테스트는 아직 안 함.
 
 ## 2026-08-07 진행 상황 (EC2 프로비저닝 완료)
 
