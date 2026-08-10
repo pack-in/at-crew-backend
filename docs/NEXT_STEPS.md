@@ -49,8 +49,21 @@
   (소프트 삭제 API 대신 hard delete — 실사용자 탈퇴가 아니라 순수 테스트 쓰레기라서). 배포 파이프라인
   전체(nginx→앱→MariaDB, JWT 발급/검증, Flyway 스키마)가 실사용 흐름으로 검증된 상태.
 
-**남은 것**: root 응답 대기(권한) → EC2 #2 xpack.security 등 하드닝 재검토 → recruit/artwork
-게시글 CRUD·이미지 업로드(Cloudflare Worker 경유) 스모크 테스트는 아직 안 함.
+**recruit·media 파이프라인 스모크 테스트도 이어서 완료**: 구인글 생성(`POST
+/api/recruit/job-postings`, `roles`/`genres` enum 값 정상 반영 — 태그 정규화 작업이 실 prod에서도
+검증됨) → R2 presigned URL 발급(`POST /api/artwork/images/presign`, 실제 서명된 R2 URL 확인, R2
+자격증명 정상) → media 콜백 수신 엔드포인트(`POST /internal/media/images/processed`)를
+`X-Internal-Secret` 정상/오류 값으로 각각 204/401 확인. 테스트 데이터는 전부 DB에서 직접 정리
+(가입 3건 hard delete, 구인글 1건 삭제 — 실사용자 탈퇴가 아니라 순수 테스트라 소프트 삭제 API 대신
+직접 SQL로 정리).
+
+- **테스트 중 발견(버그 아님, 참고 사항)**: `CreateJobPostingRequest`처럼 `boolean`(Boolean 아님) 필드가
+  많은 record는 JSON에 그 필드가 하나라도 빠지면 Jackson이 record 생성자에 `null`을 못 넣어서 전체
+  요청이 `COMMON_INVALID_INPUT`(400)으로 거부된다 — 필드별 검증 메시지가 아니라 뭉뚱그려진 에러라
+  원인 파악이 어려웠다. 프론트가 이런 DTO를 보낼 때는 boolean 필드를 전부 명시적으로 채워야 함(생략
+  불가) — 프론트 연동 문서에 남겨둘 만한 함정.
+
+**남은 것**: root 응답 대기(권한) → EC2 #2 xpack.security 등 하드닝 재검토.
 
 ## 2026-08-07 진행 상황 (EC2 프로비저닝 완료)
 
