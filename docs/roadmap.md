@@ -26,7 +26,7 @@
 
 | 순서 | 항목 | 상태 |
 |---|---|---|
-| 0 | MongoDB → MariaDB 마이그레이션 | **P1~P5 완료**(이벤트 레지스트리 JDBC 전환·Mongo 완전 제거 포함), P6(prod 연결) 착수 전 — `docs/design/mariadb-migration-design.md` |
+| 0 | MongoDB → MariaDB 마이그레이션 | **완료(P1~P6 전부)** — self-hosted EC2 배포·DNS 연결·인증/recruit/media 파이프라인 실 prod 스모크 테스트까지 완료(2026-08-10) — `docs/design/mariadb-migration-design.md` |
 | 0.5 | 글로벌 시간대 UTC 전환 | **완료**(§3.1~3.4 전부 구현·병합) — `docs/design/global-timezone-strategy.md` |
 | 1 | 본인/기업 인증(verification) 시스템 | 방식 확정(PASS/수동 이메일 심사), 구현 착수 전 |
 | 2 | recruit 모듈 | **핵심 CRUD 완료·main 병합**(PR #34) — REST Docs 테스트·검색/기업모듈 포트 연동 잔여, 아래 참고 |
