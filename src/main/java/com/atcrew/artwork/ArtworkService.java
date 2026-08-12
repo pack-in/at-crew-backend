@@ -17,7 +17,13 @@ public interface ArtworkService {
 
     ArtworkInfo updateArtwork(String memberId, String artworkId, UpdateArtworkCommand command);
 
-    void updateVisibility(String memberId, String artworkId, Visibility visibility);
+    /**
+     * 노출 위치 재선언 (업로드-R09) — 공개 상태값을 직접 받지 않고 "피드 공개 여부 × 담을 포트폴리오"
+     * 조합으로 계산한다. {@code portfolioIds}는 증분이 아니라 전체 재선언이라 목록에 없는 기존 편입은
+     * 해제된다. 편입 반영은 {@link ArtworkPortfolioSelectionRequested} 이벤트를 portfolio가 같은
+     * 트랜잭션에서 동기 처리한다.
+     */
+    void updatePublication(String memberId, String artworkId, boolean publishToFeed, List<String> portfolioIds);
 
     void deleteArtwork(String memberId, String artworkId);
 

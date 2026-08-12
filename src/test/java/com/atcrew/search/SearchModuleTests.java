@@ -9,7 +9,6 @@ import com.atcrew.artwork.CreativeType;
 import com.atcrew.artwork.ImageLayoutType;
 import com.atcrew.artwork.ArtworkStatus;
 import com.atcrew.artwork.UploadArtworkCommand;
-import com.atcrew.artwork.Visibility;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaProcessingStatus;
 import com.atcrew.media.internal.application.MediaCallbackService;
@@ -293,7 +292,7 @@ class SearchModuleTests {
 
         awaitSearchResult(() -> searchService.search(queryWithArtworkField(ArtworkField.PRINT_COMIC)));
 
-        artworkService.updateVisibility(artwork.authorId(), artwork.id(), Visibility.PRIVATE);
+        artworkService.updatePublication(artwork.authorId(), artwork.id(), false, List.of());
 
         awaitCondition(() -> {
             SearchPage<SearchResultItem> page = searchService.search(queryWithArtworkField(ArtworkField.PRINT_COMIC));
@@ -355,7 +354,7 @@ class SearchModuleTests {
                 imageKeys, 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 title, "설명",
                 field, creativeType, roles, genres, List.of("태그"),
-                ageRating, Visibility.PUBLIC, List.of(), null, null, List.of(), List.of()
+                ageRating, true, List.of(), List.of(), null, null, List.of(), List.of()
         ));
 
         // media webhook → MediaAssetProcessedEvent → artwork 리스너(비동기)로 READY 전환된다.

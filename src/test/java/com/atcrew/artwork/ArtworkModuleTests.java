@@ -1,5 +1,6 @@
 package com.atcrew.artwork;
 
+import com.atcrew.common.exception.DomainException;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaProcessingStatus;
 import com.atcrew.media.internal.application.MediaCallbackService;
@@ -8,6 +9,8 @@ import com.atcrew.member.MemberService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.modulith.test.ApplicationModuleTest;
 import org.testcontainers.containers.MariaDBContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -55,6 +58,10 @@ class ArtworkModuleTests {
     @Autowired
     MediaCallbackService mediaCallbackService;
 
+    // 운영 차단은 관리자 API 없이 DB 직접 UPDATE로 이뤄지므로 테스트도 같은 경로를 쓴다.
+    @Autowired
+    JdbcTemplate jdbcTemplate;
+
     @Test
     void 작품_업로드_후_모든_필드가_그대로_조회된다() {
         String memberId = registerAuthor();
@@ -63,7 +70,7 @@ class ArtworkModuleTests {
                 List.of("raw/1.png", "raw/2.png"), 1, "raw/thumb.png", ImageLayoutType.VERTICAL_SCROLL,
                 "제목", "설명", ArtworkField.WEBTOON, CreativeType.ORIGINAL,
                 List.of(ArtworkRole.LINEART, ArtworkRole.COLORING), List.of("판타지", "액션"), List.of("태그1", "태그2"),
-                AgeRating.ALL, Visibility.PUBLIC, List.of("clip studio"),
+                AgeRating.ALL, true, List.of(), List.of("clip studio"),
                 new WorkDuration(1, 2, 3, 4), 12, List.of("https://youtube.com/watch?v=1"),
                 List.of(new MaterialData("배경소스", List.of("배경"), List.of("raw/mat.png"), List.of("https://acon3d.com/x")))
         ));
@@ -210,6 +217,34 @@ class ArtworkModuleTests {
                 .isInstanceOf(RuntimeException.class);
     }
 
+    // 운영 차단은 삭제·공개 상태보다 우선한다(마이페이지_작가-R39). 관리자 API가 없어 차단은 DB 직접
+    // UPDATE로 이뤄지므로(docs/operations/moderation-block.md) 테스트도 같은 방식으로 재현한다.
+    @Test
+    void 운영_차단된_작품은_제3자에게_410이고_본인은_열람한다() {
+        String memberId = registerAuthor();
+        String viewerId = registerAuthor();
+        ArtworkInfo uploaded = uploadMinimal(memberId, "raw/b1.png");
+        processImage(uploaded.id(), "raw/b1.png", MediaProcessingStatus.DONE);
+        awaitReady(memberId, uploaded.id());
+
+        blockArtwork(uploaded.id());
+
+        assertThatThrownBy(() -> artworkService.getArtwork(uploaded.id(), viewerId))
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("ARTWORK_BLOCKED");
+        assertThatThrownBy(() -> artworkService.getArtwork(uploaded.id(), null))
+                .extracting(e -> ((DomainException) e).getStatus())
+                .isEqualTo(HttpStatus.GONE);
+        // 본인은 계속 열람할 수 있고, 응답의 blocked 플래그로 차단 안내 배지를 그린다.
+        ArtworkInfo mine = artworkService.getArtwork(uploaded.id(), memberId);
+        assertThat(mine.blocked()).isTrue();
+    }
+
+    /** 운영 차단 SQL 1건을 재현한다 — 관리자 API가 없어 실제 운영도 같은 UPDATE로 수행한다. */
+    private void blockArtwork(String artworkId) {
+        jdbcTemplate.update("UPDATE artworks SET blocked_at = UTC_TIMESTAMP(6) WHERE id = ?", artworkId);
+    }
+
     /** Worker webhook 1건을 재현한다 — media가 자산 상태를 갱신하고 MediaAssetProcessedEvent를 발행한다. */
     private void processImage(String artworkId, String imageKey, MediaProcessingStatus status) {
         boolean done = status == MediaProcessingStatus.DONE;
@@ -270,7 +305,7 @@ class ArtworkModuleTests {
                 imageKeys, 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 "테스트 작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
                 List.of(), List.of(), List.of(),
-                AgeRating.ALL, Visibility.PUBLIC, List.of(), null, null, List.of(), materials);
+                AgeRating.ALL, true, List.of(), List.of(), null, null, List.of(), materials);
     }
 
     private String registerAuthor() {

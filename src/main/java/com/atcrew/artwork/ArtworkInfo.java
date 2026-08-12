@@ -25,6 +25,13 @@ public record ArtworkInfo(
         List<String> videoLinks,
         AgeRating ageRating,
         Visibility visibility,
+        // 라이브 포트폴리오(작가 페이지 + 최신 반영형) 편입 여부 —
+        // visibility가 PRIVATE여도 이 값이 true면 포트폴리오 한정 공개라 완전 비공개가 아니다
+        // (docs/design/portfolio-module-design.md §1.2, §5.4)
+        boolean portfolioIncluded,
+        // 운영 정책·법적 조치에 따른 외부 노출 중단 여부(마이페이지_작가-R39) —
+        // 차단된 작품은 작성자 본인에게만 조회되며 화면에는 차단 안내 배지를 노출한다
+        boolean blocked,
         List<MaterialInfo> materials,
         ArtworkStatus status,
         Instant createdAt,

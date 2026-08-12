@@ -8,6 +8,7 @@ public enum ArtworkErrorCode {
     ARTWORK_ACCESS_DENIED(HttpStatus.FORBIDDEN, "해당 작품에 접근 권한이 없습니다"),
     ARTWORK_DELETED(HttpStatus.GONE, "삭제된 작품입니다"),
     ARTWORK_PRIVATE(HttpStatus.FORBIDDEN, "비공개 작품입니다"),
+    ARTWORK_BLOCKED(HttpStatus.GONE, "운영 정책에 따라 열람할 수 없는 작품입니다"),
     ARTWORK_NOT_READY(HttpStatus.BAD_REQUEST, "이미지 처리 중인 작품은 이 작업을 수행할 수 없습니다"),
     ARTWORK_NOT_DELETED(HttpStatus.BAD_REQUEST, "휴지통에 있는 작품이 아닙니다"),
     INVALID_IMAGE_COUNT(HttpStatus.BAD_REQUEST, "이미지 수는 1개 이상 20개 이하여야 합니다"),

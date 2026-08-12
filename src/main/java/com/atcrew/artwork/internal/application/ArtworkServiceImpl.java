@@ -13,6 +13,7 @@ import com.atcrew.artwork.UploadArtworkCommand;
 import com.atcrew.artwork.Visibility;
 import com.atcrew.artwork.ArtworkChangedEvent;
 import com.atcrew.artwork.ArtworkPermanentlyDeletedEvent;
+import com.atcrew.artwork.ArtworkPortfolioSelectionRequested;
 import com.atcrew.artwork.internal.domain.artwork.Artwork;
 import com.atcrew.artwork.internal.domain.artwork.Material;
 import com.atcrew.artwork.internal.exception.ArtworkErrorCode;
@@ -100,7 +101,7 @@ class ArtworkServiceImpl implements ArtworkService {
                 command.genres(),
                 command.tags(),
                 command.ageRating(),
-                command.visibility(),
+                visibilityOf(command.publishToFeed()),
                 command.tools(),
                 command.workDuration(),
                 command.cutCount(),
@@ -108,6 +109,10 @@ class ArtworkServiceImpl implements ArtworkService {
                 materials
         );
         Artwork saved = artworkRepository.save(artwork);
+        // 포트폴리오 편입은 portfolio가 이 트랜잭션 안에서 동기 처리한다 — 검증 실패 시 업로드까지 롤백된다.
+        // 이미지 처리 트리거(외부 Worker 호출, 롤백 불가)보다 먼저 검증을 끝내려고 순서를 앞에 뒀다.
+        eventPublisher.publishEvent(new ArtworkPortfolioSelectionRequested(
+                memberId, saved.getId(), command.portfolioIds()));
         mediaService.registerAndTriggerProcessing(MediaOwnerType.ARTWORK, saved.getId(),
                 command.imageKeys(), MediaVariantProfile.STANDARD_WITH_ADULT_BLUR);
         eventPublisher.publishEvent(new ArtworkChangedEvent(saved.getId()));
@@ -123,6 +128,7 @@ class ArtworkServiceImpl implements ArtworkService {
             case NOT_FOUND -> throw new ArtworkException(ArtworkErrorCode.ARTWORK_NOT_FOUND, artworkId);
             case DELETED -> throw new ArtworkException(ArtworkErrorCode.ARTWORK_DELETED, artworkId);
             case PRIVATE -> throw new ArtworkException(ArtworkErrorCode.ARTWORK_PRIVATE, artworkId);
+            case BLOCKED -> throw new ArtworkException(ArtworkErrorCode.ARTWORK_BLOCKED, artworkId);
             case ALLOWED -> { }
         }
         MemberInfo author = memberService.findById(artwork.getAuthorId());
@@ -202,12 +208,22 @@ class ArtworkServiceImpl implements ArtworkService {
 
     @Override
     @Transactional
-    public void updateVisibility(String memberId, String artworkId, Visibility visibility) {
+    public void updatePublication(String memberId, String artworkId, boolean publishToFeed,
+                                  List<String> portfolioIds) {
         Artwork artwork = findArtworkById(artworkId);
         artwork.assertOwner(memberId);
-        artwork.changeVisibility(visibility);
+        artwork.changeVisibility(visibilityOf(publishToFeed));
         artworkRepository.save(artwork);
+        // 편입 반영이 먼저다 — 실패하면 공개 상태 변경까지 함께 롤백돼야 반쪽 상태가 남지 않는다.
+        eventPublisher.publishEvent(new ArtworkPortfolioSelectionRequested(memberId, artworkId, portfolioIds));
         eventPublisher.publishEvent(new ArtworkChangedEvent(artworkId));
+    }
+
+    // 공개 상태는 사용자가 고르는 값이 아니라 노출 위치 조합에서 계산되는 파생값이다(업로드-R09).
+    // 라이브 포트폴리오 편입까지 반영한 최종 접근 판정은 Artwork.accessFor가 담당한다(마이페이지_작가-R04).
+    // "링크 공개"라는 제3의 상태는 없으므로 LINK_ONLY를 새로 만들어내는 경로도 없다.
+    private Visibility visibilityOf(boolean publishToFeed) {
+        return publishToFeed ? Visibility.PUBLIC : Visibility.PRIVATE;
     }
 
     @Override
@@ -239,6 +255,8 @@ class ArtworkServiceImpl implements ArtworkService {
             List<Predicate> predicates = new ArrayList<>();
             predicates.add(cb.equal(root.get("status"), ArtworkStatus.READY));
             predicates.add(cb.equal(root.get("visibility"), Visibility.PUBLIC));
+            // 운영 차단된 작품은 외부 노출을 즉시 중단한다(마이페이지_작가-R39).
+            predicates.add(cb.isNull(root.get("blockedAt")));
             if (artworkField != null) {
                 predicates.add(cb.equal(root.get("artworkField"), artworkField));
             }
