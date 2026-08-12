@@ -9,10 +9,14 @@ import java.time.Instant;
 /**
  * 포트폴리오에 담긴 작품 1건의 카드 표시 정보 (docs/design/portfolio-module-design.md §4).
  *
- * <p>최신 반영형(LIVE)·작가 페이지는 원본 작품에서 조회 시점에 채운다.
+ * <p>최신 반영형(LIVE)·작가 페이지는 원본 작품에서 조회 시점에 채우고 카드 클릭 시 원본 작품 상세로
+ * 이동하므로 {@code artworkId}만 채운다. 고정형(SNAPSHOT)은 반대로 {@code snapshotId}만 채운다 —
+ * 스냅샷 상세는 원본과 별개 자원이고, 내부 연결값인 {@code sourceArtworkId}를 제3자에게 원본 작품 URL을
+ * 조립하는 근거로 노출하지 않기 때문이다(마이페이지_작가-R38·R39).
  */
 public record PortfolioArtworkCardInfo(
-        String artworkId,          // 원본 작품 ID
+        String artworkId,          // 원본 작품 ID — 고정형 카드는 null
+        String snapshotId,         // 고정형 스냅샷 ID — 최신 반영형·작가 페이지 카드는 null
         String title,              // 작품 제목
         String thumbKey,           // 카드 썸네일 R2 키 — 사용자 지정 썸네일 우선, 없으면 대표 이미지 썸네일
         String thumbAdultKey,      // 성인 블러 썸네일 R2 키 — 사용자 지정 썸네일을 쓰는 경우 null
