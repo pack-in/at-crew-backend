@@ -1,5 +1,7 @@
 package com.atcrew.artwork.internal.application;
 
+import com.atcrew.artwork.ArtworkAccess;
+import com.atcrew.artwork.ArtworkStatus;
 import com.atcrew.artwork.BookmarkEntryInfo;
 import com.atcrew.artwork.BookmarkFolderInfo;
 import com.atcrew.artwork.BookmarkService;
@@ -146,7 +148,10 @@ class BookmarkServiceImpl implements BookmarkService {
     public BookmarkEntryInfo saveBookmark(String memberId, String artworkId, String folderId) {
         Artwork artwork = artworkRepository.findById(artworkId)
                 .orElseThrow(() -> new ArtworkException(ArtworkErrorCode.ARTWORK_NOT_FOUND, artworkId));
-        if (!artwork.isVisibleTo(memberId)) {
+        // 북마크는 GONE/PRIVATE를 구분해 보여줄 필요가 없어 접근 불가 사유를 묶어 404로 응답한다.
+        // 상태 조건은 기존 isVisibleTo와 동일하게 유지한다 — 본인 작품이라도 처리 중·휴지통 작품은 북마크 대상이 아니다.
+        if (artwork.getStatus() != ArtworkStatus.READY
+                || artwork.accessFor(memberId) != ArtworkAccess.ALLOWED) {
             throw new ArtworkException(ArtworkErrorCode.ARTWORK_NOT_FOUND, artworkId);
         }
 

@@ -1,6 +1,7 @@
 package com.atcrew.artwork.internal.domain.artwork;
 
 import com.atcrew.artwork.AgeRating;
+import com.atcrew.artwork.ArtworkAccess;
 import com.atcrew.artwork.ArtworkField;
 import com.atcrew.artwork.ArtworkRole;
 import com.atcrew.artwork.ArtworkStatus;
@@ -119,6 +120,12 @@ public class Artwork implements Persistable<String> {
 
     @Enumerated(EnumType.STRING)
     private Visibility visibility;
+
+    // 라이브 포트폴리오(작가 페이지 + 최신 반영형) 편입 여부 — portfolio 모듈이 같은 트랜잭션에서 동기 갱신하는
+    // 비정규화 값이다. artwork가 portfolio를 참조하면 순환 의존이 되므로 이 컬럼만 보고 접근을 판정한다
+    // (docs/design/portfolio-module-design.md §1.2).
+    @Column(name = "portfolio_included")
+    private boolean portfolioIncluded;
 
     @Enumerated(EnumType.STRING)
     private Visibility visibilityBeforeDelete;
@@ -329,10 +336,20 @@ public class Artwork implements Persistable<String> {
         }
     }
 
-    public boolean isVisibleTo(String viewerMemberId) {
-        if (status != ArtworkStatus.READY) return false;
-        if (authorId.equals(viewerMemberId)) return true;
-        return visibility == Visibility.PUBLIC || visibility == Visibility.LINK_ONLY;
+    // 뷰어별 접근 판정 — 완전 비공개(피드 비공개 + 라이브 포트폴리오 미포함) 작품만 제3자 접근을 차단한다
+    // (docs/design/portfolio-module-design.md §5.4).
+    public ArtworkAccess accessFor(String viewerMemberId) {
+        boolean owner = authorId.equals(viewerMemberId);
+        if (status == ArtworkStatus.DELETED) return owner ? ArtworkAccess.ALLOWED : ArtworkAccess.DELETED;
+        if (owner) return ArtworkAccess.ALLOWED;                              // PROCESSING도 본인은 열람
+        if (status != ArtworkStatus.READY) return ArtworkAccess.NOT_FOUND;
+        if (visibility != Visibility.PRIVATE) return ArtworkAccess.ALLOWED;   // PUBLIC, LINK_ONLY
+        return portfolioIncluded ? ArtworkAccess.ALLOWED : ArtworkAccess.PRIVATE;
+    }
+
+    // 포트폴리오 편입/제외 반영 — 호출 주체는 항상 portfolio 모듈이다(ArtworkService.updatePortfolioInclusion).
+    public void updatePortfolioInclusion(boolean included) {
+        this.portfolioIncluded = included;
     }
 
     public ArtworkImage getRepresentativeImage() {
@@ -382,6 +399,7 @@ public class Artwork implements Persistable<String> {
     public List<String> getVideoLinks() { return videoLinks != null ? List.copyOf(videoLinks) : List.of(); }
     public AgeRating getAgeRating() { return ageRating; }
     public Visibility getVisibility() { return visibility; }
+    public boolean isPortfolioIncluded() { return portfolioIncluded; }
     public List<Material> getMaterials() { return List.copyOf(materials); }
     public ArtworkStatus getStatus() { return status; }
     public Instant getDeletedAt() { return deletedAt; }

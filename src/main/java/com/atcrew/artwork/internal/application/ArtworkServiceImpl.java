@@ -119,9 +119,11 @@ class ArtworkServiceImpl implements ArtworkService {
     @Override
     public ArtworkInfo getArtwork(String artworkId, String viewerMemberId) {
         Artwork artwork = findArtworkById(artworkId);
-        if (!artwork.isVisibleTo(viewerMemberId)
-                && (viewerMemberId == null || !artwork.getAuthorId().equals(viewerMemberId))) {
-            throw new ArtworkException(ArtworkErrorCode.ARTWORK_NOT_FOUND);
+        switch (artwork.accessFor(viewerMemberId)) {
+            case NOT_FOUND -> throw new ArtworkException(ArtworkErrorCode.ARTWORK_NOT_FOUND, artworkId);
+            case DELETED -> throw new ArtworkException(ArtworkErrorCode.ARTWORK_DELETED, artworkId);
+            case PRIVATE -> throw new ArtworkException(ArtworkErrorCode.ARTWORK_PRIVATE, artworkId);
+            case ALLOWED -> { }
         }
         MemberInfo author = memberService.findById(artwork.getAuthorId());
         return ArtworkMapper.toInfo(artwork, author);
@@ -308,6 +310,14 @@ class ArtworkServiceImpl implements ArtworkService {
             eventPublisher.publishEvent(new ArtworkPermanentlyDeletedEvent(artwork.getId(), allKeys));
             eventPublisher.publishEvent(new ArtworkChangedEvent(artwork.getId()));
         }
+    }
+
+    @Override
+    @Transactional
+    public void updatePortfolioInclusion(String artworkId, boolean included) {
+        Artwork artwork = findArtworkById(artworkId);
+        artwork.updatePortfolioInclusion(included);
+        artworkRepository.save(artwork);
     }
 
     @Override
