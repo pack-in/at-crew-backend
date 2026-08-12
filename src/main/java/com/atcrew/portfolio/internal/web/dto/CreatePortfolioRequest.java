@@ -16,7 +16,8 @@ public record CreatePortfolioRequest(
         @NotBlank @Size(max = 100) String title,
         // 반영 유형 — LIVE(최신 반영형) / SNAPSHOT(고정형)
         @NotNull ReflectionType reflectionType,
-        // 담을 작품 ID 목록 — 0개로 생성할 수 있다(복제 시 자동 선택이 0개일 수 있음)
-        @Size(max = 100) List<@NotBlank @Size(max = 36) String> artworkIds
+        // 담을 작품 ID 목록 — 0개로 생성할 수 있고(복제 시 자동 선택이 0개일 수 있음) 개수 상한이 없다
+        // (마이페이지_작가-R37·R38·R46: 포트폴리오·작품 선택 개수 제한 없음)
+        List<@NotBlank @Size(max = 36) String> artworkIds
 ) {
 }
