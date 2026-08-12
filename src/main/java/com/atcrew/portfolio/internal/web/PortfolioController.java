@@ -9,6 +9,7 @@ import com.atcrew.portfolio.PortfolioInfo;
 import com.atcrew.portfolio.PortfolioKind;
 import com.atcrew.portfolio.PortfolioSelectableInfo;
 import com.atcrew.portfolio.PortfolioSharedInfo;
+import com.atcrew.portfolio.PortfolioSnapshotDetailInfo;
 import com.atcrew.portfolio.PortfolioSort;
 import com.atcrew.portfolio.PortfolioSummaryInfo;
 import com.atcrew.portfolio.ReflectionType;
@@ -39,7 +40,7 @@ import java.util.List;
 
 /**
  * 포트폴리오 CRUD API (docs/design/portfolio-module-design.md §4).
- * 공유 링크 공개 열람(`/shared/*`) 2건을 제외하면 전부 본인 전용이다.
+ * 공유 링크 공개 열람(`/shared/*`) 3건을 제외하면 전부 본인 전용이다.
  *
  * <p>복제는 원본 정보 조회(`/duplication-source`)만
  * 제공하고, 실제 생성은 프론트가 그 값으로 생성 API를 다시 호출한다(§5.3).
@@ -72,7 +73,8 @@ class PortfolioController {
     public ApiResponse<CursorPage<PortfolioSummaryInfo>> getMyPortfolios(
             @Parameter(description = "유형 필터 (ARTIST_PAGE/SHARED)") @RequestParam(required = false) PortfolioKind kind,
             @Parameter(description = "반영 유형 필터 (LIVE/SNAPSHOT)") @RequestParam(required = false) ReflectionType reflectionType,
-            @Parameter(description = "정렬 (OLDEST/LATEST/UPDATED, 기본 LATEST)") @RequestParam(required = false) PortfolioSort sort,
+            @Parameter(description = "정렬 (OLDEST/LATEST/UPDATED, 기본 LATEST). UPDATED는 [수정하기]로 저장한 시각 기준입니다")
+            @RequestParam(required = false) PortfolioSort sort,
             @Parameter(description = "커서 (정렬 기준 시각 millis)") @RequestParam(required = false) String cursor,
             @Parameter(description = "페이지 크기 (기본 20, 최대 50)") @RequestParam(required = false) Integer size) {
         String memberId = securityUtils.getCurrentMemberId();
@@ -109,7 +111,8 @@ class PortfolioController {
     }
 
     @Operation(summary = "복제 원본 조회",
-            description = "복제 시작 화면용. 삭제·비공개된 작품은 자동 선택에서 빠지며, 선택된 작품이 0개여도 복제를 진행할 수 있습니다. "
+            description = "복제 시작 화면용. 삭제됐거나 완전 비공개(비공개 + 어느 라이브 포트폴리오에도 미포함)인 작품은 "
+                    + "자동 선택에서 빠지며, 선택된 작품이 0개여도 복제를 진행할 수 있습니다. "
                     + "실제 복제본은 이 응답 값으로 포트폴리오 생성 API를 호출해 만듭니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공")
     @GetMapping("/{portfolioId}/duplication-source")
@@ -183,6 +186,17 @@ class PortfolioController {
             @Parameter(description = "페이지 크기 (기본 20, 최대 50)") @RequestParam(required = false) Integer size) {
         return noIndex(ApiResponse.success(
                 portfolioService.getSharedPortfolioArtworks(identifier, cursor, resolveSize(size))));
+    }
+
+    @Operation(summary = "고정형 스냅샷 상세 열람",
+            description = "인증이 필요 없습니다. 고정형(SNAPSHOT) 포트폴리오 안에서만 열리는 독립 자원이며, "
+                    + "생성 시점에 얼린 값만 내려줍니다. 원본 작품 ID나 원본으로 이동하는 링크는 제공하지 않습니다.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공")
+    @GetMapping("/shared/{identifier}/snapshots/{snapshotId}")
+    public ResponseEntity<ApiResponse<PortfolioSnapshotDetailInfo>> getSharedSnapshotDetail(
+            @Parameter(description = "공유 슬러그 또는 작가 handle") @PathVariable @Pattern(regexp = SHARED_IDENTIFIER_PATTERN, message = "공유 식별자 형식이 올바르지 않습니다") String identifier,
+            @Parameter(description = "스냅샷 ID") @PathVariable @Pattern(regexp = UUID_PATTERN, message = "스냅샷 ID 형식이 올바르지 않습니다") String snapshotId) {
+        return noIndex(ApiResponse.success(portfolioService.getSharedSnapshotDetail(identifier, snapshotId)));
     }
 
     // 검색엔진 색인 제외(마이페이지_작가-R42) — 페이지 <meta name="robots">는 프론트 SSR이 담당하고 서버는 헤더로 보조한다.

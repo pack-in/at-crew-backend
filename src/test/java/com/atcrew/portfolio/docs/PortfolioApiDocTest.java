@@ -7,7 +7,6 @@ import com.atcrew.artwork.ArtworkService;
 import com.atcrew.artwork.CreativeType;
 import com.atcrew.artwork.ImageLayoutType;
 import com.atcrew.artwork.UploadArtworkCommand;
-import com.atcrew.artwork.Visibility;
 import com.atcrew.artwork.WorkDuration;
 import com.atcrew.billing.Plan;
 import com.atcrew.billing.SubscriptionStatus;
@@ -105,7 +104,10 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
                                 fieldWithPath("data.shareSlug").type(JsonFieldType.STRING)
                                         .description("공유 링크 슬러그 (22자) — 작가 페이지는 null").optional(),
                                 fieldWithPath("data.itemCount").description("담긴 작품 수"),
-                                fieldWithPath("data.artworks[].artworkId").description("원본 작품 ID"),
+                                fieldWithPath("data.artworks[].artworkId").type(JsonFieldType.STRING)
+                                        .description("원본 작품 ID — 고정형 카드는 null").optional(),
+                                fieldWithPath("data.artworks[].snapshotId").type(JsonFieldType.STRING)
+                                        .description("고정형 스냅샷 ID — 최신 반영형·작가 페이지 카드는 null").optional(),
                                 fieldWithPath("data.artworks[].title").description("작품 제목"),
                                 fieldWithPath("data.artworks[].thumbKey").type(JsonFieldType.STRING)
                                         .description("카드 썸네일 R2 키 — 이미지 처리 전이면 null").optional(),
@@ -114,7 +116,7 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
                                 fieldWithPath("data.artworks[].ageRating").description("연령 등급 (ALL·ADULT)"),
                                 fieldWithPath("data.artworks[].artworkField").description("작품 분야"),
                                 fieldWithPath("data.artworks[].visibility")
-                                        .description("원본 작품의 공개 범위 (PUBLIC·LINK_ONLY·PRIVATE)"),
+                                        .description("원본 작품의 피드 공개 여부 (PUBLIC=공개 ON, PRIVATE=공개 OFF)"),
                                 fieldWithPath("data.artworks[].createdAt")
                                         .description("원본 작품 등록 시각 (ISO 8601) — 포트폴리오 내 정렬 기준"),
                                 fieldWithPath("data.createdAt").description("생성 시각 (ISO 8601)"),
@@ -260,7 +262,10 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
                                 fieldWithPath("data.reflectionType").description("반영 유형 (SNAPSHOT)"),
                                 fieldWithPath("data.shareSlug").description("공유 링크 슬러그 (22자)"),
                                 fieldWithPath("data.itemCount").description("얼려 담긴 작품 수"),
-                                fieldWithPath("data.artworks[].artworkId").description("원본 작품 ID"),
+                                fieldWithPath("data.artworks[].snapshotId")
+                                        .description("스냅샷 ID — 스냅샷 상세 URL의 식별자. 원본 작품 ID는 노출하지 않는다"),
+                                fieldWithPath("data.artworks[].artworkId").type(JsonFieldType.STRING)
+                                        .description("고정형 카드는 항상 null — 원본 작품 URL 조립 근거로 쓰지 않는다").optional(),
                                 fieldWithPath("data.artworks[].title").description("생성 시점의 작품 제목"),
                                 fieldWithPath("data.artworks[].visibility")
                                         .description("스냅샷 카드의 공개 범위 — 원본 비공개 전환에 영향받지 않고 항상 PUBLIC")
@@ -269,6 +274,46 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
                 .andReturn();
         String snapshotPortfolioId = objectMapper.readTree(createResult.getResponse().getContentAsString())
                 .at("/data/id").asText();
+        String shareSlug = objectMapper.readTree(createResult.getResponse().getContentAsString())
+                .at("/data/shareSlug").asText();
+        String snapshotId = objectMapper.readTree(createResult.getResponse().getContentAsString())
+                .at("/data/artworks/0/snapshotId").asText();
+
+        // 스냅샷 상세는 인증 없이 열리는 독립 자원이다(마이페이지_작가-R39·R42).
+        mockMvc.perform(get("/api/portfolios/shared/{identifier}/snapshots/{snapshotId}", shareSlug, snapshotId))
+                .andExpect(status().isOk())
+                .andExpect(header().string("X-Robots-Tag", "noindex"))
+                .andExpect(jsonPath("$.data.snapshotId").value(snapshotId))
+                .andDo(document("portfolio/get-shared-snapshot-detail",
+                        preprocessResponse(prettyPrint()),
+                        pathParameters(
+                                parameterWithName("identifier").description("공유 슬러그 (22자) 또는 작가 handle"),
+                                parameterWithName("snapshotId").description("스냅샷 ID (UUID) — 카드 응답의 snapshotId")
+                        ),
+                        responseHeaders(
+                                headerWithName("X-Robots-Tag").description("검색엔진 색인 제외 (noindex)")
+                        ),
+                        relaxedResponseFields(
+                                fieldWithPath("code").description("응답 코드 (SUCCESS)"),
+                                fieldWithPath("data.snapshotId").description("스냅샷 ID"),
+                                fieldWithPath("data.title").description("생성 시점의 작품 제목"),
+                                fieldWithPath("data.images[].originalKey").description("생성 당시 원본 이미지 R2 키"),
+                                fieldWithPath("data.images[].thumbKey").type(JsonFieldType.STRING)
+                                        .description("생성 당시 썸네일 R2 키 — 이미지 처리 전이면 null").optional(),
+                                fieldWithPath("data.representativeImageIndex").description("대표 이미지 인덱스"),
+                                fieldWithPath("data.tags").description("생성 시점의 태그"),
+                                fieldWithPath("data.tools").description("생성 시점의 사용 툴"),
+                                fieldWithPath("data.roles").description("생성 시점의 담당 역할"),
+                                fieldWithPath("data.genres").description("생성 시점의 장르"),
+                                fieldWithPath("data.videoLinks").description("생성 시점의 영상 링크"),
+                                fieldWithPath("data.description").type(JsonFieldType.STRING)
+                                        .description("생성 시점의 작품 설명").optional(),
+                                fieldWithPath("data.ageRating").description("연령 등급 (ALL·ADULT)"),
+                                fieldWithPath("data.artworkField").description("작품 분야"),
+                                fieldWithPath("data.sourceCreatedAt").description("원본 작품 등록 시각 (ISO 8601)"),
+                                fieldWithPath("data.ownerName").description("작성자 이름 — 포트폴리오 생성 시점에 얼린 값")
+                        )
+                ));
 
         // 고정형은 어떤 수정도 받지 않는다(§5.2) — 실패 응답도 문서로 남긴다.
         mockMvc.perform(patch("/api/portfolios/{portfolioId}", snapshotPortfolioId)
@@ -332,7 +377,11 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
                                         .type(JsonFieldType.STRING)
                                         .description("커버 성인 블러 썸네일 R2 키 — 사용자 지정 썸네일을 쓰면 null").optional(),
                                 fieldWithPath("data.items[].createdAt").description("생성 시각 (ISO 8601)"),
-                                fieldWithPath("data.items[].updatedAt").description("최종 수정 시각 (ISO 8601)"),
+                                fieldWithPath("data.items[].updatedAt")
+                                        .description("최종 변경 시각 (ISO 8601) — 작품 추가/제거나 원본 변경에 따른 "
+                                                + "구성 재계산 같은 시스템 변경도 포함한다"),
+                                fieldWithPath("data.items[].lastEditedAt")
+                                        .description("[수정하기]로 저장한 시각 (ISO 8601) — sort=UPDATED의 정렬 기준"),
                                 fieldWithPath("data.nextCursor").type(JsonFieldType.STRING)
                                         .description("다음 페이지 커서 (없으면 null)").optional(),
                                 fieldWithPath("data.hasNext").description("다음 페이지 존재 여부")
@@ -524,7 +573,10 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
                         ),
                         relaxedResponseFields(
                                 fieldWithPath("code").description("응답 코드 (SUCCESS)"),
-                                fieldWithPath("data.items[].artworkId").description("원본 작품 ID"),
+                                fieldWithPath("data.items[].artworkId").type(JsonFieldType.STRING)
+                                        .description("원본 작품 ID — 고정형 카드는 null").optional(),
+                                fieldWithPath("data.items[].snapshotId").type(JsonFieldType.STRING)
+                                        .description("고정형 스냅샷 ID — 최신 반영형·작가 페이지 카드는 null").optional(),
                                 fieldWithPath("data.items[].title").description("작품 제목"),
                                 fieldWithPath("data.items[].thumbKey").type(JsonFieldType.STRING)
                                         .description("카드 썸네일 R2 키 — 이미지 처리 전이면 null").optional(),
@@ -606,7 +658,7 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
                 List.of("raw/" + UUID.randomUUID() + ".png"), 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 title, "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
                 List.of(ArtworkRole.LINEART), List.of("판타지"), List.of("태그"),
-                AgeRating.ALL, Visibility.PUBLIC, List.of("clip studio"),
+                AgeRating.ALL, true, List.of(), List.of("clip studio"),
                 new WorkDuration(1, 1, 1, 1), 1, List.of(), List.of())).id();
     }
 

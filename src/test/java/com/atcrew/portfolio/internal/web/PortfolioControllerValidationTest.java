@@ -20,6 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.IntStream;
 
 import static org.mockito.Mockito.mock;
 import static org.springframework.restdocs.mockmvc.MockMvcRestDocumentation.document;
@@ -123,6 +124,20 @@ class PortfolioControllerValidationTest {
                 .andDo(document("portfolio/validation/create-portfolio-blank-artwork-id"));
     }
 
+    // 포트폴리오에 담는 작품 개수에는 상한이 없다(마이페이지_작가-R37·R38·R46) — 예전 @Size(max = 100) 회귀 방지.
+    @Test
+    void 생성_작품_ID_100개_초과_허용() throws Exception {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("title", "포트폴리오 제목");
+        body.put("reflectionType", "LIVE");
+        body.put("artworkIds", IntStream.range(0, 150).mapToObj(i -> UUID.randomUUID().toString()).toList());
+
+        mockMvc.perform(post("/api/portfolios")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isCreated());
+    }
+
     // ─── 경로변수 UUID 패턴 ──────────────────────────────────────────────
 
     @Test
@@ -163,5 +178,15 @@ class PortfolioControllerValidationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
                 .andDo(document("portfolio/validation/get-shared-portfolio-identifier-invalid-chars"));
+    }
+
+    // 스냅샷 ID는 UUID 형식이 정해져 있으므로 서비스까지 내려보내지 않고 컨트롤러에서 거른다.
+    @Test
+    void 스냅샷_상세_경로변수_UUID_형식_위반_거부() throws Exception {
+        mockMvc.perform(get("/api/portfolios/shared/{identifier}/snapshots/{snapshotId}",
+                        "valid-slug-1234567890", "not-a-uuid"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("portfolio/validation/get-shared-snapshot-detail-invalid-id"));
     }
 }

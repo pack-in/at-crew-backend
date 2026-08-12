@@ -15,6 +15,7 @@ public record PortfolioSummaryInfo(
         int itemCount,                                      // 담긴 작품 수 — 카드의 "N개" 표기용
         List<PortfolioCoverThumbnailInfo> coverThumbnails,  // 카드 커버 2x2 썸네일 — 업로드 오래된순 최대 4개
         Instant createdAt,                                  // 생성 시각
-        Instant updatedAt                                   // 최종 수정 시각
+        Instant updatedAt,                                  // 최종 변경 시각 — 시스템 변경(구성 재계산 등) 포함
+        Instant lastEditedAt                                // [수정하기]로 저장한 시각 — "업데이트순" 정렬 기준
 ) {
 }

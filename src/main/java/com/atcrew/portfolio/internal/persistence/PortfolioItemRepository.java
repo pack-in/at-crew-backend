@@ -26,6 +26,19 @@ public interface PortfolioItemRepository extends JpaRepository<PortfolioItem, Lo
     @Query("delete from PortfolioItem i where i.portfolioId = :portfolioId")
     void deleteByPortfolioId(@Param("portfolioId") String portfolioId);
 
+    // 원본 영구 삭제 반영용 — 여러 포트폴리오에 걸친 구성 행을 한 번에 지운다(§1.2).
+    @Modifying(flushAutomatically = true)
+    @Query("delete from PortfolioItem i where i.artworkId = :artworkId")
+    void deleteByArtworkId(@Param("artworkId") String artworkId);
+
+    // 원본 변경 이벤트로 재계산할 대상 포트폴리오 — 엔티티를 올리지 않고 ID만 읽는다(idx_pi_artwork 역조회).
+    @Query("select distinct i.portfolioId from PortfolioItem i where i.artworkId = :artworkId")
+    List<String> findPortfolioIdsByArtworkId(@Param("artworkId") String artworkId);
+
+    // 6시간 주기 보정 대상 — 구성 행이 하나라도 남아 있는 포트폴리오만 훑는다(§5.5).
+    @Query("select distinct i.portfolioId from PortfolioItem i")
+    List<String> findDistinctPortfolioIds();
+
     // 라이브 멤버십 재계산용 — 0이면 artworks.portfolio_included를 false로 되돌린다(§5.4).
     long countByArtworkId(String artworkId);
 

@@ -87,6 +87,10 @@ public class Portfolio implements Persistable<String> {
     @LastModifiedDate
     private Instant updatedAt;
 
+    // "업데이트순" 정렬 기준 (마이페이지_작가-R37) — [수정하기](updatePortfolio)로 저장한 시점만 기록한다.
+    // updatedAt은 작품 추가/제거·정합성 재계산 같은 시스템 변경에도 갱신돼 정렬 기준으로 쓸 수 없다.
+    private Instant lastEditedAt;
+
     // MariaDB 전환(docs/design/mariadb-migration-design.md §3.1) — 애플리케이션이 ID를 직접 할당하므로
     // 신규 여부를 명시하지 않으면 save()가 매번 merge()(선행 SELECT)로 동작한다.
     @Transient
@@ -118,6 +122,8 @@ public class Portfolio implements Persistable<String> {
         portfolio.kind = kind;
         portfolio.reflectionType = reflectionType;
         portfolio.itemCount = 0;
+        // 생성도 사용자의 편집 행위이므로 정렬 기준을 생성 시점으로 시작한다(감사 컬럼이 아니라 NOT NULL).
+        portfolio.lastEditedAt = Instant.now();
         portfolio.isNew = true;
         return portfolio;
     }
@@ -132,6 +138,14 @@ public class Portfolio implements Persistable<String> {
 
     public void updateItemCount(int itemCount) {
         this.itemCount = itemCount;
+    }
+
+    /**
+     * [수정하기]로 저장한 시점을 기록한다 — "업데이트순" 정렬 기준(마이페이지_작가-R37).
+     * 작품 추가/제거 API나 원본 변경에 따른 재계산은 이 값을 건드리지 않는다.
+     */
+    public void markEdited() {
+        this.lastEditedAt = Instant.now();
     }
 
     /** 탈퇴·운영 조치로 공유 열람을 막는다(§5.2). 이미 차단된 포트폴리오는 최초 차단 시점을 유지한다. */
@@ -163,6 +177,7 @@ public class Portfolio implements Persistable<String> {
     public Instant getBlockedAt() { return blockedAt; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
+    public Instant getLastEditedAt() { return lastEditedAt; }
 
     @Override
     public boolean isNew() { return isNew; }

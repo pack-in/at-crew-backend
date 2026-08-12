@@ -2,6 +2,7 @@ package com.atcrew.portfolio.internal.domain;
 
 import com.atcrew.artwork.AgeRating;
 import com.atcrew.artwork.ArtworkField;
+import com.atcrew.common.id.UuidV7Generator;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -22,14 +23,16 @@ import java.time.Instant;
  * roles/genres/videoLinks/description)은 {@code payloadJson} 1컬럼으로 둔다. 목록 조회가 JSON 파싱 없이
  * 끝나고 상세는 1회 파싱으로 해결된다.
  *
- * <p>알려진 제약(§5.6) — 이미지 R2 키를 복사하지 않고 원본 키를 그대로 참조한다. 원본 작품을 휴지통에서
- * 영구 삭제하면 스냅샷 썸네일이 깨질 수 있다. media 참조 카운트(retention) 도입은 후속 과제다.
+ * <p>이미지 R2 키는 복사하지 않고 원본 키를 그대로 참조한다(§5.6). 원본을 영구 삭제하거나 이미지를
+ * 교체해도 이 행이 참조하는 키는 남아야 하므로, media의 삭제·고아 정리 경로가
+ * {@code SnapshotRetainedMediaKeyProvider}로 보존 여부를 먼저 판정한다.
  */
 @Entity
 @Table(name = "portfolio_item_snapshots")
 public class PortfolioItemSnapshot {
 
-    // 순수 내부 자식 행 — 외부에 노출되지 않으므로 대리키로 충분하다(portfolio_items와 동일).
+    // PK는 외부에 노출하지 않으므로 대리키로 충분하다(portfolio_items와 동일).
+    // 외부 URL 식별자는 아래 snapshotPublicId를 쓴다.
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id")
@@ -37,6 +40,11 @@ public class PortfolioItemSnapshot {
 
     @Column(name = "portfolio_id", length = 36, nullable = false)
     private String portfolioId;
+
+    // 스냅샷 상세(GET /api/portfolios/shared/{identifier}/snapshots/{snapshotId})의 외부 식별자.
+    // PK를 노출하면 연속 번호로 타인 스냅샷을 열거할 수 있어 UUIDv7 문자열을 따로 발급한다(마이페이지_작가-R39).
+    @Column(name = "snapshot_public_id", length = 36, nullable = false)
+    private String snapshotPublicId;
 
     // 생성 시점 순서 고정(마이페이지_작가-R38) — 원본 createdAt 오름차순으로 채운다.
     @Column(name = "ordinal", nullable = false)
@@ -70,6 +78,12 @@ public class PortfolioItemSnapshot {
     @Column(name = "payload_json")
     private String payloadJson;
 
+    // 운영 정책·법적 조치에 따른 외부 노출 중단 시각(마이페이지_작가-R39). 원본 역조회가 아니라 스냅샷 행에
+    // 비정규화해 둔다 — 원본을 영구 삭제하면 역조회로는 차단 판정 근거가 사라지기 때문이다.
+    // 차단은 고정형 "상태 고정"보다 우선하며, 차단된 스냅샷은 카드·커버·개수·상세에서 모두 빠진다.
+    @Column(name = "blocked_at")
+    private Instant blockedAt;
+
     protected PortfolioItemSnapshot() {
     }
 
@@ -79,6 +93,7 @@ public class PortfolioItemSnapshot {
                                            Instant sourceCreatedAt, String payloadJson) {
         PortfolioItemSnapshot snapshot = new PortfolioItemSnapshot();
         snapshot.portfolioId = portfolioId;
+        snapshot.snapshotPublicId = UuidV7Generator.generate();
         snapshot.ordinal = ordinal;
         snapshot.sourceArtworkId = sourceArtworkId;
         snapshot.title = title;
@@ -93,6 +108,7 @@ public class PortfolioItemSnapshot {
 
     public Long getId() { return id; }
     public String getPortfolioId() { return portfolioId; }
+    public String getSnapshotPublicId() { return snapshotPublicId; }
     public int getOrdinal() { return ordinal; }
     public String getSourceArtworkId() { return sourceArtworkId; }
     public String getTitle() { return title; }
@@ -102,4 +118,5 @@ public class PortfolioItemSnapshot {
     public ArtworkField getArtworkField() { return artworkField; }
     public Instant getSourceCreatedAt() { return sourceCreatedAt; }
     public String getPayloadJson() { return payloadJson; }
+    public boolean isBlocked() { return blockedAt != null; }
 }

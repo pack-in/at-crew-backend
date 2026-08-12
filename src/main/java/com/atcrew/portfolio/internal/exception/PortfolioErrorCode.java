@@ -11,11 +11,12 @@ public enum PortfolioErrorCode {
     ARTIST_PAGE_NOT_DELETABLE(HttpStatus.CONFLICT, "작가 페이지 포트폴리오는 삭제할 수 없습니다"),
     ARTIST_PAGE_TITLE_IMMUTABLE(HttpStatus.BAD_REQUEST, "작가 페이지 포트폴리오는 제목을 변경할 수 없습니다"),
     INVALID_PORTFOLIO_TITLE(HttpStatus.BAD_REQUEST, "포트폴리오 제목이 유효하지 않습니다"),
-    PORTFOLIO_ITEM_LIMIT_EXCEEDED(HttpStatus.BAD_REQUEST, "포트폴리오에 담을 수 있는 작품 수를 초과했습니다"),
     SLUG_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "공유 링크 생성에 실패했습니다"),
     INVALID_CURSOR(HttpStatus.BAD_REQUEST, "유효하지 않은 커서 값입니다"),
     // 포트폴리오가 자체 판단해 던지는 코드 — 작품이 없거나, 삭제됐거나, 요청자 소유가 아닌 경우를 구분하지 않는다(§4).
-    ARTWORK_NOT_FOUND(HttpStatus.NOT_FOUND, "포트폴리오에 담을 작품을 찾을 수 없습니다");
+    ARTWORK_NOT_FOUND(HttpStatus.NOT_FOUND, "포트폴리오에 담을 작품을 찾을 수 없습니다"),
+    // 운영 차단된 작품은 본인 소유라도 선택 대상이 아니다(마이페이지_작가-R38·R46).
+    ARTWORK_BLOCKED(HttpStatus.BAD_REQUEST, "운영 정책에 따라 포트폴리오에 담을 수 없는 작품입니다");
 
     private final HttpStatus status;
     private final String message;
