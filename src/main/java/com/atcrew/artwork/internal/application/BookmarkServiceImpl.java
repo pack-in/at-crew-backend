@@ -109,12 +109,13 @@ class BookmarkServiceImpl implements BookmarkService {
         boolean hasNext = entries.size() > size;
         List<BookmarkEntry> page = hasNext ? entries.subList(0, size) : entries;
 
-        // 작품 조회 (READY && PUBLIC만 노출)
+        // 작품 조회 (READY && PUBLIC && 운영 차단되지 않은 작품만 노출 — 마이페이지_작가-R39)
         List<String> artworkIds = page.stream().map(BookmarkEntry::getArtworkId).toList();
         Map<String, Artwork> artworkMap = artworkRepository.findAllById(artworkIds)
                 .stream()
                 .filter(a -> a.getStatus() == com.atcrew.artwork.ArtworkStatus.READY
-                        && a.getVisibility() == Visibility.PUBLIC)
+                        && a.getVisibility() == Visibility.PUBLIC
+                        && !a.isBlocked())
                 .collect(Collectors.toMap(Artwork::getId, a -> a));
 
         Set<String> authorIds = artworkMap.values().stream()
