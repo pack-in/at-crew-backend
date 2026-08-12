@@ -102,6 +102,18 @@ class BookmarkModuleTests {
     }
 
     @Test
+    void LINK_ONLY_작품을_북마크하면_목록에_보인다() {
+        String authorId = registerMember();
+        String viewerId = registerMember();
+        ArtworkInfo artwork = uploadReadyArtwork(authorId, Visibility.LINK_ONLY);
+
+        bookmarkService.saveBookmark(viewerId, artwork.id(), null);
+
+        CursorPage<BookmarkEntryInfo> page = bookmarkService.getBookmarks(viewerId, null, null, 10);
+        assertThat(page.items()).extracting(BookmarkEntryInfo::artworkId).containsExactly(artwork.id());
+    }
+
+    @Test
     void 북마크_제거_후_목록에서_사라진다() {
         String memberId = registerMember();
         String authorId = registerMember();
@@ -119,12 +131,16 @@ class BookmarkModuleTests {
     }
 
     private ArtworkInfo uploadReadyArtwork(String authorId) {
+        return uploadReadyArtwork(authorId, Visibility.PUBLIC);
+    }
+
+    private ArtworkInfo uploadReadyArtwork(String authorId, Visibility visibility) {
         List<String> imageKeys = List.of("raw/" + UUID.randomUUID() + ".png");
         ArtworkInfo artwork = artworkService.uploadArtwork(authorId, new UploadArtworkCommand(
                 imageKeys, 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 "북마크테스트 작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
                 List.of(), List.of(), List.of(),
-                AgeRating.ALL, Visibility.PUBLIC, List.of(), null, null, List.of(), List.of()));
+                AgeRating.ALL, visibility, List.of(), null, null, List.of(), List.of()));
         // media webhook → MediaAssetProcessedEvent → artwork 리스너(비동기)로 READY 전환된다.
         mediaCallbackService.process(MediaOwnerType.ARTWORK, artwork.id(), imageKeys.get(0),
                 "thumb", null, "avif", MediaProcessingStatus.DONE);

@@ -109,12 +109,14 @@ class BookmarkServiceImpl implements BookmarkService {
         boolean hasNext = entries.size() > size;
         List<BookmarkEntry> page = hasNext ? entries.subList(0, size) : entries;
 
-        // 작품 조회 (READY && PUBLIC만 노출)
+        // 작품 조회 — READY이고 PUBLIC 또는 LINK_ONLY인 것만 노출한다. saveBookmark()는 타인의
+        // LINK_ONLY 작품 저장을 허용하는데(accessFor() 기준), 여기서 PUBLIC만 걸러내면 그렇게
+        // 저장한 북마크가 저장은 되고 목록엔 영원히 안 보이는 모순이 생긴다.
         List<String> artworkIds = page.stream().map(BookmarkEntry::getArtworkId).toList();
         Map<String, Artwork> artworkMap = artworkRepository.findAllById(artworkIds)
                 .stream()
                 .filter(a -> a.getStatus() == com.atcrew.artwork.ArtworkStatus.READY
-                        && a.getVisibility() == Visibility.PUBLIC)
+                        && (a.getVisibility() == Visibility.PUBLIC || a.getVisibility() == Visibility.LINK_ONLY))
                 .collect(Collectors.toMap(Artwork::getId, a -> a));
 
         Set<String> authorIds = artworkMap.values().stream()
