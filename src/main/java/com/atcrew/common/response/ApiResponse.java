@@ -14,7 +14,7 @@ public record ApiResponse<T>(
         @Schema(description = "에러 메시지 — 성공 응답이면 항상 null이라 응답 JSON에서 생략된다. "
                 + "실패 시 값 예시: 존재하지 않는 회원입니다", nullable = true)
         String message,
-        @Schema(description = "응답 데이터 — 에러 응답이면 항상 null(응답 JSON에서 생략됨)", nullable = true)
+        @Schema(description = "응답 데이터 — 에러 응답이면 항상 null(응답 JSON에서 생략됨)")
         T data
 ) {
 
