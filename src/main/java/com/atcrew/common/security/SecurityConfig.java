@@ -113,7 +113,9 @@ class SecurityConfig {
                     // 템플릿에 가려져 인증이 우회될 여지가 없다 — 추후 /{portfolioId}를 공개로 열 때는
                     // recruit와 같은 함정에 주의해 리터럴 경로를 먼저 선언해야 한다.
                     auth.requestMatchers(HttpMethod.GET, "/api/portfolios/shared/{identifier}").permitAll()
-                            .requestMatchers(HttpMethod.GET, "/api/portfolios/shared/{identifier}/artworks").permitAll();
+                            .requestMatchers(HttpMethod.GET, "/api/portfolios/shared/{identifier}/artworks").permitAll()
+                            .requestMatchers(HttpMethod.GET, "/api/portfolios/shared/{identifier}/snapshots/{snapshotId}")
+                            .permitAll();
 
                     if (!isProd()) {
                         auth.requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll();
