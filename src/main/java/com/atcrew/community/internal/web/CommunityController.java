@@ -6,6 +6,8 @@ import com.atcrew.artwork.ArtworkService;
 import com.atcrew.artwork.ArtworkSummaryInfo;
 import com.atcrew.common.response.ApiResponse;
 import com.atcrew.common.response.CursorPage;
+import com.atcrew.community.internal.exception.CommunityErrorCode;
+import com.atcrew.community.internal.exception.CommunityException;
 import com.atcrew.member.ActivityField;
 import com.atcrew.member.EmploymentStatus;
 import com.atcrew.member.MemberProfileInfo;
@@ -62,7 +64,7 @@ class CommunityController {
                     + "첫 페이지는 생략. 숫자가 아니면 400 INVALID_CURSOR",
                     example = "1786496839000") @RequestParam(required = false) String cursor,
             @Parameter(description = "페이지 크기 — 기본 20, 50 초과 시 50으로 잘립니다. "
-                    + "1 이상만 사용하세요(0은 빈 목록, 음수는 500 오류)",
+                    + "0은 빈 목록, 1 미만이면 400 INVALID_SIZE",
                     example = "20") @RequestParam(required = false) Integer size) {
         return ApiResponse.success(artworkService.getCommunityArtworks(
                 artworkField, ageRating, cursor, resolveSize(size)));
@@ -85,7 +87,7 @@ class CommunityController {
                     + "형식이 어긋나면 400 INVALID_CURSOR",
                     example = "1786496839000") @RequestParam(required = false) String cursor,
             @Parameter(description = "페이지 크기 — 기본 20, 50 초과 시 50으로 잘립니다. "
-                    + "1 이상만 사용하세요(0은 빈 목록, 음수는 500 오류)",
+                    + "0은 빈 목록, 1 미만이면 400 INVALID_SIZE",
                     example = "20") @RequestParam(required = false) Integer size) {
         return ApiResponse.success(memberService.searchProfiles(new SearchProfilesCommand(
                 List.of(EmploymentStatus.AVAILABLE, EmploymentStatus.NEGOTIABLE),
@@ -103,7 +105,7 @@ class CommunityController {
                     + "첫 페이지는 생략하며, 형식이 어긋나면 400 INVALID_CURSOR",
                     example = "0_019ff382-ccdc-71bb-bccb-6a3c35d33978") @RequestParam(required = false) String cursor,
             @Parameter(description = "페이지 크기 — 기본 20, 50 초과 시 50으로 잘립니다. "
-                    + "1 이상만 사용하세요(0은 빈 목록, 음수는 500 오류)",
+                    + "0은 빈 목록, 1 미만이면 400 INVALID_SIZE",
                     example = "20") @RequestParam(required = false) Integer size) {
         return ApiResponse.success(recruitService.getJobPostingFeed(cursor, resolveSize(size)));
     }
@@ -119,12 +121,14 @@ class CommunityController {
                     + "첫 페이지는 생략하며, 형식이 어긋나면 400 INVALID_CURSOR",
                     example = "0_019ff382-ccdc-71bb-bccb-6a3c35d33978") @RequestParam(required = false) String cursor,
             @Parameter(description = "페이지 크기 — 기본 20, 50 초과 시 50으로 잘립니다. "
-                    + "1 이상만 사용하세요(0은 빈 목록, 음수는 500 오류)",
+                    + "0은 빈 목록, 1 미만이면 400 INVALID_SIZE",
                     example = "20") @RequestParam(required = false) Integer size) {
         return ApiResponse.success(recruitService.getTeamRecruitFeed(cursor, resolveSize(size)));
     }
 
     private int resolveSize(Integer size) {
-        return size != null ? Math.min(size, MAX_SIZE) : DEFAULT_SIZE;
+        if (size == null) return DEFAULT_SIZE;
+        if (size < 1) throw new CommunityException(CommunityErrorCode.INVALID_SIZE);
+        return Math.min(size, MAX_SIZE);
     }
 }
