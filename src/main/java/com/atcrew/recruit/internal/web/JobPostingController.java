@@ -14,6 +14,7 @@ import com.atcrew.recruit.internal.exception.RecruitException;
 import com.atcrew.recruit.internal.web.dto.CreateJobPostingRequest;
 import com.atcrew.recruit.internal.web.dto.UpdateJobPostingRequest;
 import com.atcrew.recruit.internal.web.dto.UpdateJobPostingStatusRequest;
+import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -39,6 +40,8 @@ import org.springframework.web.bind.annotation.RestController;
  * 구인글 CRUD + PENDING 승인 API (docs/design/recruit-module-design.md §4.1).
  * 관리자 엔드포인트는 별도 Role 체계가 도입되기 전까지 인증만 요구하는 최소 구현이다(§7).
  */
+// 2026-08 출시 마일스톤 범위 밖(구인구직/기업 프로필) — Swagger 노출만 숨김, API 자체는 유지
+@Hidden
 @Tag(name = "구인글", description = "구인글 작성·수정·조회·상태전이·관리자 승인 API")
 @Validated
 @RestController

@@ -14,6 +14,7 @@ import com.atcrew.recruit.internal.exception.RecruitException;
 import com.atcrew.recruit.internal.web.dto.CreateJobSeekingPostRequest;
 import com.atcrew.recruit.internal.web.dto.UpdateJobSeekingPostRequest;
 import com.atcrew.recruit.internal.web.dto.UpdateJobSeekingPostStatusRequest;
+import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -39,6 +40,8 @@ import org.springframework.web.bind.annotation.RestController;
  * 구직글 CRUD API (docs/design/recruit-module-design.md §4.2).
  * 관리자 승인 절차가 없으므로 JobPosting과 달리 submit/approve/reject 엔드포인트가 없다.
  */
+// 2026-08 출시 마일스톤 범위 밖(구인구직/기업 프로필) — Swagger 노출만 숨김, API 자체는 유지
+@Hidden
 @Tag(name = "구직글", description = "구직글 작성·수정·조회·상태전이 API")
 @Validated
 @RestController

@@ -4,6 +4,7 @@ import com.atcrew.common.response.ApiResponse;
 import com.atcrew.media.MediaService;
 import com.atcrew.media.PresignedUrlInfo;
 import com.atcrew.recruit.internal.web.dto.PresignRequest;
+import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -19,6 +20,8 @@ import java.util.List;
  * 구인글·팀원모집글·구직글 이미지 업로드용 Presigned URL 발급 (docs/design/media-module-design.md §10.3).
  * 발급 로직은 도메인과 무관한 범용 작업이라 media 모듈에 그대로 위임한다.
  */
+// 2026-08 출시 마일스톤 범위 밖(구인구직/기업 프로필) — Swagger 노출만 숨김, API 자체는 유지
+@Hidden
 @Tag(name = "구인/구직 이미지", description = "구인글·팀원모집글·구직글 이미지 업로드 API")
 @Validated
 @RestController

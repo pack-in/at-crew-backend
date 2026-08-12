@@ -6,6 +6,7 @@ import com.atcrew.common.security.SecurityUtils;
 import com.atcrew.recruit.LikedArtistInfo;
 import com.atcrew.recruit.RecentlyViewedArtistInfo;
 import com.atcrew.recruit.RecruitService;
+import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -26,6 +27,8 @@ import org.springframework.web.bind.annotation.RestController;
  * 관심 작가 API (docs/design/recruit-module-design.md §2.7, §4.3).
  * 기업 계정 전용 기능이지만 기업 인증 게이팅은 스텁이므로 현재는 인증된 회원이면 호출할 수 있다(§7).
  */
+// 2026-08 출시 마일스톤 범위 밖(구인구직/기업 프로필) — Swagger 노출만 숨김, API 자체는 유지
+@Hidden
 @Tag(name = "관심 작가", description = "기업 계정의 작가 좋아요 저장·해제 및 최근 본 작가 조회 API")
 @Validated
 @RestController

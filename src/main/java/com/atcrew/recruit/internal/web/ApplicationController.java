@@ -8,6 +8,7 @@ import com.atcrew.recruit.CreateApplicationCommand;
 import com.atcrew.recruit.RecruitService;
 import com.atcrew.recruit.internal.web.dto.CreateApplicationRequest;
 import com.atcrew.recruit.internal.web.dto.UpdateApplicationReviewStatusRequest;
+import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -30,6 +31,8 @@ import org.springframework.web.bind.annotation.RestController;
  * 지원 및 지원자 관리 API (docs/design/recruit-module-design.md §4.1, §2.5, §2.6).
  * 지원자 목록·상태 변경·삭제는 구인글/팀원모집글 모두 작성자 소유권을 검증한다.
  */
+// 2026-08 출시 마일스톤 범위 밖(구인구직/기업 프로필) — Swagger 노출만 숨김, API 자체는 유지
+@Hidden
 @Tag(name = "지원/지원자 관리", description = "구인글·팀원모집글 지원 및 지원자 채용 단계 관리 API")
 @Validated
 @RestController

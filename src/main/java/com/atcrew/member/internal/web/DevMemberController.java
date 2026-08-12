@@ -4,6 +4,7 @@ import com.atcrew.common.response.ApiResponse;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
 import com.atcrew.member.internal.web.dto.RegisterRequest;
+import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -18,8 +19,10 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 // prod 프로파일에서는 빈 자체가 로드되지 않아 엔드포인트가 존재하지 않음
+// 개발·테스트 전용 우회 가입 경로 — 프론트엔드가 연동할 실제 가입 API가 아니므로 Swagger에서 숨김
 @Profile("!prod")
 @Validated
+@Hidden
 @Tag(name = "회원 (개발용)", description = "개발·테스트 환경 전용 회원 API")
 @RestController
 @RequestMapping("/api/members")

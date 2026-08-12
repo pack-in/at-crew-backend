@@ -12,6 +12,7 @@ import com.atcrew.company.internal.web.dto.AddCompanyCareerRequest;
 import com.atcrew.company.internal.web.dto.CreateCompanyRequest;
 import com.atcrew.company.internal.web.dto.UpdateCompanyInfoRequest;
 import com.atcrew.company.internal.web.dto.UpdateCompanyNameRequest;
+import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -37,6 +38,8 @@ import java.util.List;
  * 기업 마이페이지 API. 공개 조회(GET)는 비로그인도 가능하며, 수정·업로드 액션은 본인 기업 계정만 호출할 수 있다
  * (docs/design/company-profile-module-design.md §4, §5).
  */
+// 2026-08 출시 마일스톤 범위 밖(구인구직/기업 프로필) — Swagger 노출만 숨김, API 자체는 유지
+@Hidden
 @Tag(name = "기업 프로필", description = "기업 마이페이지 — 기업 프로필 생성·조회·수정·경력 관리 API")
 @Validated
 @RestController
