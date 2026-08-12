@@ -80,4 +80,28 @@ class BannerControllerValidationTest {
                 .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
                 .andDo(document("community/validation/create-banner-blank-link-url"));
     }
+
+    @Test
+    void 배너_등록_imageUrl_500자_초과_400() throws Exception {
+        String tooLong = "https://img.example/" + "a".repeat(500);
+        mockMvc.perform(post("/api/community/banners")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "memberId", "member-1", "imageUrl", tooLong, "linkUrl", "https://example.com"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("community/validation/create-banner-image-url-too-long"));
+    }
+
+    @Test
+    void 배너_등록_sortOrder_음수_400() throws Exception {
+        mockMvc.perform(post("/api/community/banners")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "memberId", "member-1", "imageUrl", "https://img.example/a.png",
+                                "linkUrl", "https://example.com", "sortOrder", -1))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("community/validation/create-banner-negative-sort-order"));
+    }
 }
