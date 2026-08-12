@@ -40,6 +40,9 @@
 | [docs/design/community-module-design.md](docs/design/community-module-design.md) | community 모듈 설계 — 커뮤니티 피드(배너·포트폴리오·작가 찾아보기), 구인글/팀원모집글은 recruit 모듈 스텁 |
 | [docs/design/search-module-design.md](docs/design/search-module-design.md) | search 모듈 설계 — Elasticsearch 기반 포트폴리오 검색, 태그 기반 다중선택 필터, 색인 동기화(이벤트+전체 재색인), 구인글/구직글/팀원모집글은 recruit 모듈 스텁 |
 | [docs/design/recruit-module-design.md](docs/design/recruit-module-design.md) | recruit 모듈 설계 — 구인글·팀원모집글·구직글 CRUD, 지원 접수/지원자 관리, 끌어올리기(boost), 관심 작가(기업 전용) |
+| [docs/design/portfolio-module-design.md](docs/design/portfolio-module-design.md) | portfolio 모듈 설계(신규 도메인) — 작가 페이지/공유 포트폴리오(고정형·최신반영형), 복제, 공유 링크, artwork와의 순환 의존 회피 |
+| [docs/design/billing-module-design.md](docs/design/billing-module-design.md) | billing 모듈 설계 — 요금제·구독, Stripe Checkout/Portal/Webhook 연동(기획서 정본은 Polar, 이번 마일스톤은 Stripe로 정정) |
+| [docs/design/settings-i18n-design.md](docs/design/settings-i18n-design.md) | 설정 API 전체(로그아웃·비밀번호 변경·마케팅 동의·성인 콘텐츠 토글)·이메일 발송 인프라(Resend)·i18n 필드·언어 세그먼트 설계 |
 | [docs/design/media-module-design.md](docs/design/media-module-design.md) | media 모듈 설계 — artwork에 내장돼 있던 Presigned URL 발급·Worker 트리거·webhook·재시도·고아파일 정리를 범용 모듈로 추출, artwork·recruit이 공용 소비 |
 | [docs/design/global-country-plan-design.md](docs/design/global-country-plan-design.md) | 거주 국가(Member.countryCode) 설계 — Phase 1. Pro 플랜 노출국가(Artwork.targetCountryCodes)는 로드맵 5순위(결제/구독) 도달 후 Phase 2로 보류 |
 | [docs/testing/rest-docs-guide.md](docs/testing/rest-docs-guide.md) | MockMvc + Spring REST Docs 테스트 전략, 계층 구조, 새 API 개발 체크리스트 |
