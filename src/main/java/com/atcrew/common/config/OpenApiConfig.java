@@ -64,17 +64,33 @@ class OpenApiConfig {
     @SuppressWarnings("unchecked")
     OperationCustomizer globalErrorResponseCustomizer() {
         return (operation, handlerMethod) -> {
-            Content content = new Content().addMediaType(
-                    "*/*", new MediaType().schema(new Schema<>().$ref(ERROR_SCHEMA_REF)));
             ApiResponses responses = operation.getResponses();
-            // 메서드 레벨 @ApiResponse가 있으면 덮어쓰지 않음
+
+            // 1) 표준 에러코드(400/404/409/500)가 메서드에 아예 선언 안 돼 있으면 채워 넣는다.
             ERROR_CODES.forEach(e -> {
                 if (!responses.containsKey(e.getKey())) {
                     responses.addApiResponse(e.getKey(),
-                            new ApiResponse().description(e.getValue()).content(content));
+                            new ApiResponse().description(e.getValue()).content(errorContent()));
                 }
             });
+
+            // 2) 2xx가 아닌 모든 응답의 본문 스키마를 공통 에러 봉투로 강제 통일한다.
+            //    컨트롤러가 content 없이 @ApiResponse(responseCode="401", description="...")만 선언하면
+            //    springdoc이 메서드의 성공 응답 스키마를 그대로 재사용해버려서, Swagger UI에 "에러인데
+            //    성공 응답과 같은 필드가 꽉 찬 예시"가 뜨는 문제가 생긴다(실제 발생 확인됨). 개별
+            //    컨트롤러마다 content를 챙기게 하는 대신 여기서 한 번에 막는다 — 이후 어떤 컨트롤러가
+            //    content 없이 에러코드만 선언해도 자동으로 올바른 스키마가 붙는다.
+            responses.forEach((code, response) -> {
+                if (!code.startsWith("2")) {
+                    response.setContent(errorContent());
+                }
+            });
+
             return operation;
         };
+    }
+
+    private Content errorContent() {
+        return new Content().addMediaType("*/*", new MediaType().schema(new Schema<>().$ref(ERROR_SCHEMA_REF)));
     }
 }
