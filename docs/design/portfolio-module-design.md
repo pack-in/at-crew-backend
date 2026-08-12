@@ -114,6 +114,7 @@ public class Portfolio implements Persistable<String> {
 
     private Instant createdAt;
     private Instant updatedAt;
+    private Instant lastEditedAt;            // [수정하기] 저장 시각 — "업데이트순" 정렬 기준(V19, 마이페이지_작가-R37)
 
     @Transient
     private boolean isNew;                   // 신규 엔티티 공통 패턴 (RefreshToken.java 참조)
@@ -180,7 +181,7 @@ CREATE TABLE portfolios (
     UNIQUE KEY uk_pf_slug (share_slug),
     UNIQUE KEY uk_pf_owner_artist_page (owner_member_id, artist_page_key),
     KEY idx_pf_owner_created (owner_member_id, created_at DESC, id),
-    KEY idx_pf_owner_updated (owner_member_id, updated_at DESC, id)
+    KEY idx_pf_owner_updated (owner_member_id, updated_at DESC, id)   -- V19에서 idx_pf_owner_edited(last_edited_at)로 대체
 ) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 CREATE TABLE portfolio_items (
@@ -247,20 +248,24 @@ portfolio는 현재 다른 모듈이 동기 호출할 필요가 없는 리프(le
 |---|---|---|---|---|---|
 | GET | `/api/portfolios/me` | 필요 | `kind?`, `reflectionType?`, `sort=OLDEST\|LATEST\|UPDATED`(기본 LATEST), `cursor`, `size` | `CursorPage<PortfolioSummaryInfo>` | 401 |
 | GET | `/api/portfolios/selectable` | 필요 | — | `List<PortfolioSelectableInfo>`(작가 페이지 + LIVE만, 고정형 제외) | 401 |
-| POST | `/api/portfolios` | 필요(프로) | `{title, reflectionType, artworkIds[]}` | 201 `PortfolioInfo` | 403 `PRO_PLAN_REQUIRED`, 400 `INVALID_PORTFOLIO_TITLE`, 404 `ARTWORK_NOT_FOUND` |
+| POST | `/api/portfolios` | 필요(프로) | `{title, reflectionType, artworkIds[]}` | 201 `PortfolioInfo` | 403 `PRO_PLAN_REQUIRED`, 404 `ARTWORK_NOT_FOUND` |
 | GET | `/api/portfolios/{portfolioId}` | 필요(소유자) | — | `PortfolioInfo` | 403 `PORTFOLIO_ACCESS_DENIED`, 404 |
-| PATCH | `/api/portfolios/{portfolioId}` | 필요(프로) | `{title?, artworkIds?}` | 200 | 403 `PRO_PLAN_REQUIRED`, 409 `SNAPSHOT_PORTFOLIO_IMMUTABLE`, 400 `ARTIST_PAGE_TITLE_IMMUTABLE` |
+| PATCH | `/api/portfolios/{portfolioId}` | 필요(프로) | `{title?, artworkIds?}` | 200 | 403 `PRO_PLAN_REQUIRED`, 409 `SNAPSHOT_PORTFOLIO_IMMUTABLE`, 400 `ARTIST_PAGE_TITLE_IMMUTABLE`, 400 `INVALID_PORTFOLIO_TITLE` |
 | DELETE | `/api/portfolios/{portfolioId}` | 필요 | — | 204 | 409 `ARTIST_PAGE_NOT_DELETABLE` |
 | GET | `/api/portfolios/{portfolioId}/duplication-source` | 필요 | — | `{defaultTitle, selectedArtworkIds[], excludedCount}` | 403, 404 |
 | POST | `/api/portfolios/{portfolioId}/artworks` | 필요(프로) | `{artworkIds[]}` | 204 | 403 `PRO_PLAN_REQUIRED`, 409 `SNAPSHOT_PORTFOLIO_IMMUTABLE` |
 | DELETE | `/api/portfolios/{portfolioId}/artworks/{artworkId}` | 필요 | — | 204 | 동일 |
 | GET | `/api/portfolios/shared/{identifier}` | **불필요** | — | `SharedPortfolioInfo` | 404 `PORTFOLIO_NOT_FOUND`, 410 `PORTFOLIO_BLOCKED` |
 | GET | `/api/portfolios/shared/{identifier}/artworks` | **불필요** | `cursor`, `size` | `CursorPage<PortfolioArtworkCardInfo>` | 동일 |
+| GET | `/api/portfolios/shared/{identifier}/snapshots/{snapshotId}` | **불필요** | — | `PortfolioSnapshotDetailInfo` | 404 `PORTFOLIO_NOT_FOUND`(고정형이 아님·타 포트폴리오 스냅샷·운영 차단), 410 `PORTFOLIO_BLOCKED` |
+
+`INVALID_PORTFOLIO_TITLE`은 PATCH에서만 도달한다 — POST의 `title`은 요청 DTO의 `@NotBlank`가 먼저 막아 공용 검증 에러로 끝나고, PATCH는 `title`이 선택 필드라 공백 문자열이 서비스까지 내려온다(2026-08-12 QA에서 발견한 문서-코드 불일치 정정).
 
 복제는 별도 생성 API 없이 `duplication-source`로 기본값(기본 제목·자동 선택 작품·제외 개수)만 받고, 실제 생성은 `POST /api/portfolios`를 재호출한다. 마이페이지_작가-R41("유형은 상속되지 않고 매번 새로 선택")과 정확히 맞고 생성 검증 로직을 한 곳에 유지할 수 있다.
 
 **`SecurityConfig` 반영 사항**:
-- `permitAll` 추가: `GET /api/portfolios/shared/{identifier}`, `GET /api/portfolios/shared/{identifier}/artworks`
+- `permitAll` 추가: `GET /api/portfolios/shared/{identifier}`, `GET /api/portfolios/shared/{identifier}/artworks`,
+  `GET /api/portfolios/shared/{identifier}/snapshots/{snapshotId}`
 - **경로 매처 순서 주의**: `/api/portfolios/me`, `/api/portfolios/selectable` 같은 리터럴 경로를 `/api/portfolios/{portfolioId}` 템플릿보다 먼저 선언해야 한다. `SecurityConfig`에 recruit `/trash`·`/me` 관련 동일 함정 주석이 이미 있다.
 - 검색엔진 색인 제외(마이페이지_작가-R42)는 서버가 `GET /api/portfolios/shared/*` 응답에 `X-Robots-Tag: noindex` 헤더를 붙여 보조한다. 실제 페이지 `<meta name="robots">`는 프론트 SSR 담당.
 
@@ -269,7 +274,7 @@ portfolio는 현재 다른 모듈이 동기 호출할 필요가 없는 리프(le
 PORTFOLIO_NOT_FOUND(404), PORTFOLIO_ACCESS_DENIED(403), PORTFOLIO_BLOCKED(410),
 SNAPSHOT_PORTFOLIO_IMMUTABLE(409), ARTIST_PAGE_NOT_DELETABLE(409),
 ARTIST_PAGE_TITLE_IMMUTABLE(400), INVALID_PORTFOLIO_TITLE(400),
-PORTFOLIO_ITEM_LIMIT_EXCEEDED(400), SLUG_GENERATION_FAILED(500), INVALID_CURSOR(400)
+SLUG_GENERATION_FAILED(500), INVALID_CURSOR(400)
 ```
 
 ---
@@ -306,8 +311,9 @@ GET /api/portfolios/{id}/duplication-source:
    - SNAPSHOT        → portfolio_item_snapshots.source_artwork_id (ordinal 순)
 3. artworkService.getArtworkStatesFor(memberId, candidateIds) 배치 조회
    (신규 공개 record: ArtworkStateInfo(id, status, visibility))
-4. 제외 판정 = 존재하지 않음 OR status == DELETED OR visibility == PRIVATE   (마이페이지_작가-R41)
-   ※ LINK_ONLY는 "비공개"가 아니므로 포함 유지
+4. 제외 판정 = 존재하지 않음 OR status == DELETED OR 완전 비공개                (마이페이지_작가-R41)
+   완전 비공개 = visibility != PUBLIC AND portfolioIncluded == false            (마이페이지_작가-R04)
+   ※ 레거시 LINK_ONLY도 편입되지 않았으면 완전 비공개로 본다(자동 선택 제외, 수동 선택은 가능)
 5. 응답 = { defaultTitle: "{원본 제목 또는 사용자 이름} 복사본", selectedArtworkIds: 남은 ID들, excludedCount }
 ```
 
@@ -319,7 +325,9 @@ GET /api/portfolios/{id}/duplication-source:
 - 포트폴리오 생성/작품 추가/작품 제거/삭제 후 → 영향받은 artworkId 집합에 대해 `portfolio_items`에서 라이브 멤버십 카운트를 재계산 → `count > 0` 여부를 배치 반영.
 - **절대값 재계산**이라 멱등하다. 이벤트가 아니라 같은 트랜잭션 내 동기 호출이므로 순서 역전이 없다.
 
-상세 판정 로직(`Artwork.accessFor()`)은 `docs/design/artwork-module-summary.md`(포트폴리오 연동 반영본, 이번 스코프에서 갱신 예정)를 참조.
+상세 판정 로직(`Artwork.accessFor()`)은 `docs/design/artwork-module-summary.md` §11(2요소 조합표)을 참조.
+
+업로드·노출 위치 재선언 경로는 artwork가 `ArtworkPortfolioSelectionRequested`를 같은 트랜잭션에서 발행하고 portfolio가 **동기** 리스너(`@EventListener`)로 소비한다 — `artwork → portfolio` 직접 호출은 순환이라 방향을 이벤트로 뒤집었고, 비동기가 아닌 이유는 검증 실패 시 작품 저장까지 롤백해야 하기 때문이다(업로드-R09).
 
 ### 5.5 다운그레이드 시 동작 (요금제-R01)
 
@@ -329,16 +337,27 @@ GET /api/portfolios/{id}/duplication-source:
 | 생성/수정/작품 추가(SHARED) | 403 `PRO_PLAN_REQUIRED` |
 | 삭제(SHARED) | **허용** — 요금제-R01 "더보기 메뉴는 [삭제하기]만 노출"에 근거. 이 부분이 사용자 스코프 지시("생성·수정·복제·삭제는 프로 전용")와 문면상 어긋나 §6 R2로 별도 확인 필요, 이 문서는 정본(기획서) 우선으로 삭제 허용을 채택 |
 | 작가 페이지 포트폴리오 수정/작품 추가 | 허용(전 플랜 제공) |
-| `POST/PATCH /api/artworks`의 `portfolioIds` | 작가 페이지 ID만 허용, SHARED ID 포함 시 403 |
+| `POST /api/artworks`·`PATCH /api/artworks/{id}/publication`의 `portfolioIds` | 작가 페이지 ID만 허용, SHARED ID 포함 시 403 `PRO_PLAN_REQUIRED`(업로드는 작품 저장까지 롤백). 단 **기존 편입 해제는 허용** — 다운그레이드 사용자도 자기 작품을 빼낼 수는 있어야 한다(삭제 허용과 같은 판단) |
 
-### 5.6 R2 이미지 생명주기 — 알려진 제약
+### 5.6 R2 이미지 생명주기 — 보존 판정으로 해소 (PA-15)
 
-고정형 스냅샷(`portfolio_item_snapshots`)은 R2 키를 복사하지 않고 **원본 키를 그대로 참조**한다. 원본 작품을 영구 삭제하면 `ArtworkPermanentlyDeletedEvent` 리스너가 R2 파일을 지우므로, 정책상 불변이어야 할 스냅샷 이미지가 함께 깨진다.
+고정형 스냅샷(`portfolio_item_snapshots`)은 R2 키를 복사하지 않고 **원본 키를 그대로 참조**한다. 초기 설계는 이를 "알려진 제약"으로 수용했으나, (1) 원본 영구 삭제 시 `ArtworkPermanentlyDeletedEvent` 리스너가 그 키를 즉시 지우고 (2) 원본 이미지 교체 시 버려진 키를 `OrphanImageCleanupScheduler`가 1시간 주기로 지워, 활성 고정형 포트폴리오의 이미지가 조용히 사라지는 실사용 데이터 유실이었다(마이페이지_작가-R39·휴지통-R04는 "활성 고정형 포트폴리오가 참조하는 자산 버전 보존"을 명시한다). PA-15에서 **삭제 직전 보존 판정**으로 해소했다.
 
-검토한 해결책:
+검토한 해결책 중 채택하지 않은 것:
 1. R2 server-side copy로 스냅샷 전용 경로에 복제 — 정책은 완벽히 지켜지나 작품 20장 × 4 variant까지 복사 비용이 크고 생성 API가 느려짐.
-2. **`media` 모듈에 참조 카운트(retention) 개념 추가**(권장, 별도 PR) — `media`는 이미 artwork·portfolio 양쪽이 의존하는 하위 공용 모듈이라 순환이 없다. `MediaService.retain(holderType, holderId, keys)` / `release(...)`를 추가하고, `deleteFiles()`가 retention이 걸린 키는 건너뛰게 한다.
-3. 이번 마일스톤은 **3번(알려진 제약으로 수용)**으로 출시하고, 2번을 후속 이슈로 등록한다. 릴리스 노트·인계 문서에 "고정형 포트폴리오가 참조하는 원본을 휴지통에서 영구 삭제하면 스냅샷 썸네일이 깨질 수 있음"을 명시한다.
+2. `media`에 참조 카운트(retention) 테이블 추가 — `retain/release` 쌍이 어긋나면(포트폴리오 삭제 누락 등) 유실이나 영구 누수가 생기고, 스키마·마이그레이션이 늘어난다.
+
+**채택: 삭제 시점 조회형 보존 판정.** 상태를 따로 저장하지 않고 지우려는 순간 스냅샷 테이블에 물어본다 — 어긋날 상태가 없다.
+
+- `com.atcrew.media.RetainedMediaKeyProvider`(media 공개 SPI) — `Set<String> retainedKeys(Collection<String> candidateKeys)`. media는 누가 왜 키를 붙잡는지 모른다. 구현체가 없으면(모듈 단위 테스트 부트스트랩) 보존 대상 없음으로 동작한다.
+- `SnapshotRetainedMediaKeyProvider`(portfolio) — `PortfolioItemSnapshotRepository.findActiveByThumbnailKeys()`로 후보 키가 카드 썸네일(`thumb_key`/`thumb_adult_key`)로 걸린 스냅샷을 찾고, 그 스냅샷의 `payload_json`을 펼쳐 상세 본문 이미지 키(`originalKey`/`thumbKey`/`thumbAdultKey`/`originalAvifKey`)까지 보존 집합에 넣는다. **포트폴리오 행이 남아있는 스냅샷만** 대상이라 포트폴리오를 지우면 다음 정리 배치에서 자연히 회수된다.
+- `ArtworkEventListener.onPermanentlyDeleted` — 보존 키를 뺀 나머지만 `deleteFiles`. 보존 판정 자체가 실패하면 전체 키를 고아 큐로 넘긴다(스케줄러가 같은 판정을 다시 하므로 즉시 삭제되지 않는다).
+- `OrphanImageCleanupScheduler` — 배치마다 같은 판정을 거쳐 보존 키를 건너뛰고, 남은 보존 키만 남긴 채 행을 큐에 유지한다(`OrphanedMediaKey.keepOnly`). 포트폴리오가 삭제되면 그때 정리된다. 보존 행이 큐 앞을 계속 차지해 뒤의 행이 굶지 않도록 배치는 `marked_at` 오름차순으로 읽고, 보존된 행은 재판정 시점으로 `marked_at`을 갱신해 뒤로 보낸다.
+
+남은 제약:
+- 매칭 기준이 카드 썸네일 컬럼이라, 스냅샷 생성 시점에 이미지 처리가 끝나지 않아 `thumb_key`가 비어 있는 스냅샷은 판정에 걸리지 않는다. 실제 삭제 후보는 항상 한 작품의 키 전체로 들어오므로 처리 완료된 작품에서는 문제되지 않는다.
+- 보존된 키는 참조가 사라질 때까지 R2에 남는다 — 유실 대신 소량의 스토리지 누수를 택했다(원본 교체를 반복하면 스냅샷이 안 쓰는 중간 버전도 함께 남을 수 있다).
+- 자료(`materials`)의 첨부 키는 어떤 삭제 경로에도 들어가 있지 않아 보존 대상에서 제외했다.
 
 ---
 
@@ -348,7 +367,7 @@ GET /api/portfolios/{id}/duplication-source:
 |---|---|---|
 | R2 | 다운그레이드 시 삭제 허용 여부 | 사용자 스코프 지시("생성·수정·복제·삭제는 프로 전용")와 요금제-R01 문면("더보기 메뉴는 [삭제하기]만")이 어긋난다. 이 문서는 정본 우선으로 삭제 허용을 채택했다 — 반대라면 `DELETE /api/portfolios/{id}`에 `assertPro` 한 줄 추가로 뒤집을 수 있다 |
 | R3 | 복제 시 PRIVATE 제외 vs 생성 시 PRIVATE 포함 | 마이페이지_작가-R41(복제)은 비공개 작품 제외를, R38(생성/수정)은 "삭제되지 않은 모든 작품이 선택 대상(피드 공개 여부 무관)"을 명시한다. 화면마다 다른 규칙으로 그대로 구현했다 — 기획 의도가 맞는지 재확인 필요 |
-| D3 | 고정형 스냅샷 R2 보존 | §5.6 — media retention 확장 PR을 이번 마일스톤에 포함할지 다음으로 미룰지 |
+| D3 | 고정형 스냅샷 R2 보존 | **해소(PA-15)** — retention 테이블 대신 삭제 시점 조회형 보존 판정(`RetainedMediaKeyProvider`)을 채택했다. §5.6 참조 |
 | D7 | `PostType.PORTFOLIO` 리네이밍 | search/community의 기존 "포트폴리오" 용어(=Artwork)와 신규 도메인명 충돌. 이번엔 유지, 후속 리네이밍 권장(§1.4) |
 
 ---
@@ -435,5 +454,6 @@ Hibernate가 JSON을 정규화하므로, 원문 문자열과 재조회한 문자
 
 ### 8.8 §5.6 R2 이미지 생명주기 — 최종 확인
 
-media retention(§5.6의 해결책 2번)은 이번 마일스톤에 포함하지 않았다. **3번(알려진 제약 수용)**으로
-출시됐다 — 고정형 포트폴리오가 참조하는 원본을 휴지통에서 영구 삭제하면 스냅샷 썸네일이 깨질 수 있다.
+PA-10 시점에는 "알려진 제약 수용"으로 정리했으나, 2026-08-12 명세 대조 QA에서 영구 삭제뿐 아니라
+**원본 이미지 교체(고아 키 정리 스케줄러)** 경로로도 유실된다는 사실이 확인돼 PA-15에서 핫픽스했다.
+현재 상태와 남은 제약은 §5.6에 갱신돼 있다.

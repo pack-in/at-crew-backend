@@ -184,3 +184,145 @@ depends on: PA-09, PA-11
 - [x] `docs/design/portfolio-module-design.md`에 "구현 완료" 상태 갱신 + §7(카드 커버 썸네일, 누락분 보강)·
       §8(설계 대비 실제 구현 차이 8개 항목) 추가
 - [x] `docs/roadmap.md` 10번 항목 상태 갱신
+
+## PA-12. 포트폴리오-작품 정합성 재계산 구현 (PA-10이 "완료"로 잘못 기록한 누락분)
+
+depends on: PA-10
+
+2026-08-12 QA에서 발견: §1.2/§5.4가 명시한 `ArtworkChangedEvent`/`ArtworkPermanentlyDeletedEvent` 구독
+리스너와 §5.5의 `PortfolioMembershipReconcileScheduler`(6h 주기 보정)가 실제 코드엔 없다(grep 0건) —
+PA-10의 "설계 그대로 구현됐다"는 §8.2 기록은 오기. 포트폴리오 API를 거치지 않고(즉 add/remove/update 없이)
+구성 작품이 휴지통 이동하거나 비공개 전환되면 `itemCount`·`portfolio_items` 행이 무기한 stale로 남는다
+(재현 확인됨, PA-13의 원인이기도 함).
+
+- [x] `ArtworkChangedEvent` 구독 리스너(`PortfolioArtworkEventListener`) — 2026-08-12 확정 명세
+      (마이페이지_작가-R38·R39)에 맞춰 **제외 트리거는 휴지통 이동뿐**으로 확정했다. 비공개 전환(공개 OFF)은
+      구성 행도 `itemCount`도 건드리지 않는다 — 라이브 소속 자체가 유효한 공개 위치이고, 행을 지우면
+      편입 여부가 false로 떨어져 스스로 완전 비공개가 되는 자가당착이 된다. 구현은 상태 기준 절대값
+      재계산(`PortfolioMembershipReconciler.reconcileArtwork`)이라 휴지통 이동·복원만 값이 바뀌고
+      visibility 변경은 결과가 같아 아무것도 쓰지 않는다(전용 트래시 이벤트는 artwork에 없음을 grep으로 확인)
+- [x] `ArtworkPermanentlyDeletedEvent` 구독 리스너 — `portfolio_items` 행 제거 + 개수 재계산
+      (커버는 목록 조회 시점에 원본을 읽어 판정하므로 저장할 상태가 없음). 남은 행의 ordinal은 재번호를
+      매기지 않는다(조회가 ordinal 비교만 쓰므로 빈 번호가 무해, uk_pi_order 충돌 위험만 늘어남)
+- [x] `PortfolioMembershipReconcileScheduler`(`@Scheduled(fixedDelay = 21_600_000)`) — `AuthCleanupScheduler`
+      패턴. 포트폴리오 단위 트랜잭션으로 (1) 원본이 사라진 고아 구성 행 제거 (2) `itemCount` 재계산
+      (3) `artworks.portfolio_included` 불일치 보정(값이 이미 맞으면 쓰지 않음 — 6h마다 updated_at을 흔들지
+      않기 위함). 역방향(행 없는데 included=true)은 portfolio에서 조회할 수단이 없어 대상 밖(코드 주석에 명시)
+- [x] 회귀 테스트 — `PortfolioServiceTests` 2건(휴지통 이동 → 개수만 감소·행 유지·복원 시 복구, 영구 삭제 →
+      행까지 제거)과 신규 `PortfolioMembershipReconcileTests` 3건(비공개 전환은 구성·개수 불변, 배치가
+      고아 행·편입 여부·개수 불일치 보정, 배치가 휴지통 작품 행은 유지). 배치·재계산 컴포넌트가
+      package-private이라 후자는 같은 패키지에 뒀다
+
+## PA-13. 공유 LIVE 목록 커서 페이지네이션 hasNext 버그 수정
+
+depends on: PA-05 (PA-12과 근본 원인 공유하지만 별도 결함이라 독립 수정 필요)
+
+2026-08-12 QA에서 발견·재현: `PortfolioServiceImpl.getSharedPortfolioArtworks`의 LIVE 분기(210~222행)가
+DELETED 필터링 **이전** 원본 행 개수로 `hasNext`/`nextCursor`를 계산해, 페이지 안에 트래시 이동 작품이
+섞이면 `items=[]`인데 `hasNext=true`인 응답이 나올 수 있다. PA-12가 배포되면 stale 행 자체가 줄어들어
+발생 빈도는 낮아지지만, 이벤트 처리 지연 구간에는 여전히 재현 가능하므로 근본 수정(필터링 이후 개수로
+hasNext 판정, 또는 필터 통과분이 부족하면 다음 페이지를 이어서 채우는 방식)이 필요하다.
+
+- [x] `hasNext`/`nextCursor` 계산을 DELETED 필터링 이후 기준으로 수정 — LIVE 분기를 `liveArtworkPage()`로
+      분리해 필터 통과 카드가 size+1개가 될 때까지 원본 행을 청크 단위로 이어 읽는다(커서도 필터를 통과한
+      마지막 행의 ordinal). SNAPSHOT 분기는 조회 시점 필터가 없어 기존 방식 유지
+- [x] 회귀 테스트 2건 — 페이지 중간 2건이 휴지통일 때 size가 그대로 채워지고 다음 커서로 나머지에 도달,
+      뒷부분이 전부 휴지통이면 빈 페이지 없이 첫 페이지에서 `hasNext=false`로 끝남
+
+## PA-14. 복제 자동선택 필터가 완전비공개 기준이 아닌 문제 수정
+
+depends on: PA-05
+
+2026-08-12 QA·PM 확인([[project_portfolio_visibility_pm_decision]])에서 발견: `PortfolioServiceImpl.duplicable()`
+(575~580행)이 `artwork.visibility() != PRIVATE`만 검사하고 `portfolioIncluded`는 보지 않는다. 정책상
+자동선택에서 제외돼야 하는 건 "완전비공개"(`PRIVATE && !portfolioIncluded`)뿐인데, 이미 다른 라이브
+포트폴리오에 담겨 열람 가능한(포트폴리오 한정 공개) PRIVATE 작품까지 무조건 제외한다. 원인은
+`ArtworkInfo` record에 애초에 `portfolioIncluded` 필드가 없어 이 구분이 구조적으로 불가능했던 것.
+
+- [x] `com.atcrew.artwork.ArtworkInfo` record에 `portfolioIncluded` 필드 추가(visibility 바로 뒤),
+      `ArtworkMapper.toInfo()`가 `Artwork.isPortfolioIncluded()`로 채운다 — `getArtworkForIndexing()`을 포함한
+      모든 `ArtworkInfo` 생성 경로가 이 매퍼 하나뿐이라 나머지 사용처(search 색인·community 피드)는 그대로
+      동작한다. 생성자 직접 호출은 `ArtworkSearchMapperTest` 1곳뿐이라 거기만 인자 추가
+- [x] `PortfolioServiceImpl.duplicable()`을 `visibility == PRIVATE && !portfolioIncluded`(완전비공개)만
+      제외하도록 수정
+- [x] 회귀 테스트 3건 — 기존 "삭제·비공개 제외" 테스트를 새 정책(삭제만 제외)으로 갱신,
+      고정형에만 담긴 PRIVATE(=완전비공개)는 제외, 작가 페이지에도 담긴 PRIVATE은 자동선택 유지
+- [x] `docs/design/portfolio-module-design.md` §4 표의 `INVALID_PORTFOLIO_TITLE`을 POST 행에서 PATCH 행으로
+      정정 + 도달 조건 각주 추가(코드 확인 결과 `validateTitle`은 양쪽에서 불리지만 POST는 `@NotBlank`가
+      먼저 막아 도달 불가능 — 코드는 손대지 않음)
+
+## PA-15. 고정형 스냅샷 R2 이미지 orphan 정리 데이터 유실 방지 (긴급 핫픽스)
+
+depends on: (없음, 다른 태스크와 독립적인 파일을 건드림 — artwork/media 모듈, portfolio 모듈 아님)
+
+2026-08-12 명세서 대조 QA에서 발견: `PortfolioItemSnapshot`은 원본 이미지 R2 key를 복사하지 않고 그대로
+참조하는데(`PortfolioItemSnapshot.java:25` 자체 주석에 이미 리스크로 명시돼 있었음), (1) 원본 영구삭제 시
+`ArtworkEventListener.onPermanentlyDeleted`가 그 key들을 즉시 R2에서 물리 삭제하고, (2) 원본을 단순
+수정(이미지 교체)만 해도 `OrphanImageCleanupScheduler`(1시간 주기)가 버려진 key를 정리한다 — 둘 다
+`portfolio_item_snapshots`가 같은 key를 참조 중인지 전혀 확인하지 않는다. 활성 고정형 포트폴리오가 있다면
+지금도 조용히 썸네일이 깨지고 있을 수 있는 실사용 데이터 유실 리스크다. 오늘 확정된 마이페이지_작가-R39·
+휴지통-R04("활성 고정형 포트폴리오가 참조하는 자산 버전은 보존")가 이를 명시적으로 요구한다.
+
+- [x] `PortfolioItemSnapshotRepository.findActiveByThumbnailKeys()` 추가 — 후보 key가 카드 썸네일
+      (`thumb_key`/`thumb_adult_key`)로 걸린 스냅샷을 찾고, 포트폴리오 행이 남아있는 것만 대상으로 한다
+      (`exists (select 1 from Portfolio ...)`). `payload_json` 안의 상세 이미지 key는 SQL로 조회할 수 없어
+      걸린 스냅샷의 payload를 `SnapshotRetainedMediaKeyProvider`가 Jackson으로 펼쳐 보존 집합에 넣는다
+      — 삭제 후보는 항상 한 작품의 key 전체로 들어오므로 썸네일 하나만 걸려도 그 작품의 스냅샷을 찾는다
+- [x] 모듈 경계상 media/artwork가 portfolio 리포지토리를 직접 볼 수 없어 media 공개 SPI
+      `RetainedMediaKeyProvider`(`Set<String> retainedKeys(Collection<String>)`)를 신설하고 portfolio가
+      구현했다(portfolio→media 단방향, `ModularStructureTests` 통과). 구현체가 없는 부트스트랩
+      (artwork 모듈 단위 테스트)에서는 `List<RetainedMediaKeyProvider>` 주입이 빈 리스트가 돼 무보존으로 동작
+- [x] `ArtworkEventListener.onPermanentlyDeleted` — 보존 key를 뺀 나머지만 `deleteFiles`. 보존 판정 자체가
+      실패하면 전체 key를 고아 큐로 넘긴다(스케줄러가 같은 판정을 다시 하므로 즉시 삭제되지 않음)
+- [x] `OrphanImageCleanupScheduler` — 배치마다 보존 판정 후 비보존 key만 삭제. 보존 key가 남으면 행을
+      큐에 유지(`OrphanedMediaKey.keepOnly`)하되 `marked_at`을 재판정 시점으로 갱신하고 배치를 `marked_at`
+      오름차순으로 읽어, 보존 행이 큐 앞을 막아 뒤의 행이 굶는 것을 막았다(설계에 없던 판단 — 보존 행이
+      영구히 남을 수 있어 기존 "첫 페이지 100건" 방식과 결합하면 정리 자체가 멈출 수 있었다)
+- [x] 회귀 테스트 10건 — `ArtworkEventListenerTest` +3(참조 중 key 제외, 전량 보존 시 빈 삭제 요청,
+      보존 판정 실패 시 전체 고아 적재), `OrphanImageCleanupSchedulerTest` 신규 3건(이미지 교체 경로:
+      비참조 key만 삭제·행 제거, 참조 key는 유예하고 큐 유지, 전량 참조 시 삭제 미요청),
+      `SnapshotRetainedMediaKeyProviderTests` 신규 4건(썸네일+payload 상세 key 보존, 무관한 key 제외,
+      포트폴리오 없는 스냅샷 행 제외, 빈 후보)
+- [x] `docs/design/portfolio-module-design.md` §5.6을 "보존 판정으로 해소"로 갱신(채택/미채택 대안, 남은
+      제약 3가지 명시) + §6 D3·§8.8 상태 갱신
+- [x] `./gradlew test --tests "com.atcrew.artwork.*"` 30건, `--tests "com.atcrew.media.*"` 9건,
+      `--tests "com.atcrew.portfolio.*"` 73건, `ModularStructureTests` 2건 전부 통과
+
+## PA-16. 포트폴리오 작품 개수 100개 상한 제거
+
+depends on: (없음)
+
+`CreatePortfolioRequest`/`UpdatePortfolioRequest`/`AddPortfolioArtworksRequest`의 `artworkIds`에 걸린
+`@Size(max = 100)`이 "포트폴리오·작품 선택 개수 제한 없음"이라는 오늘 확정 명세(마이페이지_작가-R37·R38·
+R46)와 충돌한다. `PortfolioErrorCode.PORTFOLIO_ITEM_LIMIT_EXCEEDED`는 정의만 되고 어디서도 throw되지
+않는 죽은 코드다.
+
+- [x] 세 DTO의 리스트 `@Size(max = 100)` 제거 — 원소 단위 제약(`@NotBlank @Size(max = 36)`)과
+      `AddPortfolioArtworksRequest.@NotEmpty`(0개 추가는 무의미한 호출)는 그대로 뒀다
+- [x] 사용되지 않는 `PortfolioErrorCode.PORTFOLIO_ITEM_LIMIT_EXCEEDED` 제거 — src 전체 grep 결과
+      정의부 1곳뿐이었고, 설계 문서 §4 에러코드 목록에서도 함께 지웠다
+- [x] 회귀 테스트 2건 — 컨트롤러 검증(`PortfolioControllerValidationTest`: 150개 요청이 400이 아닌 201),
+      서비스(`PortfolioServiceTests`: 실제 작품 101개로 생성 후 1개 추가 → itemCount 102)
+
+## PA-17. 포트폴리오 "업데이트순" 정렬이 시스템 변경에도 갱신되는 문제 수정
+
+depends on: PA-12 (같은 `Portfolio.updatedAt`/`PortfolioMembershipReconciler` 영역을 건드리므로 PA-12
+완료 후 진행)
+
+오늘 확정된 마이페이지_작가-R37은 "업데이트순은 최신 반영형 공유 포트폴리오가 [수정하기]로 마지막으로
+수정된 시점 기준"이라고 명시하는데, 실제로는 `@LastModifiedDate`가 엔티티 dirty 시마다(작품 추가/제거
+API, `PortfolioMembershipReconciler`의 자동 재계산까지) 갱신돼 사용자가 [수정하기]를 안 눌러도 정렬
+순서가 바뀐다.
+
+- [x] 별도 필드 `Portfolio.lastEditedAt` 도입(Flyway **V19**: 컬럼 추가 + `updated_at`으로 backfill 후
+      NOT NULL + `idx_pf_owner_edited` 생성, 쓰이지 않게 된 `idx_pf_owner_updated`는 제거).
+      `@LastModifiedDate`를 떼는 대신 필드를 추가한 이유는 (1) 모든 엔티티가 created_at/updated_at 감사
+      컬럼을 두는 리포지토리 컨벤션을 깨지 않기 위해서, (2) 누군가 나중에 `@LastModifiedDate`를 되살려도
+      정렬이 조용히 회귀하지 않게 하기 위해서다. 갱신 지점은 `updatePortfolio` 한 곳
+      (`Portfolio.markEdited()`)이고, 생성 시점에 초기값을 넣는다
+- [x] "업데이트순" 정렬·커서(`sortOf`/`cursorField`/`cursorValueOf`)가 `lastEditedAt`을 쓰도록 수정.
+      응답에도 `PortfolioSummaryInfo.lastEditedAt`을 추가했다 — 정렬 기준과 카드에 표시되는 시각이
+      어긋나면 목록이 뒤죽박죽으로 보이기 때문(REST Docs `list-my-portfolios` 필드 설명도 갱신)
+- [x] 회귀 테스트 2건 — `PortfolioServiceTests`(작품 추가·제거로는 업데이트순 순서가 그대로, [수정하기]
+      호출 후에만 뒤바뀜), `PortfolioMembershipReconcileTests`(원본 휴지통 이동 후 재계산해도
+      `lastEditedAt` 불변, `itemCount`만 감소)

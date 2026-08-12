@@ -80,7 +80,7 @@ com.atcrew.artwork.internal/               ← 모듈 외부에서 직접 접근
 | `cutCount` | Integer | 작품 컷 수 (웹툰·출판만화 분야 전용) |
 | `videoLinks` | `List<String>` | 영상 링크 URL (최대 5개, YouTube 등) |
 | `ageRating` | enum | ALL / R18 / G18 |
-| `visibility` | enum | PUBLIC / LINK_ONLY / PRIVATE |
+| `visibility` | enum | PUBLIC(피드 공개 ON) / PRIVATE(피드 공개 OFF), LINK_ONLY는 deprecated |
 | `visibilityBeforeDelete` | enum | 휴지통 이동 전 공개 상태 스냅샷 |
 | `materials` | `List<Material>` | 소재 정보 (이름·대상·R2 첨부키·외부 링크) |
 | `status` | enum | PROCESSING / READY / DELETED |
@@ -327,7 +327,8 @@ R2 업로드 완료 후 작품 메타데이터를 저장. 바로 `PROCESSING` �
   "genres": ["판타지"],
   "tags": ["드래곤", "판타지"],
   "ageRating": "ALL",
-  "visibility": "PUBLIC",
+  "publishToFeed": true,
+  "portfolioIds": ["4c8c0d5e-1b2a-7c3d-8e4f-5a6b7c8d9e0f"],
   "tools": ["Procreate"],
   "workDuration": { "months": 1, "days": 0, "hours": 3, "minutes": 30 },
   "cutCount": null,
@@ -352,7 +353,7 @@ R2 업로드 완료 후 작품 메타데이터를 저장. 바로 `PROCESSING` �
 
 #### `GET /api/artworks/{artworkId}` — 작품 상세 조회
 
-- 인증 선택적. 비인증 또는 타인의 경우 `READY + PUBLIC/LINK_ONLY`만 노출.
+- 인증 선택적. 비인증 또는 타인의 경우 `READY`이면서 `PUBLIC`이거나 라이브 포트폴리오에 편입된 작품만 노출(§11).
 - 작가 본인은 `PROCESSING` / `DELETED` 포함 항상 조회 가능.
 
 #### `GET /api/artworks/{artworkId}/status` — 처리 상태 폴링
@@ -368,9 +369,11 @@ R2 업로드 완료 후 작품 메타데이터를 저장. 바로 `PROCESSING` �
 - `DELETED` 상태 작품은 수정 불가 (404).
 - `imageLayoutType`은 이미지 교체 여부와 무관하게 항상 반영.
 
-#### `PATCH /api/artworks/{artworkId}/visibility` — 공개 상태 변경
+#### `PATCH /api/artworks/{artworkId}/publication` — 노출 위치 재선언
 
-`READY` 상태일 때만 가능. `PUBLIC / LINK_ONLY / PRIVATE` 중 하나로 변경.
+`READY` 상태일 때만 가능. 요청 본문은 `publishToFeed`(필수)와 `portfolioIds`(선택)이며, 공개 상태는
+이 조합으로 서버가 계산한다(업로드-R09) — 공개 상태값을 직접 받는 필드는 없다. `portfolioIds`는
+증분이 아니라 전체 재선언이라 목록에서 빠진 포트폴리오에서는 제외된다.
 
 #### `DELETE /api/artworks/{artworkId}` — 작품 삭제 (휴지통 이동)
 
@@ -654,13 +657,19 @@ R2는 Cloudflare R2 (S3 호환). AWS SDK S3 v2를 사용하되 `Region.of("auto"
 
 ## 11. 공개 범위(Visibility) 정책
 
-| Visibility | 비인증 사용자 | 타인(인증) | 작가 본인 |
-|---|---|---|---|
-| PUBLIC | ✅ 조회 가능 | ✅ 조회 가능 | ✅ |
-| LINK_ONLY | ✅ 직링크로 조회 가능 | ✅ 직링크로 조회 가능 | ✅ |
-| PRIVATE | ❌ | ❌ | ✅ |
+제3자 열람 가능 여부는 `visibility` 단독이 아니라 "피드 공개 여부 × 라이브 포트폴리오(작가 페이지·
+최신 반영형) 편입 여부" 2요소로 계산한다(마이페이지_작가-R04). 고정형(SNAPSHOT) 포함은 이 계산에
+들어가지 않는다.
 
-- LINK_ONLY는 커뮤니티 피드에 노출되지 않지만, 직접 URL로 접근하면 조회 가능.
+| 피드 공개 | 라이브 포트폴리오 편입 | 비인증 사용자 | 타인(인증) | 작가 본인 |
+|---|---|---|---|---|
+| PUBLIC | 무관 | ✅ 조회 가능 | ✅ 조회 가능 | ✅ |
+| OFF(PRIVATE) | 1개 이상 | ✅ 조회 가능 | ✅ 조회 가능 | ✅ |
+| OFF(PRIVATE) | 0개 (= 완전 비공개) | ❌ 403 | ❌ 403 | ✅ |
+
+- "링크 공개"라는 제3의 상태는 없다. 레거시 `LINK_ONLY`(라이트 ETL 매핑용)는 판정상 `PRIVATE`와
+  동일 취급하며, 업로드·공개 상태 변경 API에서 입력하면 400 `UNSUPPORTED_VISIBILITY`.
+- 커뮤니티 피드·검색 색인은 `PUBLIC`만 대상으로 한다(포트폴리오 한정 공개는 노출하지 않음).
 - 휴지통 이동 시 강제 PRIVATE으로 변경. 복구 시 이전 상태로 복원.
 - 탈퇴 이벤트 수신 시 모든 작품 강제 PRIVATE (`forcePrivate()`, 상태 무관).
 - `changeVisibility()`는 `READY` 상태만 허용. `forcePrivate()`는 상태 무관.

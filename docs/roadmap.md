@@ -42,7 +42,7 @@
 | 7 | 다국어(i18n) UI 로컬라이제이션 | **2026-08-10 필드+언어 세그먼트 범위로 설계 착수**(서버 메시지 현지화는 계속 범위 밖) — `docs/design/settings-i18n-design.md` §5 |
 | 8 | 관리자/모더레이션 콘솔 | **신규**, 착수 전 |
 | 9 | 소셜 공유 메타(OG 카드) | **신규**, 착수 전 |
-| 10 | **포트폴리오 도메인(공유)** | **구현 완료**(2026-08-11, `com.atcrew.portfolio` 모듈·Flyway V17). 작가 페이지 lazy 생성, 공유(고정형/최신반영형) 생성·수정·삭제·복제·공유 링크 비로그인 열람, 카드 커버 썸네일까지 전부 병합. REST Docs 스니펫 16종 포함 `com.atcrew.portfolio.*` 56개 테스트 그린. 지금까지 "포트폴리오"는 artwork 완료 항목에 흡수돼 로드맵에 별도 항목이 없었으나, REQ-010/011(작가 페이지 포트폴리오·공유 포트폴리오·공유 링크) 대조 결과 **작품(Artwork)과 완전히 별개인 미구현 도메인**이었음이 확인돼 신설했었음. 스타터 4개 제한·업로드 `portfolioIds` 연동·정렬 3종·언어 세그먼트는 아직 artwork 쪽 후속 작업(`plans/260811-portfolio-module/` 밖)으로 남아 있음 — `docs/design/portfolio-module-design.md`(§8에 설계 대비 구현 차이 정리) |
+| 10 | **포트폴리오 도메인(공유)** | **구현 완료**(2026-08-11, `com.atcrew.portfolio` 모듈·Flyway V17). 작가 페이지 lazy 생성, 공유(고정형/최신반영형) 생성·수정·삭제·복제·공유 링크 비로그인 열람, 카드 커버 썸네일까지 전부 병합. REST Docs 스니펫 16종 포함 `com.atcrew.portfolio.*` 56개 테스트 그린. 지금까지 "포트폴리오"는 artwork 완료 항목에 흡수돼 로드맵에 별도 항목이 없었으나, REQ-010/011(작가 페이지 포트폴리오·공유 포트폴리오·공유 링크) 대조 결과 **작품(Artwork)과 완전히 별개인 미구현 도메인**이었음이 확인돼 신설했었음. 정렬 3종·업로드 `portfolioIds` 연동(2026-08-12, `plans/260812-portfolio-snapshot-gap/` PA-05 — 업로드 요청이 `visibility` 3값 대신 `publishToFeed`+`portfolioIds` 조합을 받고 구 `PATCH /visibility`는 제거)·고정형 스냅샷 상세 API·운영 차단 최소 구현까지 완료. 스타터 4개 제한·언어 세그먼트는 아직 artwork 쪽 후속 작업(`plans/260811-portfolio-module/` 밖)으로 남아 있음 — `docs/design/portfolio-module-design.md`(§8에 설계 대비 구현 차이 정리) |
 
 **2026-08-10 — at-crew 출시 마일스톤 설계 착수**: 회원가입/로그인·포트폴리오(업로드~공유)·커뮤니티·검색·유료 요금제·마이페이지·i18n·설정을 이번 주 출시 목표로 전수 재점검한 결과 10번(포트폴리오)·5번(요금제)·6번(설정)·7번(i18n 필드만)이 동시에 필요함이 드러남. 설계 3건(`portfolio-module-design.md`, `billing-module-design.md`, `settings-i18n-design.md`)과 실행 계획을 함께 작성했다. 1번(PASS 본인인증)·8번(관리자)·9번(OG카드)은 이번에도 범위 밖이며 각 설계 문서의 "미확정 항목"에 축소 사항을 명시했다.
 
@@ -219,6 +219,19 @@ recruit/기업 프로필과 병렬 진행 중이라 별도 워크트리(`worktre
 **스코프:** 각 상세 페이지에 OG 메타 태그(`og:image`/`og:title`/`og:description`) 서버 렌더링 또는 메타 태그 엔드포인트 제공. 성인물(R18/G18) 콘텐츠는 썸네일을 서비스 기본 이미지로 대체. 삭제·비공개·정지 케이스는 각 모듈의 접근 제한 처리와 동일 규칙 적용.
 
 **Figma/기획서 근거:** 기능명세 작품 상세 페이지-R08, 마이페이지_작가-R45, 마이페이지_작가-R44, 마이페이지_기업-R10, 구인글 상세 페이지-R07, 팀원 모집글 상세 페이지-R01.
+
+---
+
+## 11. `Visibility.LINK_ONLY` enum 물리 제거 — 신규(2026-08-12)
+
+**Why 신규 항목인가:** 확정 명세(마이페이지_작가-R04)가 공개 상태를 "피드 공개 여부 × 라이브 포트폴리오
+편입 여부" 2요소 파생 상태로만 정의하면서 "링크 공개"라는 제3의 상태가 사라졌다. `Artwork.accessFor`·
+복제 자동 선택 판정은 이미 2요소 모델로 정합화했고 API 쓰기 경로도 400으로 막았지만, 라이트(Laiteu)
+`ArtworkStatus`에 LINK_ONLY가 실존해 ETL 매핑 대상이므로 enum 상수 자체는 `@Deprecated`로만 남겨뒀다.
+
+**스코프:** 라이트 → 앳크루 마이그레이션(0번 P6) 완료 후 `Visibility.LINK_ONLY` 상수 제거 + 잔존 행
+백필(PRIVATE 전환). ETL이 LINK_ONLY 작품을 어떻게 매핑할지는 `plans/260812-portfolio-snapshot-gap/PLAN-HUMAN.md`
+PH-03에서 확정한다.
 
 ---
 

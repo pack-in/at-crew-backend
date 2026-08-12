@@ -11,9 +11,16 @@ graph TD
     PA09["PA-09. REST Docs/검증 테스트"]
     PA11["PA-11. 카드 커버 썸네일"]
     PA10["PA-10. 전체 빌드 검증"]
+    PA12["PA-12. 정합성 재계산 구현"]
+    PA13["PA-13. 커서 hasNext 버그 수정"]
+    PA14["PA-14. 복제 필터 정책 수정"]
+    PA15["PA-15. R2 이미지 유실 핫픽스"]
+    PA16["PA-16. 100개 상한 제거"]
+    PA17["PA-17. 업데이트순 정렬 수정"]
     PH01["PH-01. 미확정 항목 결정"]
     PH02["PH-02. 로컬 기동 확인"]
     PH03["PH-03. API 하나씩 직접 검증"]
+    PH04["PH-04. QA 발견 정책 확인"]
 
     PA01 --> PA04
     PA02 --> PA04
@@ -29,11 +36,19 @@ graph TD
     PA11 --> PA10
     PA10 --> PH02
     PA10 --> PH03
+    PA10 --> PA12
+    PA05 --> PA13
+    PA05 --> PA14
+    PH03 --> PH04
+    PA12 --> PA17
+    PA05 --> PA15
+    PA05 --> PA16
 
     classDef done fill:#2f6f4f,color:#fff,stroke:#1f4d36
     classDef inprogress fill:#8a6d1e,color:#fff,stroke:#5c4a14
     classDef pending fill:#3a3f4b,color:#fff,stroke:#20232b
-    class PA01,PA02,PA03,PA04,PA05,PA06,PA07,PA08,PA09,PA11,PA10 done
-    class PH02,PH03 pending
+    class PA01,PA02,PA03,PA04,PA05,PA06,PA07,PA08,PA09,PA11,PA10,PH02,PH03 done
+    class PA12,PA13,PA14,PA16,PA17 done
+    class PA15,PH04 pending
     class PH01 pending
 ```
