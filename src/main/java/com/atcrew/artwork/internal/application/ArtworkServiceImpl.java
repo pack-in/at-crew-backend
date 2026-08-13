@@ -36,7 +36,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -346,13 +348,16 @@ class ArtworkServiceImpl implements ArtworkService {
         List<Artwork> page = hasNext ? artworks.subList(0, size) : artworks;
 
         Set<String> authorIds = page.stream().map(Artwork::getAuthorId).collect(Collectors.toSet());
-        java.util.Map<String, MemberInfo> authorMap = authorIds.stream()
-                .collect(Collectors.toMap(
-                        id -> id,
-                        id -> {
-                            try { return memberService.findById(id); } catch (Exception e) { return null; }
-                        }
-                ));
+        Map<String, MemberInfo> authorMap = new HashMap<>();
+        for (String id : authorIds) {
+            try {
+                authorMap.put(id, memberService.findById(id));
+            } catch (Exception e) {
+                // 작성자가 삭제된 경우 등 조회 실패 시 매핑에서 제외한다(Collectors.toMap은 값이
+                // null이면 NPE를 던지므로 이 방식을 쓸 수 없다) — ArtworkMapper가 author 없이도
+                // (get()이 null 반환) 정상 처리한다.
+            }
+        }
 
         List<ArtworkInfo> items = page.stream()
                 .map(a -> ArtworkMapper.toInfo(a, authorMap.get(a.getAuthorId())))
@@ -372,13 +377,16 @@ class ArtworkServiceImpl implements ArtworkService {
 
         // 작가 정보 일괄 조회 (N+1 완화 — 향후 batch API 추가 예정)
         Set<String> authorIds = page.stream().map(Artwork::getAuthorId).collect(Collectors.toSet());
-        java.util.Map<String, MemberInfo> authorMap = authorIds.stream()
-                .collect(Collectors.toMap(
-                        id -> id,
-                        id -> {
-                            try { return memberService.findById(id); } catch (Exception e) { return null; }
-                        }
-                ));
+        Map<String, MemberInfo> authorMap = new HashMap<>();
+        for (String id : authorIds) {
+            try {
+                authorMap.put(id, memberService.findById(id));
+            } catch (Exception e) {
+                // 작성자가 삭제된 경우 등 조회 실패 시 매핑에서 제외한다(Collectors.toMap은 값이
+                // null이면 NPE를 던지므로 이 방식을 쓸 수 없다) — ArtworkMapper가 author 없이도
+                // (get()이 null 반환) 정상 처리한다.
+            }
+        }
 
         List<ArtworkSummaryInfo> items = page.stream()
                 .map(a -> ArtworkMapper.toSummaryInfo(a, authorMap.get(a.getAuthorId())))

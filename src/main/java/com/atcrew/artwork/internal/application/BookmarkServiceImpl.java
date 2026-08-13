@@ -22,6 +22,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -122,13 +123,15 @@ class BookmarkServiceImpl implements BookmarkService {
         Set<String> authorIds = artworkMap.values().stream()
                 .map(Artwork::getAuthorId)
                 .collect(Collectors.toSet());
-        Map<String, MemberInfo> authorMap = authorIds.stream()
-                .collect(Collectors.toMap(
-                        id -> id,
-                        id -> {
-                            try { return memberService.findById(id); } catch (Exception e) { return null; }
-                        }
-                ));
+        Map<String, MemberInfo> authorMap = new HashMap<>();
+        for (String id : authorIds) {
+            try {
+                authorMap.put(id, memberService.findById(id));
+            } catch (Exception e) {
+                // 작성자가 삭제된 경우 등 조회 실패 시 매핑에서 제외한다(Collectors.toMap은 값이
+                // null이면 NPE를 던지므로 이 방식을 쓸 수 없다)
+            }
+        }
 
         List<BookmarkEntryInfo> items = page.stream()
                 .filter(e -> artworkMap.containsKey(e.getArtworkId()))
