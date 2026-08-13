@@ -73,18 +73,3 @@ artwork:
 search:
   internal:
     secret: ${SEARCH_INTERNAL_SECRET:dev-internal-secret}
-
-# Swagger UI는 springdoc의 애노테이션 기반 동적 생성 대신 REST Docs 기반 정적 스펙을 서빙한다
-# (docs/testing/rest-docs-guide.md 참고). swagger-ui.url이 static 리소스로 복사해 둔 openapi3.yaml을
-# 가리키게 해서 브라우저에는 정적 스펙만 노출된다.
-#
-# api-docs.enabled=false는 의도적으로 쓰지 않는다 — springdoc-openapi 3.0.3에서 swagger-ui 모듈
-# (SwaggerConfig)이 @ConditionalOnBean(SpringDocConfiguration)으로 api-docs 기능 빈에 강하게
-# 결합돼 있어서, api-docs.enabled=false로 그 빈을 끄면 swagger-ui.url 설정과 무관하게
-# /swagger-ui/index.html 자체가 404로 사라진다(실측 확인). 즉 "동적 생성만 끄고 UI는 정적 스펙으로
-# 유지"가 이 버전에서는 두 프로퍼티 조합으로 불가능하다. /v3/api-docs 엔드포인트 자체는 계속 살아있고
-# 요청하면 여전히 애노테이션 기반 스펙을 반환하지만, swagger-ui.url이 재정의돼 있어 UI는 더 이상 그
-# 경로를 쓰지 않는다.
-springdoc:
-  swagger-ui:
-    url: /openapi3.yaml

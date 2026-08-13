@@ -189,7 +189,7 @@ enum이므로 company 쪽도 별도로 커버해야 한다.
       삭제/수정 API 자체가 없는 dead code)는 스킵
 - [x] 개별 실행 재확인 — 4개 테스트 전부 통과
 
-## PA-11. Swagger UI 실제 서빙 전환
+## PA-11. Swagger UI 실제 서빙 전환 → 회귀 발견 → 롤백 (2026-08-13)
 
 depends on: PA-10
 
@@ -197,6 +197,13 @@ depends on: PA-10
 서빙하도록 전환한다. 완전 대체 방식 — `springdoc.api-docs.enabled=false` +
 `springdoc.swagger-ui.url`을 정적 리소스 경로로 지정(`AbstractSwaggerUiConfigProperties.url` 필드
 활용, 이전 조사에서 확인된 방식). 병행 서빙(일부만 정적)은 채택하지 않는다.
+
+**전환 후 커밋까지 했으나, 사용자 요청으로 후속 검토 중 심각한 회귀를 발견해 롤백했다.** 정적
+스펙은 에러 케이스 REST Docs 테스트(`*ErrorApiSpecTest`)만 커버하는데, 기존 성공 시나리오
+문서화 테스트(`*ApiDocTest`)는 `resource()` wrapper를 안 써서 이 스펙에 안 잡힌다. 결과적으로
+전환 당시 정적 스펙은 경로 38개(전체 124개+ 중 일부)뿐이었고 성공(2xx) 응답이 하나도 없었다 —
+Swagger UI를 이걸로 전환하면 개발자가 실제로 필요한 정보(대다수 엔드포인트·모든 성공 스키마)가
+사라지는, 원래 문제보다 심각한 회귀였다. 상세: `docs/testing/rest-docs-guide.md` §8.
 
 - [x] `openapi3.yaml`을 정적 리소스로 서빙하도록 배선 — Gradle `copyOpenApiSpec` Copy 태스크로
       `build/api-spec/openapi3.yaml` → `src/main/resources/static/openapi3.yaml` (Spring Boot
@@ -217,3 +224,11 @@ depends on: PA-10
       남아있는 동안 폴백 확인 수단으로 가치 있음. 팀이 REST Docs를 단일 진실 공급원으로 못박기로
       하면 `/v3/api-docs` 자체를 막는 결정이 먼저 필요함(남은 갭으로 기록)
 - [x] `docs/conventions/swagger.md`, `docs/testing/rest-docs-guide.md`(§8) 갱신
+- [x] **(2026-08-13 추가)** 위에서 기록한 회귀를 사용자에게 보고 → 롤백 승인받음 →
+      `application.yml`의 `swagger-ui.url` 재정의 제거, `SecurityConfig`의 `/openapi3.yaml`
+      permitAll 제거, `build.gradle`의 `copyOpenApiSpec` 태스크 및 `static/openapi3.yaml` 삭제.
+      `openapi3` 태스크 자체는 유지(에러 메시지 정확성 검증 용도로는 계속 유효). 재기동 검증 —
+      `/v3/api-docs`가 다시 경로 42개(operation 기준 124개+), 상태코드
+      200/201/204/400/401/403/404/409/410/428/429/500/503 전부 포함해서 반환함을 확인, `/v3/api-docs/swagger-config`의
+      `url`이 다시 `/v3/api-docs`를 가리킴 확인. `docs/conventions/swagger.md`,
+      `docs/testing/rest-docs-guide.md` §8 정정

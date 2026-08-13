@@ -125,6 +125,11 @@ mockMvc.perform(patch("/api/members/me/name")
 - [ ] **통합 테스트** (보안 관련 변경 시) 확인
   - 새 공개 엔드포인트: `핸들_조회_토큰_없이_401_아님` 패턴으로 추가
   - 새 보호 엔드포인트: `토큰_없음_401` 패턴으로 추가
+- [ ] **(선택) 에러 케이스 REST Docs** — 새 도메인 에러 코드를 추가했다면
+  `*ErrorApiSpecTest.java`(`MockMvcRestDocumentationWrapper.document()` + `resource()`, §6~§8
+  참고)로 대표 케이스 1건을 문서화하고 `./gradlew openapi3 -x test`로 생성된 YAML의 `message`가
+  실제 ErrorCode enum 값과 일치하는지 확인하면 좋다. Swagger UI 서빙과는 무관하다(§8) — 순수
+  검증 목적.
 
 ---
 
@@ -247,75 +252,49 @@ PoC 검증 이후 artwork/billing/media/auth/community/member/recruit/search 8�
 
 ---
 
-## 8. Swagger UI 정적 스펙 서빙 전환 완료 (2026-08-12)
+## 8. Swagger UI 정적 스펙 서빙 전환 시도 → 회귀 발견 → 롤백 (2026-08-12~13)
 
-`/swagger-ui/index.html`이 이제 springdoc의 애노테이션 기반 동적 생성이 아니라, REST Docs 기반 정적
-스펙(`build/api-spec/openapi3.yaml`)을 서빙한다. §6~§7에서 "남은 갭"으로 남아 있던 실제 서빙 전환을
-완료했다.
+`/swagger-ui/index.html`을 springdoc 애노테이션 기반 동적 생성 대신 REST Docs 기반 정적 스펙
+(`build/api-spec/openapi3.yaml`)으로 서빙하도록 전환했다가(`application.yml`의
+`springdoc.swagger-ui.url` 재정의, `SecurityConfig`에 `/openapi3.yaml` permitAll, `build.gradle`의
+`copyOpenApiSpec` 태스크), **심각한 회귀를 발견해 롤백했다.** `springdoc.api-docs.enabled=false`를
+쓸 수 없었던 사정(swagger-ui 모듈이 api-docs 기능 빈에 강결합돼 있어 끄면 UI 자체가 404가 됨)은
+여전히 유효한 사실이라 기록만 남긴다 — 아래 참고.
 
-### 적용 내역
+### 발견한 회귀
 
-1. **정적 파일 배치**: `build.gradle`에 `copyOpenApiSpec`(Copy 태스크)을 추가해
-   `build/api-spec/openapi3.yaml` → `src/main/resources/static/openapi3.yaml`로 복사한다. Spring
-   Boot의 기본 정적 리소스 서빙(`classpath:/static/**`)이 그대로 `/openapi3.yaml` 경로로 노출한다.
-   별도 `@Controller`를 작성하지 않았다 — 이 리포지토리에 기존 정적 파일 서빙 관례가 없었고, 스프링
-   기본 동작이 가장 자연스러운 방식이었다.
-   - 이 태스크는 **의도적으로 `processResources`/`bootRun`에 자동 연결하지 않았다.** `openapi3`
-     태스크가 `test` 태스크를 재실행하는데, 기존 flaky Testcontainer 실패(§6) 때문에 매 빌드·기동마다
-     전체 테스트가 자동으로 돌면 개발 흐름이 막힌다. 스펙을 갱신하려면 수동으로
-     `./gradlew openapi3 -x test && ./gradlew copyOpenApiSpec`을 순서대로 실행한다.
-2. **springdoc 설정** (`application.yml`): `springdoc.swagger-ui.url: /openapi3.yaml`로 Swagger UI가
-   읽는 스펙을 정적 파일로 바꿨다. `/v3/api-docs/swagger-config` 응답의 `url` 필드가 `/openapi3.yaml`을
-   가리키는 것으로 실측 확인했다.
-3. **보안 설정** (`SecurityConfig`): non-prod 프로파일 한정 permitAll 목록에 `/openapi3.yaml`을
-   추가했다(`/swagger-ui/**`, `/v3/api-docs/**`와 동일한 취급). 없으면 기본 `anyRequest().authenticated()`에
-   걸려 401이 난다 — 실제로 이 문제로 최초 시도에서 401이 확인됐다.
+정적 스펙은 **에러 케이스 REST Docs 테스트(`*ErrorApiSpecTest`)만 커버**한다. 기존에 있던 성공
+시나리오 문서화 테스트(`*ApiDocTest`, auth/member/company/community/search/recruit/portfolio
+각 모듈)는 일반 `document()`를 쓰고 `resource()` wrapper를 쓰지 않아 `openapi3` 태스크가 읽지
+못한다. 그 결과 서빙 전환 직후의 `build/api-spec/openapi3.yaml`은:
 
-### `springdoc.api-docs.enabled=false`를 쓰지 않은 이유 (중요한 제약)
+- **경로 38개뿐**(전체 API는 124개 이상 엔드포인트)
+- **성공(2xx) 응답이 단 하나도 없음** — 400/401/403/404/409/410/503 에러 예시만 존재
 
-당초 계획은 `springdoc.api-docs.enabled=false`로 동적 생성 자체를 끄는 것이었다. 실제로 적용해보니
-**springdoc-openapi 3.0.3에서는 이 설정이 Swagger UI 전체를 함께 죽인다.** `--debug`로 조건 평가
-리포트를 떠 보면:
+즉 Swagger UI를 이 정적 스펙으로 전환하면 개발자가 실제로 필요한 정보(대다수 엔드포인트의 존재
+자체, 모든 성공 응답 스키마, 요청 필드 설명)가 통째로 사라진다 — "에러 메시지 문구가 가끔 틀리는"
+원래 문제보다 훨씬 나쁜 상태였다. PoC 단계에서 검토했던 "병행 서빙"(일부만 정적, 나머지 동적) 옵션을
+커스텀 merge 컨트롤러가 필요해 난이도가 높다는 이유로 기각했었는데, 그 판단이 맞았다는 게 이번에
+실증된 셈이다.
 
-```
-SwaggerConfig:
-   Did not match:
-      - @ConditionalOnBean (types: org.springdoc.core.configuration.SpringDocConfiguration;
-        SearchStrategy: all) did not find any beans of type
-        org.springdoc.core.configuration.SpringDocConfiguration (OnBeanCondition)
+### 롤백 내역 (2026-08-13)
 
-SpringDocConfiguration:
-   Did not match:
-      - @ConditionalOnProperty (springdoc.api-docs.enabled) found different value in property
-        'springdoc.api-docs.enabled' (OnPropertyCondition)
-```
+- `application.yml`의 `springdoc.swagger-ui.url` 재정의 제거 — Swagger UI가 다시 애노테이션 기반
+  동적 생성(`/v3/api-docs`)을 읽는다.
+- `SecurityConfig`의 `/openapi3.yaml` permitAll 항목 제거.
+- `build.gradle`의 `copyOpenApiSpec` 태스크 제거, `src/main/resources/static/openapi3.yaml` 삭제.
+- `openapi3` 태스크 자체는 유지한다 — Swagger UI 서빙용이 아니라 **에러 케이스 테스트의
+  code/message가 실제 ErrorCode enum과 일치하는지 검증하는 용도**로는 여전히 유효하다(§6~§7의
+  PoC·확장 검증이 바로 이 용도로 이 태스크를 썼다).
 
-즉 `swagger-ui` 모듈(`SwaggerConfig`)이 `api-docs` 기능의 공용 빈(`SpringDocConfiguration`)에
-`@ConditionalOnBean`으로 강하게 결합돼 있어서, `api-docs.enabled=false`로 그 빈을 끄면
-`swagger-ui.url` 설정과 무관하게 `/swagger-ui/index.html` 자체가 404로 사라진다(실측: `api-docs.enabled=false`
-상태에서 `/swagger-ui/index.html` → 404, `/openapi3.yaml` → 401(보안 미설정 시)/200(보안 설정 후) —
-UI 자체가 뜨지 않아 무의미했다). "동적 생성만 끄고 UI는 정적 스펙으로 유지"가 이 버전에서는 두
-프로퍼티 조합으로 불가능하다.
+롤백 후 재기동 검증: `GET /v3/api-docs` — 경로 42개(메서드별 operation 기준으로는 124개+), 상태
+코드 `200/201/204/400/401/403/404/409/410/428/429/500/503` 전부 포함 확인. `GET
+/v3/api-docs/swagger-config`의 `url`이 다시 `/v3/api-docs`를 가리킴 확인.
 
-**결정**: `api-docs.enabled`는 기본값(`true`)을 유지하고, `swagger-ui.url` 재정의만으로 전환했다.
-결과적으로 `/v3/api-docs`(구 동적 스펙 JSON) 엔드포인트 자체는 계속 살아 있고 직접 요청하면 여전히
-애노테이션 기반 스펙을 반환하지만, **Swagger UI는 더 이상 그 경로를 쓰지 않는다** — 사람이 보는
-화면 기준으로는 전환이 완료된 것과 동일하다. `/v3/api-docs`를 완전히 차단하려면 별도로 Spring
-Security에서 막아야 하는데, 이번 전환 범위에서는 하지 않았다.
+### 남은 갭 (다음에 이걸 다시 시도한다면)
 
-### 서빙 검증 (2026-08-12)
-
-`MARIADB_PORT=3307`(로컬 `turban-mariadb-local` 컨테이너)로 `./gradlew bootRun
---args='--spring.profiles.active=local'` 기동 후 확인:
-
-| 경로 | 결과 |
-|---|---|
-| `GET /openapi3.yaml` | 200, `application/octet-stream`, 56170 bytes, `ARTWORK_NOT_FOUND`/`COMPANY_NOT_FOUND`/`COMPANY_ALREADY_EXISTS`/`CAREER_LIMIT_EXCEEDED`/`INVALID_CAREER_PERIOD` 전부 응답 본문에 포함 확인 |
-| `GET /swagger-ui/index.html` | 200, `text/html` |
-| `GET /v3/api-docs/swagger-config` | 200, `"url":"/openapi3.yaml"` — Swagger UI가 정적 스펙을 읽도록 재확인 |
-| `GET /v3/api-docs` | 200(여전히 살아 있음, 위 제약 참고) |
-
-검증 후 프로세스는 종료했다.
-
-이 방식으로 **테스트 → 문서 → API 스펙 → Swagger UI**가 항상 동기화되며, 수동으로 Swagger
-어노테이션을 관리하지 않아도 된다.
+성공 시나리오 문서화 테스트(`*ApiDocTest`)를 전부 `resource()` wrapper 형식으로 전환해서 정적
+스펙이 전체 API 표면(성공+에러, 모든 엔드포인트)을 커버하게 만들기 전까지는 정적 서빙 전환을
+다시 시도하지 않는다. 그 전환 작업량은 이번 에러 케이스 커버리지 작업(9개 모듈, 47개 케이스)과
+비슷하거나 더 클 수 있다 — 기존 `*ApiDocTest`가 성공 케이스 1개씩만 다루는 게 아니라 요청 필드
+설명(`requestFields`)까지 상세히 기재하기 때문이다.

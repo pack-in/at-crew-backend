@@ -117,8 +117,7 @@ class SecurityConfig {
                             .requestMatchers(HttpMethod.GET, "/api/portfolios/shared/{identifier}/artworks").permitAll();
 
                     if (!isProd()) {
-                        // openapi3.yaml — REST Docs 기반 정적 스펙(swagger-ui.url이 이 경로를 가리킨다)
-                        auth.requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/openapi3.yaml").permitAll();
+                        auth.requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll();
                     }
                     auth.anyRequest().authenticated();
                 })
