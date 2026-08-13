@@ -1,15 +1,15 @@
 package com.atcrew.member;
 
+import com.atcrew.SharedContainersConfig;
 import com.atcrew.common.response.CursorPage;
 import com.atcrew.member.internal.exception.MemberErrorCode;
 import com.atcrew.member.internal.exception.MemberException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import com.atcrew.support.DatabaseCleanupExtension;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.modulith.test.ApplicationModuleTest;
-import org.testcontainers.containers.MariaDBContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -18,12 +18,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @ApplicationModuleTest(mode = ApplicationModuleTest.BootstrapMode.DIRECT_DEPENDENCIES)
-@Testcontainers
+@ExtendWith(DatabaseCleanupExtension.class)
+@ImportTestcontainers(SharedContainersConfig.class)
 class MemberModuleTests {
-
-    @Container
-    @ServiceConnection
-    static MariaDBContainer<?> mariadb = new MariaDBContainer<>("mariadb:11.4");
 
     @Autowired
     MemberService memberService;

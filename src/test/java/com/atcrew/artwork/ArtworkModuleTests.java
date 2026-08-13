@@ -1,5 +1,6 @@
 package com.atcrew.artwork;
 
+import com.atcrew.SharedContainersConfig;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaProcessingStatus;
 import com.atcrew.media.internal.application.MediaCallbackService;
@@ -7,11 +8,10 @@ import com.atcrew.member.CreatorRole;
 import com.atcrew.member.MemberService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import com.atcrew.support.DatabaseCleanupExtension;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.modulith.test.ApplicationModuleTest;
-import org.testcontainers.containers.MariaDBContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -38,12 +38,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * artwork 리스너 상태 갱신 경로가 이어지는지를 검증한다.
  */
 @ApplicationModuleTest(mode = ApplicationModuleTest.BootstrapMode.ALL_DEPENDENCIES)
-@Testcontainers
+@ExtendWith(DatabaseCleanupExtension.class)
+@ImportTestcontainers(SharedContainersConfig.class)
 class ArtworkModuleTests {
-
-    @Container
-    @ServiceConnection
-    static MariaDBContainer<?> mariadb = new MariaDBContainer<>("mariadb:11.4");
 
     @Autowired
     ArtworkService artworkService;

@@ -1,15 +1,15 @@
 package com.atcrew.billing;
 
+import com.atcrew.SharedContainersConfig;
 import com.atcrew.billing.internal.domain.Subscription;
 import com.atcrew.billing.internal.exception.BillingException;
 import com.atcrew.billing.internal.persistence.SubscriptionRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import com.atcrew.support.DatabaseCleanupExtension;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.modulith.test.ApplicationModuleTest;
-import org.testcontainers.containers.MariaDBContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.util.UUID;
 
@@ -24,12 +24,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * 시뮬레이션한다.
  */
 @ApplicationModuleTest(mode = ApplicationModuleTest.BootstrapMode.DIRECT_DEPENDENCIES)
-@Testcontainers
+@ExtendWith(DatabaseCleanupExtension.class)
+@ImportTestcontainers(SharedContainersConfig.class)
 class BillingModuleTests {
-
-    @Container
-    @ServiceConnection
-    static MariaDBContainer<?> mariadb = new MariaDBContainer<>("mariadb:11.4");
 
     @Autowired
     PlanService planService;

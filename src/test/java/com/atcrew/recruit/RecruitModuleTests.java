@@ -1,5 +1,6 @@
 package com.atcrew.recruit;
 
+import com.atcrew.SharedContainersConfig;
 import com.atcrew.common.exception.DomainException;
 import com.atcrew.media.MediaAssetProcessedEvent;
 import com.atcrew.media.MediaOwnerType;
@@ -16,14 +17,13 @@ import com.atcrew.recruit.internal.persistence.JobPostingRepository;
 import com.atcrew.recruit.internal.persistence.JobSeekingPostImageRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import com.atcrew.support.DatabaseCleanupExtension;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.modulith.test.ApplicationModuleTest;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.MariaDBContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -42,12 +42,9 @@ import static org.assertj.core.api.Assertions.tuple;
 
 // recruit은 member 공개 API에 의존하므로 추이적 의존성까지 부트스트랩한다(CommunityModuleTests와 동일 이유).
 @ApplicationModuleTest(mode = ApplicationModuleTest.BootstrapMode.ALL_DEPENDENCIES)
-@Testcontainers
+@ExtendWith(DatabaseCleanupExtension.class)
+@ImportTestcontainers(SharedContainersConfig.class)
 class RecruitModuleTests {
-
-    @Container
-    @ServiceConnection
-    static MariaDBContainer<?> mariadb = new MariaDBContainer<>("mariadb:11.4");
 
     @Autowired
     RecruitService recruitService;
