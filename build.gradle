@@ -2,6 +2,7 @@ plugins {
 	id 'java'
 	id 'org.springframework.boot' version '4.0.6'
 	id 'io.spring.dependency-management' version '1.1.7'
+	id 'com.epages.restdocs-api-spec' version '0.20.1'
 }
 
 group = 'com.atcrew'
@@ -57,6 +58,7 @@ dependencies {
 	testImplementation 'org.testcontainers:testcontainers-mariadb'
 	testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
 	testImplementation 'org.springframework.restdocs:spring-restdocs-mockmvc'
+	testImplementation 'com.epages:restdocs-api-spec-mockmvc:0.20.1'
 	testImplementation 'org.springframework.security:spring-security-test'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
@@ -78,4 +80,22 @@ tasks.named('bootRun') {
 	// 글로벌 시간대 전략(docs/design/global-timezone-strategy.md §3.1) — 이중 안전장치.
 	// AtCrewBackendApplication.main()의 TimeZone.setDefault(UTC)보다 앞서 JVM 부팅 시점부터 UTC를 강제한다.
 	jvmArgs '-Duser.timezone=UTC'
+}
+
+openapi3 {
+	server = 'https://api.atcrew.co.kr'
+	title = '앳크루 API'
+	version = project.version
+	format = 'yaml'
+}
+
+// REST Docs 기반 정적 스펙을 Swagger UI가 서빙할 수 있도록 static 리소스로 복사한다.
+// 의도적으로 processResources/bootRun에 자동 연결하지 않는다 — openapi3 태스크는 test 태스크를
+// 재실행하는데, 기존 flaky Testcontainer 실패(docs/testing/rest-docs-guide.md §6 참고) 때문에
+// 매 빌드/기동마다 자동 트리거하면 개발 흐름이 막힌다. 스펙을 갱신하려면 아래 두 명령을 순서대로
+// 수동 실행한다: ./gradlew openapi3 -x test && ./gradlew copyOpenApiSpec
+tasks.register('copyOpenApiSpec', Copy) {
+	description = 'build/api-spec/openapi3.yaml을 src/main/resources/static/openapi3.yaml로 복사한다.'
+	from layout.buildDirectory.file('api-spec/openapi3.yaml')
+	into 'src/main/resources/static'
 }
