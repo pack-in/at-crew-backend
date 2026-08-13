@@ -5,7 +5,21 @@
 버그가 발견됐다(원인·수정: `feat/launch-milestone-mvp` 브랜치 커밋 `64b274c`). 이 문서는 같은
 문제가 재발하지 않도록 앞으로 컨트롤러를 작성할 때 지켜야 할 규칙을 정리한다.
 
-## 1. 비200 `@ApiResponse`의 `description`은 반드시 에러코드를 포함한다
+> **2026-08-12 갱신 — Swagger UI 서빙 소스 전환**: `/swagger-ui/index.html`이 이제
+> springdoc이 애노테이션을 스캔해 동적으로 만드는 스펙이 아니라, REST Docs 기반 정적 스펙
+> (`build/api-spec/openapi3.yaml`)을 서빙한다(`docs/testing/rest-docs-guide.md` §8). 즉 **이
+> 문서 §1의 `description` 파싱 관례를 아무리 정확히 지켜도 Swagger UI 화면에는 반영되지
+> 않는다.** 화면에 실제로 에러 예시가 뜨게 하려면 `*ErrorApiSpecTest.java`
+> (`MockMvcRestDocumentationWrapper.document()` + `resource()`)로 그 에러 케이스를 REST Docs
+> 테스트로 작성해야 한다. §1~§2에 설명된 `OpenApiConfig`의 파싱 로직 자체는 코드에 그대로
+> 남아 있고 `/v3/api-docs`(구 동적 엔드포인트, 여전히 직접 요청 가능) 응답에는 계속
+> 반영되지만, 그 결과를 실제로 보는 사람은 없다 — 새 컨트롤러를 작성할 때 `description`
+> 형식을 신경 쓰는 것보다 REST Docs 에러 테스트를 추가하는 쪽이 우선이다. §2의
+> `nullable` 규칙도 마찬가지로 springdoc의 애노테이션 기반 스키마 생성에만 적용되는
+> 얘기라 화면에는 영향이 없다 — 다만 `/v3/api-docs`를 직접 쓰는 코드가 남아 있는 한
+> 여전히 지켜야 한다.
+
+## 1. 비200 `@ApiResponse`의 `description`은 반드시 에러코드를 포함한다 (레거시 — 아래 갱신 참고)
 
 `com.atcrew.common.config.OpenApiConfig`의 `globalErrorResponseCustomizer`가 모든 컨트롤러의
 비2xx `@ApiResponse.description`을 **파싱해서** 실제 code/message 값이 채워진 example을 자동으로
@@ -62,6 +76,12 @@ Swagger UI는 이 조합을 보면 `$ref`를 펼치지 않고 그냥 `null`을 �
 2. 실제 Swagger UI(`/swagger-ui/index.html`)에서 해당 오퍼레이션을 펼쳐 200과 대표 에러코드
    2~3개의 "Example Value"를 눈으로 확인
 3. 코드가 여러 개인 응답은 "Examples" 드롭다운에서 각 항목이 올바른 code/message를 갖는지 확인
+
+**2026-08-12 이후 추가 절차**: 위 검증은 이제 `@ApiResponse` 애노테이션이 아니라 REST Docs 에러
+테스트(`*ErrorApiSpecTest.java`)를 고쳤을 때 적용된다. 스니펫만 새로 생성하고 정적 파일을 갱신하지
+않으면 Swagger UI 화면은 이전 상태 그대로 남아 있으니, 재기동 전에 반드시
+`./gradlew openapi3 -x test && ./gradlew copyOpenApiSpec`을 먼저 실행해 `src/main/resources/static/openapi3.yaml`을
+최신화한다(`docs/testing/rest-docs-guide.md` §8 참고).
 
 ## 참고
 
