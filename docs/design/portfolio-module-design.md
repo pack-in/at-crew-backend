@@ -102,6 +102,7 @@ public class Portfolio implements Persistable<String> {
     private String artistPageKey;            // ARTIST_PAGE면 "Y", SHARED면 null — 1인 1개 보장용 유니크 키
 
     private int itemCount;                   // 캐시(카드 "N개" 표기용, 열람 가능 작품 수 기준)
+    private long itemsRevision;              // 구성 교체마다 +1 — 낙관적 락 검사 강제용, 읽는 곳 없음(V22, §8.9)
 
     private Instant snapshotAt;              // SNAPSHOT만
     private String snapshotOwnerName;        // 고정형 프로필 스냅샷(마이페이지_작가-R44)
@@ -274,7 +275,8 @@ portfolio는 현재 다른 모듈이 동기 호출할 필요가 없는 리프(le
 PORTFOLIO_NOT_FOUND(404), PORTFOLIO_ACCESS_DENIED(403), PORTFOLIO_BLOCKED(410),
 SNAPSHOT_PORTFOLIO_IMMUTABLE(409), ARTIST_PAGE_NOT_DELETABLE(409),
 ARTIST_PAGE_TITLE_IMMUTABLE(400), INVALID_PORTFOLIO_TITLE(400),
-SLUG_GENERATION_FAILED(500), INVALID_CURSOR(400)
+SLUG_GENERATION_FAILED(500), INVALID_CURSOR(400),
+PORTFOLIO_CONCURRENTLY_MODIFIED(409)
 ```
 
 ---
@@ -457,3 +459,82 @@ Hibernate가 JSON을 정규화하므로, 원문 문자열과 재조회한 문자
 PA-10 시점에는 "알려진 제약 수용"으로 정리했으나, 2026-08-12 명세 대조 QA에서 영구 삭제뿐 아니라
 **원본 이미지 교체(고아 키 정리 스케줄러)** 경로로도 유실된다는 사실이 확인돼 PA-15에서 핫픽스했다.
 현재 상태와 남은 제약은 §5.6에 갱신돼 있다.
+
+### 8.9 portfolio_items 소속 유지(보존) 정책 — 확정, 구현 완료(PA-18)
+
+**정책(확정)**: 라이브 포트폴리오(작가 페이지·최신 반영형)에 담긴 작품이 휴지통으로 이동해도
+`portfolio_items` 행 자체는 지우지 않는다. 노출(카드·목록·개수)에서만 빼고, 원본이 복원되면 다시
+노출·개수에 반영한다. 행을 실제로 지우는 건 원본이 **영구 삭제**됐을 때뿐이다(PA-12,
+`PortfolioMembershipReconciler`). 근거: 마이페이지_작가-R38("원본 작품을 삭제하는 경우 최신
+반영형에서는 해당 작품만 노출 목록에서 제외되고 나머지는 그대로 유지된다") — "노출 제외"이지 "소속
+해제"가 아니다. §1.2의 순환 의존 해소책(`portfolio_included` 비정규화 컬럼)과도 같은 방향 — 원본
+상태 변화가 포트폴리오 쪽 상태를 함부로 재계산해 지우면 안 된다.
+
+**결함 A — 휴지통 소속 유실(2026-08-12 발견, PA-18에서 수정)**: `PortfolioServiceImpl.replaceItems()`
+(구성 전체를 벌크 DELETE 후 재삽입)를 호출하는 세 경로 중 두 곳이 이 정책을 지키지 못했다.
+`addArtworks`→`appendArtworks`는 병합 베이스로 `loadItemArtworks()`(휴지통·차단 작품을 걸러낸
+"보이는 것만")를 써서 추가 API 한 번에 기존 휴지통 작품 행이 사라졌고, `updatePortfolio`(수정하기,
+전체 재선택)는 기존 구성과 병합하지 않아 정상 저장만 해도 매번 휴지통 작품이 함께 삭제됐다.
+`applyPortfolioSelection`(업로드 편입 재선언)은 `appendArtworks`를 재사용해 같은 결함을 물려받았다.
+`removeArtwork`→`detachArtwork`만 필터링 없는 원본 목록(`itemArtworkIds`)에서 시작해 안전했다.
+
+수정은 호출부가 아니라 `replaceItems()` 중앙집중으로 했다(`withRetainedItems`) — 호출자가 어떤 ID
+목록을 넘기든, 이미 담겨 있던 작품 중 요청 목록에 없고 상태가 휴지통·운영 차단인 것은 항상 다시
+합쳐 넣는다. 순서는 업로드순 고정 규칙(§2.2)에 맞춰 보존 항목까지 포함해 다시 정렬하므로 복원 시
+원래 자리로 돌아온다. 원본이 영구 삭제된 고아 행은 되돌릴 원본이 없어 보존 대상이 아니며 이 과정에서
+함께 정리된다. 호출부별 개별 수정은 새 호출부가 생기면 같은 결함이 재현되므로 채택하지 않았다.
+
+함께 정정한 것: `item_count`는 이제 최종 구성 중 **열람 가능한** 작품만 센다. 보존 항목까지 세면 카드
+"N개"가 부풀고, 기존에도 `detachArtwork`가 휴지통 항목을 남길 때 같은 방식으로 어긋나 6시간 보정
+배치가 회수하고 있었다(R39).
+
+**결함 B — 낙관적 락 우회 레이스(2026-08-12 발견, PA-18에서 수정)**: 추가 경로는 `Portfolio`를 항상
+dirty로 만들지 않아, 병합 결과 개수가 우연히 그대로면 `Portfolio` UPDATE 자체가 나가지 않고 `@Version`
+검사가 통째로 스킵됐다. 그 상태의 벌크 DELETE는 DB의 "현재" 커밋 상태를 지우므로 동시에 커밋된 다른
+트랜잭션의 구성이 조용히 사라질 수 있었다.
+
+수정은 `replaceItems()`가 표준 낙관적 락 검사를 항상 태우게 하는 것이다(`flushWithVersionCheck`) —
+`Portfolio.markItemsReplaced()`가 `items_revision`(V22 신규 컬럼)을 무조건 1 올려 엔티티를 항상 dirty로
+만들고, 이어지는 `saveAndFlush`가 그 자리에서
+`UPDATE portfolios SET ..., version = <쥔 값>+1 WHERE id = ? AND version = <쥔 값>`을 실행한다. 0행이
+매치되면 `ObjectOptimisticLockingFailureException`이 나고 이를 `PORTFOLIO_CONCURRENTLY_MODIFIED`(409)로
+바꿔 클라이언트가 재시도할 수 있게 한다. 네 가지를 의도적으로 선택했다.
+
+- **잠금(pessimistic) API를 쓰지 않는다.** 초안은 `EntityManager.lock(PESSIMISTIC_FORCE_INCREMENT)`였으나
+  이는 `SELECT ... FOR UPDATE`로 실제 행 잠금을 잡아 경합 시 "실패" 대신 "대기"를 만든다(모듈의 동시성
+  의미가 바뀌고 교착 위험이 는다). 필요한 것은 잠금이 아니라 버전 검사를 스킵하지 않는 것뿐이라
+  순수 낙관적 락으로 되돌렸다.
+- **의미 없는 카운터 컬럼(`items_revision`)을 새로 둔다.** 강제 dirty에 쓸 기존 컬럼이 없다 —
+  `updated_at`은 `@LastModifiedDate`라 엔티티가 dirty일 때만 갱신돼 원인이 아니라 결과이고,
+  `item_count`는 병합 결과가 같으면 그대로다. 이 값은 어디서도 읽지 않는다.
+- `markEdited()`를 재사용하지 않는다 — 그 값(`last_edited_at`)은 "업데이트순" 정렬 기준이라 작품
+  추가·제거로 갱신되면 R37을 되돌리게 된다. 정렬 기준 갱신과 버전 강제 증가를 분리했다.
+- 호출 위치는 구성 행을 모두 쓴 뒤다 — `portfolio_items` → `portfolios` 순으로 쓰던 기존 flush
+  순서를 유지하기 위함이다. 앞으로 옮기면 `portfolios` → `portfolio_items` 순이 돼, 같은 두 테이블을
+  반대 순서로 갱신하는 `PortfolioMembershipReconciler`와 교착할 수 있다. 커밋까지 미루지 않고 이 자리에서
+  flush하는 이유는 서비스 밖에서 터지는 락 예외는 도메인 예외로 바꿀 수 없어 500이 되기 때문이다.
+
+회귀 테스트는 **실제 동시 트랜잭션이나 스레드를 쓰지 않는다** — 한 트랜잭션 안에서 포트폴리오를 먼저
+읽어 그 시점 버전을 쥐게 한 뒤 `UPDATE portfolios SET version = version + 1`을 직접 실행해 "다른 요청이
+먼저 바꾼" 상태만 흉내낸다. 두 트랜잭션을 실제로 겹치게 만들려던 초기 테스트는 잠금 대기로 스위트 자체가
+멈췄고, 검증에 필요한 것은 "오래된 버전을 쥔 구성 교체가 거부되는가" 하나뿐이라 이 방식으로 충분하다.
+
+**결함 C — MANDATORY 전파로 무관한 업로드 롤백: 미해소(남은 제약)**. 당초 계획은
+`applyPortfolioSelection` 안에서 `ObjectOptimisticLockingFailureException`만 잡아 재조회 후 재시도하는
+것이었으나, 같은 물리 트랜잭션 안에서는 구현할 수 없다는 것이 실측으로 확인됐다(2026-08-12, MariaDB
+11.4 Testcontainer).
+
+- 낙관적 락 예외가 나는 순간 Hibernate가 세션을 `rollbackOnly`로 표시한다. 예외를 잡고 이어서 작업해도
+  커밋 시점에 `UnexpectedRollbackException`이 터지므로 재시도 자체가 성립하지 않는다.
+- 트랜잭션 격리 수준이 `REPEATABLE READ`(MariaDB 기본값)라, 같은 트랜잭션에서 재조회해도 **잠금 없는
+  SELECT는 처음 잡은 스냅샷을 그대로 본다**. 실측: 다른 트랜잭션이 커밋한 뒤 일반 재조회는 옛 값,
+  `FOR UPDATE` 조회만 최신 값을 반환했다. 즉 "재조회 후 재시도"는 잠금 조회로만 성립한다.
+
+따라서 현재 동작은 "업로드 도중 그 포트폴리오에 낙관적 락 충돌이 나면 업로드 전체가 409로 롤백된다"이다.
+작품 데이터는 남지 않고, 먼저 커밋된 쪽의 구성도 유실되지 않는다(결함 B 수정의 효과). `MANDATORY`(같은
+트랜잭션) 유지와 검증 실패의 전체 롤백(R46)은 그대로다.
+
+해소하려면 재시도가 아니라 **예방**이 필요하다 — 쓰기 경로의 진입 조회(`findOwned`)와 구성 행 조회를
+모두 `PESSIMISTIC_WRITE` 잠금 조회로 바꿔 애초에 오래된 스냅샷을 쥐지 않게 하는 방식이다. 다만 이는
+모듈 전체의 동시성 의미(실패 대신 대기)를 바꾸고 `PortfolioMembershipReconciler`와의 잠금 순서를 다시
+설계해야 하므로, 별도 과제로 남긴다.

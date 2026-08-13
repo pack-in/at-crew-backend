@@ -30,6 +30,7 @@ import com.atcrew.portfolio.internal.persistence.PortfolioItemSnapshotRepository
 import com.atcrew.portfolio.internal.persistence.PortfolioRepository;
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -47,6 +48,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
@@ -529,11 +531,11 @@ public class PortfolioServiceImpl {
         if (portfolio.getKind() == PortfolioKind.ARTIST_PAGE) {
             throw new PortfolioException(PortfolioErrorCode.ARTIST_PAGE_NOT_DELETABLE, "portfolioId=" + portfolioId);
         }
-        List<String> affectedArtworkIds = itemArtworkIds(portfolioId);
+        Collection<ArtworkInfo> affectedArtworks = loadArtworks(itemArtworkIds(portfolioId)).values();
         portfolioItemRepository.deleteByPortfolioId(portfolioId);
         portfolioItemSnapshotRepository.deleteByPortfolioId(portfolioId);
         portfolioRepository.delete(portfolio);
-        syncPortfolioInclusion(affectedArtworkIds);
+        syncPortfolioInclusion(affectedArtworks);
     }
 
     // === 내부 ===
@@ -736,34 +738,104 @@ public class PortfolioServiceImpl {
      * 구성 교체 — 기존 행을 벌크 DELETE로 먼저 확정한 뒤 새 행을 넣는다.
      * 같은 flush에서 INSERT가 DELETE보다 먼저 실행되면 uk_pi_order·uk_pi_pf_artwork와 충돌하기 때문이다
      * ({@code ArtworkServiceImpl.replaceImages}와 동일 계열의 함정).
+     *
+     * <p>호출자가 넘긴 목록과 무관하게 지켜야 할 두 가지를 여기서 중앙집중으로 처리한다(§8.9) —
+     * (A) 이미 담겨 있던 휴지통·운영 차단 작품의 소속 유지, (B) 낙관적 락 검사 강제. 호출부마다 따로
+     * 처리하면 새 호출부가 생길 때마다 같은 결함이 재현된다.
      */
     private void replaceItems(Portfolio portfolio, List<String> orderedArtworkIds) {
-        Set<String> affectedArtworkIds = new LinkedHashSet<>(itemArtworkIds(portfolio.getId()));
+        List<String> currentArtworkIds = itemArtworkIds(portfolio.getId());
+        Set<String> affectedArtworkIds = new LinkedHashSet<>(currentArtworkIds);
         affectedArtworkIds.addAll(orderedArtworkIds);
+        // 원본 상태는 보존 판정·개수 산정·편입 여부 반영에 모두 쓰이므로 한 번만 읽어 재사용한다
+        // (artwork에 배치 조회 API가 없어 건당 조회한다, §8.3).
+        Map<String, ArtworkInfo> artworks = loadArtworks(affectedArtworkIds);
+        List<ArtworkInfo> finalItems = withRetainedItems(currentArtworkIds, orderedArtworkIds, artworks);
 
         portfolioItemRepository.deleteByPortfolioId(portfolio.getId());
         List<PortfolioItem> items = new ArrayList<>();
-        for (int ordinal = 0; ordinal < orderedArtworkIds.size(); ordinal++) {
-            items.add(PortfolioItem.of(portfolio.getId(), orderedArtworkIds.get(ordinal), ordinal));
+        for (int ordinal = 0; ordinal < finalItems.size(); ordinal++) {
+            items.add(PortfolioItem.of(portfolio.getId(), finalItems.get(ordinal).id(), ordinal));
         }
         portfolioItemRepository.saveAllAndFlush(items);
 
-        portfolio.updateItemCount(items.size());
-        syncPortfolioInclusion(affectedArtworkIds);
+        // 카드 "N개"는 열람 가능한 작품만 센다 — 소속만 유지하는 휴지통·차단 작품은 개수에서 뺀다(§8.9, R39).
+        portfolio.updateItemCount((int) finalItems.stream().filter(PortfolioServiceImpl::viewable).count());
+        flushWithVersionCheck(portfolio);
+        syncPortfolioInclusion(artworks.values());
+    }
+
+    /**
+     * 소속 유지 정책 적용 (§8.9 결함 A) — 호출자가 어떤 목록을 넘기든, 이미 담겨 있던 휴지통·운영 차단
+     * 작품은 구성에서 빠지지 않는다. "수정하기"·"작품 추가" 화면은 휴지통 작품을 선택지로 보여주지 않으므로
+     * (마이페이지_작가-R38) 요청 목록에 없다는 사실만으로 소속을 끊으면 안 된다. 행을 실제로 지우는 건
+     * 원본이 영구 삭제됐을 때뿐이다({@code PortfolioMembershipReconciler}).
+     *
+     * <p>원본이 이미 사라진 고아 행은 되돌릴 원본이 없어 보존 대상이 아니므로 여기서 함께 정리된다.
+     */
+    private List<ArtworkInfo> withRetainedItems(List<String> currentArtworkIds, List<String> orderedArtworkIds,
+                                                Map<String, ArtworkInfo> artworks) {
+        List<ArtworkInfo> merged = new ArrayList<>(orderedArtworkIds.stream()
+                .map(artworks::get)
+                .filter(Objects::nonNull)
+                .toList());
+        Set<String> requested = new LinkedHashSet<>(orderedArtworkIds);
+        List<ArtworkInfo> retained = currentArtworkIds.stream()
+                .filter(artworkId -> !requested.contains(artworkId))
+                .map(artworks::get)
+                .filter(Objects::nonNull)
+                .filter(artwork -> !viewable(artwork))
+                .toList();
+        if (retained.isEmpty()) {
+            return merged;
+        }
+        merged.addAll(retained);
+        // 포트폴리오 내 순서는 업로드순 고정이므로(§2.2) 보존 항목도 원래 업로드 위치로 되돌린다 —
+        // 복원되면 그 자리에 다시 노출돼야 한다.
+        return orderByUploadedAt(merged);
+    }
+
+    /**
+     * 낙관적 락 검사 강제 (§8.9 결함 B) — 구성 교체의 벌크 DELETE는 이 트랜잭션이 읽지 않은 행까지 지우므로,
+     * {@code @Version} 검사를 반드시 거쳐야 동시에 커밋된 다른 트랜잭션의 구성을 조용히 지우지 않는다.
+     * 병합 결과가 우연히 그대로면 변경 감지가 UPDATE를 만들지 않아 검사가 통째로 스킵되므로
+     * {@code markItemsReplaced()}로 엔티티를 항상 dirty로 만든 뒤 flush한다 — 잠금(pessimistic) API는
+     * 쓰지 않고 표준 낙관적 락만 쓴다.
+     *
+     * <p>여기서 flush까지 하는 이유는 충돌을 이 자리에서 도메인 예외로 바꾸기 위해서다. 커밋 시점까지
+     * 미루면 서비스 밖에서 {@code ObjectOptimisticLockingFailureException}이 그대로 터져 500이 된다.
+     *
+     * <p>호출 위치는 구성 행을 모두 쓴 뒤다 — portfolio_items를 먼저 쓰고 portfolios를 나중에 쓰는
+     * 기존 flush 순서를 그대로 유지하기 위함이다. 순서를 뒤집으면 같은 두 테이블을 items → portfolios
+     * 순으로 갱신하는 {@code PortfolioMembershipReconciler}와 행 잠금 순서가 어긋나 교착할 수 있다.
+     */
+    private void flushWithVersionCheck(Portfolio portfolio) {
+        portfolio.markItemsReplaced();
+        try {
+            portfolioRepository.saveAndFlush(portfolio);
+        } catch (OptimisticLockingFailureException e) {
+            throw new PortfolioException(PortfolioErrorCode.PORTFOLIO_CONCURRENTLY_MODIFIED,
+                    "portfolioId=" + portfolio.getId() + " cause=" + e.getMessage());
+        }
+    }
+
+    // 원본 조회 결과를 ID로 찾을 수 있게 모아둔다 — 영구 삭제돼 사라진 원본은 결과에서 빠진다.
+    private Map<String, ArtworkInfo> loadArtworks(Collection<String> artworkIds) {
+        Map<String, ArtworkInfo> artworks = new LinkedHashMap<>();
+        for (String artworkId : artworkIds) {
+            artworkService.getArtworkForIndexing(artworkId).ifPresent(artwork -> artworks.put(artworkId, artwork));
+        }
+        return artworks;
     }
 
     /**
      * 라이브 멤버십 절대값 재계산 후 artwork에 반영한다(§5.4). 고정형은 portfolio_items를 쓰지 않으므로
-     * 이 카운트에 잡히지 않는다(§1.2).
+     * 이 카운트에 잡히지 않는다(§1.2). 영구 삭제된 원본은 갱신 대상이 없어 조회 단계에서 이미 빠져 있다.
      */
-    private void syncPortfolioInclusion(Collection<String> artworkIds) {
-        for (String artworkId : artworkIds) {
-            if (artworkService.getArtworkForIndexing(artworkId).isEmpty()) {
-                // 영구 삭제된 원본 — 갱신 대상이 없다.
-                continue;
-            }
-            artworkService.updatePortfolioInclusion(artworkId,
-                    portfolioItemRepository.countByArtworkId(artworkId) > 0);
+    private void syncPortfolioInclusion(Collection<ArtworkInfo> artworks) {
+        for (ArtworkInfo artwork : artworks) {
+            artworkService.updatePortfolioInclusion(artwork.id(),
+                    portfolioItemRepository.countByArtworkId(artwork.id()) > 0);
         }
     }
 

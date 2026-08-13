@@ -326,3 +326,69 @@ API, `PortfolioMembershipReconciler`의 자동 재계산까지) 갱신돼 사용
 - [x] 회귀 테스트 2건 — `PortfolioServiceTests`(작품 추가·제거로는 업데이트순 순서가 그대로, [수정하기]
       호출 후에만 뒤바뀜), `PortfolioMembershipReconcileTests`(원본 휴지통 이동 후 재계산해도
       `lastEditedAt` 불변, `itemCount`만 감소)
+
+## PA-18. replaceItems() 재작성 경로 3종 결함 수정 (휴지통 소속 유실·낙관적 락 우회·무관한 업로드 롤백)
+
+depends on: PA-12 (같은 "휴지통 소속 유지" 정책 위에서 작업)
+
+2026-08-12 그릴링 + `/code-review`(fable, high, `docs/design/portfolio-module-design.md` §8.9 대상
+파일 지정)에서 같은 `replaceItems()` 계열 코드에서 3개 결함을 확인했다.
+
+**결함 A — 휴지통 소속 유실(당초 발견)**: PA-12가 정한 "휴지통 이동된 작품도 portfolio_items 행은
+유지한다"는 정책을 `appendArtworks`(작품 추가 API)와 `updatePortfolio`(수정하기, 전체 재선택) 두
+경로가 지키지 못한다. 상세 근거는 §8.9. `removeArtwork`→`detachArtwork`는 이미 안전하다.
+
+**결함 B — 낙관적 락 우회 레이스(code-review 발견)**: `appendArtworks`/`applyPortfolioSelection`의
+추가 경로는 `updatePortfolio`와 달리 `Portfolio.markEdited()`를 무조건 호출하지 않는다. 병합 후
+개수가 자신이 읽은 시점의 메모리값과 우연히 같으면 Hibernate가 dirty로 안 잡아 `Portfolio` UPDATE
+자체가 안 나가고, 그러면 `@Version` 낙관적 락 검사도 통째로 스킵된다. 그 상태에서
+`replaceItems()`의 벌크 DELETE는 DB의 "현재" 커밋 상태를 그대로 지우므로, 동시에 커밋된 다른
+트랜잭션이 추가한 작품이 조용히 사라질 수 있다.
+
+**결함 C — MANDATORY 전파로 무관한 업로드 롤백(code-review 발견, 이번에 함께 처리하기로 확정)**:
+`PortfolioArtworkEventListener`가 업로드 트랜잭션 안에서 `MANDATORY`로 `applyPortfolioSelection`을
+호출하는데(검증 실패 시 업로드 전체를 원자적으로 되돌리기 위한 의도적 설계, R46), 그 포트폴리오를
+동시에 수정 중인 무관한 트랜잭션과 낙관적 락이 충돌하면 업로드 자체가(작품 데이터는 멀쩡한데도)
+전부 실패한다.
+
+- [x] **결함 A·B를 `replaceItems()` 안에서 함께 중앙집중 처리** — 호출자가 넘긴 목록과 무관하게 기존
+      휴지통·운영차단 작품 행은 항상 유지시키고(A), `replaceItems()` 호출 시 `Portfolio` 엔티티가 항상
+      dirty로 잡혀 버전 체크가 스킵되지 않도록 강제한다(B) — 예: `replaceItems()` 진입 시 무조건
+      `portfolio.markEdited()`(또는 동등한 강제 dirty 트리거)를 호출. 호출부(`appendArtworks`/
+      `updatePortfolio`) 개별 수정은 채택하지 않는다
+      → (A) `PortfolioServiceImpl.withRetainedItems()`가 요청 목록에 없는 기존 휴지통·차단 항목을 항상
+      다시 합치고 업로드순으로 재정렬한다. `item_count`도 열람 가능 항목만 세도록 함께 정정했다.
+      (B) `markEdited()`는 "업데이트순" 정렬 기준(R37)이라 재사용하지 않고, 새 카운터 컬럼
+      `portfolios.items_revision`(V22)을 `Portfolio.markItemsReplaced()`가 무조건 올려 엔티티를 항상
+      dirty로 만든 뒤 `flushWithVersionCheck()`가 `saveAndFlush`로 표준 낙관적 락 UPDATE를 태운다.
+      잠금(pessimistic) API는 쓰지 않는다 — 초안의 `EntityManager.lock(PESSIMISTIC_FORCE_INCREMENT)`는
+      `SELECT ... FOR UPDATE`로 실제 잠금 대기를 만들어(테스트 스위트가 멈췄다) 철회했다. 충돌은
+      `PORTFOLIO_CONCURRENTLY_MODIFIED`(409). 호출 위치는 쓰기 순서(items → portfolios) 유지를 위해
+      구성 행을 모두 쓴 뒤다
+- [x] **결함 C — 낙관적 락 충돌만 재시도**: `applyPortfolioSelection`(MANDATORY, 같은 트랜잭션 유지 —
+      검증 실패는 여전히 업로드 전체를 롤백해야 하므로 `REQUIRES_NEW` 분리는 채택하지 않는다) 안에서
+      `ObjectOptimisticLockingFailureException`만 잡아 포트폴리오를 다시 읽어(1차 캐시 우회 필요 —
+      `EntityManager.refresh()` 또는 재조회 방식은 착수 시 확인) 병합·`replaceItems()`를 유한 횟수(예: 3회)
+      재시도한다. 검증 실패(소유권·고정형·플랜)로 인한 예외는 재시도 대상이 아니며 그대로 전파해 업로드를
+      롤백해야 한다 — 재시도 로직이 이 둘을 정확히 구분하는지가 핵심
+      → **미채택(구현 불가 확인, 대안 제안으로 종료)**. 실측(MariaDB 11.4 Testcontainer) 결과 (1) 낙관적 락
+      예외가 나는 순간 Hibernate가 세션을 `rollbackOnly`로 표시해 재시도해도 커밋에서
+      `UnexpectedRollbackException`이 나고, (2) 격리 수준이 `REPEATABLE READ`라 같은 트랜잭션의 잠금 없는
+      재조회는 옛 스냅샷을 그대로 본다(`FOR UPDATE` 조회만 최신값 반환). 같은 물리 트랜잭션 안 재시도는
+      성립하지 않는다. 현재 동작(업로드 전체 409 롤백, 데이터 유실 없음)과 예방 방식 대안은 §8.9에 기록
+- [x] 회귀 테스트 — (A) 휴지통 작품이 담긴 포트폴리오에 `addArtworks`/`updatePortfolio`/
+      `applyPortfolioSelection` 세 경로 전부 기존 휴지통 작품 행이 살아남는지, `removeArtwork`는 여전히
+      정상 동작하는지. (B) 동시성 재현 — 두 트랜잭션이 겹쳐서 `appendArtworks`를 호출해도 먼저 커밋된
+      쪽의 작품이 유실되지 않는지(낙관적 락이 실제로 걸리는지). (C) 업로드 트랜잭션 도중 포트폴리오에
+      낙관적 락 충돌을 인위로 발생시켜도 재시도 후 업로드가 성공하는지, 검증 실패(스타터가 SHARED 지정
+      등)는 여전히 업로드 전체를 롤백하는지
+      → `PortfolioServiceTests`에 8건 추가(A 4건 + 제거 경로 1건, B 2건, C 1건). B·C는 실제 동시
+      트랜잭션·스레드를 쓰지 않는다 — 한 트랜잭션 안에서 엔티티를 먼저 읽어 옛 버전을 쥐게 한 뒤
+      `UPDATE portfolios SET version = version + 1`을 직접 실행해 "다른 요청이 먼저 바꾼" 상태만
+      흉내낸다(실제 두 트랜잭션을 겹치려던 초안은 잠금 대기로 스위트가 멈췄다). C는 "재시도 후 성공"이
+      아니라 "업로드 전체 409 롤백 + 기존 구성 보존"을 검증한다. 검증 실패 롤백은 기존
+      `스타터가_업로드에서_공유_포트폴리오를_지정하면_작품까지_롤백된다`가 이미 담당한다. 수정 코드를 잠시
+      되돌려 실패를 확인했다 — A는 소속 유지 코드를 되돌렸을 때 4건(제거 경로는 원래 안전해 통과),
+      B·C는 버전 강제 증가·flush를 되돌렸을 때 3건이 실패한다
+- [x] `docs/design/portfolio-module-design.md` §8.9를 이번 수정 결과로 갱신(결함 A·B·C 전부 해소로 표시)
+      → A·B는 해소로, C는 "미해소(남은 제약) + 실측 근거 + 예방 방식 대안"으로 갱신했다

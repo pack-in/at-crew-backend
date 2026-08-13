@@ -65,6 +65,10 @@ public class Portfolio implements Persistable<String> {
     // 카드 "N개" 표기용 캐시(열람 가능 작품 수 기준).
     private int itemCount;
 
+    // 구성 교체가 일어날 때마다 무조건 1 올리는 값 — 결과가 이전과 같아도 엔티티를 dirty로 만들어
+    // @Version 검사를 반드시 태우기 위한 것이고, 값 자체를 읽어 쓰는 곳은 없다(§8.9).
+    private long itemsRevision;
+
     private Instant snapshotAt;
 
     private String snapshotOwnerName;
@@ -138,6 +142,18 @@ public class Portfolio implements Persistable<String> {
 
     public void updateItemCount(int itemCount) {
         this.itemCount = itemCount;
+    }
+
+    /**
+     * 구성 교체를 기록해 낙관적 락 검사를 강제한다 (§8.9). 이 값을 올리지 않으면 병합 결과가 우연히
+     * 이전과 같을 때 UPDATE 자체가 나가지 않아 {@code @Version} 검사가 통째로 스킵되고, 그 상태의
+     * 구성 벌크 DELETE가 동시에 커밋된 다른 트랜잭션의 구성을 지운다.
+     *
+     * <p>{@code markEdited()}를 대신 쓸 수 없다 — 그 값은 [수정하기] 시점을 뜻하는 "업데이트순" 정렬
+     * 기준이라(마이페이지_작가-R37) 작품 추가·제거로 갱신되면 정렬 순서가 바뀐다.
+     */
+    public void markItemsReplaced() {
+        this.itemsRevision++;
     }
 
     /**

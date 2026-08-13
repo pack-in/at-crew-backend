@@ -39,6 +39,8 @@ import org.springframework.boot.testcontainers.service.connection.ServiceConnect
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.modulith.test.ApplicationModuleTest;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.MariaDBContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -107,6 +109,10 @@ class PortfolioServiceTests {
     // 공개 범위 변경 전제인 READY 전환을 실제 이미지 처리 경로로 만든다(uploadReadyArtwork).
     @Autowired
     MediaCallbackService mediaCallbackService;
+
+    // 낙관적 락 충돌은 오래된 버전을 쥔 참조를 한 트랜잭션 안에서 만들어 재현하므로 직접 트랜잭션을 연다(§8.9).
+    @Autowired
+    PlatformTransactionManager transactionManager;
 
     @Test
     void 작가_페이지는_최초_조회_시_한_번만_생성된다() {
@@ -1173,6 +1179,173 @@ class PortfolioServiceTests {
         assertThat(portfolioRepository.findById(artistPageId).orElseThrow().getItemCount()).isEqualTo(1);
     }
 
+    // === 구성 교체 시 소속 유지·낙관적 락 (§8.9) ===
+
+    // 휴지통 이동만으로는 소속이 끊기면 안 된다 — 작품 추가 API가 기존 휴지통 항목을 지우면 복원할 자리가 없어진다.
+    @Test
+    void 작품_추가는_이미_담긴_휴지통_작품의_소속을_유지한다() {
+        String memberId = registerProMember();
+        String trashedArtworkId = uploadArtwork(memberId);
+        String keptArtworkId = uploadArtwork(memberId);
+        String addedArtworkId = uploadArtwork(memberId);
+        PortfolioInfo created = portfolioService.createShared(memberId, "공유 포트폴리오", ReflectionType.LIVE,
+                List.of(trashedArtworkId, keptArtworkId));
+        artworkService.deleteArtwork(memberId, trashedArtworkId);
+        awaitItemCount(created.id(), 1);
+
+        portfolioService.addArtworks(memberId, created.id(), List.of(addedArtworkId));
+
+        // 순서는 업로드순 고정이므로 보존 항목도 원래 자리로 돌아온다(§2.2).
+        assertThat(portfolioItemRepository.findByPortfolioIdOrderByOrdinal(created.id()))
+                .extracting(PortfolioItem::getArtworkId)
+                .containsExactly(trashedArtworkId, keptArtworkId, addedArtworkId);
+        // 개수는 열람 가능한 작품만 센다 — 소속만 유지하는 휴지통 작품은 빠진다(R39).
+        assertThat(portfolioRepository.findById(created.id()).orElseThrow().getItemCount()).isEqualTo(2);
+    }
+
+    // "수정하기"는 휴지통 작품을 선택지로 보여주지 않으므로(R38) 요청 목록에 없다는 이유로 지우면 안 된다.
+    @Test
+    void 구성_전체_재선택은_이미_담긴_휴지통_작품의_소속을_유지한다() {
+        String memberId = registerProMember();
+        String trashedArtworkId = uploadArtwork(memberId);
+        String keptArtworkId = uploadArtwork(memberId);
+        String addedArtworkId = uploadArtwork(memberId);
+        PortfolioInfo created = portfolioService.createShared(memberId, "공유 포트폴리오", ReflectionType.LIVE,
+                List.of(trashedArtworkId, keptArtworkId));
+        artworkService.deleteArtwork(memberId, trashedArtworkId);
+        awaitItemCount(created.id(), 1);
+
+        portfolioService.updatePortfolio(memberId, created.id(), null, List.of(keptArtworkId, addedArtworkId));
+
+        assertThat(portfolioItemRepository.findByPortfolioIdOrderByOrdinal(created.id()))
+                .extracting(PortfolioItem::getArtworkId)
+                .containsExactly(trashedArtworkId, keptArtworkId, addedArtworkId);
+        assertThat(portfolioRepository.findById(created.id()).orElseThrow().getItemCount()).isEqualTo(2);
+    }
+
+    // 업로드 편입 재선언(업로드-R09)도 같은 구성 교체 경로를 타므로 같은 정책이 적용돼야 한다.
+    @Test
+    void 업로드_편입은_이미_담긴_휴지통_작품의_소속을_유지한다() {
+        String memberId = registerProMember();
+        String trashedArtworkId = uploadArtwork(memberId);
+        String keptArtworkId = uploadArtwork(memberId);
+        PortfolioInfo created = portfolioService.createShared(memberId, "공유 포트폴리오", ReflectionType.LIVE,
+                List.of(trashedArtworkId, keptArtworkId));
+        artworkService.deleteArtwork(memberId, trashedArtworkId);
+        awaitItemCount(created.id(), 1);
+
+        String uploadedArtworkId = uploadWithSelection(memberId, true, List.of(created.id()));
+
+        assertThat(portfolioItemRepository.findByPortfolioIdOrderByOrdinal(created.id()))
+                .extracting(PortfolioItem::getArtworkId)
+                .containsExactly(trashedArtworkId, keptArtworkId, uploadedArtworkId);
+        assertThat(portfolioRepository.findById(created.id()).orElseThrow().getItemCount()).isEqualTo(2);
+    }
+
+    // 운영 차단된 작품도 원본이 남아 있는 한 소속을 유지한다 — 차단 해제되면 그대로 돌아와야 한다(R38·R39).
+    @Test
+    void 작품_추가는_이미_담긴_운영_차단_작품의_소속을_유지한다() {
+        String memberId = registerProMember();
+        String blockedArtworkId = uploadArtwork(memberId);
+        String keptArtworkId = uploadArtwork(memberId);
+        String addedArtworkId = uploadArtwork(memberId);
+        PortfolioInfo created = portfolioService.createShared(memberId, "공유 포트폴리오", ReflectionType.LIVE,
+                List.of(blockedArtworkId, keptArtworkId));
+        blockArtwork(blockedArtworkId);
+
+        portfolioService.addArtworks(memberId, created.id(), List.of(addedArtworkId));
+
+        assertThat(portfolioItemRepository.findByPortfolioIdOrderByOrdinal(created.id()))
+                .extracting(PortfolioItem::getArtworkId)
+                .containsExactly(blockedArtworkId, keptArtworkId, addedArtworkId);
+        assertThat(portfolioRepository.findById(created.id()).orElseThrow().getItemCount()).isEqualTo(2);
+    }
+
+    // 소속 유지는 "명시적 제외"까지 막지는 않는다 — 사용자가 뺀 작품만 빠지고 휴지통 항목은 그대로 남는다.
+    @Test
+    void 작품_제거는_대상만_빼고_휴지통_작품은_남긴다() {
+        String memberId = registerProMember();
+        String trashedArtworkId = uploadArtwork(memberId);
+        String removedArtworkId = uploadArtwork(memberId);
+        PortfolioInfo created = portfolioService.createShared(memberId, "공유 포트폴리오", ReflectionType.LIVE,
+                List.of(trashedArtworkId, removedArtworkId));
+        artworkService.deleteArtwork(memberId, trashedArtworkId);
+        awaitItemCount(created.id(), 1);
+
+        portfolioService.removeArtwork(memberId, created.id(), removedArtworkId);
+
+        assertThat(portfolioItemRepository.findByPortfolioIdOrderByOrdinal(created.id()))
+                .extracting(PortfolioItem::getArtworkId)
+                .containsExactly(trashedArtworkId);
+        assertThat(portfolioRepository.findById(created.id()).orElseThrow().getItemCount()).isZero();
+    }
+
+    // 구성 교체는 결과가 그대로여도 버전을 올려야 한다 — 올리지 않으면 @Version 검사가 통째로 스킵되고,
+    // 그 상태의 벌크 DELETE가 동시에 커밋된 다른 트랜잭션의 구성을 지운다(§8.9 결함 B).
+    @Test
+    void 구성_교체는_결과가_같아도_포트폴리오_버전을_올린다() {
+        String memberId = registerProMember();
+        String artworkId = uploadArtwork(memberId);
+        PortfolioInfo created = portfolioService.createShared(
+                memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of(artworkId));
+        long before = versionOf(created.id());
+
+        // 이미 담긴 작품을 다시 추가 — 병합 결과도 개수도 그대로다.
+        portfolioService.addArtworks(memberId, created.id(), List.of(artworkId));
+
+        assertThat(versionOf(created.id())).isGreaterThan(before);
+    }
+
+    // 오래된 버전을 쥔 요청은 벌크 DELETE로 남의 작품을 지우지 못하고 낙관적 락에 걸려야 한다.
+    @Test
+    void 저장된_버전이_먼저_바뀌면_뒤늦은_구성_교체는_거부된다() {
+        String memberId = registerProMember();
+        String baseArtworkId = uploadArtwork(memberId);
+        String lateArtworkId = uploadArtwork(memberId);
+        PortfolioInfo created = portfolioService.createShared(
+                memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of(baseArtworkId));
+
+        assertThatThrownBy(() -> inSingleTransaction(() -> {
+            holdStaleReference(created.id());
+            bumpStoredVersion(created.id());
+            portfolioService.addArtworks(memberId, created.id(), List.of(lateArtworkId));
+        }))
+                .isInstanceOf(PortfolioException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("PORTFOLIO_CONCURRENTLY_MODIFIED");
+
+        // 뒤늦은 교체는 통째로 롤백된다 — 먼저 반영된 쪽의 구성이 그대로 남는다.
+        assertThat(portfolioItemRepository.findByPortfolioIdOrderByOrdinal(created.id()))
+                .extracting(PortfolioItem::getArtworkId)
+                .containsExactly(baseArtworkId);
+    }
+
+    // 업로드 트랜잭션 안에서 포트폴리오 낙관적 락이 충돌하면 업로드까지 통째로 롤백된다 —
+    // 편입 반영은 MANDATORY(같은 트랜잭션)라 반쪽 커밋이 남지 않는다(§8.9 남은 제약).
+    @Test
+    void 업로드_도중_포트폴리오_낙관적_락이_충돌하면_업로드_전체가_롤백된다() {
+        String memberId = registerProMember();
+        String baseArtworkId = uploadArtwork(memberId);
+        PortfolioInfo created = portfolioService.createShared(
+                memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of(baseArtworkId));
+        long artworkCountBefore = artworkCountOf(memberId);
+
+        assertThatThrownBy(() -> inSingleTransaction(() -> {
+            holdStaleReference(created.id());
+            bumpStoredVersion(created.id());
+            uploadWithSelection(memberId, true, List.of(created.id()));
+        }))
+                .isInstanceOf(PortfolioException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("PORTFOLIO_CONCURRENTLY_MODIFIED");
+
+        // 충돌이 편입 리스너에서 삼켜지지 않고 업로드까지 전파돼 작품 행도 남지 않는다.
+        assertThat(artworkCountOf(memberId)).isEqualTo(artworkCountBefore);
+        assertThat(portfolioItemRepository.findByPortfolioIdOrderByOrdinal(created.id()))
+                .extracting(PortfolioItem::getArtworkId)
+                .containsExactly(baseArtworkId);
+    }
+
     private String registerMember() {
         return memberService.register(
                 "pf-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12) + "@atcrew.com",
@@ -1342,6 +1515,42 @@ class PortfolioServiceTests {
             }
         }
         throw new AssertionError("구성 행 정리 대기 시간 초과: portfolioId=" + portfolioId + " expected=" + expected);
+    }
+
+    /** 낙관적 락 버전은 엔티티가 노출하지 않으므로 저장 상태를 직접 읽는다. */
+    private long versionOf(String portfolioId) {
+        Long version = jdbcTemplate.queryForObject("SELECT version FROM portfolios WHERE id = ?",
+                Long.class, portfolioId);
+        return version != null ? version : 0L;
+    }
+
+    /** 업로드가 통째로 롤백됐는지는 작품 행이 남았는지로 확인한다 — 실패 경로라 반환값을 받을 수 없다. */
+    private long artworkCountOf(String memberId) {
+        Long count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM artworks WHERE author_id = ?",
+                Long.class, memberId);
+        return count != null ? count : 0L;
+    }
+
+    /**
+     * 낙관적 락 충돌 재현용 — 안에서 도는 서비스 호출을 한 트랜잭션(한 영속성 컨텍스트)에 묶는다.
+     * 스레드나 중첩 트랜잭션은 쓰지 않는다(실제 잠금 대기로 테스트가 멈춘다).
+     */
+    private void inSingleTransaction(Runnable work) {
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> work.run());
+    }
+
+    /** 포트폴리오를 미리 읽어 영속성 컨텍스트가 그 시점의 버전을 쥐게 한다 — 이후 서비스 호출이 이 참조를 쓴다. */
+    private void holdStaleReference(String portfolioId) {
+        portfolioRepository.findById(portfolioId).orElseThrow();
+    }
+
+    /**
+     * 다른 요청이 포트폴리오를 먼저 바꾼 상황을 저장된 버전만 올려 흉내낸다 — 두 번째 트랜잭션이나
+     * 스레드를 띄우지 않으므로 잠금 대기가 없다. 오래된 버전을 쥔 참조로 구성을 교체하면
+     * 표준 낙관적 락 검사(UPDATE ... WHERE version = 쥐고 있던 값)가 0행에 걸린다.
+     */
+    private void bumpStoredVersion(String portfolioId) {
+        jdbcTemplate.update("UPDATE portfolios SET version = version + 1 WHERE id = ?", portfolioId);
     }
 
     /** artwork 리스너는 @ApplicationModuleListener(비동기)라 READY 반영까지 폴링한다. */
