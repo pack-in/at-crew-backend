@@ -668,7 +668,9 @@ R2는 Cloudflare R2 (S3 호환). AWS SDK S3 v2를 사용하되 `Region.of("auto"
 | OFF(PRIVATE) | 0개 (= 완전 비공개) | ❌ 403 | ❌ 403 | ✅ |
 
 - "링크 공개"라는 제3의 상태는 없다. 레거시 `LINK_ONLY`(라이트 ETL 매핑용)는 판정상 `PRIVATE`와
-  동일 취급하며, 업로드·공개 상태 변경 API에서 입력하면 400 `UNSUPPORTED_VISIBILITY`.
+  동일 취급한다. 업로드·공개 상태 변경 API(`publishToFeed`/`portfolioIds` 조합, §업로드-R09)는 애초에
+  `visibility`를 입력받지 않으므로 `LINK_ONLY`를 신규 생성할 경로 자체가 없다(2026-08-13 PA-05로
+  `UNSUPPORTED_VISIBILITY` 400 가드와 함께 구 `PATCH /visibility` 제거).
 - 커뮤니티 피드·검색 색인은 `PUBLIC`만 대상으로 한다(포트폴리오 한정 공개는 노출하지 않음).
 - 휴지통 이동 시 강제 PRIVATE으로 변경. 복구 시 이전 상태로 복원.
 - 탈퇴 이벤트 수신 시 모든 작품 강제 PRIVATE (`forcePrivate()`, 상태 무관).

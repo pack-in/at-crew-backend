@@ -392,3 +392,155 @@ depends on: PA-12 (같은 "휴지통 소속 유지" 정책 위에서 작업)
       B·C는 버전 강제 증가·flush를 되돌렸을 때 3건이 실패한다
 - [x] `docs/design/portfolio-module-design.md` §8.9를 이번 수정 결과로 갱신(결함 A·B·C 전부 해소로 표시)
       → A·B는 해소로, C는 "미해소(남은 제약) + 실측 근거 + 예방 방식 대안"으로 갱신했다
+
+## PA-19. replaceItems()/withRetainedItems() lock 순서 통일 + 명시적 제거 회귀 수정
+
+depends on: PA-18 (같은 코드를 이어서 고침)
+
+2026-08-13 `/code-review`(max)에서 PA-18 자체가 만든 결함 2개를 발견, 직접 코드로 재확인했다.
+
+**결함 D — `withRetainedItems()`가 명시적 제거도 막는다**: 요청 목록에 없고 열람 불가능(휴지통·차단)한
+기존 항목을 무조건 다시 합치는 로직이 `removeArtwork`/`detachArtwork`·`applyPortfolioSelection`의
+해제 경로에도 똑같이 적용된다. 즉 휴지통·차단된 작품은 사용자가 명시적으로 빼려고 해도(`DELETE
+.../artworks/{artworkId}`, 204 반환) 실제로는 절대 안 빠진다 — §8.9가 "removeArtwork는 안전하다"고
+적어둔 것과 반대로, 결함 A를 고치면서 새로 깨뜨렸다.
+
+**결함 E — lock 순서 위반 3곳**: `flushWithVersionCheck()`의 주석은 "portfolio_items를 먼저 쓰고
+portfolios를 나중에 쓴다"를 전제하는데, 실제로는 이 순서를 지키지 않는 호출부가 있다.
+1. `updatePortfolio()`(438행)가 `replaceItems()` 호출 **전에** `portfolio.markEdited()`를 불러
+   Portfolio를 미리 dirty로 만든다. `replaceItems()` 안의 `deleteByPortfolioId`는
+   `@Modifying(flushAutomatically=true)`라 호출 직전 대기 중인 변경사항을 자동 flush한다 — 즉
+   portfolios가 먼저 flush되고 portfolio_items가 나중이라 순서가 뒤집힌다. `appendArtworks`(정상
+   순서: items→portfolios)와 동시에 실행되면 MariaDB 데드락(1213) 가능성이 있다(직접 코드 확인 완료).
+2. `PortfolioMembershipReconciler.reconcilePortfolio()`(95행)도 고아 `PortfolioItem` 삭제(plain
+   delete)와 `Portfolio.itemCount` 변경 감지가 둘 다 커밋 시점 암묵적 flush로 미뤄지는데, Hibernate
+   기본 flush 순서(Update가 Delete보다 먼저)상 여기서도 portfolios가 먼저 쓰인다 — `/code-review` 지적,
+   착수 시 재확인 필요.
+3. `ArtworkServiceImpl.updatePublication()`도 `artwork.changeVisibility()`로 Artwork를 먼저 dirty로
+   만든 뒤 동기 이벤트로 `replaceItems()`의 `deleteByPortfolioId`를 트리거해, artworks가 portfolio_items보다
+   먼저 잠긴다 — `DELETE /api/portfolios/{id}`(items→artworks 순서로 `syncPortfolioInclusion` 호출)와
+   반대 방향이라 세 번째 독립적 데드락 경로. `/code-review` 지적, 착수 시 재확인 필요.
+
+- [ ] **결함 D 수정** — "이미 담긴 항목을 요청에 안 적었다"(implicit, add/전체재선택/재선언)와 "명시적으로
+      빼겠다고 요청했다"(explicit, removeArtwork/detachArtwork)를 구분하는 파라미터나 별도 경로를
+      `replaceItems()`/`withRetainedItems()`에 추가해라. explicit 제거는 휴지통·차단 여부와 무관하게
+      항상 반영돼야 한다
+- [ ] **결함 E 수정** — 세 호출부 모두 "portfolio_items를 먼저 쓰고 portfolios를 나중에 쓴다"는 불변식을
+      실제로 지키도록 고쳐라. `updatePortfolio()`는 `markEdited()` 호출을 `replaceItems()` 이후로
+      옮기는 것으로 될 가능성이 높다(정렬 기준 의미가 바뀌지 않는지 PA-17 테스트로 재확인). 나머지 둘은
+      실제 flush 순서를 코드로 재확인한 뒤 판단해라 — 확정된 방향이 아니니 착수 시 직접 검증하고 필요하면
+      이 태스크 설명을 갱신해라
+- [ ] 회귀 테스트 — 결함 D(휴지통·차단 작품이 명시적 제거 요청 시 실제로 빠지는지, 3개 제거 경로
+      전부), 결함 E(세 lock 순서 호출부 각각 무엇을 먼저 쓰는지 — 실제 동시 트랜잭션·스레드는 쓰지
+      말고, PA-18에서 쓴 것과 같은 "직접 JDBC로 상대 트랜잭션 커밋을 흉내내는" 안전한 방식으로)
+- [ ] `docs/design/portfolio-module-design.md` §8.9 갱신
+
+## PA-20. R2 보존 로직 보강 — 커스텀 썸네일키·고아 키 추적
+
+depends on: (없음, artwork/media/portfolio 파일이지만 PA-19와 별개 메서드)
+
+`/code-review`(max) 지적 2건, 착수 시 코드로 먼저 재확인해라(사실관계 미검증).
+
+- [ ] `PortfolioItemSnapshotRepository.findActiveByThumbnailKeys()`가 커스텀 `thumbnailKey`(작품 원본
+      이미지가 아닌 별도 지정 썸네일)를 가진 작품의 스냅샷도 정확히 보존 대상으로 잡는지 확인 —
+      `PortfolioMapper.toCardInfo()`가 카드 썸네일에 커스텀 키를 쓴다면, 삭제 후보 key 목록(원본
+      `getImages()` 기준)과 실제 보존해야 할 스냅샷의 thumb key가 어긋나 보존 판정이 무력화될 수 있다
+- [ ] 원본 영구삭제 시 보존됐던 R2 key가, 이후 그 스냅샷을 담은 고정형 포트폴리오 자체가 삭제되면
+      추적 기록 없이 R2에 영구 누수되는 문제 확인 — `deletePortfolio()` 경로에 media 정리 호출이
+      없다. 최소한 이 시점에 남은 참조 없는 키를 orphan 큐에 등록하는 처리 추가 검토
+- [ ] 회귀 테스트, `docs/design/portfolio-module-design.md` §5.6/§8.8 갱신
+
+## PA-21. 작가 페이지 제3자 접근 시 lazy 생성 확장
+
+depends on: (없음)
+
+`resolveArtistPageByHandle()`(공유 링크로 제3자가 접근하는 경로)는 작가 페이지를 lazy 생성하지 않는다
+— 오직 본인 전용 엔드포인트(`getMyPortfolios`/`getSelectablePortfolios`)만 생성한다. 자기 포트폴리오
+탭을 한 번도 안 연 회원은 작가 페이지 행 자체가 없어, 커뮤니티 "작가 찾아보기" 등에서 발견한 제3자가
+`GET /api/portfolios/shared/{handle}`을 호출하면 404가 난다. V17에 백필이 없다고 명시돼 있다.
+
+- [ ] `resolveArtistPageByHandle()`(또는 그 호출 지점)도 없으면 생성하도록 확장 — `getOrCreateArtistPage`
+      로직 재사용. 비인증 공개 열람 경로에서 쓰기가 발생하는 게 맞는지(트랜잭션·동시 요청 시 유니크
+      제약 충돌 처리가 기존 lazy 생성과 동일하게 되는지) 확인
+- [ ] 회귀 테스트 — 자기 포트폴리오를 한 번도 안 연 회원의 handle로 제3자가 공유 링크 접근 시 200(빈
+      작가 페이지)이 나오는지
+
+## PA-22. updatePublication의 PROCESSING 상태 제약 완화
+
+depends on: (없음)
+
+`ArtworkServiceImpl.updatePublication()`이 `changeVisibility()`(내부적으로 `assertReady()`)를 거쳐
+PROCESSING 상태면 항상 400 `ARTWORK_NOT_READY`를 던진다. 그런데 업로드 시점에는 PROCESSING 상태에서도
+`portfolioIds` 선택이 바로 적용된다(§업로드-R09) — 업로드 직후 선택을 정정하려는 사용자가 이미지 처리가
+끝날 때까지 포트폴리오 편입을 못 고친다.
+
+- [ ] 포트폴리오 편입 재선언(`portfolioIds`)과 피드 공개 여부 변경(`publishToFeed`, 이건 여전히 READY만
+      허용해도 되는지 확인)을 분리해서, 편입 재선언만큼은 PROCESSING 상태에서도 허용할지 판단하고 반영
+- [ ] 회귀 테스트
+
+## PA-23. 커서 페이지네이션 밀리초 충돌 방지
+
+depends on: (없음)
+
+`Instant.toEpochMilli()` 기반 커서가 같은 밀리초에 생성/수정된 행이 있으면 그 행을 건너뛰거나
+(LATEST/UPDATED) 페이지가 멈출 수 있다(OLDEST). DATETIME(6)이 마이크로초까지 저장하는데 커서는
+밀리초로 자른다.
+
+- [ ] 커서에 보조 정렬 키(예: id)를 추가하거나 마이크로초 단위로 커서를 인코딩해 동률 처리
+- [ ] 회귀 테스트 — 같은 밀리초에 생성된 포트폴리오 2개가 모든 정렬 옵션에서 빠짐없이 조회되는지
+
+## PA-24. liveArtworkPage 무제한 스캔 방어 + PROCESSING 노출 레이스 수정
+
+depends on: PA-19 (같은 `viewable()`/`liveArtworkPage()` 영역)
+
+**스캔 방어**: `liveArtworkPage()`(공유 링크 비인증 목록)가 필터 통과 카드가 size+1개 될 때까지
+원본 행을 청크 단위로 무제한 이어 읽는다. PA-16(100개 상한 제거)과 PA-18(휴지통 행 영구 보존)이
+겹치면서, 대량 휴지통 작품이 쌓인 포트폴리오의 공유 링크에 비인증 요청이 반복되면 매 요청마다 큰
+스캔 비용이 든다.
+
+- [ ] 스캔 청크 수 또는 총 조회 행 수에 합리적 상한을 두고, 상한 도달 시 어떻게 응답할지 결정(빈
+      페이지+hasNext=false로 끊을지, 별도 에러로 알릴지)해라
+
+**PROCESSING 노출 레이스**: `viewable()`/`duplicable()`이 `status != DELETED && !blocked`만 보고
+`Artwork.accessFor()`가 비소유자에게 요구하는 `status == READY` 조건이 없다. 업로드 시
+`portfolioIds` 선택이 동기 이벤트로 즉시 적용되는데, 이미지가 아직 PROCESSING이면 공유 목록에는
+잠깐 노출되는데 그 작품의 `GET /api/artworks/{id}`는 정작 404가 나는 불일치가 생긴다.
+
+- [ ] `viewable()`(또는 그 상위 사용처)에 `status == READY` 조건 추가 여부 판단 — 추가하면 업로드
+      직후 잠깐 카드에서 빠졌다가 처리 완료 시 나타나는 것으로 바뀐다(더 일관됨). 반영하고 회귀 테스트
+
+## PA-25. 탈퇴 회원의 portfolio_included 정리 + 북마크 write/read 필터 정합화
+
+depends on: (없음, artwork 모듈)
+
+**결함 1**: `ArtworkEventListener.onMemberDeactivated()`가 `Artwork::forcePrivate`만 호출하고
+`portfolio_included`는 안 지운다. `accessFor()`는 `portfolioIncluded=true`면 여전히 ALLOWED를
+반환해, 탈퇴 회원의 라이브 포트폴리오 편입 작품이 제3자에게 계속 노출될 수 있다(현재는
+`memberService.findById`가 던지는 예외로 우연히 막히지만, 이건 존재 여부·탈퇴 상태를 노출하는
+우회 경로이기도 하다).
+
+- [ ] 탈퇴 이벤트 처리 시 `portfolio_included`도 함께 해제(또는 `accessFor()`가 작성자 활성 여부까지
+      보게 하는 대안 검토) — 어느 쪽이 기존 탈퇴 정책([[project_deactivation_policy]] 참고)과 맞는지
+      확인하고 반영
+- [ ] 회귀 테스트
+
+**결함 2**: `BookmarkServiceImpl.saveBookmark()`(오늘 PA-01에서 `accessFor()==ALLOWED` 기준으로 넓어짐)는
+포트폴리오 한정 공개(비PUBLIC) 작품 북마크 저장을 허용하는데, `getBookmarks()`(목록 조회)는 여전히
+`visibility==PUBLIC`만 필터링해 보여준다 — 저장은 되는데 목록에서 영원히 안 보이고 해제도 못 하는
+북마크가 생긴다.
+
+- [ ] `getBookmarks()`의 필터 기준을 `saveBookmark()`와 동일하게(`accessFor()` 또는 동등 기준) 맞춰라
+- [ ] 회귀 테스트
+
+## PA-26. REST Docs·설계문서 정합화 (2026-08-13 완료)
+
+depends on: (없음)
+
+`/code-review`(max)가 지적한 stale 문서 2건은 오케스트레이터가 직접 수정 완료했다 — 별도 작업 불필요.
+
+- [x] `PortfolioApiDocTest.java` 4곳의 "최대 100개"/"1~100개" 필드 설명을 실제 동작(개수 제한 없음,
+      `AddPortfolioArtworksRequest`만 `@NotEmpty`로 1개 이상)에 맞게 수정
+- [x] `docs/design/artwork-module-summary.md`의 `UNSUPPORTED_VISIBILITY` 관련 서술을 PA-05 이후
+      실제 계약(visibility 입력 경로 자체가 없음)에 맞게 갱신
+- [x] `docs/operations/moderation-block.md`의 차단 해제 SQL이 차단 SQL과 같은 `WHERE ... AND
+      blocked_at IS NULL` 조건을 그대로 써서 0행 no-op이 되던 결함 수정 — 별도 해제 SQL 명시

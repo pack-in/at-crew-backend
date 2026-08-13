@@ -45,7 +45,26 @@ UPDATE portfolio_item_snapshots
    AND blocked_at IS NULL;
 ```
 
-해제(이의제기 인용 등)는 같은 두 문장을 `SET blocked_at = NULL`로 실행한다.
+해제(이의제기 인용 등)는 아래 SQL을 실행한다. 차단 SQL을 그대로 복사해 `SET`만 바꾸면 안 된다 —
+`WHERE ... AND blocked_at IS NULL` 조건이 남아있으면 이미 차단된(=`blocked_at IS NOT NULL`) 행과
+매치되지 않아 0행 UPDATE로 아무 효과 없이 끝난다(2026-08-13 `/code-review`에서 발견, 실제로 이
+문서의 이전 버전이 이 결함을 갖고 있었다).
+
+```sql
+-- 1) 원본 작품 차단 해제
+UPDATE artworks
+   SET blocked_at = NULL
+ WHERE id = :artworkId
+   AND blocked_at IS NOT NULL;
+
+-- 2) 해당 원본에서 만들어진 모든 고정형 스냅샷 차단 해제
+UPDATE portfolio_item_snapshots
+   SET blocked_at = NULL
+ WHERE source_artwork_id = :artworkId
+   AND blocked_at IS NOT NULL;
+```
+
+해제 후에도 §3의 재색인 호출을 동일하게 실행한다.
 
 ## 3. 차단 직후 실행할 재색인
 
