@@ -1,5 +1,8 @@
 package com.atcrew.recruit;
 
+import com.atcrew.artwork.ArtworkRole;
+import com.atcrew.artwork.Genre;
+
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
@@ -21,8 +24,8 @@ public record TeamPostingInfo(
         List<String> recruitPurposes,               // 모집 목적 (표시 전용)
         TeamWorkLocationType workLocationType,      // 활동 형태
         String activityRegion,                      // 활동 지역 (ONLINE이면 null)
-        List<String> roles,                         // 모집 역할
-        List<String> genres,                        // 모집 장르
+        List<ArtworkRole> roles,                     // 모집 역할
+        List<Genre> genres,                          // 모집 장르
         boolean hasParticipationFee,                 // 참여비용 존재 여부
         boolean hasProfitSharing,                    // 수익배분 존재 여부
         String extraCost,                            // 추가 비용 설명

@@ -3,6 +3,14 @@ spring.modulith:
     # 미완료 이벤트 재발행 — 기동 시 event_publication의 completion_date가 비어 있는 행을 다시 발행한다
     republish-outstanding-events-on-restart: true
 
+springdoc:
+  # SecurityConfig에서 /swagger-ui/**, /v3/api-docs/**가 permitAll이라 prod에서는 여기서 완전히 꺼야 한다
+  # (사용자 결정, 2026-08-07 — docs/NEXT_STEPS.md 참고).
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
 cors:
   allowed-origins: ${CORS_ALLOWED_ORIGINS}
 

@@ -6,6 +6,7 @@ import com.atcrew.artwork.ArtworkInfo;
 import com.atcrew.artwork.ArtworkRole;
 import com.atcrew.artwork.ArtworkService;
 import com.atcrew.artwork.CreativeType;
+import com.atcrew.artwork.Genre;
 import com.atcrew.artwork.ImageLayoutType;
 import com.atcrew.artwork.ArtworkStatus;
 import com.atcrew.artwork.UploadArtworkCommand;
@@ -23,6 +24,8 @@ import com.atcrew.recruit.JobPostingInfo;
 import com.atcrew.recruit.JobWorkLocationType;
 import com.atcrew.recruit.JobWorkScheduleType;
 import com.atcrew.recruit.RecruitService;
+import com.atcrew.billing.internal.persistence.EntitlementBalanceRepository;
+import com.atcrew.support.BillingTestSupport;
 import com.atcrew.support.RestDocsIntegrationSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -47,6 +50,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 필터 조합 검색과 최초 진입(결과 미노출) 상태의 요청/응답 구조를 REST Docs 스니펫으로 생성한다.
  */
 class SearchApiDocTest extends RestDocsIntegrationSupport {
+
+    @Autowired
+    EntitlementBalanceRepository balanceRepository;
 
     @Autowired
     ArtworkService artworkService;
@@ -150,11 +156,13 @@ class SearchApiDocTest extends RestDocsIntegrationSupport {
                 "search-recruit-doc-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com",
                 "searchrec" + UUID.randomUUID().toString().replace("-", "").substring(0, 8),
                 "검색문서기업", CreatorRole.WEBTOON).id();
+        // 구인글은 유료 단건 게시 상품이다(구인구직-R02).
+        BillingTestSupport.grantAllPostingProducts(balanceRepository, memberId);
 
         JobPostingInfo created = recruitService.createJobPosting(memberId, new CreateJobPostingCommand(
                 title, "앳크루", "대표", "웹툰", "서울", "02-000-0000", "https://example.com",
                 "회사 소개", true, true, false,
-                List.of("작화"), List.of("로맨스"), "작업 범위", null, 2, "서류 → 면접",
+                List.of(ArtworkRole.TOTAL_ARTWORK), List.of(Genre.ROMANCE_FANTASY), "작업 범위", null, 2, "서류 → 면접",
                 "무관", "신입", "무관", "무관",
                 JobEmploymentType.FULL_TIME, JobWorkLocationType.OFFICE, JobWorkScheduleType.FIXED,
                 null, null, true, true, true,
@@ -175,7 +183,7 @@ class SearchApiDocTest extends RestDocsIntegrationSupport {
                 imageKeys, 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 "검색문서화 작품", "설명",
                 ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL, List.of(ArtworkRole.LINEART),
-                List.of("BL"), List.of("태그"),
+                List.of(Genre.BL), List.of("태그"),
                 AgeRating.ALL, Visibility.PUBLIC, List.of(), null, null, List.of(), List.of()
         ));
 

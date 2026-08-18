@@ -3,7 +3,125 @@
 > 이 문서는 세션 인수인계용 체크리스트다. 장기 로드맵 전체는 `docs/roadmap.md`가 정본이고,
 > 이 문서는 "지금 당장 뭐부터 볼지"만 정리한다. 작업 완료 후 이 파일은 삭제해도 된다.
 
-## 2026-08-07 진행 상황
+## 2026-08-07 진행 상황 (🎉 첫 배포 성공)
+
+**EC2 #1에서 앱+MariaDB가 실제로 돌아가고, nginx를 거쳐 실제 API가 응답하는 것까지 확인 완료**
+(`curl -H 'Host: api.at-crew.com' http://127.0.0.1/api/community/banners` → `200 {"code":"SUCCESS","data":[]}`).
+`deploy/deploy.sh`로 빌드→푸시→배포 파이프라인 자체도 왕복 검증됨. 그 과정에서 **prod 프로필로 실제
+기동한 게 이번이 처음이라, 로컬/테스트에서는 한 번도 안 걸렸던 결함 3개**를 찾아 고쳤다:
+
+1. **`SecurityConfig`의 `requiresChannel()`이 런타임에 죽음** — `if (isProd()) { requiresChannel(...) }`
+   블록이 참조하는 `ChannelDecisionManager`가 Spring Security 7.0.5에 없어 `NoClassDefFoundError`로
+   앱이 아예 기동을 못 했다. 게다가 이 코드는 애초에 우리 아키텍처와도 안 맞았음 — Cloudflare Flexible
+   모드는 origin에 평문 HTTP로 전달하는데 origin이 HTTPS를 강제하면 Cloudflare발 트래픽이 전부 막힌다.
+   블록 전체를 제거(HSTS 헤더는 그대로 유지 — 그건 브라우저 대상이라 무관). 커밋 `0aa5c39`.
+2. **`docker-compose.app.yml`의 `depends_on`이 "컨테이너 시작"만 기다리고 "MariaDB가 실제 접속
+   가능한 시점"은 안 기다림** — 첫 배포 때 app이 초기화 중인 MariaDB에 `Connection refused`로 붙었다가
+   죽었다(`restart: always`로 우연히 살아남는 구조였음). `mariadb`에 healthcheck 추가하고 app이
+   `condition: service_healthy`로 기다리게 함.
+3. **Firebase 자격증명 경로가 호스트 경로라 컨테이너 안에서 안 보임** — `.env`의
+   `FIREBASE_CREDENTIALS_PATH`는 EC2 호스트 파일시스템 기준인데, 앱은 Docker 컨테이너 안에서 돌아서
+   그 경로가 안 보여 `FileNotFoundException`. `deploy/firebase-credentials.json`을 컨테이너 안
+   `/app/firebase-credentials.json`으로 볼륨 마운트하고 경로를 그걸로 강제 덮어씀.
+
+2·3번 커밋 `858ac3b`. **교훈**: 로컬 테스트가 아무리 그린이어도 `SPRING_PROFILES_ACTIVE=prod`로 실제
+기동해보기 전까지는 prod 전용 분기(`isProd()` 같은)가 안전하다고 확신할 수 없다 — 이번 것들 전부
+"코드는 있었지만 이번이 최초 실행"이었던 경로에서 나왔다.
+
+## 2026-08-10 진행 상황
+
+**DNS 연결 + 인증 플로우 전체 스모크 테스트 성공**: root가 `at-crew.com` DNS 편집 권한으로
+`api.at-crew.com` A레코드(Proxied)를 EC2 #1 탄력적 IP로 연결해줌. Worker `SERVER_CALLBACK_URL`도
+`https://api.at-crew.com/internal/media/images/processed`로 재등록 완료(더 이상 임시 tunnel 아님).
+
+- **Cloudflare→origin 연결이 521(Web Server Is Down)로 처음엔 실패** — 원인은 SSL/TLS 모드가
+  Flexible이 아니었던 것(nginx가 80만 열어둔 상태라 Full류 모드면 Cloudflare가 443으로 origin에
+  못 붙음). root한테 Flexible로 변경 요청해서 해소.
+- **Cloudflare 멤버 권한 정리 필요성 발견**: DNS 편집("Authentication error")과 SSL/TLS 설정(메뉴
+  자체가 안 보임) 둘 다 막혀 있어서 매번 root한테 요청해야 했다 — AWS IAM 자기 자신 키 관리 권한
+  부재와 같은 패턴. 앞으로 반복 요청을 줄이려고 **남은 프로젝트 기간에 필요할 걸로 예상되는 권한을
+  한 번에 정리해서 root한테 요청**함(AWS: IAM 자기 자신 자격증명 관리, Cloudflare: at-crew.com
+  DNS+SSL/TLS 편집 또는 Administrator role). 응답 대기 중.
+- **회원가입 → 로그인 → 인증 API(성인 콘텐츠 표시 토글) → 재로그인으로 값 영속 확인 → DB 직접 정리**
+  전체 플로우를 실제 prod 서버에서 왕복 검증 완료. `POST /api/auth/email/register`(201, JWT+UUIDv7
+  발급) → `POST /api/auth/email/login` → `PATCH /api/members/me/adult-content`(204, JWT 인증
+  통과) → 재로그인해서 `adultContentVisible: true` 반영 확인 → 테스트 계정은 MariaDB에서 직접 삭제
+  (소프트 삭제 API 대신 hard delete — 실사용자 탈퇴가 아니라 순수 테스트 쓰레기라서). 배포 파이프라인
+  전체(nginx→앱→MariaDB, JWT 발급/검증, Flyway 스키마)가 실사용 흐름으로 검증된 상태.
+
+**recruit·media 파이프라인 스모크 테스트도 이어서 완료**: 구인글 생성(`POST
+/api/recruit/job-postings`, `roles`/`genres` enum 값 정상 반영 — 태그 정규화 작업이 실 prod에서도
+검증됨) → R2 presigned URL 발급(`POST /api/artwork/images/presign`, 실제 서명된 R2 URL 확인, R2
+자격증명 정상) → media 콜백 수신 엔드포인트(`POST /internal/media/images/processed`)를
+`X-Internal-Secret` 정상/오류 값으로 각각 204/401 확인. 테스트 데이터는 전부 DB에서 직접 정리
+(가입 3건 hard delete, 구인글 1건 삭제 — 실사용자 탈퇴가 아니라 순수 테스트라 소프트 삭제 API 대신
+직접 SQL로 정리).
+
+- **테스트 중 발견(버그 아님, 참고 사항)**: `CreateJobPostingRequest`처럼 `boolean`(Boolean 아님) 필드가
+  많은 record는 JSON에 그 필드가 하나라도 빠지면 Jackson이 record 생성자에 `null`을 못 넣어서 전체
+  요청이 `COMMON_INVALID_INPUT`(400)으로 거부된다 — 필드별 검증 메시지가 아니라 뭉뚱그려진 에러라
+  원인 파악이 어려웠다. 프론트가 이런 DTO를 보낼 때는 boolean 필드를 전부 명시적으로 채워야 함(생략
+  불가) — 프론트 연동 문서에 남겨둘 만한 함정.
+
+**남은 것**: root 응답 대기(권한) → EC2 #2 xpack.security 등 하드닝 재검토.
+
+## 2026-08-07 진행 상황 (EC2 프로비저닝 완료)
+
+**AWS IAM 인증 완료·EC2 2대 실제 생성 완료**: root(sehandev)로부터 전용 IAM 사용자(`at-crew-be`,
+Account `820010786587`) Access Key 발급받아 `aws configure` 완료(리전 `ap-northeast-2` — laiteu
+인스턴스로 실제 확인함, 추정 아니었음). laiteu와 같은 기본 VPC(`vpc-9f11ccf4`) 재사용해 EC2 #1(앱+MariaDB,
+`i-0987d8df61c4b84d3`, 탄력적 IP `43.201.142.212`)·EC2 #2(Elasticsearch, `i-07b421fdc2d3f5aff`,
+프라이빗 IP `172.31.25.215`만) 생성. 보안 그룹·키페어(`at-crew-key`)까지 다 만들고 SSH 왕복(앱 서버 직접,
+검색 서버는 앱 서버 경유) 검증 완료. 상세는 `deploy/README.md` "프로비저닝된 리소스" 표.
+
+- **중간에 뚫린 구멍 하나 있었음**: 검색 서버 보안 그룹에 SSH를 "내 홈 IP"로만 열었는데, 그 서버는
+  애초에 퍼블릭 IP가 없어서 홈 IP로는 절대 못 닿는 구성이었다 — 실제 SSH 테스트(앱 서버 경유)를 해보고서야
+  발견, 앱 서버의 보안 그룹을 소스로 하는 규칙으로 교체해 해결. **교훈**: 보안 그룹 규칙은 "말이 되는지"
+  눈으로만 보지 말고 실제 접속 테스트로 확인할 것 — 특히 프라이빗 서브넷 리소스는 "누구 IP를 허용하느냐"보다
+  "애초에 그 경로로 패킷이 갈 수 있느냐"부터 따져야 함.
+- AMI는 Amazon Linux 2023(Ubuntu 아님) — `deploy/README.md` 초안이 `apt` 기준으로 잘못 적혀 있던 걸
+  `dnf`로 정정함.
+**서버 소프트웨어 설치까지 완료 (같은 날 이어서 진행)**:
+- EC2 #1: Docker+docker-compose(v2.29.7 standalone 바이너리, dnf에 compose 플러그인이 없어서)+nginx 설치,
+  `nginx/api.at-crew.com.conf` 적용해 기동 확인(`/etc/nginx/conf.d/`). `~/at-crew-backend/deploy/`에
+  `docker-compose.app.yml`·`.env.example` 업로드해둠 — 아직 `.env`로 채우지 않음.
+- EC2 #2: Docker+docker-compose 설치, `docker.elastic.co/elasticsearch/elasticsearch:9.2.8` 이미지까지
+  받아서 실제로 띄우고 앱 서버에서 `172.31.25.215:9200` 접근되는 것까지 검증 완료.
+- **⚠️ 설계에서 놓쳤던 것 — 프라이빗 서브넷은 아웃바운드도 막힌다**: EC2 #2가 처음부터 퍼블릭 IP가
+  없다 보니 dnf 저장소도 GitHub도 전혀 못 닿아서(NAT Gateway 없음) `dnf install docker`부터 실패했다.
+  "퍼블릭 IP 없음 = 인바운드만 차단"이라고 생각했는데 아웃바운드(인터넷 나가는 것) 자체가 막히는 거였음 —
+  NAT Gateway는 상시 과금이라 안 쓰기로 한 결정은 유지하고, 대신 **설치·이미지 pull 때만 임시로 탄력적
+  IP를 붙였다가 끝나면 바로 뗌**(ES는 이미지만 로컬에 캐시되면 이후 재시작 때 인터넷이 필요 없음)으로
+  해결. 지금은 다시 완전히 프라이빗 상태로 돌아가 있음(`PublicIpAddress: None` 확인함). **다음에 이
+  서버에 뭔가 더 설치해야 하면 이 패턴을 반복할 것.**
+- **다음 세션(사용자 직접 필요)**: `.env`는 R2 키·JWT 시크릿·Firebase 서비스 계정 JSON 등 로컬에만 있는
+  실제 비밀값이 필요해서 에이전트가 대신 채울 수 없음 — `deploy/.env.example`을 참고해서 EC2 #1의
+  `~/at-crew-backend/deploy/.env`로 직접 채워 넣을 것(scp로 옮기고 git에는 올리지 말 것). 그 다음
+  Cloudflare DNS 연결(`api.at-crew.com`, 도메인 접근 권한은 아직 root한테 요청 안 함) → Worker
+  `SERVER_CALLBACK_URL` 재등록 → `deploy/deploy.sh`로 첫 배포.
+
+## 2026-08-07 진행 상황 (병렬 워크트리 작업 2건 완료)
+
+**로드맵 #6 설정 나머지 — 완료** (커밋 `66958b7`/`5e608c6`/`26ab7dd`, 병합 `97a177c`): 로그아웃(`POST
+/api/auth/logout`), 비밀번호 변경(`POST /api/auth/email/password-change`, EMAIL provider 전용),
+마케팅 동의·성인 콘텐츠 표시 토글(`PATCH /api/members/me/marketing-agreement`·`/adult-content`) 4개
+엔드포인트 신설. `MemberInfo`에 두 필드 읽기 경로 추가. 비밀번호 변경 성공 시 전체 refresh token 폐기
+(재로그인 필요 — 프론트 UX 확인 필요할 수 있음). 본인/기업 인증(로드맵 1)·언어 칩(로드맵 7)·카카오 문의는
+의도적으로 스코프 밖.
+
+**recruit 검색 태그 정규화 — 완료** (커밋 `b3201a7`~`c33f13d`, 병합 `f1e952a`): Notion 정본 목록 기준
+`Genre`(29종)·`MaterialTarget`(7종) enum 신설. **핵심 버그 수정**: recruit(JobPosting/TeamPosting/
+JobSeekingPost)의 `roles`가 애초에 `List<String>` 자유텍스트였던 게 검색 필터(`ArtworkRole.name()`) 매칭
+불가의 진짜 원인이었음 — `List<ArtworkRole>`로 교정(Artwork.roles는 원래도 정상이었음). recruit
+생성/수정 API가 이제 자유 문자열 대신 enum 상수명을 요구함(**API 계약 변경** — 프론트 연동 시 확인 필요).
+
+**⚠️ 병합 중 발견·수정**: 두 워크트리가 서로 모르는 채 각자 `V14`를 채번해 Flyway 버전이 충돌했음
+(`V14__artwork_tag_enum_normalization.sql` vs `V14__member_adult_content_visible.sql`) — 병합 직후
+`MemberModuleTests`로 실제 마이그레이션 적용을 검증하다가 발견, 후자를 `V16`으로 재채번해 해소(커밋
+`4804e54`). **교훈**: 여러 워크트리를 병렬로 돌릴 땐 병합 후 반드시 Flyway 버전 충돌부터 확인할 것
+(`ls db/migration | sort`로 중복 번호 눈으로 확인 + Testcontainers 테스트 1개 실행으로 실제 기동 검증).
+
+## 2026-08-07 진행 상황 (이전 항목)
 
 **prod 인프라 구성 확정** (`docs/design/mariadb-migration-design.md` §10-1에 상세 근거 반영):
 - **EC2 1대**: 앱 서버 + MariaDB 같이 운영(laiteu와 동일한 self-hosted 패턴, RDS 안 씀 — 포트폴리오 목적상 관리형 DB 운영 경험이 필요 없다고 판단해 비용 우선)
@@ -13,6 +131,18 @@
 - **기각된 대안**: Cloudflare D1 — SQLite 기반이라 JDBC 드라이버가 없어 JPA/Hibernate 앱에서 연결 자체가 불가능(Worker 바인딩/HTTP API 전용). "테넌트별 다중 DB 샤딩" 철학이라 이 프로젝트의 단일 스키마 모듈형 모놀리식과도 안 맞음. 비용 절감 병목은 DB가 아니라 EC2 컴퓨팅이라 실익도 작음.
 - **비용 관리**: 사용자가 직접 예산 알림을 걸 수 있도록 IAM에 AWSBudgetsFullAccess + Billing 콘솔 접근 토글도 같이 요청함. NAT Gateway 사용 금지(비용 폭탄 원인), Elasticsearch EC2는 퍼블릭 IP 없이 프라이빗으로(2024년부터 AWS가 퍼블릭 IPv4 자체에 과금) — 다음 세션에서 실제 프로비저닝 시 지킬 것.
 - **미완료**: root(sehandev)로부터 IAM 키 발급 대기 중. 발급되면 `aws configure`(로컬에서 직접, 채팅에 키 값 붙여넣지 말 것 — 지난 세션에 한 번 실수로 노출됨) → EC2 프로비저닝(앱+MariaDB, Elasticsearch) 순서로 진행.
+
+**배포 스캐폴드 준비 완료 (2026-08-07, IAM 키 대기 중 미리 작업)**: `Dockerfile`(로컬에서 실제 빌드+컨테이너
+기동까지 검증 완료), `deploy/docker-compose.app.yml`(EC2 #1: app+mariadb), `deploy/docker-compose.search.yml`
+(EC2 #2: elasticsearch), `deploy/nginx/api.at-crew.com.conf`, `deploy/deploy.sh`, `deploy/.env.example`
+전부 커밋 완료 — 상세는 `deploy/README.md`. 도메인은 `api.at-crew.com` 확정, Cloudflare SSL 모드는
+Flexible 전제. **다음 세션에서 IAM 키 받으면**: EC2 #1/#2 생성 → 보안 그룹 설정(§ 위 "비용 관리" 참고,
+ES는 퍼블릭 IP 없이 앱 서버 보안 그룹만 9200 허용) → `deploy/README.md`의 "최초 1회 설정" 그대로 진행. **prod 보안 결정 2건도 반영 완료**: Swagger UI/API
+문서는 prod에서 비활성화(`application-prod.yml`의 `springdoc.api-docs/swagger-ui.enabled: false` —
+SecurityConfig가 `/swagger-ui/**`를 permitAll로 열어둬서 꺼두지 않으면 API 스펙이 공개됨), `CORS_ALLOWED_ORIGINS`
+는 `https://at-crew.com`(끝 슬래시 없이 — Origin 헤더 규격상 슬래시 붙으면 매칭 안 됨)으로 확정
+→ `deploy/.env.example`을 `.env`로 복사해 실값 채우기 → Cloudflare DNS A레코드 연결 → Worker
+`SERVER_CALLBACK_URL` 재등록.
 
 **로드맵 P5(이벤트 레지스트리 JDBC 전환 + Mongo 제거) — 완료 (2026-08-07, 백그라운드 워커)**: 전체 테스트 310개 그린, gitleaks 클린, 4개 커밋(`8d316d2`/`db94c78`/`7661857`/`270c999`). `spring-modulith-events-jdbc-2.0.6.jar`의 공식 v2 MariaDB 스키마를 그대로 복사해 `V13__modulith_event_publication.sql`로 커밋(설계 문서가 지정한 V2는 이미 다른 마이그레이션이 선점해 V13으로 채번). UUID 왕복·스키마 타입·재기동 재발행 3가지를 검증하는 `EventPublicationRegistryTest` 신규 작성(재발행 옵션을 false로 끄면 테스트가 실패하는 것까지 네거티브 컨트롤로 확인). 중간에 Gradle daemon stall이 2회 있었는데, 원인은 전날 세션에서 안 끈 `./gradlew bootRun`이 데몬을 점유한 것(P5 자체 버그 아님) — 프로세스 종료로 해결.
 
@@ -127,10 +257,13 @@ recruit 모듈(구인글/팀원모집글/구직글/지원/끌어올리기/관심
 ### 1. recruit 검색 후속 과제 (PR #41에서 의도적으로 남긴 것)
 지금 동작에 문제는 없지만, 데이터가 늘거나 기획이 확정되면 손봐야 하는 항목들이다.
 
-1. **태그 정본 목록 정규화** — recruit의 `roles`/`genres`는 작성자가 입력하는 자유 문자열이고, 검색
-   필터 chip은 `ArtworkRole` enum이다. 지금은 enum 상수 이름으로만 문자열 비교하므로 실질적으로 거의
-   매칭되지 않는다. Notion 태그 정본 목록이 확정되면 양쪽을 같은 어휘로 정규화해야 한다
-   (`SearchQuery.java` TODO, `search-module-design.md` §9-2와 동일 과제)
+1. **태그 정본 목록 정규화** — 완료함(2026-08-07). Notion 정본 목록으로 `com.atcrew.artwork.Genre`(29종)·
+   `com.atcrew.artwork.MaterialTarget`(7종) enum을 신설하고, `Artwork.genres`/`Material.targets`와
+   recruit 3종(`JobPosting`/`TeamPosting`/`JobSeekingPost`)의 `roles`/`genres`, `SearchQuery`,
+   요청 DTO까지 전 계층을 enum으로 통일했다. recruit의 자유 텍스트가 `ArtworkRole.name()` 필터와
+   매칭되지 않던 것이 근본 원인이었고 이로써 해소됨. 담당 업무(`ArtworkRole`)·연령대(`AgeRating`)는
+   이미 정본과 일치해 변경하지 않았다. 정본 밖 값 정리는 `V14`/`V15` 마이그레이션이 담당하며,
+   `SearchQuery.java` TODO와 `search-module-design.md` §1.4/§9-2 항목도 함께 해소함
 2. **recruit 검색의 ES 색인 이관** — 완료함(2026-08-05). RDB `LIKE` + EXISTS 서브쿼리 기반이던
    `RecruitSearchService`/`RecruitSearchQueryRepository`(recruit 모듈)를 삭제하고, artwork와 동일하게
    `search` 모듈이 `recruit_posts` ES 인덱스를 소유·질의하도록 이관함 — `RecruitSearchIndexer`/

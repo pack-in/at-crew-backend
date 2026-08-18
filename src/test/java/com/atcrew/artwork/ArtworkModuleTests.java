@@ -1,10 +1,13 @@
 package com.atcrew.artwork;
 
+import com.atcrew.billing.internal.persistence.SubscriptionRepository;
+import com.atcrew.common.exception.DomainException;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaProcessingStatus;
 import com.atcrew.media.internal.application.MediaCallbackService;
 import com.atcrew.member.CreatorRole;
 import com.atcrew.member.MemberService;
+import com.atcrew.support.BillingTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
@@ -41,6 +44,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @Testcontainers
 class ArtworkModuleTests {
 
+    @Autowired
+    SubscriptionRepository subscriptionRepository;
+
     @Container
     @ServiceConnection
     static MariaDBContainer<?> mariadb = new MariaDBContainer<>("mariadb:11.4");
@@ -62,10 +68,10 @@ class ArtworkModuleTests {
         ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, new UploadArtworkCommand(
                 List.of("raw/1.png", "raw/2.png"), 1, "raw/thumb.png", ImageLayoutType.VERTICAL_SCROLL,
                 "제목", "설명", ArtworkField.WEBTOON, CreativeType.ORIGINAL,
-                List.of(ArtworkRole.LINEART, ArtworkRole.COLORING), List.of("판타지", "액션"), List.of("태그1", "태그2"),
+                List.of(ArtworkRole.LINEART, ArtworkRole.COLORING), List.of(Genre.FANTASY, Genre.ACTION), List.of("태그1", "태그2"),
                 AgeRating.ALL, Visibility.PUBLIC, List.of("clip studio"),
                 new WorkDuration(1, 2, 3, 4), 12, List.of("https://youtube.com/watch?v=1"),
-                List.of(new MaterialData("배경소스", List.of("배경"), List.of("raw/mat.png"), List.of("https://acon3d.com/x")))
+                List.of(new MaterialData("배경소스", List.of(MaterialTarget.BACKGROUND), List.of("raw/mat.png"), List.of("https://acon3d.com/x")))
         ));
 
         ArtworkInfo found = artworkService.getArtwork(uploaded.id(), memberId);
@@ -74,7 +80,7 @@ class ArtworkModuleTests {
         assertThat(found.images()).hasSize(2);
         assertThat(found.representativeImageIndex()).isEqualTo(1);
         assertThat(found.roles()).containsExactlyInAnyOrder(ArtworkRole.LINEART, ArtworkRole.COLORING);
-        assertThat(found.genres()).containsExactlyInAnyOrder("판타지", "액션");
+        assertThat(found.genres()).containsExactlyInAnyOrder(Genre.FANTASY, Genre.ACTION);
         assertThat(found.tags()).containsExactlyInAnyOrder("태그1", "태그2");
         assertThat(found.tools()).containsExactly("clip studio");
         assertThat(found.workDuration()).isEqualTo(new WorkDuration(1, 2, 3, 4));
@@ -82,6 +88,8 @@ class ArtworkModuleTests {
         assertThat(found.videoLinks()).containsExactly("https://youtube.com/watch?v=1");
         assertThat(found.materials()).hasSize(1);
         assertThat(found.materials().get(0).name()).isEqualTo("배경소스");
+        // 소재 대상은 JSON 컬럼에 enum 이름 배열로 저장된다 — 왕복 매핑까지 검증한다.
+        assertThat(found.materials().get(0).targets()).containsExactly(MaterialTarget.BACKGROUND);
         assertThat(found.materials().get(0).attachmentKeys()).containsExactly("raw/mat.png");
         assertThat(found.status()).isEqualTo(ArtworkStatus.PROCESSING);
     }
@@ -105,12 +113,12 @@ class ArtworkModuleTests {
         String memberId = registerAuthor();
         ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, baseUploadCommand(
                 List.of("raw/1.png"),
-                List.of(new MaterialData("옛소재", List.of("배경"), List.of(), List.of()))));
+                List.of(new MaterialData("옛소재", List.of(MaterialTarget.BACKGROUND), List.of(), List.of()))));
 
         ArtworkInfo updated = artworkService.updateArtwork(memberId, uploaded.id(), new UpdateArtworkCommand(
                 null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-                List.of(new MaterialData("새소재1", List.of("캐릭터"), List.of(), List.of()),
-                        new MaterialData("새소재2", List.of("소품"), List.of(), List.of()))));
+                List.of(new MaterialData("새소재1", List.of(MaterialTarget.CHARACTER), List.of(), List.of()),
+                        new MaterialData("새소재2", List.of(MaterialTarget.ACCESSORY), List.of(), List.of()))));
 
         assertThat(updated.materials()).extracting(MaterialInfo::name)
                 .containsExactly("새소재1", "새소재2");
@@ -259,6 +267,37 @@ class ArtworkModuleTests {
             }
         }
         throw new AssertionError("상태 반영 대기 시간 초과");
+    }
+
+    @Test
+    void 스타터_플랜은_작품을_4개까지만_등록할_수_있다() {
+        String memberId = registerAuthor();
+        for (int i = 0; i < 4; i++) {
+            uploadMinimal(memberId, "raw/starter-" + i + ".png");
+        }
+
+        assertThatThrownBy(() -> uploadMinimal(memberId, "raw/starter-5.png"))
+                .isInstanceOf(DomainException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("STARTER_ARTWORK_LIMIT_EXCEEDED");
+    }
+
+    @Test
+    void 프로_플랜은_작품_개수_제한이_없고_다운그레이드해도_기존_작품은_유지된다() {
+        String memberId = registerAuthor();
+        String subscriptionId = BillingTestSupport.grantProPlan(subscriptionRepository, memberId);
+        for (int i = 0; i < 6; i++) {
+            uploadMinimal(memberId, "raw/pro-" + i + ".png");
+        }
+
+        BillingTestSupport.cancelPlan(subscriptionRepository, subscriptionId);
+
+        // 기존 산출물은 유지되고 신규 생성만 막힌다(요금제-R01)
+        assertThat(artworkService.getMyArtworks(memberId, null, 20).items()).hasSize(6);
+        assertThatThrownBy(() -> uploadMinimal(memberId, "raw/pro-after-downgrade.png"))
+                .isInstanceOf(DomainException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("STARTER_ARTWORK_LIMIT_EXCEEDED");
     }
 
     private ArtworkInfo uploadMinimal(String memberId, String... imageKeys) {

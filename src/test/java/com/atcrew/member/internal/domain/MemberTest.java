@@ -409,6 +409,61 @@ class MemberTest {
                 .isEqualTo(MemberErrorCode.TERMS_NOT_AGREED.name());
     }
 
+    // ─── 설정 토글 ────────────────────────────────────────────────────
+
+    @Test
+    void 마케팅_동의_토글_시_필수약관은_그대로_유지() {
+        // 마케팅 토글은 필수 약관에 재동의한 것이 아니므로 동의 시각도 갱신되면 안 된다
+        TermsAgreement terms = TermsAgreement.of(true, true, true, false);
+
+        TermsAgreement updated = terms.withMarketingNotification(true);
+
+        assertThat(updated.marketingNotification()).isTrue();
+        assertThat(updated.privacyPolicy()).isTrue();
+        assertThat(updated.serviceTerms()).isTrue();
+        assertThat(updated.thirdPartyProvision()).isTrue();
+        assertThat(updated.agreedAt()).isEqualTo(terms.agreedAt());
+    }
+
+    @Test
+    void 가입_시_받은_마케팅_동의를_설정에서_끌_수_있음() {
+        TermsAgreement terms = TermsAgreement.of(true, true, true, true);
+        Member creator = Member.registerWithEmail("creator@test.com", "creatorhandle", "창작자",
+                "$2a$10$dummyhash", terms, "Asia/Seoul", "KR");
+        assertThat(creator.isMarketingAgreed()).isTrue();
+
+        creator.updateMarketingAgreement(false);
+
+        assertThat(creator.isMarketingAgreed()).isFalse();
+    }
+
+    @Test
+    void 약관정보_없는_회원도_마케팅_동의_토글_가능() {
+        // 개발·테스트 전용 가입 경로로 만든 회원은 약관 정보가 없다
+        member.updateMarketingAgreement(true);
+
+        assertThat(member.isMarketingAgreed()).isTrue();
+    }
+
+    @Test
+    void 성인_콘텐츠_표시_기본값_꺼짐이며_토글_가능() {
+        assertThat(member.isAdultContentVisible()).isFalse();
+
+        member.updateAdultContentVisible(true);
+
+        assertThat(member.isAdultContentVisible()).isTrue();
+    }
+
+    @Test
+    void 탈퇴_후_설정_토글_시_예외() {
+        member.deactivate();
+
+        assertThatThrownBy(() -> member.updateAdultContentVisible(true))
+                .isInstanceOf(MemberException.class)
+                .extracting(e -> ((MemberException) e).getCode())
+                .isEqualTo(MemberErrorCode.MEMBER_DEACTIVATED.name());
+    }
+
     @Test
     void 탈퇴_시_passwordHash_클리어() {
         TermsAgreement terms = TermsAgreement.of(true, true, true, false);

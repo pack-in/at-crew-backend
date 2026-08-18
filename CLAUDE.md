@@ -40,6 +40,8 @@
 | [docs/design/community-module-design.md](docs/design/community-module-design.md) | community 모듈 설계 — 커뮤니티 피드(배너·포트폴리오·작가 찾아보기), 구인글/팀원모집글은 recruit 모듈 스텁 |
 | [docs/design/search-module-design.md](docs/design/search-module-design.md) | search 모듈 설계 — Elasticsearch 기반 포트폴리오 검색, 태그 기반 다중선택 필터, 색인 동기화(이벤트+전체 재색인), 구인글/구직글/팀원모집글은 recruit 모듈 스텁 |
 | [docs/design/recruit-module-design.md](docs/design/recruit-module-design.md) | recruit 모듈 설계 — 구인글·팀원모집글·구직글 CRUD, 지원 접수/지원자 관리, 끌어올리기(boost), 관심 작가(기업 전용) |
+| [docs/design/billing-module-design.md](docs/design/billing-module-design.md) | billing 모듈 설계 — Stripe 직결 결제/구독(Checkout·Customer Portal·웹훅), USD 단일 통화, entitlement 원장, 플랜 게이팅 |
+| [docs/design/billing-frontend-integration.md](docs/design/billing-frontend-integration.md) | 결제/구독 프론트 연동 요청서 — 카탈로그 렌더링, Checkout 리다이렉트, 복귀 페이지 폴링, Portal 위임, 403 기반 게이팅 모달 |
 | [docs/design/media-module-design.md](docs/design/media-module-design.md) | media 모듈 설계 — artwork에 내장돼 있던 Presigned URL 발급·Worker 트리거·webhook·재시도·고아파일 정리를 범용 모듈로 추출, artwork·recruit이 공용 소비 |
 | [docs/design/global-country-plan-design.md](docs/design/global-country-plan-design.md) | 거주 국가(Member.countryCode) 설계 — Phase 1. Pro 플랜 노출국가(Artwork.targetCountryCodes)는 로드맵 5순위(결제/구독) 도달 후 Phase 2로 보류 |
 | [docs/testing/rest-docs-guide.md](docs/testing/rest-docs-guide.md) | MockMvc + Spring REST Docs 테스트 전략, 계층 구조, 새 API 개발 체크리스트 |

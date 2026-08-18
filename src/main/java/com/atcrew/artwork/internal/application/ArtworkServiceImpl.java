@@ -18,6 +18,7 @@ import com.atcrew.artwork.internal.domain.artwork.Material;
 import com.atcrew.artwork.internal.exception.ArtworkErrorCode;
 import com.atcrew.artwork.internal.exception.ArtworkException;
 import com.atcrew.artwork.internal.persistence.ArtworkRepository;
+import com.atcrew.billing.BillingService;
 import com.atcrew.common.response.CursorPage;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaService;
@@ -46,19 +47,24 @@ class ArtworkServiceImpl implements ArtworkService {
 
     private static final Logger log = LoggerFactory.getLogger(ArtworkServiceImpl.class);
     private static final List<String> ALLOWED_CONTENT_TYPES = List.of("image/jpeg", "image/png", "image/webp");
+    /** 스타터 플랜 보유 작품 상한(마이페이지_작가-R20). */
+    private static final int STARTER_ARTWORK_LIMIT = 4;
 
     private final ArtworkRepository artworkRepository;
     private final MemberService memberService;
     private final MediaService mediaService;
+    private final BillingService billingService;
     private final ApplicationEventPublisher eventPublisher;
 
     ArtworkServiceImpl(ArtworkRepository artworkRepository,
                        MemberService memberService,
                        MediaService mediaService,
+                       BillingService billingService,
                        ApplicationEventPublisher eventPublisher) {
         this.artworkRepository = artworkRepository;
         this.memberService = memberService;
         this.mediaService = mediaService;
+        this.billingService = billingService;
         this.eventPublisher = eventPublisher;
     }
 
@@ -85,6 +91,7 @@ class ArtworkServiceImpl implements ArtworkService {
     @Override
     @Transactional
     public ArtworkInfo uploadArtwork(String memberId, UploadArtworkCommand command) {
+        assertArtworkQuota(memberId, 1);
         List<Material> materials = toMaterials(command.materials());
         Artwork artwork = Artwork.create(
                 memberId,
@@ -277,8 +284,13 @@ class ArtworkServiceImpl implements ArtworkService {
     public void restoreArtworks(String memberId, List<String> artworkIds) {
         List<Artwork> artworks = artworkRepository.findAllById(artworkIds);
         validateAllFound(artworks, artworkIds);
+        // 소유권을 먼저 확인한다 — 남의 작품 ID를 섞어 보낸 요청에 개수 제한 오류를 돌려주지 않기 위함이다.
         for (Artwork artwork : artworks) {
             artwork.assertOwner(memberId);
+        }
+        // 복구도 보유 작품이 늘어나는 행위라 스타터 제한을 그대로 적용한다(휴지통-R03).
+        assertArtworkQuota(memberId, artworks.size());
+        for (Artwork artwork : artworks) {
             artwork.restore();
         }
         artworkRepository.saveAll(artworks);
@@ -383,6 +395,21 @@ class ArtworkServiceImpl implements ArtworkService {
     private Artwork findArtworkById(String artworkId) {
         return artworkRepository.findById(artworkId)
                 .orElseThrow(() -> new ArtworkException(ArtworkErrorCode.ARTWORK_NOT_FOUND, artworkId));
+    }
+
+    /**
+     * 스타터 플랜 작품 개수 제한(마이페이지_작가-R20). 프로 플랜은 제한이 없고, 다운그레이드해도
+     * 기존 작품은 그대로 유지되며 신규 생성만 막힌다(요금제-R01).
+     */
+    private void assertArtworkQuota(String memberId, int increment) {
+        if (billingService.hasProPlan(memberId)) {
+            return;
+        }
+        long owned = artworkRepository.countByAuthorIdAndStatusNot(memberId, ArtworkStatus.DELETED);
+        if (owned + increment > STARTER_ARTWORK_LIMIT) {
+            throw new ArtworkException(ArtworkErrorCode.STARTER_ARTWORK_LIMIT_EXCEEDED,
+                    "memberId=" + memberId + ", owned=" + owned + ", increment=" + increment);
+        }
     }
 
     private void validateAllFound(List<Artwork> found, List<String> requestedIds) {

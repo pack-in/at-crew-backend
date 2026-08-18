@@ -281,6 +281,22 @@ class MemberServiceImpl implements MemberService {
 
     @Override
     @Transactional
+    public void updateMarketingAgreement(String memberId, boolean agreed) {
+        Member member = findMemberById(memberId);
+        member.updateMarketingAgreement(agreed);
+        memberRepository.save(member);
+    }
+
+    @Override
+    @Transactional
+    public void updateAdultContentVisible(String memberId, boolean visible) {
+        Member member = findMemberById(memberId);
+        member.updateAdultContentVisible(visible);
+        memberRepository.save(member);
+    }
+
+    @Override
+    @Transactional
     public void updateName(String memberId, String name) {
         Member member = findMemberById(memberId);
         member.updateName(name);

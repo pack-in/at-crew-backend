@@ -1,5 +1,8 @@
 package com.atcrew.recruit;
 
+import com.atcrew.artwork.ArtworkRole;
+import com.atcrew.artwork.Genre;
+
 import java.time.Instant;
 import java.util.List;
 
@@ -11,8 +14,8 @@ public record JobSeekingPostInfo(
         String authorMemberId,                 // 작성자(창작자) Member ID
         String authorName,                     // 작성자 표시명 (member 모듈 조회 실패 시 null)
         String title,                          // 구직글 제목
-        List<String> roles,                    // 희망 역할
-        List<String> genres,                   // 희망 장르
+        List<ArtworkRole> roles,               // 희망 역할
+        List<Genre> genres,                    // 희망 장르
         String drawingStyle,                   // 작화 스타일
         FeedbackStyle preferredFeedbackStyle,  // 선호 피드백 방식
         WorkStyle workStyle,                   // 작업 스타일

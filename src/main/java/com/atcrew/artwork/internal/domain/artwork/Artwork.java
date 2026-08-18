@@ -5,6 +5,7 @@ import com.atcrew.artwork.ArtworkField;
 import com.atcrew.artwork.ArtworkRole;
 import com.atcrew.artwork.ArtworkStatus;
 import com.atcrew.artwork.CreativeType;
+import com.atcrew.artwork.Genre;
 import com.atcrew.artwork.ImageLayoutType;
 import com.atcrew.artwork.Visibility;
 import com.atcrew.artwork.WorkDuration;
@@ -88,7 +89,8 @@ public class Artwork implements Persistable<String> {
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "artwork_genres", joinColumns = @JoinColumn(name = "artwork_id"))
     @Column(name = "value")
-    private Set<String> genres = new HashSet<>();
+    @Enumerated(EnumType.STRING)
+    private Set<Genre> genres = new HashSet<>();
 
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "artwork_tags", joinColumns = @JoinColumn(name = "artwork_id"))
@@ -154,7 +156,7 @@ public class Artwork implements Persistable<String> {
                                  String thumbnailKey,
                                  ImageLayoutType imageLayoutType, ArtworkField artworkField,
                                  CreativeType creativeType, List<ArtworkRole> roles,
-                                 List<String> genres, List<String> tags,
+                                 List<Genre> genres, List<String> tags,
                                  AgeRating ageRating, Visibility visibility,
                                  List<String> tools, WorkDuration workDuration,
                                  Integer cutCount, List<String> videoLinks,
@@ -212,7 +214,7 @@ public class Artwork implements Persistable<String> {
                               ImageLayoutType imageLayoutType, Integer representativeImageIndex,
                               String thumbnailKey,
                               ArtworkField artworkField, CreativeType creativeType,
-                              List<ArtworkRole> roles, List<String> genres, List<String> tags,
+                              List<ArtworkRole> roles, List<Genre> genres, List<String> tags,
                               AgeRating ageRating, List<String> tools,
                               WorkDuration workDuration, Integer cutCount,
                               List<String> videoLinks) {
@@ -366,7 +368,7 @@ public class Artwork implements Persistable<String> {
     public ArtworkField getArtworkField() { return artworkField; }
     public CreativeType getCreativeType() { return creativeType; }
     public List<ArtworkRole> getRoles() { return roles.stream().sorted().toList(); }
-    public List<String> getGenres() { return genres.stream().sorted().toList(); }
+    public List<Genre> getGenres() { return genres.stream().sorted().toList(); }
     public List<String> getTags() { return tags.stream().sorted().toList(); }
     public List<String> getTools() { return tools.stream().sorted().toList(); }
 

@@ -52,10 +52,12 @@ class SecurityConfig {
                         .includeSubDomains(true)
                         .maxAgeInSeconds(31536000)));
 
-        // prod: HTTP → HTTPS 강제 리다이렉트 (LB 뒤라면 server.forward-headers-strategy=framework 필수)
-        if (isProd()) {
-            http.requiresChannel(channel -> channel.anyRequest().requiresSecure());
-        }
+        // origin 레벨 HTTPS 강제는 안 쓴다 — Cloudflare Flexible 모드가 origin에는 평문 HTTP로 전달하는
+        // 구조라 requiresChannel()을 켜면 Cloudflare발 트래픽이 전부 거부된다. 클라이언트↔Cloudflare 구간의
+        // HTTPS는 Cloudflare가 이미 강제하므로 origin에서 이중으로 강제할 필요가 없다(위 HSTS 헤더는 별개로
+        // 유지 — 그건 브라우저 대상이라 이 구조와 무관하게 계속 유효함). 참고로 requiresChannel()이 참조하는
+        // ChannelDecisionManager가 Spring Security 7.0.5에서 런타임에 없어 NoClassDefFoundError로 죽는
+        // 문제도 있었다(prod 프로필로 실제 기동해본 건 이번이 처음이라 지금까지 발견되지 않았음).
 
         return http
                 .authorizeHttpRequests(auth -> {
@@ -91,6 +93,10 @@ class SecurityConfig {
                             // Worker가 새 형식으로 전환된 뒤 LegacyArtworkCallbackController와 함께 제거한다.
                             .requestMatchers(HttpMethod.POST, "/internal/artwork/images/processed").permitAll()
                             .requestMatchers(HttpMethod.POST, "/internal/search/reindex").permitAll()
+                            // 요금제 페이지는 비로그인도 열람한다(요금제-R03).
+                            .requestMatchers(HttpMethod.GET, "/api/billing/catalog").permitAll()
+                            // Stripe 웹훅 — 인증 대신 서명 검증으로 보호한다(BillingWebhookController).
+                            .requestMatchers(HttpMethod.POST, "/internal/billing/stripe/webhook").permitAll()
                             .requestMatchers("/actuator/health", "/actuator/info").permitAll();
 
                     // recruit 모듈 — 공개 목록/상세 조회는 인증 불필요, 나머지는 인증 필요(기본 anyRequest().authenticated()).

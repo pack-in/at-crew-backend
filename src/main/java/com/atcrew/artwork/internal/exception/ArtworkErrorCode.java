@@ -8,6 +8,8 @@ public enum ArtworkErrorCode {
     ARTWORK_ACCESS_DENIED(HttpStatus.FORBIDDEN, "해당 작품에 접근 권한이 없습니다"),
     ARTWORK_NOT_READY(HttpStatus.BAD_REQUEST, "이미지 처리 중인 작품은 이 작업을 수행할 수 없습니다"),
     ARTWORK_NOT_DELETED(HttpStatus.BAD_REQUEST, "휴지통에 있는 작품이 아닙니다"),
+    // 스타터 플랜 제한(마이페이지_작가-R20) — 프로 플랜으로 전환하면 해제된다. 휴지통 복구에도 동일 적용(휴지통-R03)
+    STARTER_ARTWORK_LIMIT_EXCEEDED(HttpStatus.FORBIDDEN, "스타터 플랜은 작품을 최대 4개까지 등록할 수 있습니다"),
     INVALID_IMAGE_COUNT(HttpStatus.BAD_REQUEST, "이미지 수는 1개 이상 20개 이하여야 합니다"),
     INVALID_CONTENT_TYPE(HttpStatus.BAD_REQUEST, "허용되지 않는 이미지 형식입니다. jpeg, png, webp만 가능합니다"),
     INVALID_REPRESENTATIVE_INDEX(HttpStatus.BAD_REQUEST, "대표 이미지 인덱스가 유효하지 않습니다"),

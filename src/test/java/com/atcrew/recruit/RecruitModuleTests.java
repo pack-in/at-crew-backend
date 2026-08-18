@@ -1,5 +1,10 @@
 package com.atcrew.recruit;
 
+import com.atcrew.artwork.ArtworkRole;
+import com.atcrew.artwork.Genre;
+import com.atcrew.billing.BillingProduct;
+import com.atcrew.billing.BillingService;
+import com.atcrew.billing.internal.persistence.EntitlementBalanceRepository;
 import com.atcrew.common.exception.DomainException;
 import com.atcrew.media.MediaAssetProcessedEvent;
 import com.atcrew.media.MediaOwnerType;
@@ -14,6 +19,7 @@ import com.atcrew.recruit.internal.domain.RecruitPostingImage;
 import com.atcrew.recruit.internal.persistence.JobPostingImageRepository;
 import com.atcrew.recruit.internal.persistence.JobPostingRepository;
 import com.atcrew.recruit.internal.persistence.JobSeekingPostImageRepository;
+import com.atcrew.support.BillingTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
@@ -44,6 +50,12 @@ import static org.assertj.core.api.Assertions.tuple;
 @ApplicationModuleTest(mode = ApplicationModuleTest.BootstrapMode.ALL_DEPENDENCIES)
 @Testcontainers
 class RecruitModuleTests {
+
+    @Autowired
+    EntitlementBalanceRepository balanceRepository;
+
+    @Autowired
+    BillingService billingService;
 
     @Container
     @ServiceConnection
@@ -85,6 +97,33 @@ class RecruitModuleTests {
         recruitService.boostJobPosting(authorId, olderId);
 
         assertThat(publishedIds()).containsSubsequence(olderId, newerId);
+    }
+
+    @Test
+    void 끌어올리기가_쿨다운으로_실패하면_보유_개수는_차감되지_않는다() {
+        String authorId = registerMember("boost-no-charge");
+        String jobPostingId = publishedJobPosting(authorId, "미차감 공고");
+        int granted = billingService.getBalance(authorId, BillingProduct.BOOST);
+
+        recruitService.boostJobPosting(authorId, jobPostingId);
+        assertThat(billingService.getBalance(authorId, BillingProduct.BOOST)).isEqualTo(granted - 1);
+
+        // 쿨다운으로 실패한 재적용은 잔량을 건드리지 않는다(요금제-R06).
+        assertThatThrownBy(() -> recruitService.boostJobPosting(authorId, jobPostingId))
+                .isInstanceOf(DomainException.class);
+        assertThat(billingService.getBalance(authorId, BillingProduct.BOOST)).isEqualTo(granted - 1);
+    }
+
+    @Test
+    void 끌어올리기_보유_개수가_없으면_거부된다() {
+        String authorId = registerMember("boost-empty");
+        String jobPostingId = publishedJobPosting(authorId, "권한없는 공고");
+        BillingTestSupport.clear(balanceRepository, authorId, BillingProduct.BOOST);
+
+        assertThatThrownBy(() -> recruitService.boostJobPosting(authorId, jobPostingId))
+                .isInstanceOf(DomainException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("ENTITLEMENT_REQUIRED");
     }
 
     @Test
@@ -166,7 +205,7 @@ class RecruitModuleTests {
     void 구직글은_게시해야_공개_목록에_노출된다() {
         String authorId = registerMember("seeking-author");
         JobSeekingPostInfo draft = recruitService.createJobSeekingPost(authorId, new CreateJobSeekingPostCommand(
-                "구직글 제목", List.of("작화"), List.of("판타지"), "선화 위주",
+                "구직글 제목", List.of(ArtworkRole.TOTAL_ARTWORK), List.of(Genre.FANTASY), "선화 위주",
                 FeedbackStyle.PERIODIC, WorkStyle.COLLABORATIVE, "협의", "포트폴리오 소개",
                 List.of("https://img.example/ref.png"), false));
 
@@ -414,7 +453,7 @@ class RecruitModuleTests {
         String authorId = registerMember("media-seeking-author");
         String firstKey = presignKey();
         JobSeekingPostInfo created = recruitService.createJobSeekingPost(authorId, new CreateJobSeekingPostCommand(
-                "이미지 구직글", List.of("작화"), List.of("판타지"), "선화 위주",
+                "이미지 구직글", List.of(ArtworkRole.TOTAL_ARTWORK), List.of(Genre.FANTASY), "선화 위주",
                 FeedbackStyle.PERIODIC, WorkStyle.COLLABORATIVE, "협의", "포트폴리오 소개",
                 List.of(firstKey), false));
 
@@ -516,8 +555,11 @@ class RecruitModuleTests {
 
     private String registerMemberWithName(String handlePrefix, String name) {
         String suffix = UUID.randomUUID().toString().substring(0, 8);
-        return memberService.register(
+        String memberId = memberService.register(
                 handlePrefix + "-" + suffix + "@atcrew.com", handlePrefix + suffix, name, CreatorRole.WEBTOON).id();
+        // 구인글·팀원모집글·끌어올리기는 유료 단건 게시 상품이다(구인구직-R02, 요금제-R06).
+        BillingTestSupport.grantAllPostingProducts(balanceRepository, memberId);
+        return memberId;
     }
 
     // 작성 → 제출 → 관리자 승인까지 마친 PUBLISHED 구인글 ID를 반환한다.
@@ -535,7 +577,7 @@ class RecruitModuleTests {
         return new CreateJobPostingCommand(
                 title, "앳크루", "대표", "웹툰", "서울", "02-000-0000", "https://example.com",
                 "회사 소개", true, true, false,
-                List.of("작화"), List.of("로맨스"), "작업 범위", null, 2, "서류 → 면접",
+                List.of(ArtworkRole.TOTAL_ARTWORK), List.of(Genre.ROMANCE_FANTASY), "작업 범위", null, 2, "서류 → 면접",
                 "무관", "신입", "무관", "무관",
                 JobEmploymentType.FULL_TIME, JobWorkLocationType.OFFICE, JobWorkScheduleType.FIXED,
                 null, null, true, true, true,
@@ -546,7 +588,7 @@ class RecruitModuleTests {
 
     private CreateJobSeekingPostCommand jobSeekingPostCommand(String title) {
         return new CreateJobSeekingPostCommand(
-                title, List.of("작화"), List.of("판타지"), "선화 위주",
+                title, List.of(ArtworkRole.TOTAL_ARTWORK), List.of(Genre.FANTASY), "선화 위주",
                 FeedbackStyle.PERIODIC, WorkStyle.COLLABORATIVE, "협의", "포트폴리오 소개",
                 List.of("https://img.example/ref.png"), false);
     }
@@ -555,7 +597,7 @@ class RecruitModuleTests {
         return new CreateTeamPostingCommand(
                 "팀원 모집", false, false, false, "팀장", "010-0000-0000", "팀 소개",
                 List.of("공모전"), TeamWorkLocationType.ONLINE, null,
-                List.of("배경"), List.of("액션"), false, true, null, null, 3, "포트폴리오 심사",
+                List.of(ArtworkRole.BACKGROUND), List.of(Genre.ACTION), false, true, null, null, 3, "포트폴리오 심사",
                 TeamActivityDuration.THREE_MONTHS, TeamWeeklyActivityTime.TWO_TO_THREE_TIMES,
                 "프로젝트 소개", "https://img.example/team.png", List.of());
     }

@@ -1,7 +1,10 @@
 package com.atcrew.recruit.docs;
 
+import com.atcrew.billing.internal.persistence.EntitlementBalanceRepository;
+import com.atcrew.support.BillingTestSupport;
 import com.atcrew.support.RestDocsIntegrationSupport;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MvcResult;
@@ -27,6 +30,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * TeamPosting은 JobPosting과 달리 승인 절차가 없어 생성 즉시 PUBLISHED로 게시된다(설계 §4.2).
  */
 class TeamPostingApiDocTest extends RestDocsIntegrationSupport {
+
+    @Autowired
+    EntitlementBalanceRepository balanceRepository;
 
     @Test
     void 팀원모집글_전체_생명주기_문서화() throws Exception {
@@ -54,8 +60,8 @@ class TeamPostingApiDocTest extends RestDocsIntegrationSupport {
                                 fieldWithPath("recruitPurposes").description("모집 목적 (최대 20개, 표시 전용)").optional(),
                                 fieldWithPath("workLocationType").description("활동 형태 (OFFLINE·ONLINE·HYBRID)").optional(),
                                 fieldWithPath("activityRegion").description("활동 지역 (ONLINE이면 null이어야 함, 최대 200자)").optional(),
-                                fieldWithPath("roles").description("모집 역할 (최대 20개)").optional(),
-                                fieldWithPath("genres").description("모집 장르 (최대 20개)").optional(),
+                                fieldWithPath("roles").description("모집 역할 (최대 20개) — 정본 담당 업무 enum 이름 (TOTAL_ARTWORK·LINEART·COLORING·BACKGROUND 등 ArtworkRole 22종)").optional(),
+                                fieldWithPath("genres").description("모집 장르 (최대 20개) — 정본 장르 enum 이름 (FANTASY·ROMANCE_FANTASY·ACTION·BL 등 Genre 29종)").optional(),
                                 fieldWithPath("hasParticipationFee").description("참여비용 존재 여부"),
                                 fieldWithPath("hasProfitSharing").description("수익배분 존재 여부"),
                                 fieldWithPath("deadline").description("마감일 (yyyy-MM-dd, 오늘 이후. null이면 상시모집)").optional(),
@@ -286,8 +292,11 @@ class TeamPostingApiDocTest extends RestDocsIntegrationSupport {
                                 true, true, true, false, "Asia/Seoul", "KR"))))
                 .andExpect(status().isCreated())
                 .andReturn();
-        return objectMapper.readTree(result.getResponse().getContentAsString())
-                .at("/data/accessToken").asText();
+        String body = result.getResponse().getContentAsString();
+        // 팀원 모집글은 유료 단건 게시 상품이라 게시·끌어올리기에 보유 개수가 필요하다(구인구직-R02).
+        BillingTestSupport.grantAllPostingProducts(balanceRepository,
+                objectMapper.readTree(body).at("/data/member/id").asText());
+        return objectMapper.readTree(body).at("/data/accessToken").asText();
     }
 
     /** 팀원모집글을 생성하고 teamPostingId를 반환한다. */
@@ -314,8 +323,8 @@ class TeamPostingApiDocTest extends RestDocsIntegrationSupport {
         body.put("recruitPurposes", List.of("공모전 준비"));
         body.put("workLocationType", "OFFLINE");
         body.put("activityRegion", "서울");
-        body.put("roles", List.of("배경", "채색"));
-        body.put("genres", List.of("액션", "판타지"));
+        body.put("roles", List.of("BACKGROUND", "COLORING"));
+        body.put("genres", List.of("ACTION", "FANTASY"));
         body.put("hasParticipationFee", false);
         body.put("hasProfitSharing", true);
         body.put("deadline", "2099-12-31");

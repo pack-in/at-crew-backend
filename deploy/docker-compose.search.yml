@@ -1,0 +1,22 @@
+# EC2 #2(Elasticsearch 전용) — 앱 서버와 리소스 경합(JVM 힙 경쟁) 방지를 위해 분리.
+# 9200 포트는 docker가 모든 인터페이스에 바인딩하지만, 실제 접근 제어는 AWS 보안 그룹에서
+# 앱 서버 EC2(프라이빗 IP 또는 보안 그룹 참조)만 허용하도록 건다 — 이 EC2 자체는 퍼블릭 IP를 붙이지 않는다
+# (docs/NEXT_STEPS.md "비용 관리": 2024년부터 AWS가 퍼블릭 IPv4 자체에 과금).
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.2.8
+    restart: always
+    environment:
+      discovery.type: single-node
+      # TODO: xpack.security는 현재 비활성 — 네트워크 격리(보안 그룹)로 1차 방어 중.
+      # 실사용자 트래픽 전이면 인증 활성화 재검토(로컬 dev도 동일하게 비활성, docker-compose.yml 참고).
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms1g -Xmx1g"
+      TZ: UTC
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+
+volumes:
+  elasticsearch_data:

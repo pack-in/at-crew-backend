@@ -1,5 +1,7 @@
 package com.atcrew.recruit.docs;
 
+import com.atcrew.artwork.ArtworkRole;
+import com.atcrew.artwork.Genre;
 import com.atcrew.recruit.CreateJobPostingCommand;
 import com.atcrew.recruit.CreateTeamPostingCommand;
 import com.atcrew.recruit.JobEmploymentType;
@@ -13,6 +15,8 @@ import com.atcrew.recruit.TeamActivityDuration;
 import com.atcrew.recruit.TeamPostingInfo;
 import com.atcrew.recruit.TeamWeeklyActivityTime;
 import com.atcrew.recruit.TeamWorkLocationType;
+import com.atcrew.billing.internal.persistence.EntitlementBalanceRepository;
+import com.atcrew.support.BillingTestSupport;
 import com.atcrew.support.RestDocsIntegrationSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -46,6 +50,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * REST 엔드포인트 대신 {@link RecruitService}를 직접 호출해 테스트 데이터를 준비한다.
  */
 class ApplicationApiDocTest extends RestDocsIntegrationSupport {
+
+    @Autowired
+    EntitlementBalanceRepository balanceRepository;
 
     @Autowired
     RecruitService recruitService;
@@ -228,6 +235,8 @@ class ApplicationApiDocTest extends RestDocsIntegrationSupport {
         String body = result.getResponse().getContentAsString();
         String accessToken = objectMapper.readTree(body).at("/data/accessToken").asText();
         String memberId = objectMapper.readTree(body).at("/data/member/id").asText();
+        // 구인글·팀원모집글은 유료 단건 게시 상품이다(구인구직-R02).
+        BillingTestSupport.grantAllPostingProducts(balanceRepository, memberId);
         return new RegisteredMember(accessToken, memberId);
     }
 
@@ -247,7 +256,7 @@ class ApplicationApiDocTest extends RestDocsIntegrationSupport {
         return new CreateJobPostingCommand(
                 "백엔드 개발자 구인", "앳크루스튜디오", "김대표", "IT", "서울특별시", "010-1111-2222",
                 "https://atcrew.co.kr", "웹툰 플랫폼을 만드는 스튜디오입니다", true, true, false,
-                List.of("배경"), List.of("웹툰"), "배경 작업 전반", null, 1, "서류 -> 면접",
+                List.of(ArtworkRole.BACKGROUND), List.of(Genre.FANTASY), "배경 작업 전반", null, 1, "서류 -> 면접",
                 null, null, null, null, JobEmploymentType.FULL_TIME, JobWorkLocationType.OFFICE,
                 JobWorkScheduleType.FIXED, null, null, true, true, true,
                 JobPaymentType.ANNUAL_SALARY, JobPaymentUnit.ANNUAL, 30_000_000L, 40_000_000L, false,
@@ -258,7 +267,7 @@ class ApplicationApiDocTest extends RestDocsIntegrationSupport {
         return new CreateTeamPostingCommand(
                 "판타지 웹툰 팀원 모집", false, false, false, "모집팀", "010-3333-4444",
                 "판타지 장르 웹툰을 함께 만들 팀원을 모집합니다", List.of("취미"), TeamWorkLocationType.OFFLINE,
-                "서울특별시", List.of("작화"), List.of("판타지"), false, true, null, null, 2,
+                "서울특별시", List.of(ArtworkRole.TOTAL_ARTWORK), List.of(Genre.FANTASY), false, true, null, null, 2,
                 "서류 검토 후 개별 연락", TeamActivityDuration.THREE_MONTHS, TeamWeeklyActivityTime.FLEXIBLE,
                 "완결까지 함께할 팀원을 찾습니다", null, List.of());
     }

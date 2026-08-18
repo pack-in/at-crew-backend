@@ -1,0 +1,11 @@
+.git
+.gradle
+build
+.idea
+*.iml
+docs
+cloudflare-worker
+.env
+.env.*
+.wrangler
+node_modules

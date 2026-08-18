@@ -6,6 +6,7 @@ import com.atcrew.artwork.ArtworkInfo;
 import com.atcrew.artwork.ArtworkRole;
 import com.atcrew.artwork.ArtworkService;
 import com.atcrew.artwork.CreativeType;
+import com.atcrew.artwork.Genre;
 import com.atcrew.artwork.ImageLayoutType;
 import com.atcrew.artwork.ArtworkStatus;
 import com.atcrew.artwork.UploadArtworkCommand;
@@ -13,6 +14,7 @@ import com.atcrew.artwork.Visibility;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaProcessingStatus;
 import com.atcrew.media.internal.application.MediaCallbackService;
+import com.atcrew.billing.internal.persistence.EntitlementBalanceRepository;
 import com.atcrew.member.CreatorRole;
 import com.atcrew.member.MemberService;
 import com.atcrew.recruit.CreateJobPostingCommand;
@@ -27,6 +29,7 @@ import com.atcrew.recruit.TeamActivityDuration;
 import com.atcrew.recruit.TeamWeeklyActivityTime;
 import com.atcrew.recruit.TeamWorkLocationType;
 import com.atcrew.recruit.CreateTeamPostingCommand;
+import com.atcrew.support.BillingTestSupport;
 import com.atcrew.search.internal.application.ArtworkReindexService;
 import com.atcrew.search.internal.application.RecruitReindexService;
 import org.junit.jupiter.api.Test;
@@ -59,6 +62,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ApplicationModuleTest(mode = ApplicationModuleTest.BootstrapMode.ALL_DEPENDENCIES)
 @Testcontainers
 class SearchModuleTests {
+
+    @Autowired
+    EntitlementBalanceRepository balanceRepository;
 
     @Container
     @ServiceConnection
@@ -95,7 +101,7 @@ class SearchModuleTests {
     @Test
     void 전체_재색인_후에도_기존_작품이_검색된다() {
         ArtworkInfo artwork = uploadReadyArtwork(ArtworkField.ANIMATION, CreativeType.COMMISSION,
-                List.of(ArtworkRole.BACKGROUND), List.of("SF"), AgeRating.ALL);
+                List.of(ArtworkRole.BACKGROUND), List.of(Genre.SF), AgeRating.ALL);
         awaitSearchResult(() -> searchService.search(queryWithArtworkField(ArtworkField.ANIMATION)));
 
         // alias(artworks)를 새 물리 인덱스로 원자적으로 전환 — docs/design/search-module-design.md §5.3
@@ -109,7 +115,7 @@ class SearchModuleTests {
     @Test
     void 업로드된_작품이_비동기로_색인되어_검색에_노출된다() {
         ArtworkInfo artwork = uploadReadyArtwork(ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
-                List.of(ArtworkRole.LINEART), List.of("BL"), AgeRating.ALL);
+                List.of(ArtworkRole.LINEART), List.of(Genre.BL), AgeRating.ALL);
 
         List<SearchResultItem> found = awaitSearchResult(
                 () -> searchService.search(queryWithArtworkField(ArtworkField.ILLUSTRATION)));
@@ -120,7 +126,7 @@ class SearchModuleTests {
     @Test
     void 필터가_일치하지_않으면_결과에서_제외된다() {
         uploadReadyArtwork(ArtworkField.WEBTOON, CreativeType.ORIGINAL,
-                List.of(ArtworkRole.LINEART), List.of("판타지"), AgeRating.ALL);
+                List.of(ArtworkRole.LINEART), List.of(Genre.FANTASY), AgeRating.ALL);
 
         // 색인 반영을 기다린 뒤(존재 확인) 다른 필터로는 조회되지 않는지 검증
         awaitSearchResult(() -> searchService.search(queryWithArtworkField(ArtworkField.WEBTOON)));
@@ -155,7 +161,7 @@ class SearchModuleTests {
         String authorId = registerMember();
         String jobPostingId = publishedJobPosting(authorId, token + " 구인 공고");
         ArtworkInfo artwork = uploadReadyArtwork(ArtworkField.WEBTOON, CreativeType.ORIGINAL,
-                List.of(ArtworkRole.SKETCH), List.of("드라마"), AgeRating.ALL, token + " 포트폴리오");
+                List.of(ArtworkRole.SKETCH), List.of(Genre.DRAMA), AgeRating.ALL, token + " 포트폴리오");
         // 두 소스 모두 @ApplicationModuleListener(비동기) 색인이라, 둘 다 반영될 때까지 기다린다
         awaitCondition(() -> searchService.search(mergedQuery(token, 20)).items().size() == 2);
 
@@ -212,12 +218,14 @@ class SearchModuleTests {
     void recruit_장르_태그_필터가_적용된다() {
         String token = uniqueToken();
         String authorId = registerMember();
-        String matchingGenre = token + "-액션";
-        String teamPostingId = recruitService.createTeamPosting(authorId, teamPostingCommand(matchingGenre)).id();
-        publishedJobPosting(authorId, token + " 구인 공고"); // 장르가 다른 구인글 — 필터에 걸리지 않아야 한다
+        // 장르가 정본 enum이라 토큰으로 유일한 장르를 만들 수 없다 — 검색어(token)로 이번 테스트가 만든
+        // 두 글로 범위를 좁힌 뒤, 서로 다른 장르 중 하나로 필터가 걸리는지 검증한다.
+        String teamPostingId = recruitService
+                .createTeamPosting(authorId, teamPostingCommand(token + " 팀원 모집", Genre.ACTION)).id();
+        publishedJobPosting(authorId, token + " 구인 공고"); // 장르가 다른(ROMANCE_FANTASY) 구인글 — 걸리지 않아야 한다
 
         List<SearchResultItem> byGenre = awaitSearchResult(() -> searchService.search(new SearchQuery(
-                null, null, null, null, null, null, List.of(matchingGenre), null, null, null, 20)));
+                token, null, null, null, null, null, List.of(Genre.ACTION), null, null, null, 20)));
 
         assertThat(byGenre).extracting(SearchResultItem::id).containsExactly(teamPostingId);
     }
@@ -268,11 +276,11 @@ class SearchModuleTests {
                 null, null, null, null, null, null, null, null, size);
     }
 
-    private CreateTeamPostingCommand teamPostingCommand(String genre) {
+    private CreateTeamPostingCommand teamPostingCommand(String title, Genre genre) {
         return new CreateTeamPostingCommand(
-                "팀원 모집", false, false, false, "팀장", "010-0000-0000", "팀 소개",
+                title, false, false, false, "팀장", "010-0000-0000", "팀 소개",
                 List.of("공모전"), TeamWorkLocationType.ONLINE, null,
-                List.of("배경"), List.of(genre), false, true, null, null, 3, "포트폴리오 심사",
+                List.of(ArtworkRole.BACKGROUND), List.of(genre), false, true, null, null, 3, "포트폴리오 심사",
                 TeamActivityDuration.THREE_MONTHS, TeamWeeklyActivityTime.TWO_TO_THREE_TIMES,
                 "프로젝트 소개", "https://img.example/team.png", List.of());
     }
@@ -289,7 +297,7 @@ class SearchModuleTests {
     @Test
     void 비공개로_전환하면_색인에서_제거된다() {
         ArtworkInfo artwork = uploadReadyArtwork(ArtworkField.PRINT_COMIC, CreativeType.FAN_ART,
-                List.of(ArtworkRole.COLORING), List.of("액션"), AgeRating.ALL);
+                List.of(ArtworkRole.COLORING), List.of(Genre.ACTION), AgeRating.ALL);
 
         awaitSearchResult(() -> searchService.search(queryWithArtworkField(ArtworkField.PRINT_COMIC)));
 
@@ -316,7 +324,11 @@ class SearchModuleTests {
     }
 
     private String registerMember() {
-        return memberService.register(uniqueEmail(), uniqueHandle(), "검색테스트작가", CreatorRole.WEBTOON).id();
+        String memberId = memberService.register(uniqueEmail(), uniqueHandle(), "검색테스트작가",
+                CreatorRole.WEBTOON).id();
+        // 구인글·팀원모집글은 유료 단건 게시 상품이다(구인구직-R02).
+        BillingTestSupport.grantAllPostingProducts(balanceRepository, memberId);
+        return memberId;
     }
 
     // 작성 → 관리자 승인까지 마친 PUBLISHED 구인글 ID를 반환한다(커맨드의 submit=true라 저장 즉시 PENDING).
@@ -330,7 +342,7 @@ class SearchModuleTests {
         return new CreateJobPostingCommand(
                 title, "앳크루", "대표", "웹툰", "서울", "02-000-0000", "https://example.com",
                 "회사 소개", true, true, false,
-                List.of("작화"), List.of("로맨스"), "작업 범위", null, 2, "서류 → 면접",
+                List.of(ArtworkRole.TOTAL_ARTWORK), List.of(Genre.ROMANCE_FANTASY), "작업 범위", null, 2, "서류 → 면접",
                 "무관", "신입", "무관", "무관",
                 JobEmploymentType.FULL_TIME, JobWorkLocationType.OFFICE, JobWorkScheduleType.FIXED,
                 null, null, true, true, true,
@@ -340,13 +352,13 @@ class SearchModuleTests {
     }
 
     private ArtworkInfo uploadReadyArtwork(ArtworkField field, CreativeType creativeType,
-                                            List<ArtworkRole> roles, List<String> genres, AgeRating ageRating) {
+                                            List<ArtworkRole> roles, List<Genre> genres, AgeRating ageRating) {
         return uploadReadyArtwork(field, creativeType, roles, genres, ageRating,
                 "검색테스트 작품 " + Instant.now().toEpochMilli());
     }
 
     private ArtworkInfo uploadReadyArtwork(ArtworkField field, CreativeType creativeType,
-                                            List<ArtworkRole> roles, List<String> genres, AgeRating ageRating,
+                                            List<ArtworkRole> roles, List<Genre> genres, AgeRating ageRating,
                                             String title) {
         String memberId = registerMember();
 

@@ -2,7 +2,9 @@ name: CI
 
 on:
   pull_request:
-    branches: [main]
+    # dev를 통합 브랜치로 쓰므로 dev 대상 PR도 검증한다 — main 머지는 곧 prod 배포라
+    # 그 전에 dev에서 한 번 걸러낸다.
+    branches: [main, dev]
     types: [opened, edited, synchronize, reopened]
 
 jobs:

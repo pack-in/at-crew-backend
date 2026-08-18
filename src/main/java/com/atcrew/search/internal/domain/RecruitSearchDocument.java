@@ -33,7 +33,7 @@ public class RecruitSearchDocument {
     @Field(type = FieldType.Text)
     private String title;
 
-    // 작성자가 입력한 자유 문자열 그대로 색인한다 — 태그 정본화는 별도 과제(docs/design/search-module-design.md §9-2).
+    // 정본 태그(ArtworkRole/Genre)의 enum 상수 이름을 색인한다 — 필터도 같은 이름으로 매칭한다(§9-2).
     @Field(type = FieldType.Keyword)
     private List<String> roles;
 

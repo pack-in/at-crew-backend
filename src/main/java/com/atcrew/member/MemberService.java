@@ -48,6 +48,15 @@ public interface MemberService {
 
     void changePassword(String memberId, String rawNewPassword);
 
+    /** 마케팅 정보 수신 동의 변경(설정 화면 토글). 가입 시 받은 값을 이후에도 켜고 끌 수 있다. */
+    void updateMarketingAgreement(String memberId, boolean agreed);
+
+    /**
+     * 성인 콘텐츠 표시 설정 변경(설정 화면 토글). 표시 설정만 저장하며,
+     * 본인 인증 여부에 따른 실제 콘텐츠 접근 게이팅은 이 값과 별개다.
+     */
+    void updateAdultContentVisible(String memberId, boolean visible);
+
     void updateName(String memberId, String name);
 
     void updateInfo(String memberId, UpdateInfoCommand command);

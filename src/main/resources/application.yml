@@ -73,3 +73,33 @@ artwork:
 search:
   internal:
     secret: ${SEARCH_INTERNAL_SECRET:dev-internal-secret}
+
+# 결제/구독(plans/260813-stripe-billing) — 키가 없어도 기동은 되고, 결제 API 호출 시점에만 실패한다.
+stripe:
+  secret-key: ${STRIPE_SECRET_KEY:}
+  publishable-key: ${STRIPE_PUBLISHABLE_KEY:}
+  webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+
+billing:
+  # Checkout 성공·취소 후 돌아갈 프론트 주소. prod는 https://at-crew.com
+  frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:3000}
+  # 통화는 USD 단일. amount·list-amount는 센트 단위 정수($5.99 = 599)다.
+  # 실제 청구액의 정본은 Stripe의 Price이며, 여기 amount는 카탈로그 표시용이다 — Price 변경 시 함께 갱신한다.
+  products:
+    pro-monthly:
+      price-id: ${STRIPE_PRICE_PRO_MONTHLY:}
+      amount: 599
+      list-amount: 1199
+    pro-yearly:
+      price-id: ${STRIPE_PRICE_PRO_YEARLY:}
+      amount: 5999
+      list-amount: 11999
+    team-posting:
+      price-id: ${STRIPE_PRICE_TEAM_POSTING:}
+      amount: 3999
+    boost:
+      price-id: ${STRIPE_PRICE_BOOST:}
+      amount: 799
+    job-posting:
+      price-id: ${STRIPE_PRICE_JOB_POSTING:}
+      amount: 9999

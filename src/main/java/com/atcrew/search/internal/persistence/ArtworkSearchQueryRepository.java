@@ -82,8 +82,8 @@ public class ArtworkSearchQueryRepository {
         addTerms(bool, "creativeType", names(query.creativeTypes()));
         addTerms(bool, "ageRating", names(query.ageRatings()));
         addTerms(bool, "roles", names(query.roles()));
-        addTerms(bool, "genres", query.genres());
-        addTerms(bool, "materialTargets", query.materialTargets());
+        addTerms(bool, "genres", names(query.genres()));
+        addTerms(bool, "materialTargets", names(query.materialTargets()));
         return Query.of(q -> q.bool(bool.build()));
     }
 
