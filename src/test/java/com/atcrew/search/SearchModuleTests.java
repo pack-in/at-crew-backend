@@ -14,6 +14,7 @@ import com.atcrew.artwork.Visibility;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaProcessingStatus;
 import com.atcrew.media.internal.application.MediaCallbackService;
+import com.atcrew.billing.internal.persistence.EntitlementBalanceRepository;
 import com.atcrew.member.CreatorRole;
 import com.atcrew.member.MemberService;
 import com.atcrew.recruit.CreateJobPostingCommand;
@@ -28,6 +29,7 @@ import com.atcrew.recruit.TeamActivityDuration;
 import com.atcrew.recruit.TeamWeeklyActivityTime;
 import com.atcrew.recruit.TeamWorkLocationType;
 import com.atcrew.recruit.CreateTeamPostingCommand;
+import com.atcrew.support.BillingTestSupport;
 import com.atcrew.search.internal.application.ArtworkReindexService;
 import com.atcrew.search.internal.application.RecruitReindexService;
 import org.junit.jupiter.api.Test;
@@ -60,6 +62,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ApplicationModuleTest(mode = ApplicationModuleTest.BootstrapMode.ALL_DEPENDENCIES)
 @Testcontainers
 class SearchModuleTests {
+
+    @Autowired
+    EntitlementBalanceRepository balanceRepository;
 
     @Container
     @ServiceConnection
@@ -319,7 +324,11 @@ class SearchModuleTests {
     }
 
     private String registerMember() {
-        return memberService.register(uniqueEmail(), uniqueHandle(), "검색테스트작가", CreatorRole.WEBTOON).id();
+        String memberId = memberService.register(uniqueEmail(), uniqueHandle(), "검색테스트작가",
+                CreatorRole.WEBTOON).id();
+        // 구인글·팀원모집글은 유료 단건 게시 상품이다(구인구직-R02).
+        BillingTestSupport.grantAllPostingProducts(balanceRepository, memberId);
+        return memberId;
     }
 
     // 작성 → 관리자 승인까지 마친 PUBLISHED 구인글 ID를 반환한다(커맨드의 submit=true라 저장 즉시 PENDING).

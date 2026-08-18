@@ -1,10 +1,13 @@
 package com.atcrew.artwork;
 
+import com.atcrew.billing.internal.persistence.SubscriptionRepository;
+import com.atcrew.common.exception.DomainException;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaProcessingStatus;
 import com.atcrew.media.internal.application.MediaCallbackService;
 import com.atcrew.member.CreatorRole;
 import com.atcrew.member.MemberService;
+import com.atcrew.support.BillingTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
@@ -40,6 +43,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @ApplicationModuleTest(mode = ApplicationModuleTest.BootstrapMode.ALL_DEPENDENCIES)
 @Testcontainers
 class ArtworkModuleTests {
+
+    @Autowired
+    SubscriptionRepository subscriptionRepository;
 
     @Container
     @ServiceConnection
@@ -261,6 +267,37 @@ class ArtworkModuleTests {
             }
         }
         throw new AssertionError("상태 반영 대기 시간 초과");
+    }
+
+    @Test
+    void 스타터_플랜은_작품을_4개까지만_등록할_수_있다() {
+        String memberId = registerAuthor();
+        for (int i = 0; i < 4; i++) {
+            uploadMinimal(memberId, "raw/starter-" + i + ".png");
+        }
+
+        assertThatThrownBy(() -> uploadMinimal(memberId, "raw/starter-5.png"))
+                .isInstanceOf(DomainException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("STARTER_ARTWORK_LIMIT_EXCEEDED");
+    }
+
+    @Test
+    void 프로_플랜은_작품_개수_제한이_없고_다운그레이드해도_기존_작품은_유지된다() {
+        String memberId = registerAuthor();
+        String subscriptionId = BillingTestSupport.grantProPlan(subscriptionRepository, memberId);
+        for (int i = 0; i < 6; i++) {
+            uploadMinimal(memberId, "raw/pro-" + i + ".png");
+        }
+
+        BillingTestSupport.cancelPlan(subscriptionRepository, subscriptionId);
+
+        // 기존 산출물은 유지되고 신규 생성만 막힌다(요금제-R01)
+        assertThat(artworkService.getMyArtworks(memberId, null, 20).items()).hasSize(6);
+        assertThatThrownBy(() -> uploadMinimal(memberId, "raw/pro-after-downgrade.png"))
+                .isInstanceOf(DomainException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("STARTER_ARTWORK_LIMIT_EXCEEDED");
     }
 
     private ArtworkInfo uploadMinimal(String memberId, String... imageKeys) {

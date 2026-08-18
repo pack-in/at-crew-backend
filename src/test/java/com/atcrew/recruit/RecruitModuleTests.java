@@ -2,6 +2,9 @@ package com.atcrew.recruit;
 
 import com.atcrew.artwork.ArtworkRole;
 import com.atcrew.artwork.Genre;
+import com.atcrew.billing.BillingProduct;
+import com.atcrew.billing.BillingService;
+import com.atcrew.billing.internal.persistence.EntitlementBalanceRepository;
 import com.atcrew.common.exception.DomainException;
 import com.atcrew.media.MediaAssetProcessedEvent;
 import com.atcrew.media.MediaOwnerType;
@@ -16,6 +19,7 @@ import com.atcrew.recruit.internal.domain.RecruitPostingImage;
 import com.atcrew.recruit.internal.persistence.JobPostingImageRepository;
 import com.atcrew.recruit.internal.persistence.JobPostingRepository;
 import com.atcrew.recruit.internal.persistence.JobSeekingPostImageRepository;
+import com.atcrew.support.BillingTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
@@ -46,6 +50,12 @@ import static org.assertj.core.api.Assertions.tuple;
 @ApplicationModuleTest(mode = ApplicationModuleTest.BootstrapMode.ALL_DEPENDENCIES)
 @Testcontainers
 class RecruitModuleTests {
+
+    @Autowired
+    EntitlementBalanceRepository balanceRepository;
+
+    @Autowired
+    BillingService billingService;
 
     @Container
     @ServiceConnection
@@ -87,6 +97,33 @@ class RecruitModuleTests {
         recruitService.boostJobPosting(authorId, olderId);
 
         assertThat(publishedIds()).containsSubsequence(olderId, newerId);
+    }
+
+    @Test
+    void 끌어올리기가_쿨다운으로_실패하면_보유_개수는_차감되지_않는다() {
+        String authorId = registerMember("boost-no-charge");
+        String jobPostingId = publishedJobPosting(authorId, "미차감 공고");
+        int granted = billingService.getBalance(authorId, BillingProduct.BOOST);
+
+        recruitService.boostJobPosting(authorId, jobPostingId);
+        assertThat(billingService.getBalance(authorId, BillingProduct.BOOST)).isEqualTo(granted - 1);
+
+        // 쿨다운으로 실패한 재적용은 잔량을 건드리지 않는다(요금제-R06).
+        assertThatThrownBy(() -> recruitService.boostJobPosting(authorId, jobPostingId))
+                .isInstanceOf(DomainException.class);
+        assertThat(billingService.getBalance(authorId, BillingProduct.BOOST)).isEqualTo(granted - 1);
+    }
+
+    @Test
+    void 끌어올리기_보유_개수가_없으면_거부된다() {
+        String authorId = registerMember("boost-empty");
+        String jobPostingId = publishedJobPosting(authorId, "권한없는 공고");
+        BillingTestSupport.clear(balanceRepository, authorId, BillingProduct.BOOST);
+
+        assertThatThrownBy(() -> recruitService.boostJobPosting(authorId, jobPostingId))
+                .isInstanceOf(DomainException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("ENTITLEMENT_REQUIRED");
     }
 
     @Test
@@ -518,8 +555,11 @@ class RecruitModuleTests {
 
     private String registerMemberWithName(String handlePrefix, String name) {
         String suffix = UUID.randomUUID().toString().substring(0, 8);
-        return memberService.register(
+        String memberId = memberService.register(
                 handlePrefix + "-" + suffix + "@atcrew.com", handlePrefix + suffix, name, CreatorRole.WEBTOON).id();
+        // 구인글·팀원모집글·끌어올리기는 유료 단건 게시 상품이다(구인구직-R02, 요금제-R06).
+        BillingTestSupport.grantAllPostingProducts(balanceRepository, memberId);
+        return memberId;
     }
 
     // 작성 → 제출 → 관리자 승인까지 마친 PUBLISHED 구인글 ID를 반환한다.

@@ -1,7 +1,10 @@
 package com.atcrew.recruit.docs;
 
+import com.atcrew.billing.internal.persistence.EntitlementBalanceRepository;
+import com.atcrew.support.BillingTestSupport;
 import com.atcrew.support.RestDocsIntegrationSupport;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MvcResult;
@@ -26,6 +29,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 마감→삭제→복구로 이어지는 구인글 생명주기 전체를 REST Docs 스니펫으로 생성한다.
  */
 class JobPostingApiDocTest extends RestDocsIntegrationSupport {
+
+    @Autowired
+    EntitlementBalanceRepository balanceRepository;
 
     @Test
     void 구인글_생성부터_복구까지_전체_플로우_문서화() throws Exception {
@@ -378,8 +384,11 @@ class JobPostingApiDocTest extends RestDocsIntegrationSupport {
                                 true, true, true, false, "Asia/Seoul", "KR"))))
                 .andExpect(status().isCreated())
                 .andReturn();
-        return objectMapper.readTree(result.getResponse().getContentAsString())
-                .at("/data/accessToken").asText();
+        String body = result.getResponse().getContentAsString();
+        // 구인글은 유료 단건 게시 상품이라 게시·끌어올리기에 보유 개수가 필요하다(구인구직-R02).
+        BillingTestSupport.grantAllPostingProducts(balanceRepository,
+                objectMapper.readTree(body).at("/data/member/id").asText());
+        return objectMapper.readTree(body).at("/data/accessToken").asText();
     }
 
     /** 구인글 작성 요청 바디를 생성한다. */

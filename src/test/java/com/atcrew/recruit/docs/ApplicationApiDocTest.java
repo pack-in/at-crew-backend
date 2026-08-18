@@ -15,6 +15,8 @@ import com.atcrew.recruit.TeamActivityDuration;
 import com.atcrew.recruit.TeamPostingInfo;
 import com.atcrew.recruit.TeamWeeklyActivityTime;
 import com.atcrew.recruit.TeamWorkLocationType;
+import com.atcrew.billing.internal.persistence.EntitlementBalanceRepository;
+import com.atcrew.support.BillingTestSupport;
 import com.atcrew.support.RestDocsIntegrationSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -48,6 +50,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * REST 엔드포인트 대신 {@link RecruitService}를 직접 호출해 테스트 데이터를 준비한다.
  */
 class ApplicationApiDocTest extends RestDocsIntegrationSupport {
+
+    @Autowired
+    EntitlementBalanceRepository balanceRepository;
 
     @Autowired
     RecruitService recruitService;
@@ -230,6 +235,8 @@ class ApplicationApiDocTest extends RestDocsIntegrationSupport {
         String body = result.getResponse().getContentAsString();
         String accessToken = objectMapper.readTree(body).at("/data/accessToken").asText();
         String memberId = objectMapper.readTree(body).at("/data/member/id").asText();
+        // 구인글·팀원모집글은 유료 단건 게시 상품이다(구인구직-R02).
+        BillingTestSupport.grantAllPostingProducts(balanceRepository, memberId);
         return new RegisteredMember(accessToken, memberId);
     }
 
