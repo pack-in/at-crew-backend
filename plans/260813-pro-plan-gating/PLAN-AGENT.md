@@ -35,10 +35,14 @@
 
 depends on: portfolio 기능 구현
 
-- [ ] 포트폴리오 생성·수정·복제·삭제 API에 `hasProPlan` 검사 추가
-- [ ] 다운그레이드 계정은 삭제만 허용(`요금제-R01`)
-- [ ] 작품 업로드·수정의 포트폴리오 체크박스 상태를 응답에 담아 프론트가 disabled 처리할 수 있게 한다
-- [ ] 전용 에러코드로 반환해 프론트가 토스트 문구("포트폴리오 생성 및 추가는 유료 기능이에요")를 띄우게 한다
+- [x] 포트폴리오 생성·수정·복제·삭제 API에 `hasProPlan` 검사 추가 — 생성(`createShared`)·수정(`assertEditable`, SHARED만)에
+      `BillingService.hasProPlan` 게이팅 적용. 복제는 별도 생성 API 재호출 경로라 동일하게 적용됨(origin/main 병합,
+      `PortfolioServiceImpl.assertPro`, 2026-08-18)
+- [x] 다운그레이드 계정은 삭제만 허용(`요금제-R01`) — `deletePortfolio()`에는 `assertPro`를 걸지 않음(주석으로 의도 명시), 기존 코드가 이미 이 정책을 따르고 있었음
+- [ ] 작품 업로드·수정의 포트폴리오 체크박스 상태를 응답에 담아 프론트가 disabled 처리할 수 있게 한다 —
+      `ArtworkInfo.portfolioIncluded`는 "현재 포함 여부"만 나타내고 "플랜상 담을 수 있는지" 필드는 아직 없음. 미구현.
+- [x] 전용 에러코드로 반환해 프론트가 토스트 문구("포트폴리오 생성 및 추가는 유료 기능이에요")를 띄우게 한다 —
+      `PortfolioErrorCode.PRO_PLAN_REQUIRED`, 문구 그대로 일치
 
 ## PA-02. 다국어 노출 프로 게이팅
 

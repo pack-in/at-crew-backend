@@ -13,6 +13,7 @@ import com.atcrew.artwork.UploadArtworkCommand;
 import com.atcrew.artwork.Visibility;
 import com.atcrew.artwork.ArtworkChangedEvent;
 import com.atcrew.artwork.ArtworkPermanentlyDeletedEvent;
+import com.atcrew.artwork.ArtworkPortfolioSelectionRequested;
 import com.atcrew.artwork.internal.domain.artwork.Artwork;
 import com.atcrew.artwork.internal.domain.artwork.Material;
 import com.atcrew.artwork.internal.exception.ArtworkErrorCode;
@@ -41,6 +42,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 class ArtworkServiceImpl implements ArtworkService {
@@ -107,7 +109,7 @@ class ArtworkServiceImpl implements ArtworkService {
                 command.genres(),
                 command.tags(),
                 command.ageRating(),
-                command.visibility(),
+                visibilityOf(command.publishToFeed()),
                 command.tools(),
                 command.workDuration(),
                 command.cutCount(),
@@ -115,6 +117,10 @@ class ArtworkServiceImpl implements ArtworkService {
                 materials
         );
         Artwork saved = artworkRepository.save(artwork);
+        // 포트폴리오 편입은 portfolio가 이 트랜잭션 안에서 동기 처리한다 — 검증 실패 시 업로드까지 롤백된다.
+        // 이미지 처리 트리거(외부 Worker 호출, 롤백 불가)보다 먼저 검증을 끝내려고 순서를 앞에 뒀다.
+        eventPublisher.publishEvent(new ArtworkPortfolioSelectionRequested(
+                memberId, saved.getId(), command.portfolioIds()));
         mediaService.registerAndTriggerProcessing(MediaOwnerType.ARTWORK, saved.getId(),
                 command.imageKeys(), MediaVariantProfile.STANDARD_WITH_ADULT_BLUR);
         eventPublisher.publishEvent(new ArtworkChangedEvent(saved.getId()));
@@ -126,9 +132,12 @@ class ArtworkServiceImpl implements ArtworkService {
     @Override
     public ArtworkInfo getArtwork(String artworkId, String viewerMemberId) {
         Artwork artwork = findArtworkById(artworkId);
-        if (!artwork.isVisibleTo(viewerMemberId)
-                && (viewerMemberId == null || !artwork.getAuthorId().equals(viewerMemberId))) {
-            throw new ArtworkException(ArtworkErrorCode.ARTWORK_NOT_FOUND);
+        switch (artwork.accessFor(viewerMemberId)) {
+            case NOT_FOUND -> throw new ArtworkException(ArtworkErrorCode.ARTWORK_NOT_FOUND, artworkId);
+            case DELETED -> throw new ArtworkException(ArtworkErrorCode.ARTWORK_DELETED, artworkId);
+            case PRIVATE -> throw new ArtworkException(ArtworkErrorCode.ARTWORK_PRIVATE, artworkId);
+            case BLOCKED -> throw new ArtworkException(ArtworkErrorCode.ARTWORK_BLOCKED, artworkId);
+            case ALLOWED -> { }
         }
         MemberInfo author = memberService.findById(artwork.getAuthorId());
         return ArtworkMapper.toInfo(artwork, author);
@@ -207,12 +216,26 @@ class ArtworkServiceImpl implements ArtworkService {
 
     @Override
     @Transactional
-    public void updateVisibility(String memberId, String artworkId, Visibility visibility) {
+    public void updatePublication(String memberId, String artworkId, boolean publishToFeed,
+                                  List<String> portfolioIds) {
         Artwork artwork = findArtworkById(artworkId);
         artwork.assertOwner(memberId);
-        artwork.changeVisibility(visibility);
+        // 편입 반영이 먼저다 — 실패하면 공개 상태 변경까지 함께 롤백돼야 반쪽 상태가 남지 않는다.
+        // 공개 상태 변경을 뒤로 미루는 것도 같은 트랜잭션 안의 쓰기 순서 때문이다 — artworks를 먼저 dirty로
+        // 만들면 편입 반영의 벌크 DELETE(flushAutomatically)가 artworks를 portfolio_items보다 먼저 flush해,
+        // portfolio_items → artworks 순으로 쓰는 포트폴리오 삭제 경로와 잠금 순서가 어긋난다
+        // (docs/design/portfolio-module-design.md §8.9).
+        eventPublisher.publishEvent(new ArtworkPortfolioSelectionRequested(memberId, artworkId, portfolioIds));
+        artwork.changeVisibility(visibilityOf(publishToFeed));
         artworkRepository.save(artwork);
         eventPublisher.publishEvent(new ArtworkChangedEvent(artworkId));
+    }
+
+    // 공개 상태는 사용자가 고르는 값이 아니라 노출 위치 조합에서 계산되는 파생값이다(업로드-R09).
+    // 라이브 포트폴리오 편입까지 반영한 최종 접근 판정은 Artwork.accessFor가 담당한다(마이페이지_작가-R04).
+    // "링크 공개"라는 제3의 상태는 없으므로 LINK_ONLY를 새로 만들어내는 경로도 없다.
+    private Visibility visibilityOf(boolean publishToFeed) {
+        return publishToFeed ? Visibility.PUBLIC : Visibility.PRIVATE;
     }
 
     @Override
@@ -244,6 +267,8 @@ class ArtworkServiceImpl implements ArtworkService {
             List<Predicate> predicates = new ArrayList<>();
             predicates.add(cb.equal(root.get("status"), ArtworkStatus.READY));
             predicates.add(cb.equal(root.get("visibility"), Visibility.PUBLIC));
+            // 운영 차단된 작품은 외부 노출을 즉시 중단한다(마이페이지_작가-R39).
+            predicates.add(cb.isNull(root.get("blockedAt")));
             if (artworkField != null) {
                 predicates.add(cb.equal(root.get("artworkField"), artworkField));
             }
@@ -284,9 +309,11 @@ class ArtworkServiceImpl implements ArtworkService {
     public void restoreArtworks(String memberId, List<String> artworkIds) {
         List<Artwork> artworks = artworkRepository.findAllById(artworkIds);
         validateAllFound(artworks, artworkIds);
-        // 소유권을 먼저 확인한다 — 남의 작품 ID를 섞어 보낸 요청에 개수 제한 오류를 돌려주지 않기 위함이다.
+        // 소유권·휴지통 상태를 먼저 확인한다 — 남의 작품이거나 휴지통에 없는 작품 ID를 섞어 보낸 요청에
+        // 개수 제한 오류를 돌려주지 않기 위함이다.
         for (Artwork artwork : artworks) {
             artwork.assertOwner(memberId);
+            artwork.assertDeleted();
         }
         // 복구도 보유 작품이 늘어나는 행위라 스타터 제한을 그대로 적용한다(휴지통-R03).
         assertArtworkQuota(memberId, artworks.size());
@@ -308,18 +335,39 @@ class ArtworkServiceImpl implements ArtworkService {
         }
         artworkRepository.deleteAll(artworks);
         for (Artwork artwork : artworks) {
-            List<String> allKeys = artwork.getImages().stream()
-                    .flatMap(img -> List.of(
-                            img.getOriginalKey(),
-                            img.getThumbKey(),
-                            img.getThumbAdultKey(),
-                            img.getOriginalAvifKey()
-                    ).stream())
-                    .filter(k -> k != null && !k.isBlank())
-                    .toList();
-            eventPublisher.publishEvent(new ArtworkPermanentlyDeletedEvent(artwork.getId(), allKeys));
+            eventPublisher.publishEvent(new ArtworkPermanentlyDeletedEvent(artwork.getId(), allImageKeys(artwork)));
             eventPublisher.publishEvent(new ArtworkChangedEvent(artwork.getId()));
         }
+    }
+
+    /**
+     * 영구 삭제 대상 R2 key 전체 — 이미지 4종에 <b>사용자 지정 썸네일 key</b>까지 포함한다.
+     *
+     * <p>지정 썸네일은 이미지 처리 대상이 아니라 media_assets에 행이 없어, 여기서 빠지면 어디서도
+     * 지워지지 않고 R2에 남는다. 더 중요한 것은 고정형 스냅샷 보존 판정이 이 key로 스냅샷을 찾는다는
+     * 점이다({@code PortfolioItemSnapshot.thumb_key}) — 후보 목록에 없으면 스냅샷이 매칭되지 않아
+     * 그 스냅샷이 참조 중인 상세 이미지까지 삭제된다(docs/design/portfolio-module-design.md §5.6).
+     */
+    private List<String> allImageKeys(Artwork artwork) {
+        Stream<String> imageKeys = artwork.getImages().stream()
+                .flatMap(img -> Stream.of(
+                        img.getOriginalKey(),
+                        img.getThumbKey(),
+                        img.getThumbAdultKey(),
+                        img.getOriginalAvifKey()
+                ));
+        return Stream.concat(imageKeys, Stream.of(artwork.getThumbnailKey()))
+                .filter(k -> k != null && !k.isBlank())
+                .distinct()
+                .toList();
+    }
+
+    @Override
+    @Transactional
+    public void updatePortfolioInclusion(String artworkId, boolean included) {
+        Artwork artwork = findArtworkById(artworkId);
+        artwork.updatePortfolioInclusion(included);
+        artworkRepository.save(artwork);
     }
 
     @Override
@@ -405,7 +453,9 @@ class ArtworkServiceImpl implements ArtworkService {
         if (billingService.hasProPlan(memberId)) {
             return;
         }
-        long owned = artworkRepository.countByAuthorIdAndStatusNot(memberId, ArtworkStatus.DELETED);
+        // 보유 작품 행에 락을 걸어 개수를 센다 — 락 없는 count만으로는 동시 요청이 같은 개수를 보고
+        // 둘 다 통과해 제한을 넘길 수 있다.
+        long owned = artworkRepository.findByAuthorIdAndStatusNotForUpdate(memberId, ArtworkStatus.DELETED).size();
         if (owned + increment > STARTER_ARTWORK_LIMIT) {
             throw new ArtworkException(ArtworkErrorCode.STARTER_ARTWORK_LIMIT_EXCEEDED,
                     "memberId=" + memberId + ", owned=" + owned + ", increment=" + increment);

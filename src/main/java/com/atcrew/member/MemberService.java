@@ -24,6 +24,12 @@ public interface MemberService {
 
     MemberInfo findByHandle(String handle);
 
+    /**
+     * 주어진 handle을 가진(탈퇴 여부 무관) 회원이 존재하는지 확인한다. 포트폴리오 공유 slug 발급 시 충돌 검사용.
+     * 탈퇴 시 회원의 handle은 null로 클리어되므로, 활성 회원의 handle만 "존재"로 판단한다 — 별도 필터 불필요.
+     */
+    boolean existsByHandle(String handle);
+
     MemberInfo findByLoginEmailAndProvider(String loginEmail, AuthProvider authProvider);
 
     /**

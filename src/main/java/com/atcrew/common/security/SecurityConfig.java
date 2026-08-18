@@ -114,6 +114,15 @@ class SecurityConfig {
                             .requestMatchers(HttpMethod.GET, "/api/recruit/job-seeking-posts/me").authenticated()
                             .requestMatchers(HttpMethod.GET, "/api/recruit/job-seeking-posts").permitAll()
                             .requestMatchers(HttpMethod.GET, "/api/recruit/job-seeking-posts/{jobSeekingPostId}").permitAll();
+                    // portfolio 모듈 — 공유 링크 열람만 인증 불필요, 나머지는 기본값 anyRequest().authenticated()가 커버한다.
+                    // /{portfolioId} 템플릿은 permitAll로 선언하지 않으므로 리터럴 경로(/me, /selectable, /shared)가
+                    // 템플릿에 가려져 인증이 우회될 여지가 없다 — 추후 /{portfolioId}를 공개로 열 때는
+                    // recruit와 같은 함정에 주의해 리터럴 경로를 먼저 선언해야 한다.
+                    auth.requestMatchers(HttpMethod.GET, "/api/portfolios/shared/{identifier}").permitAll()
+                            .requestMatchers(HttpMethod.GET, "/api/portfolios/shared/{identifier}/artworks").permitAll()
+                            .requestMatchers(HttpMethod.GET, "/api/portfolios/shared/{identifier}/snapshots/{snapshotId}")
+                            .permitAll();
+
                     if (!isProd()) {
                         auth.requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll();
                     }
