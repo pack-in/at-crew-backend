@@ -309,9 +309,11 @@ class ArtworkServiceImpl implements ArtworkService {
     public void restoreArtworks(String memberId, List<String> artworkIds) {
         List<Artwork> artworks = artworkRepository.findAllById(artworkIds);
         validateAllFound(artworks, artworkIds);
-        // 소유권을 먼저 확인한다 — 남의 작품 ID를 섞어 보낸 요청에 개수 제한 오류를 돌려주지 않기 위함이다.
+        // 소유권·휴지통 상태를 먼저 확인한다 — 남의 작품이거나 휴지통에 없는 작품 ID를 섞어 보낸 요청에
+        // 개수 제한 오류를 돌려주지 않기 위함이다.
         for (Artwork artwork : artworks) {
             artwork.assertOwner(memberId);
+            artwork.assertDeleted();
         }
         // 복구도 보유 작품이 늘어나는 행위라 스타터 제한을 그대로 적용한다(휴지통-R03).
         assertArtworkQuota(memberId, artworks.size());
@@ -451,7 +453,9 @@ class ArtworkServiceImpl implements ArtworkService {
         if (billingService.hasProPlan(memberId)) {
             return;
         }
-        long owned = artworkRepository.countByAuthorIdAndStatusNot(memberId, ArtworkStatus.DELETED);
+        // 보유 작품 행에 락을 걸어 개수를 센다 — 락 없는 count만으로는 동시 요청이 같은 개수를 보고
+        // 둘 다 통과해 제한을 넘길 수 있다.
+        long owned = artworkRepository.findByAuthorIdAndStatusNotForUpdate(memberId, ArtworkStatus.DELETED).size();
         if (owned + increment > STARTER_ARTWORK_LIMIT) {
             throw new ArtworkException(ArtworkErrorCode.STARTER_ARTWORK_LIMIT_EXCEEDED,
                     "memberId=" + memberId + ", owned=" + owned + ", increment=" + increment);
