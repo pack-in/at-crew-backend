@@ -60,21 +60,30 @@ stripe:
 
 billing:
   frontend-base-url: http://localhost:3000
+  # MVP 단일 요금제(PH-08) — main application.yml과 동일하게 pro-monthly만 enabled.
   products:
     pro-monthly:
       price-id: price_test_pro_monthly
-      amount: 599
-      list-amount: 1199
+      amount: 800
+      list-amount:
+      enabled: true
     pro-yearly:
       price-id: price_test_pro_yearly
       amount: 5999
       list-amount: 11999
+      enabled: false
     team-posting:
       price-id: price_test_team_posting
       amount: 3999
+      list-amount:
+      enabled: false
     boost:
       price-id: price_test_boost
       amount: 799
+      list-amount:
+      enabled: false
     job-posting:
       price-id: price_test_job_posting
       amount: 9999
+      list-amount:
+      enabled: false

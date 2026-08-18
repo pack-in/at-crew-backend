@@ -241,16 +241,21 @@ class BillingModuleTests {
     // === 카탈로그 ===
 
     @Test
-    void 비로그인_카탈로그는_모든_상품을_구매가능_상태로_내려준다() {
+    void MVP_단일_요금제_카탈로그는_Portfolio_Pro_하나만_내려준다() {
+        // PH-08(2026-08-18): pro-monthly만 enabled — 나머지 4종은 판매 중단이라 카탈로그에서 빠진다.
         List<CatalogItemInfo> catalog = billingService.getCatalog(null);
 
-        assertThat(catalog).hasSize(BillingProduct.values().length);
-        assertThat(catalog).allMatch(item -> item.cta() == CatalogItemInfo.CtaState.AVAILABLE);
-        assertThat(catalog).allMatch(item -> "USD".equals(item.currency()));
+        assertThat(catalog).hasSize(1);
+        CatalogItemInfo proMonthly = catalog.get(0);
+        assertThat(proMonthly.product()).isEqualTo(BillingProduct.PRO_MONTHLY);
+        assertThat(proMonthly.amount()).isEqualTo(800);
+        assertThat(proMonthly.listAmount()).isNull();
+        assertThat(proMonthly.cta()).isEqualTo(CatalogItemInfo.CtaState.AVAILABLE);
+        assertThat(proMonthly.currency()).isEqualTo("USD");
     }
 
     @Test
-    void 이용중인_플랜은_CURRENT_다른_주기는_CHANGE로_내려간다() {
+    void 이용중인_플랜은_CURRENT로_내려간다() {
         String memberId = registerMemberWithCustomer("catalog-pro", "cus_catalog_pro");
         webhookService.handle(subscriptionEvent("evt_catalog_pro", "customer.subscription.created",
                 "sub_catalog", "cus_catalog_pro", "active", BASE_CREATED));
@@ -258,8 +263,17 @@ class BillingModuleTests {
         List<CatalogItemInfo> catalog = billingService.getCatalog(memberId);
 
         assertThat(ctaOf(catalog, BillingProduct.PRO_MONTHLY)).isEqualTo(CatalogItemInfo.CtaState.CURRENT);
-        assertThat(ctaOf(catalog, BillingProduct.PRO_YEARLY)).isEqualTo(CatalogItemInfo.CtaState.CHANGE);
-        assertThat(ctaOf(catalog, BillingProduct.BOOST)).isEqualTo(CatalogItemInfo.CtaState.AVAILABLE);
+    }
+
+    @Test
+    void 판매_중단_상품은_Checkout_생성이_막힌다() {
+        // PH-08: 카탈로그에서 숨겨도 API 직접 호출로 우회 구매하는 것까지 막는다.
+        String memberId = registerMember("disabled-checkout");
+
+        assertThatThrownBy(() -> billingService.createCheckoutSession(memberId, BillingProduct.TEAM_POSTING))
+                .isInstanceOf(DomainException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("PRICE_NOT_CONFIGURED");
     }
 
     // === 헬퍼 ===

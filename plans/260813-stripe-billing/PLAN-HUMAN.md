@@ -129,3 +129,31 @@ sandbox 검증이 끝난 뒤 별도로 판단한다. 여기 항목이 끝나기 
 - [ ] 부가세·전자세금계산서 처리 방식 확정
 - [ ] prod 웹훅 엔드포인트 등록 — `https://api.at-crew.com/internal/billing/stripe/webhook`
 - [ ] 라이브 키를 prod 환경변수에 주입(`.env` 아님)
+
+## PH-08. MVP 단일 요금제(Portfolio Pro $8) 결정 — 해결됨(2026-08-18)
+
+`origin/dev`에서 "미해결"로 기록됐던 세 가지를 사용자가 직접 결정하고 main에서 구현·병합 완료.
+(dev 브랜치가 main에 아직 합쳐지지 않은 상태에서 진행됐으므로, dev↔main 재병합 시 이 섹션과
+`billing.products.*` 설정 충돌 여부를 확인할 것 — 내용은 동일하지만 커밋 이력이 다르다.)
+
+- [x] **단건 상품 3종 처리** — "판매 중단 + 게이팅 유지(게시 봉인)" 선택. `billing.products.*`에
+      `enabled` 플래그 추가(제안된 그대로, ~20줄), `team-posting`/`boost`/`job-posting`을
+      `enabled: false`로 전환. 카탈로그·Checkout 양쪽에서 막되 recruit의 기존 게이팅(entitlement
+      소비 체크)은 손대지 않음 — 결과적으로 팀원모집글·구인글 게시와 끌어올리기는 보유 잔량이
+      있는 극소수를 제외하면 막힌 상태로 MVP 기간을 보낸다.
+- [x] **Portfolio Pro 가격 구조** — 월 $8 단일가로 확정. 기존 `pro-monthly`(정가 $11.99 취소선 포함
+      $5.99)를 `amount: 800`, `list-amount: null`로 교체. `pro-yearly`는 `enabled: false`로 카탈로그
+      숨김(구조 자체는 유지 — 재개 시 enabled만 true로 되돌리면 됨).
+- [x] **Portfolio Pro 혜택** — 이번 결정에서는 다루지 않음. 기존 그대로 "스타터 작품 4개 제한 해제"가
+      유일한 혜택. 공유 포트폴리오·다국어 게이팅은 여전히 `plans/260813-pro-plan-gating/`으로 분리된
+      상태(기능 자체 미구현).
+- [x] **Figma 대조** — `UI개편_설정`(6230:47908) 확인 완료. **아직 옛 원화 다단계 요금제 화면 그대로라
+      Figma에서 확인할 수 있는 게 없었음** — USD 전환·단일요금제 전환 모두 디자인 미반영 상태. 즉 이
+      결정은 Figma 근거가 아니라 순수 비즈니스 판단으로 내려짐. Figma가 나중에 갱신되면 이 로그와
+      대조해 정합성 확인 필요.
+
+구현 위치: `BillingProperties.Product.enabled()`, `BillingServiceImpl.getCatalog()`/
+`createCheckoutSession()`(disabled 상품은 카탈로그 제외 + `PRICE_NOT_CONFIGURED` 503), `application.yml`/
+`src/test/resources/application.yml`, `docs/design/billing-frontend-integration.md`(§1 카탈로그 예시·
+§5 게이팅 모달 MVP 제약 반영). 테스트: `BillingModuleTests`(카탈로그 1개만 반환, disabled 상품 Checkout
+차단), `BillingPropertiesBindingTest`(enabled 바인딩).
