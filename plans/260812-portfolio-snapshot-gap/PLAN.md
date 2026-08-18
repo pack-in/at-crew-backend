@@ -31,6 +31,5 @@ graph TD
     classDef done fill:#2f6f4f,color:#fff,stroke:#1f4d36
     classDef inprogress fill:#8a6d1e,color:#fff,stroke:#5c4a14
     classDef pending fill:#3a3f4b,color:#fff,stroke:#20232b
-    class PA01,PA02,PA03,PA04,PA05,PH01,PH02,PH05,PH06 done
-    class PH03,PH04,PH07,PH08,PH09 pending
+    class PA01,PA02,PA03,PA04,PA05,PH01,PH02,PH03,PH04,PH05,PH06,PH07,PH08,PH09 done
 ```
