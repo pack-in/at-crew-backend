@@ -162,11 +162,21 @@ build/generated-snippets/
 
 ---
 
-## 6. 향후 Swagger 자동화 계획
+## 6. Swagger 자동화
 
-현재는 REST Docs 스니펫(`.adoc` 파일)을 생성하는 단계다. 향후 아래 도구를 도입해 **스니펫 → OpenAPI 스펙 → Swagger UI** 파이프라인을 구축할 계획이다.
+**(2026-08-18 구현 완료)** 프론트엔드에 API 문서를 지속적으로 최신 상태로 전달하기 위해 아래 파이프라인을
+구축했다: `OpenApiExportTest`(`src/test/java/com/atcrew/support/`)가 `RestDocsIntegrationSupport`의 전체
+Spring 컨텍스트에서 `GET /v3/api-docs`를 호출해 `build/openapi/openapi.json`으로 저장하고,
+`.github/workflows/docs.yml`이 main push마다 이 테스트를 실행해 `docs/api-site/index.html`(정적
+Swagger UI, CDN 번들 사용)과 함께 GitHub Pages로 배포한다. prod는 보안상 springdoc이 꺼져 있어
+(application-prod.yml, 2026-08-07 결정) 실서버가 문서 소스가 될 수 없으므로, 이 CI 산출물이 유일한
+공개 문서 소스다 — deploy.yml(EC2 배포)과는 독립적으로 동작하며 AWS 자격증명이 필요 없다.
 
-### restdocs-api-spec 도입
+이 방식은 springdoc이 컨트롤러의 `@Operation`/`@ApiResponse` 어노테이션에서 직접 추출한 스펙을 쓴다.
+REST Docs 스니펫(`fieldWithPath(...).description(...)`)의 더 풍부한 필드 설명까지 스펙에 반영하고
+싶다면 아래 `restdocs-api-spec` 도입을 검토할 수 있다 — 지금은 다루지 않는다.
+
+### (검토 보류) restdocs-api-spec 도입
 
 [`ePages-de/restdocs-api-spec`](https://github.com/ePages-de/restdocs-api-spec)을 사용하면 REST Docs 테스트에서 OpenAPI 3.0 스펙을 자동 생성할 수 있다.
 

@@ -48,5 +48,5 @@
 | [docs/design/media-module-design.md](docs/design/media-module-design.md) | media 모듈 설계 — artwork에 내장돼 있던 Presigned URL 발급·Worker 트리거·webhook·재시도·고아파일 정리를 범용 모듈로 추출, artwork·recruit이 공용 소비 |
 | [docs/design/global-country-plan-design.md](docs/design/global-country-plan-design.md) | 거주 국가(Member.countryCode) 설계 — Phase 1. Pro 플랜 노출국가(Artwork.targetCountryCodes)는 로드맵 5순위(결제/구독) 도달 후 Phase 2로 보류 |
 | [docs/operations/moderation-block.md](docs/operations/moderation-block.md) | 운영 차단(모더레이션) 절차 — 차단 SQL·재색인 호출 세트·보관 정책. 관리자 API 도입 전까지 DB 직접 UPDATE로 수행 |
-| [docs/testing/rest-docs-guide.md](docs/testing/rest-docs-guide.md) | MockMvc + Spring REST Docs 테스트 전략, 계층 구조, 새 API 개발 체크리스트 |
+| [docs/testing/rest-docs-guide.md](docs/testing/rest-docs-guide.md) | MockMvc + Spring REST Docs 테스트 전략, 계층 구조, 새 API 개발 체크리스트. §6에 API 문서 자동 퍼블리시 파이프라인(https://pack-in.github.io/at-crew-backend/, main push마다 자동 갱신) |
 | [docs/roadmap.md](docs/roadmap.md) | 모듈 개발 로드맵 — Figma 대비 미구현 영역 및 착수 우선순위(인증 시스템 → recruit → 기업 프로필 → 검색 → 결제 → 설정) |

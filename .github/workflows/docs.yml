@@ -1,0 +1,59 @@
+name: Publish API Docs
+
+# main push마다 OpenAPI 스펙을 떠서 정적 Swagger UI 사이트로 GitHub Pages에 배포한다.
+# prod는 보안상 springdoc이 꺼져 있으므로(application-prod.yml) 실서버가 문서 소스가 될 수 없다 —
+# OpenApiExportTest가 유일한 소스. 정적 산출물만 배포하므로 EC2 접근이 필요 없고, deploy.yml과
+# 무관하게 독립적으로 동작한다.
+#
+# 최초 1회 필요: repo Settings > Pages > Source를 "GitHub Actions"로 설정해야 한다(관리자 권한 필요).
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      TZ: UTC
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-java@v5
+        with:
+          java-version: "21"
+          distribution: "temurin"
+          cache: "gradle"
+
+      - name: OpenAPI 스펙 추출 (build/openapi/openapi.json)
+        run: ./gradlew test --tests "com.atcrew.support.OpenApiExportTest"
+
+      - name: 정적 사이트 조립
+        run: |
+          mkdir -p site
+          cp docs/api-site/index.html site/index.html
+          cp build/openapi/openapi.json site/openapi.json
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
