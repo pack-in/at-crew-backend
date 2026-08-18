@@ -40,7 +40,14 @@ public interface PortfolioItemRepository extends JpaRepository<PortfolioItem, Lo
     List<String> findDistinctPortfolioIds();
 
     // 라이브 멤버십 재계산용 — 0이면 artworks.portfolio_included를 false로 되돌린다(§5.4).
-    long countByArtworkId(String artworkId);
+    // 열람이 막힌 포트폴리오(탈퇴·운영 차단)는 유효한 공개 위치가 아니므로 세지 않는다 — 세면 탈퇴 시
+    // 해제한 편입 여부를 6시간 보정 배치가 도로 켜서 탈퇴 회원 작품이 다시 열린다(§5.2, §5.4).
+    @Query("""
+            select count(i) from PortfolioItem i
+            where i.artworkId = :artworkId
+              and exists (select 1 from Portfolio p where p.id = i.portfolioId and p.blockedAt is null)
+            """)
+    long countActiveByArtworkId(@Param("artworkId") String artworkId);
 
     boolean existsByPortfolioIdAndArtworkId(String portfolioId, String artworkId);
 }

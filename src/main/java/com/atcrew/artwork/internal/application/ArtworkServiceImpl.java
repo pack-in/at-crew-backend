@@ -41,6 +41,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 class ArtworkServiceImpl implements ArtworkService {
@@ -212,10 +213,14 @@ class ArtworkServiceImpl implements ArtworkService {
                                   List<String> portfolioIds) {
         Artwork artwork = findArtworkById(artworkId);
         artwork.assertOwner(memberId);
+        // 편입 반영이 먼저다 — 실패하면 공개 상태 변경까지 함께 롤백돼야 반쪽 상태가 남지 않는다.
+        // 공개 상태 변경을 뒤로 미루는 것도 같은 트랜잭션 안의 쓰기 순서 때문이다 — artworks를 먼저 dirty로
+        // 만들면 편입 반영의 벌크 DELETE(flushAutomatically)가 artworks를 portfolio_items보다 먼저 flush해,
+        // portfolio_items → artworks 순으로 쓰는 포트폴리오 삭제 경로와 잠금 순서가 어긋난다
+        // (docs/design/portfolio-module-design.md §8.9).
+        eventPublisher.publishEvent(new ArtworkPortfolioSelectionRequested(memberId, artworkId, portfolioIds));
         artwork.changeVisibility(visibilityOf(publishToFeed));
         artworkRepository.save(artwork);
-        // 편입 반영이 먼저다 — 실패하면 공개 상태 변경까지 함께 롤백돼야 반쪽 상태가 남지 않는다.
-        eventPublisher.publishEvent(new ArtworkPortfolioSelectionRequested(memberId, artworkId, portfolioIds));
         eventPublisher.publishEvent(new ArtworkChangedEvent(artworkId));
     }
 
@@ -316,18 +321,31 @@ class ArtworkServiceImpl implements ArtworkService {
         }
         artworkRepository.deleteAll(artworks);
         for (Artwork artwork : artworks) {
-            List<String> allKeys = artwork.getImages().stream()
-                    .flatMap(img -> List.of(
-                            img.getOriginalKey(),
-                            img.getThumbKey(),
-                            img.getThumbAdultKey(),
-                            img.getOriginalAvifKey()
-                    ).stream())
-                    .filter(k -> k != null && !k.isBlank())
-                    .toList();
-            eventPublisher.publishEvent(new ArtworkPermanentlyDeletedEvent(artwork.getId(), allKeys));
+            eventPublisher.publishEvent(new ArtworkPermanentlyDeletedEvent(artwork.getId(), allImageKeys(artwork)));
             eventPublisher.publishEvent(new ArtworkChangedEvent(artwork.getId()));
         }
+    }
+
+    /**
+     * 영구 삭제 대상 R2 key 전체 — 이미지 4종에 <b>사용자 지정 썸네일 key</b>까지 포함한다.
+     *
+     * <p>지정 썸네일은 이미지 처리 대상이 아니라 media_assets에 행이 없어, 여기서 빠지면 어디서도
+     * 지워지지 않고 R2에 남는다. 더 중요한 것은 고정형 스냅샷 보존 판정이 이 key로 스냅샷을 찾는다는
+     * 점이다({@code PortfolioItemSnapshot.thumb_key}) — 후보 목록에 없으면 스냅샷이 매칭되지 않아
+     * 그 스냅샷이 참조 중인 상세 이미지까지 삭제된다(docs/design/portfolio-module-design.md §5.6).
+     */
+    private List<String> allImageKeys(Artwork artwork) {
+        Stream<String> imageKeys = artwork.getImages().stream()
+                .flatMap(img -> Stream.of(
+                        img.getOriginalKey(),
+                        img.getThumbKey(),
+                        img.getThumbAdultKey(),
+                        img.getOriginalAvifKey()
+                ));
+        return Stream.concat(imageKeys, Stream.of(artwork.getThumbnailKey()))
+                .filter(k -> k != null && !k.isBlank())
+                .distinct()
+                .toList();
     }
 
     @Override

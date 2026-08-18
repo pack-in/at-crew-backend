@@ -75,7 +75,8 @@ class PortfolioController {
             @Parameter(description = "반영 유형 필터 (LIVE/SNAPSHOT)") @RequestParam(required = false) ReflectionType reflectionType,
             @Parameter(description = "정렬 (OLDEST/LATEST/UPDATED, 기본 LATEST). UPDATED는 [수정하기]로 저장한 시각 기준입니다")
             @RequestParam(required = false) PortfolioSort sort,
-            @Parameter(description = "커서 (정렬 기준 시각 millis)") @RequestParam(required = false) String cursor,
+            @Parameter(description = "커서 (직전 페이지 마지막 항목의 nextCursor 값을 그대로 전달)")
+            @RequestParam(required = false) String cursor,
             @Parameter(description = "페이지 크기 (기본 20, 최대 50)") @RequestParam(required = false) Integer size) {
         String memberId = securityUtils.getCurrentMemberId();
         return ApiResponse.success(portfolioService.getMyPortfolios(

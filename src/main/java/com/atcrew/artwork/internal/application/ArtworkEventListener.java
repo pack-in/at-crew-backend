@@ -57,11 +57,13 @@ class ArtworkEventListener {
         // 보존 대상이 즉시 삭제되는 일은 없다.
         List<String> deletableKeys = event.allImageKeys();
         try {
-            deletableKeys = deletableKeys(event.allImageKeys());
+            Set<String> retainedKeys = retainedKeys(event.allImageKeys());
+            deletableKeys = event.allImageKeys().stream().filter(key -> !retainedKeys.contains(key)).toList();
+            // 추적 기록을 R2 삭제보다 먼저 남긴다 — 삭제가 중간에 실패해도 보존 key가 미아가 되지 않는다.
+            markRetainedAsOrphaned(retainedKeys);
             mediaService.deleteFiles(deletableKeys);
             log.info("영구 삭제 R2 파일 제거: artworkId={} keyCount={} retainedCount={}",
-                    event.artworkId(), deletableKeys.size(),
-                    event.allImageKeys().size() - deletableKeys.size());
+                    event.artworkId(), deletableKeys.size(), retainedKeys.size());
         } catch (Exception e) {
             log.error("R2 파일 삭제 실패 — media 고아 키 정리 큐에 적재: artworkId={}", event.artworkId(), e);
             if (!deletableKeys.isEmpty()) {
@@ -77,17 +79,27 @@ class ArtworkEventListener {
      * 활성 고정형 포트폴리오 스냅샷이 참조 중인 key는 삭제 대상에서 제외한다 — 원본을 영구 삭제해도
      * 스냅샷 이미지는 남아야 한다(docs/design/portfolio-module-design.md §5.6).
      */
-    private List<String> deletableKeys(List<String> allImageKeys) {
+    private Set<String> retainedKeys(List<String> allImageKeys) {
         if (allImageKeys.isEmpty() || retainedMediaKeyProviders.isEmpty()) {
-            return allImageKeys;
+            return Set.of();
         }
         Set<String> retained = new HashSet<>();
         for (RetainedMediaKeyProvider provider : retainedMediaKeyProviders) {
             retained.addAll(provider.retainedKeys(allImageKeys));
         }
-        if (retained.isEmpty()) {
-            return allImageKeys;
+        return retained;
+    }
+
+    /**
+     * 보존된 key는 고아 정리 큐에 적재한다(§5.6) — 원본 행이 사라진 뒤로는 이 key를 추적할 수단이
+     * 스냅샷뿐이라, 그 스냅샷을 담은 고정형 포트폴리오까지 삭제되면 아무도 모르는 R2 파일로 남는다.
+     * 큐에 넣어두면 시간당 배치가 같은 보존 판정을 다시 해 참조가 남아 있는 동안에는 유예하고
+     * (OrphanedMediaKey.keepOnly), 참조가 끊기는 순간 정리한다.
+     */
+    private void markRetainedAsOrphaned(Set<String> retainedKeys) {
+        if (retainedKeys.isEmpty()) {
+            return;
         }
-        return allImageKeys.stream().filter(key -> !retained.contains(key)).toList();
+        mediaService.markOrphaned(List.copyOf(retainedKeys));
     }
 }

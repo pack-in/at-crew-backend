@@ -74,6 +74,18 @@ class ArtworkEventListenerTest {
         verify(mediaService).deleteFiles(List.of("raw/1.png", "raw/2.png"));
     }
 
+    // 보존된 key는 원본 행이 사라진 뒤 스냅샷 말고는 추적할 곳이 없다 — 고아 큐에 넣어두지 않으면
+    // 그 스냅샷을 담은 고정형 포트폴리오가 삭제되는 순간 R2에 영구 누수된다(§5.6).
+    @Test
+    void 보존된_키는_고아_큐에_적재해_추적을_남긴다() {
+        List<String> keys = List.of("raw/1.png", "thumb/1.avif");
+        when(retainedMediaKeyProvider.retainedKeys(anyCollection())).thenReturn(Set.of("thumb/1.avif"));
+
+        listener.onPermanentlyDeleted(new ArtworkPermanentlyDeletedEvent("artwork-1", keys));
+
+        verify(mediaService).markOrphaned(List.of("thumb/1.avif"));
+    }
+
     @Test
     void 삭제할_키가_전부_보존_대상이면_삭제_요청도_비어있다() {
         List<String> keys = List.of("raw/1.png");
@@ -82,7 +94,7 @@ class ArtworkEventListenerTest {
         listener.onPermanentlyDeleted(new ArtworkPermanentlyDeletedEvent("artwork-1", keys));
 
         verify(mediaService).deleteFiles(List.of());
-        verify(mediaService, never()).markOrphaned(anyList());
+        verify(mediaService).markOrphaned(List.of("raw/1.png"));
     }
 
     @Test

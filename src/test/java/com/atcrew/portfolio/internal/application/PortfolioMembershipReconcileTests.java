@@ -24,6 +24,7 @@ import com.atcrew.portfolio.internal.persistence.PortfolioRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.modulith.test.ApplicationModuleTest;
 import org.testcontainers.containers.MariaDBContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -78,6 +79,10 @@ class PortfolioMembershipReconcileTests {
     // 공개 범위 변경 전제인 READY 전환을 실제 이미지 처리 경로로 만든다(uploadReadyArtwork).
     @Autowired
     MediaCallbackService mediaCallbackService;
+
+    // 탈퇴·운영 차단은 관리자 API 없이 DB 직접 UPDATE로 이뤄지므로 테스트도 같은 경로를 쓴다.
+    @Autowired
+    JdbcTemplate jdbcTemplate;
 
     // 작품 피드 공개 OFF는 노출 제외 트리거가 아니다 — 라이브 포트폴리오 소속 자체가 유효한 공개 위치라
     // 구성 행도 개수도 그대로여야 한다(마이페이지_작가-R38·R39).
@@ -158,6 +163,48 @@ class PortfolioMembershipReconcileTests {
                 .extracting(PortfolioItem::getArtworkId)
                 .containsExactly(keptArtworkId, trashedArtworkId);
         assertThat(portfolioRepository.findById(artistPageId).orElseThrow().getItemCount()).isEqualTo(1);
+    }
+
+    // 고아 행 제거(portfolio_items)와 개수 재계산(portfolios)이 한 번의 보정에서 함께 일어나는 경로다 —
+    // 쓰기 순서를 items → portfolios로 고정하기 위해 고아 행 삭제를 먼저 flush하도록 바꿨다(§8.9 결함 E).
+    @Test
+    void 보정_배치는_고아_행_제거와_휴지통_개수_재계산을_함께_반영한다() {
+        String memberId = registerMember();
+        String keptArtworkId = uploadArtwork(memberId);
+        String trashedArtworkId = uploadArtwork(memberId);
+        String artistPageId = artistPageId(memberId);
+        portfolioService.addArtworks(memberId, artistPageId, List.of(keptArtworkId, trashedArtworkId));
+        artworkService.deleteArtwork(memberId, trashedArtworkId);
+        // 영구 삭제 이벤트를 놓쳐 원본 없는 구성 행이 남은 상태를 만든다.
+        portfolioItemRepository.save(PortfolioItem.of(artistPageId, UUID.randomUUID().toString(), 2));
+
+        scheduler.reconcileMemberships();
+
+        assertThat(portfolioItemRepository.findByPortfolioIdOrderByOrdinal(artistPageId))
+                .extracting(PortfolioItem::getArtworkId)
+                .containsExactly(keptArtworkId, trashedArtworkId);
+        assertThat(portfolioRepository.findById(artistPageId).orElseThrow().getItemCount()).isEqualTo(1);
+        assertThat(artworkRepository.findById(keptArtworkId).orElseThrow().isPortfolioIncluded()).isTrue();
+    }
+
+    // 열람이 막힌 포트폴리오(탈퇴·운영 차단)는 유효한 공개 위치가 아니다 — 보정 배치가 편입 여부를
+    // 되살리면 탈퇴 처리에서 해제한 값이 6시간 만에 뒤집혀 탈퇴 회원 작품이 다시 열린다(§5.2, §5.4).
+    @Test
+    void 보정_배치는_차단된_포트폴리오의_편입_여부를_되살리지_않는다() {
+        String memberId = registerMember();
+        String artworkId = uploadArtwork(memberId);
+        String artistPageId = artistPageId(memberId);
+        portfolioService.addArtworks(memberId, artistPageId, List.of(artworkId));
+        // 탈퇴 처리 결과(포트폴리오 차단 + 편입 해제)를 저장 상태로 재현한다 — 차단은 비동기 구독이라
+        // 여기서는 같은 SQL로 직접 만든다(docs/operations/moderation-block.md와 동일한 UPDATE).
+        jdbcTemplate.update("UPDATE portfolios SET blocked_at = UTC_TIMESTAMP(6) WHERE id = ?", artistPageId);
+        Artwork artwork = artworkRepository.findById(artworkId).orElseThrow();
+        artwork.updatePortfolioInclusion(false);
+        artworkRepository.save(artwork);
+
+        scheduler.reconcileMemberships();
+
+        assertThat(artworkRepository.findById(artworkId).orElseThrow().isPortfolioIncluded()).isFalse();
     }
 
     private String registerMember() {

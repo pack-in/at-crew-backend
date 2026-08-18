@@ -5,7 +5,6 @@ import com.atcrew.artwork.ArtworkStatus;
 import com.atcrew.artwork.BookmarkEntryInfo;
 import com.atcrew.artwork.BookmarkFolderInfo;
 import com.atcrew.artwork.BookmarkService;
-import com.atcrew.artwork.Visibility;
 import com.atcrew.artwork.internal.domain.artwork.Artwork;
 import com.atcrew.artwork.internal.domain.bookmark.BookmarkEntry;
 import com.atcrew.artwork.internal.domain.bookmark.BookmarkFolder;
@@ -109,13 +108,16 @@ class BookmarkServiceImpl implements BookmarkService {
         boolean hasNext = entries.size() > size;
         List<BookmarkEntry> page = hasNext ? entries.subList(0, size) : entries;
 
-        // 작품 조회 (READY && PUBLIC && 운영 차단되지 않은 작품만 노출 — 마이페이지_작가-R39)
+        // 노출 기준은 저장 기준(saveBookmark)과 같아야 한다 — visibility == PUBLIC만 보여주면 포트폴리오
+        // 한정 공개 작품처럼 저장은 되는데 목록에는 영원히 안 보이는 북마크가 생긴다.
+        // 운영 차단 작품은 본인 작품이라도 목록에서 뺀다(마이페이지_작가-R39) — accessFor가 작성자
+        // 본인에게는 차단 작품도 허용하므로 여기서 따로 제외한다.
         List<String> artworkIds = page.stream().map(BookmarkEntry::getArtworkId).toList();
         Map<String, Artwork> artworkMap = artworkRepository.findAllById(artworkIds)
                 .stream()
-                .filter(a -> a.getStatus() == com.atcrew.artwork.ArtworkStatus.READY
-                        && a.getVisibility() == Visibility.PUBLIC
-                        && !a.isBlocked())
+                .filter(a -> a.getStatus() == ArtworkStatus.READY
+                        && !a.isBlocked()
+                        && a.accessFor(memberId) == ArtworkAccess.ALLOWED)
                 .collect(Collectors.toMap(Artwork::getId, a -> a));
 
         Set<String> authorIds = artworkMap.values().stream()

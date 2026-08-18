@@ -11,6 +11,7 @@ import com.atcrew.portfolio.internal.persistence.PortfolioRepository;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -87,20 +88,26 @@ class PortfolioMembershipReconciler {
         if (portfolio == null) {
             return;
         }
-        int viewableCount = 0;
+        List<ArtworkInfo> artworks = new ArrayList<>();
+        boolean orphanRemoved = false;
         for (PortfolioItem item : portfolioItemRepository.findByPortfolioIdOrderByOrdinal(portfolioId)) {
             Optional<ArtworkInfo> artwork = artworkService.getArtworkForIndexing(item.getArtworkId());
             if (artwork.isEmpty()) {
                 // 영구 삭제 이벤트를 놓친 고아 행 — 원본이 없으므로 편입 여부를 되돌릴 대상도 없다.
                 portfolioItemRepository.delete(item);
+                orphanRemoved = true;
                 continue;
             }
-            if (isViewable(artwork.get())) {
-                viewableCount++;
-            }
-            syncInclusion(artwork.get());
+            artworks.add(artwork.get());
         }
-        applyItemCount(portfolio, viewableCount);
+        if (orphanRemoved) {
+            // 고아 행 삭제를 이 자리에서 확정한다 — 커밋까지 미루면 Hibernate 기본 flush 순서(UPDATE가
+            // DELETE보다 먼저)상 portfolios·artworks가 portfolio_items보다 먼저 잠겨, 같은 두 테이블을
+            // portfolio_items → portfolios 순으로 쓰는 구성 교체 경로와 교착할 수 있다(§8.9).
+            portfolioItemRepository.flush();
+        }
+        applyItemCount(portfolio, (int) artworks.stream().filter(this::isViewable).count());
+        artworks.forEach(this::syncInclusion);
     }
 
     // 열람 가능 개수 = 원본이 남아 있고 휴지통·운영 차단 상태가 아닌 구성 행의 수(§2.1 itemCount).
@@ -150,7 +157,7 @@ class PortfolioMembershipReconciler {
     // 편입 여부는 라이브 멤버십 절대값 기준이다(§5.4). 이미 맞는 값이면 쓰지 않는다 —
     // 6시간마다 모든 편입 작품의 updated_at을 흔들지 않기 위함이다.
     private void syncInclusion(ArtworkInfo artwork) {
-        boolean included = portfolioItemRepository.countByArtworkId(artwork.id()) > 0;
+        boolean included = portfolioItemRepository.countActiveByArtworkId(artwork.id()) > 0;
         if (artwork.portfolioIncluded() != included) {
             artworkService.updatePortfolioInclusion(artwork.id(), included);
         }

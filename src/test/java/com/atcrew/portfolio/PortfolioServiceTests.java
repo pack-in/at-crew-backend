@@ -49,6 +49,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.IntStream;
@@ -621,6 +622,49 @@ class PortfolioServiceTests {
         assertThat(artwork.isPortfolioIncluded()).isTrue();
     }
 
+    // 업로드 시점에는 PROCESSING 상태에서도 같은 조합을 받으므로(업로드-R09), 업로드 직후의 정정도
+    // 이미지 처리 완료를 기다리지 않고 반영돼야 한다.
+    @Test
+    void 이미지_처리_중에도_노출_위치를_재선언할_수_있다() {
+        String memberId = registerProMember();
+        String artistPageId = portfolioService.getSelectablePortfolios(memberId).getFirst().id();
+        PortfolioInfo shared = portfolioService.createShared(
+                memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of());
+        String artworkId = uploadWithSelection(memberId, true, List.of(artistPageId));
+
+        artworkService.updatePublication(memberId, artworkId, false, List.of(shared.id()));
+
+        assertThat(portfolioItemRepository.findByPortfolioIdOrderByOrdinal(artistPageId)).isEmpty();
+        assertThat(portfolioItemRepository.findByPortfolioIdOrderByOrdinal(shared.id()))
+                .extracting(PortfolioItem::getArtworkId)
+                .containsExactly(artworkId);
+        Artwork artwork = artworkRepository.findById(artworkId).orElseThrow();
+        assertThat(artwork.getStatus()).isEqualTo(ArtworkStatus.PROCESSING);
+        assertThat(artwork.getVisibility()).isEqualTo(Visibility.PRIVATE);
+        assertThat(artwork.isPortfolioIncluded()).isTrue();
+    }
+
+    // 휴지통 작품은 복원이 먼저다 — 처리 중 허용이 삭제된 작품까지 열어주면 안 된다.
+    @Test
+    void 휴지통_작품은_노출_위치를_재선언할_수_없다() {
+        String memberId = registerMember();
+        String artistPageId = portfolioService.getSelectablePortfolios(memberId).getFirst().id();
+        String artworkId = uploadWithSelection(memberId, true, List.of(artistPageId));
+        artworkService.deleteArtwork(memberId, artworkId);
+        // 휴지통 이동에 따른 개수 재계산(비동기)이 끝난 뒤에 재선언해야 낙관적 락 충돌과 섞이지 않는다.
+        awaitItemCount(artistPageId, 0);
+
+        assertThatThrownBy(() -> artworkService.updatePublication(memberId, artworkId, false, List.of()))
+                .isInstanceOf(DomainException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("ARTWORK_DELETED");
+
+        // 실패한 재선언은 편입까지 함께 롤백된다.
+        assertThat(portfolioItemRepository.findByPortfolioIdOrderByOrdinal(artistPageId))
+                .extracting(PortfolioItem::getArtworkId)
+                .containsExactly(artworkId);
+    }
+
     // === 운영 차단 (마이페이지_작가-R38·R39·R41·R46) ===
 
     // 차단된 작품은 본인 소유라도 선택 대상이 아니다 — 생성·추가 두 경로 모두에서 막는다(R38·R46).
@@ -790,7 +834,7 @@ class PortfolioServiceTests {
     @Test
     void 공유_슬러그로_최신_반영형_포트폴리오를_열람한다() {
         String memberId = registerProMember();
-        String artworkId = uploadArtwork(memberId);
+        String artworkId = uploadReadyArtwork(memberId);
         PortfolioInfo created = portfolioService.createShared(
                 memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of(artworkId));
 
@@ -811,7 +855,7 @@ class PortfolioServiceTests {
     @Test
     void 작가_handle로_작가_페이지를_열람한다() {
         String memberId = registerMember();
-        String artworkId = uploadArtwork(memberId);
+        String artworkId = uploadReadyArtwork(memberId);
         String artistPageId = portfolioService.getSelectablePortfolios(memberId).getFirst().id();
         portfolioService.addArtworks(memberId, artistPageId, List.of(artworkId));
         String handle = memberService.findById(memberId).handle();
@@ -825,6 +869,40 @@ class PortfolioServiceTests {
         assertThat(portfolioService.getSharedPortfolioArtworks(handle, null, 20).items())
                 .extracting(PortfolioArtworkCardInfo::artworkId)
                 .containsExactly(artworkId);
+    }
+
+    // 작가 페이지는 본인이 포트폴리오 탭을 열 때 lazy 생성되므로, 한 번도 열지 않은 회원은 행 자체가 없다.
+    // 그 상태에서도 제3자의 공유 링크 접근은 빈 작가 페이지로 열려야 한다(§2.5).
+    @Test
+    void 작가_페이지가_없는_회원의_handle도_빈_작가_페이지로_열린다() {
+        String memberId = registerMember();
+        String handle = memberService.findById(memberId).handle();
+        assertThat(portfolioRepository.findByOwnerMemberIdAndKind(memberId, PortfolioKind.ARTIST_PAGE)).isEmpty();
+
+        PortfolioSharedInfo shared = portfolioService.getSharedPortfolio(handle);
+
+        assertThat(shared.kind()).isEqualTo(PortfolioKind.ARTIST_PAGE);
+        assertThat(shared.itemCount()).isZero();
+        assertThat(portfolioService.getSharedPortfolioArtworks(handle, null, 20).items()).isEmpty();
+        // 열람 시점에 만들어진 행은 그대로 남아 본인이 탭을 열었을 때 재사용된다.
+        assertThat(portfolioService.getSelectablePortfolios(memberId))
+                .extracting(PortfolioSelectableInfo::id)
+                .containsExactly(shared.id());
+    }
+
+    // 탈퇴 회원은 handle이 클리어되므로 해석 자체가 실패한다 — 작가 페이지가 새로 생기면 안 된다.
+    @Test
+    void 탈퇴한_회원의_handle로는_작가_페이지가_생성되지_않는다() {
+        String memberId = registerMember();
+        String handle = memberService.findById(memberId).handle();
+
+        memberService.deactivate(memberId);
+
+        assertThatThrownBy(() -> portfolioService.getSharedPortfolio(handle))
+                .isInstanceOf(PortfolioException.class)
+                .extracting(e -> ((DomainException) e).getStatus())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(portfolioRepository.findByOwnerMemberIdAndKind(memberId, PortfolioKind.ARTIST_PAGE)).isEmpty();
     }
 
     // 고정형 헤더의 작성자 이름은 생성 시점에 얼린 값이다(마이페이지_작가-R44) — 최신 반영형과 대비해 확인한다.
@@ -870,6 +948,24 @@ class PortfolioServiceTests {
                 .isInstanceOf(PortfolioException.class)
                 .extracting(e -> ((DomainException) e).getStatus())
                 .isEqualTo(HttpStatus.GONE);
+    }
+
+    // 피드 공개만 끄면 accessFor가 포트폴리오 편입을 근거로 여전히 열람을 허용한다(§5.4 2요소 판정) —
+    // 탈퇴 처리에서 편입 여부까지 함께 해제해야 탈퇴 회원 작품이 제3자에게 닫힌다.
+    @Test
+    void 탈퇴하면_작품의_포트폴리오_편입도_해제된다() {
+        String memberId = registerMember();
+        String artworkId = uploadArtwork(memberId);
+        String artistPageId = portfolioService.getSelectablePortfolios(memberId).getFirst().id();
+        portfolioService.addArtworks(memberId, artistPageId, List.of(artworkId));
+        assertThat(artworkRepository.findById(artworkId).orElseThrow().isPortfolioIncluded()).isTrue();
+
+        memberService.deactivate(memberId);
+
+        // 탈퇴 구독은 동기 리스너라 트랜잭션 종료 시점에 이미 반영돼 있다.
+        Artwork artwork = artworkRepository.findById(artworkId).orElseThrow();
+        assertThat(artwork.getVisibility()).isEqualTo(Visibility.PRIVATE);
+        assertThat(artwork.isPortfolioIncluded()).isFalse();
     }
 
     // 탈퇴 이벤트가 유실돼 blocked_at이 비어 있어도 조회 시점 이중 확인이 차단을 확정한다(§5.2).
@@ -1034,9 +1130,9 @@ class PortfolioServiceTests {
     @Test
     void 공유_작품_목록은_커서로_이어서_조회된다() {
         String memberId = registerProMember();
-        String firstArtworkId = uploadArtwork(memberId);
-        String secondArtworkId = uploadArtwork(memberId);
-        String thirdArtworkId = uploadArtwork(memberId);
+        String firstArtworkId = uploadReadyArtwork(memberId);
+        String secondArtworkId = uploadReadyArtwork(memberId);
+        String thirdArtworkId = uploadReadyArtwork(memberId);
         PortfolioInfo created = portfolioService.createShared(memberId, "공유 포트폴리오", ReflectionType.LIVE,
                 List.of(firstArtworkId, secondArtworkId, thirdArtworkId));
 
@@ -1065,8 +1161,8 @@ class PortfolioServiceTests {
     void 공유_작품_목록은_페이지_중간의_휴지통_작품을_건너뛰고_size를_채운다() {
         String memberId = registerProMember();
         List<String> artworkIds = List.of(
-                uploadArtwork(memberId), uploadArtwork(memberId), uploadArtwork(memberId),
-                uploadArtwork(memberId), uploadArtwork(memberId));
+                uploadReadyArtwork(memberId), uploadReadyArtwork(memberId), uploadReadyArtwork(memberId),
+                uploadReadyArtwork(memberId), uploadReadyArtwork(memberId));
         PortfolioInfo created = portfolioService.createShared(
                 memberId, "공유 포트폴리오", ReflectionType.LIVE, artworkIds);
 
@@ -1094,7 +1190,7 @@ class PortfolioServiceTests {
     @Test
     void 공유_작품_목록의_뒷부분이_전부_휴지통이면_빈_페이지를_내려주지_않는다() {
         String memberId = registerProMember();
-        List<String> artworkIds = List.of(uploadArtwork(memberId), uploadArtwork(memberId), uploadArtwork(memberId));
+        List<String> artworkIds = List.of(uploadReadyArtwork(memberId), uploadReadyArtwork(memberId), uploadReadyArtwork(memberId));
         PortfolioInfo created = portfolioService.createShared(
                 memberId, "공유 포트폴리오", ReflectionType.LIVE, artworkIds);
 
@@ -1109,6 +1205,66 @@ class PortfolioServiceTests {
                 .containsExactly(artworkIds.getFirst());
         assertThat(page.hasNext()).isFalse();
         assertThat(page.nextCursor()).isNull();
+    }
+
+    // 업로드 시 포트폴리오 선택이 즉시 반영되므로 처리 중인 작품이 공유 목록에 잠깐 노출될 수 있었는데,
+    // 그 작품의 상세는 제3자에게 열리지 않아 카드만 뜨고 눌러도 안 열리는 불일치였다.
+    @Test
+    void 처리_중인_작품은_공유_목록에서_빠지고_본인_화면에는_남는다() {
+        String memberId = registerProMember();
+        PortfolioInfo created = portfolioService.createShared(
+                memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of());
+        String imageKey = "raw/" + UUID.randomUUID() + ".png";
+        String artworkId = uploadWithSelection(memberId, true, List.of(created.id()), imageKey);
+
+        assertThat(portfolioService.getSharedPortfolioArtworks(created.shareSlug(), null, 20).items()).isEmpty();
+        // 본인 화면에서는 처리 중에도 구성에 담긴 것으로 보인다.
+        assertThat(portfolioService.getPortfolio(memberId, created.id()).artworks())
+                .extracting(PortfolioArtworkCardInfo::artworkId)
+                .containsExactly(artworkId);
+
+        mediaCallbackService.process(MediaOwnerType.ARTWORK, artworkId, imageKey,
+                "thumb", null, "avif", MediaProcessingStatus.DONE);
+        awaitReady(memberId, artworkId);
+
+        assertThat(portfolioService.getSharedPortfolioArtworks(created.shareSlug(), null, 20).items())
+                .extracting(PortfolioArtworkCardInfo::artworkId)
+                .containsExactly(artworkId);
+    }
+
+    // 휴지통 작품이 대량으로 쌓이면 비인증 요청 한 번이 구성 전체를 훑게 된다 — 스캔 상한에서 끊되
+    // 남은 구간은 커서로 이어받게 해야 뒤의 작품이 사라지지 않는다.
+    @Test
+    void 공유_작품_목록은_스캔_상한에서_끊고_커서로_이어받는다() {
+        String memberId = registerProMember();
+        // size=1이면 청크가 2행이고 상한이 10청크라 한 요청이 최대 20행만 읽는다 — 그보다 많은 휴지통 행을 둔다.
+        List<String> trashedArtworkIds = IntStream.range(0, 22)
+                .mapToObj(i -> uploadArtwork(memberId))
+                .toList();
+        String visibleArtworkId = uploadArtworkWithThumb(memberId, "thumb-scan-limit");
+        List<String> allArtworkIds = new ArrayList<>(trashedArtworkIds);
+        allArtworkIds.add(visibleArtworkId);
+        PortfolioInfo created = portfolioService.createShared(
+                memberId, "공유 포트폴리오", ReflectionType.LIVE, allArtworkIds);
+        // 공유 목록은 조회 시점에 원본 상태를 다시 읽으므로 개수 캐시 재계산(비동기)을 기다릴 필요가 없다.
+        trashedArtworkIds.forEach(artworkId -> artworkService.deleteArtwork(memberId, artworkId));
+
+        CursorPage<PortfolioArtworkCardInfo> firstPage =
+                portfolioService.getSharedPortfolioArtworks(created.shareSlug(), null, 1);
+
+        // 상한에 걸려 카드는 못 채웠지만 남은 구간을 감추지 않는다.
+        assertThat(firstPage.items()).isEmpty();
+        assertThat(firstPage.hasNext()).isTrue();
+
+        List<String> collected = new ArrayList<>();
+        String cursor = firstPage.nextCursor();
+        for (int page = 0; page < 10 && cursor != null; page++) {
+            CursorPage<PortfolioArtworkCardInfo> next =
+                    portfolioService.getSharedPortfolioArtworks(created.shareSlug(), cursor, 1);
+            next.items().forEach(card -> collected.add(card.artworkId()));
+            cursor = next.nextCursor();
+        }
+        assertThat(collected).containsExactly(visibleArtworkId);
     }
 
     // === "업데이트순" 정렬 (마이페이지_작가-R37) ===
@@ -1133,6 +1289,47 @@ class PortfolioServiceTests {
         portfolioService.updatePortfolio(memberId, older.id(), "제목만 바꾼다", null);
 
         assertThat(sharedIdsByUpdated(memberId)).containsExactly(older.id(), newer.id());
+    }
+
+    // === 목록 커서 (§8.6) ===
+
+    // DATETIME(6)은 마이크로초까지 저장하는데 커서를 밀리초로 자르면, 같은 밀리초의 뒷부분 행이
+    // 통째로 건너뛰어지거나(LATEST/UPDATED) 방금 돌려준 행을 다시 잡아 페이지가 멈춘다(OLDEST).
+    @Test
+    void 같은_밀리초에_만들어진_포트폴리오도_모든_정렬에서_빠짐없이_조회된다() {
+        String memberId = registerProMember();
+        List<String> ids = List.of(
+                portfolioService.createShared(memberId, "포트폴리오1", ReflectionType.LIVE, List.of()).id(),
+                portfolioService.createShared(memberId, "포트폴리오2", ReflectionType.LIVE, List.of()).id(),
+                portfolioService.createShared(memberId, "포트폴리오3", ReflectionType.LIVE, List.of()).id());
+        // 밀리초는 같고 마이크로초만 다른 세 행.
+        setSortTimes(ids.get(0), "2026-08-01 00:00:00.123001");
+        setSortTimes(ids.get(1), "2026-08-01 00:00:00.123002");
+        setSortTimes(ids.get(2), "2026-08-01 00:00:00.123003");
+
+        for (PortfolioSort sort : PortfolioSort.values()) {
+            assertThat(pageThroughShared(memberId, sort))
+                    .as("정렬=%s", sort)
+                    .containsExactlyInAnyOrderElementsOf(ids);
+        }
+    }
+
+    // 마이크로초까지 완전히 같은 행은 보조 정렬 키(id)로 갈라야 한다 — 아니면 커서가 가리키는 지점이
+    // 유일하지 않아 같은 결과가 반복되거나 일부가 건너뛰어진다.
+    @Test
+    void 정렬_기준_시각이_완전히_같은_포트폴리오도_모두_조회된다() {
+        String memberId = registerProMember();
+        List<String> ids = List.of(
+                portfolioService.createShared(memberId, "포트폴리오1", ReflectionType.LIVE, List.of()).id(),
+                portfolioService.createShared(memberId, "포트폴리오2", ReflectionType.LIVE, List.of()).id(),
+                portfolioService.createShared(memberId, "포트폴리오3", ReflectionType.LIVE, List.of()).id());
+        ids.forEach(id -> setSortTimes(id, "2026-08-02 00:00:00.500000"));
+
+        for (PortfolioSort sort : PortfolioSort.values()) {
+            assertThat(pageThroughShared(memberId, sort))
+                    .as("정렬=%s", sort)
+                    .containsExactlyInAnyOrderElementsOf(ids);
+        }
     }
 
     // === 원본 변경에 따른 정합성 재계산 (§1.2, §5.5) ===
@@ -1278,6 +1475,125 @@ class PortfolioServiceTests {
                 .extracting(PortfolioItem::getArtworkId)
                 .containsExactly(trashedArtworkId);
         assertThat(portfolioRepository.findById(created.id()).orElseThrow().getItemCount()).isZero();
+    }
+
+    // 소속 유지는 "요청 목록에 안 적힌 것"에만 적용된다 — 사용자가 [빼기]를 누른 휴지통 작품은 실제로 빠져야
+    // 한다(§8.9 결함 D). 보존 규칙이 명시적 제거까지 막으면 204를 받고도 영원히 안 빠진다.
+    @Test
+    void 휴지통_작품도_명시적_제거_요청이면_구성에서_빠진다() {
+        String memberId = registerProMember();
+        String trashedArtworkId = uploadArtwork(memberId);
+        String keptArtworkId = uploadArtwork(memberId);
+        PortfolioInfo created = portfolioService.createShared(memberId, "공유 포트폴리오", ReflectionType.LIVE,
+                List.of(trashedArtworkId, keptArtworkId));
+        artworkService.deleteArtwork(memberId, trashedArtworkId);
+        awaitItemCount(created.id(), 1);
+
+        portfolioService.removeArtwork(memberId, created.id(), trashedArtworkId);
+
+        assertThat(portfolioItemRepository.findByPortfolioIdOrderByOrdinal(created.id()))
+                .extracting(PortfolioItem::getArtworkId)
+                .containsExactly(keptArtworkId);
+        assertThat(portfolioRepository.findById(created.id()).orElseThrow().getItemCount()).isEqualTo(1);
+        // 라이브 소속이 끊겼으므로 편입 여부도 함께 해제된다(§5.4).
+        assertThat(artworkRepository.findById(trashedArtworkId).orElseThrow().isPortfolioIncluded()).isFalse();
+    }
+
+    // 운영 차단 작품도 마찬가지다 — 차단은 노출만 막을 뿐 사용자의 명시적 제거를 막지 않는다(§8.9 결함 D).
+    @Test
+    void 운영_차단_작품도_명시적_제거_요청이면_구성에서_빠진다() {
+        String memberId = registerProMember();
+        String blockedArtworkId = uploadArtwork(memberId);
+        String keptArtworkId = uploadArtwork(memberId);
+        PortfolioInfo created = portfolioService.createShared(memberId, "공유 포트폴리오", ReflectionType.LIVE,
+                List.of(blockedArtworkId, keptArtworkId));
+        blockArtwork(blockedArtworkId);
+
+        portfolioService.removeArtwork(memberId, created.id(), blockedArtworkId);
+
+        assertThat(portfolioItemRepository.findByPortfolioIdOrderByOrdinal(created.id()))
+                .extracting(PortfolioItem::getArtworkId)
+                .containsExactly(keptArtworkId);
+        assertThat(portfolioRepository.findById(created.id()).orElseThrow().getItemCount()).isEqualTo(1);
+        assertThat(artworkRepository.findById(blockedArtworkId).orElseThrow().isPortfolioIncluded()).isFalse();
+    }
+
+    // 노출 위치 재선언의 해제 경로도 명시적 제거다 — 차단된 작품이라도 목록에서 빠지면 소속이 끊겨야 한다.
+    @Test
+    void 노출_위치_재선언은_운영_차단된_작품도_목록에_없는_포트폴리오에서_뺀다() {
+        String memberId = registerProMember();
+        String artistPageId = portfolioService.getSelectablePortfolios(memberId).getFirst().id();
+        String artworkId = uploadReadyWithSelection(memberId, true, List.of(artistPageId));
+        blockArtwork(artworkId);
+
+        artworkService.updatePublication(memberId, artworkId, true, List.of());
+
+        assertThat(portfolioItemRepository.findByPortfolioIdOrderByOrdinal(artistPageId)).isEmpty();
+        assertThat(artworkRepository.findById(artworkId).orElseThrow().isPortfolioIncluded()).isFalse();
+    }
+
+    // === 구성 교체 경로의 쓰기 순서 (§8.9 결함 E) ===
+
+    // 제목 변경은 구성 교체 뒤로 옮겨졌다(portfolio_items → portfolios 쓰기 순서 유지) — 두 변경이 여전히
+    // 한 번의 호출로 함께 반영되고 "업데이트순" 기준도 갱신되는지 확인한다.
+    @Test
+    void 수정하기는_제목과_구성을_한_번에_반영한다() {
+        String memberId = registerProMember();
+        String keptArtworkId = uploadArtwork(memberId);
+        String addedArtworkId = uploadArtwork(memberId);
+        PortfolioInfo created = portfolioService.createShared(
+                memberId, "원래 제목", ReflectionType.LIVE, List.of(keptArtworkId));
+        Instant lastEditedAt = portfolioRepository.findById(created.id()).orElseThrow().getLastEditedAt();
+
+        PortfolioInfo updated = portfolioService.updatePortfolio(
+                memberId, created.id(), "바꾼 제목", List.of(keptArtworkId, addedArtworkId));
+
+        assertThat(updated.title()).isEqualTo("바꾼 제목");
+        assertThat(updated.artworks()).extracting(PortfolioArtworkCardInfo::artworkId)
+                .containsExactly(keptArtworkId, addedArtworkId);
+        Portfolio stored = portfolioRepository.findById(created.id()).orElseThrow();
+        assertThat(stored.getTitle()).isEqualTo("바꾼 제목");
+        assertThat(stored.getItemCount()).isEqualTo(2);
+        assertThat(stored.getLastEditedAt()).isAfter(lastEditedAt);
+    }
+
+    // 제목 검증이 구성 교체보다 뒤로 밀렸어도 실패는 여전히 전부 롤백된다 — 반쪽 상태가 남으면 안 된다.
+    @Test
+    void 작가_페이지_제목_변경_실패는_구성_교체까지_롤백한다() {
+        String memberId = registerMember();
+        String artworkId = uploadArtwork(memberId);
+        String artistPageId = portfolioService.getSelectablePortfolios(memberId).getFirst().id();
+
+        assertThatThrownBy(() -> portfolioService.updatePortfolio(
+                memberId, artistPageId, "작가 페이지 제목", List.of(artworkId)))
+                .isInstanceOf(PortfolioException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("ARTIST_PAGE_TITLE_IMMUTABLE");
+
+        assertThat(portfolioItemRepository.findByPortfolioIdOrderByOrdinal(artistPageId)).isEmpty();
+        assertThat(portfolioRepository.findById(artistPageId).orElseThrow().getItemCount()).isZero();
+    }
+
+    // 노출 위치 재선언은 편입 반영을 먼저 하고 공개 상태를 나중에 바꾼다(artworks보다 portfolio_items를 먼저
+    // 쓰기 위함) — 편입 반영이 실패하면 공개 상태도 그대로여야 한다.
+    @Test
+    void 노출_위치_재선언이_실패하면_공개_상태도_바뀌지_않는다() {
+        String memberId = registerProMember();
+        String artistPageId = portfolioService.getSelectablePortfolios(memberId).getFirst().id();
+        String artworkId = uploadReadyWithSelection(memberId, true, List.of(artistPageId));
+
+        assertThatThrownBy(() -> artworkService.updatePublication(
+                memberId, artworkId, false, List.of(UUID.randomUUID().toString())))
+                .isInstanceOf(PortfolioException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("PORTFOLIO_NOT_FOUND");
+
+        Artwork artwork = artworkRepository.findById(artworkId).orElseThrow();
+        assertThat(artwork.getVisibility()).isEqualTo(Visibility.PUBLIC);
+        assertThat(artwork.isPortfolioIncluded()).isTrue();
+        assertThat(portfolioItemRepository.findByPortfolioIdOrderByOrdinal(artistPageId))
+                .extracting(PortfolioItem::getArtworkId)
+                .containsExactly(artworkId);
     }
 
     // 구성 교체는 결과가 그대로여도 버전을 올려야 한다 — 올리지 않으면 @Version 검사가 통째로 스킵되고,
@@ -1515,6 +1831,32 @@ class PortfolioServiceTests {
             }
         }
         throw new AssertionError("구성 행 정리 대기 시간 초과: portfolioId=" + portfolioId + " expected=" + expected);
+    }
+
+    /**
+     * 정렬 기준 시각을 마이크로초까지 지정한다 — 같은 밀리초·같은 마이크로초 상황은 실행 시각에 기대면
+     * 재현되지 않으므로 저장 상태를 직접 맞춘다. 두 정렬 기준(createdAt/lastEditedAt)을 함께 맞춰
+     * 정렬 옵션 3종을 같은 데이터로 검증한다.
+     */
+    private void setSortTimes(String portfolioId, String timestamp) {
+        jdbcTemplate.update("UPDATE portfolios SET created_at = ?, last_edited_at = ? WHERE id = ?",
+                timestamp, timestamp, portfolioId);
+    }
+
+    /** 커서를 끝까지 따라가며 공유 포트폴리오 ID를 모은다 — 페이지가 멈추면(커서 무한 반복) 실패시킨다. */
+    private List<String> pageThroughShared(String memberId, PortfolioSort sort) {
+        List<String> collected = new ArrayList<>();
+        String cursor = null;
+        for (int page = 0; page < 10; page++) {
+            CursorPage<PortfolioSummaryInfo> result =
+                    portfolioService.getMyPortfolios(memberId, PortfolioKind.SHARED, null, sort, cursor, 1);
+            result.items().forEach(item -> collected.add(item.id()));
+            if (!result.hasNext()) {
+                return collected;
+            }
+            cursor = result.nextCursor();
+        }
+        throw new AssertionError("커서 페이지네이션이 끝나지 않았다: sort=" + sort);
     }
 
     /** 낙관적 락 버전은 엔티티가 노출하지 않으므로 저장 상태를 직접 읽는다. */

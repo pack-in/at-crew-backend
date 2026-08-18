@@ -209,12 +209,6 @@ public class Artwork implements Persistable<String> {
         }
     }
 
-    public void assertReady() {
-        if (status != ArtworkStatus.READY) {
-            throw new ArtworkException(ArtworkErrorCode.ARTWORK_NOT_READY);
-        }
-    }
-
     public void assertDeleted() {
         if (status != ArtworkStatus.DELETED) {
             throw new ArtworkException(ArtworkErrorCode.ARTWORK_NOT_DELETED);
@@ -291,16 +285,31 @@ public class Artwork implements Persistable<String> {
         }
     }
 
+    /**
+     * 노출 위치 재선언(업로드-R09)에 따른 공개 상태 변경.
+     *
+     * <p>이미지 처리 중(PROCESSING)에도 허용한다 — 업로드 시점에는 같은 조합(피드 공개 여부 ×
+     * 포트폴리오)을 PROCESSING 상태에서도 그대로 받는데, 업로드 직후의 정정만 막으면 사용자가 처리
+     * 완료까지 기다려야 한다. PROCESSING 작품은 공개 상태와 무관하게 피드·공유 목록·상세 어디에도
+     * 노출되지 않으므로(status 필터, {@link #accessFor}) 이 값은 처리 완료 시 적용될 의도일 뿐이다.
+     *
+     * <p>휴지통 작품은 복원이 먼저다 — 노출 위치를 바꿀 수 없다.
+     */
     public void changeVisibility(Visibility visibility) {
-        assertReady();
+        if (status == ArtworkStatus.DELETED) {
+            throw new ArtworkException(ArtworkErrorCode.ARTWORK_DELETED);
+        }
         this.visibility = visibility;
     }
 
-    // 탈퇴 이벤트 처리용 — READY 상태 체크 없이 강제 비공개
+    // 탈퇴 이벤트 처리용 — READY 상태 체크 없이 강제 비공개.
+    // 라이브 포트폴리오 편입 여부도 함께 해제한다 — 피드 공개만 끄면 accessFor가 편입을 근거로 여전히
+    // ALLOWED를 돌려줘(§5.4의 2요소 판정) 탈퇴 회원의 작품이 제3자에게 계속 열린다.
     public void forcePrivate() {
         if (this.visibility != Visibility.PRIVATE) {
             this.visibility = Visibility.PRIVATE;
         }
+        this.portfolioIncluded = false;
     }
 
     public void moveToTrash() {

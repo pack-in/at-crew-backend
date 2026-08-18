@@ -329,7 +329,11 @@ GET /api/portfolios/{id}/duplication-source:
 
 상세 판정 로직(`Artwork.accessFor()`)은 `docs/design/artwork-module-summary.md` §11(2요소 조합표)을 참조.
 
-업로드·노출 위치 재선언 경로는 artwork가 `ArtworkPortfolioSelectionRequested`를 같은 트랜잭션에서 발행하고 portfolio가 **동기** 리스너(`@EventListener`)로 소비한다 — `artwork → portfolio` 직접 호출은 순환이라 방향을 이벤트로 뒤집었고, 비동기가 아닌 이유는 검증 실패 시 작품 저장까지 롤백해야 하기 때문이다(업로드-R09).
+업로드·노출 위치 재선언 경로는 artwork가 `ArtworkPortfolioSelectionRequested`를 같은 트랜잭션에서 발행하고 portfolio가 **동기** 리스너(`@EventListener`)로 소비한다 — `artwork → portfolio` 직접 호출은 순환이라 방향을 이벤트로 뒤집었고, 비동기가 아닌 이유는 검증 실패 시 작품 저장까지 롤백해야 하기 때문이다(업로드-R09). 노출 위치 재선언은 **이미지 처리 중(PROCESSING)에도 허용한다**(PA-22) — 업로드 시점에 같은 조합을 PROCESSING 상태로 받으면서 직후 정정만 막을 이유가 없고, PROCESSING 작품은 저장된 공개 상태와 무관하게 어디에도 노출되지 않는다. 휴지통 작품은 여전히 막는다(410 `ARTWORK_DELETED`).
+
+**편입 여부 카운트는 열람이 막히지 않은 포트폴리오만 센다**(PA-25, `countActiveByArtworkId`). 탈퇴 회원의 포트폴리오는 차단되지만 `portfolio_items` 행은 남으므로, 전부 세면 탈퇴 처리에서 해제한 `portfolio_included`를 6시간 보정 배치가 도로 켜서 탈퇴 회원 작품이 제3자에게 다시 열린다. 탈퇴 시 해제는 artwork 쪽 `Artwork.forcePrivate()`가 함께 수행한다 — 피드 공개만 끄면 2요소 판정에서 편입이 근거가 돼 `accessFor()`가 여전히 ALLOWED를 돌려주기 때문이다.
+
+**공유 링크 목록은 처리 완료(READY) 작품만 노출한다**(PA-24, `sharedViewable`). 업로드 시 선택이 즉시 반영되므로 처리 중 작품이 카드로 잠깐 보이는데 그 상세는 제3자에게 열리지 않아(`accessFor`가 비소유자에게 READY 요구) 불일치였다. 이 조건은 공유 목록에만 적용한다 — 소속 유지 판정·`item_count`·본인 화면은 종전 기준(`viewable`)을 그대로 쓴다. 처리 중에는 헤더의 `itemCount`와 목록 건수가 잠깐 어긋날 수 있고 처리 완료 시 자동 수렴한다.
 
 ### 5.5 다운그레이드 시 동작 (요금제-R01)
 
@@ -353,11 +357,14 @@ GET /api/portfolios/{id}/duplication-source:
 
 - `com.atcrew.media.RetainedMediaKeyProvider`(media 공개 SPI) — `Set<String> retainedKeys(Collection<String> candidateKeys)`. media는 누가 왜 키를 붙잡는지 모른다. 구현체가 없으면(모듈 단위 테스트 부트스트랩) 보존 대상 없음으로 동작한다.
 - `SnapshotRetainedMediaKeyProvider`(portfolio) — `PortfolioItemSnapshotRepository.findActiveByThumbnailKeys()`로 후보 키가 카드 썸네일(`thumb_key`/`thumb_adult_key`)로 걸린 스냅샷을 찾고, 그 스냅샷의 `payload_json`을 펼쳐 상세 본문 이미지 키(`originalKey`/`thumbKey`/`thumbAdultKey`/`originalAvifKey`)까지 보존 집합에 넣는다. **포트폴리오 행이 남아있는 스냅샷만** 대상이라 포트폴리오를 지우면 다음 정리 배치에서 자연히 회수된다.
-- `ArtworkEventListener.onPermanentlyDeleted` — 보존 키를 뺀 나머지만 `deleteFiles`. 보존 판정 자체가 실패하면 전체 키를 고아 큐로 넘긴다(스케줄러가 같은 판정을 다시 하므로 즉시 삭제되지 않는다).
+- `ArtworkEventListener.onPermanentlyDeleted` — 보존 키를 뺀 나머지만 `deleteFiles`. 보존 판정 자체가 실패하면 전체 키를 고아 큐로 넘긴다(스케줄러가 같은 판정을 다시 하므로 즉시 삭제되지 않는다). **보존된 키도 고아 큐에 함께 적재한다**(PA-20) — 원본 행이 사라진 뒤에는 이 키를 아는 곳이 스냅샷뿐이라, 그 스냅샷을 담은 고정형 포트폴리오까지 삭제되면 추적 기록 없이 R2에 영구 누수된다. 큐에 넣어두면 배치가 매번 같은 보존 판정을 다시 해 참조가 남아 있는 동안 유예하고, 참조가 끊기는 순간 정리한다(`deletePortfolio()`에 media 정리 호출을 넣지 않고 이 경로로 회수하는 이유 — 포트폴리오가 어떤 경로로 사라지든 동작한다).
 - `OrphanImageCleanupScheduler` — 배치마다 같은 판정을 거쳐 보존 키를 건너뛰고, 남은 보존 키만 남긴 채 행을 큐에 유지한다(`OrphanedMediaKey.keepOnly`). 포트폴리오가 삭제되면 그때 정리된다. 보존 행이 큐 앞을 계속 차지해 뒤의 행이 굶지 않도록 배치는 `marked_at` 오름차순으로 읽고, 보존된 행은 재판정 시점으로 `marked_at`을 갱신해 뒤로 보낸다.
+
+**사용자 지정 썸네일(PA-20)**: `PortfolioMapper.toCardInfo()`는 작품에 `thumbnailKey`(사용자가 따로 올린 썸네일)가 있으면 그 키를 스냅샷 `thumb_key`로 쓴다. 그런데 영구 삭제 후보 키 목록은 `artwork.getImages()`만으로 만들고 있어 이 키가 빠져 있었다 — 후보에 없으면 `findActiveByThumbnailKeys()`가 스냅샷을 찾지 못해 **보존 판정이 통째로 무력화**되고, 그 스냅샷이 참조하는 상세 이미지까지 삭제된다(지정 썸네일 자체도 media_assets에 행이 없어 영원히 지워지지 않는 누수였다). `ArtworkServiceImpl.permanentlyDeleteArtworks`의 후보 목록에 `artwork.getThumbnailKey()`를 포함시켜 두 문제를 함께 해소했다.
 
 남은 제약:
 - 매칭 기준이 카드 썸네일 컬럼이라, 스냅샷 생성 시점에 이미지 처리가 끝나지 않아 `thumb_key`가 비어 있는 스냅샷은 판정에 걸리지 않는다. 실제 삭제 후보는 항상 한 작품의 키 전체로 들어오므로 처리 완료된 작품에서는 문제되지 않는다.
+- 같은 이유로, **지정 썸네일을 쓰는 작품의 이미지를 교체**하는 경로(고아 큐)는 여전히 매칭되지 않는다 — 고아 후보에는 교체된 이미지 키만 들어가고 지정 썸네일 키는 들어가지 않아 스냅샷을 찾을 단서가 없다. 해소하려면 매칭 기준을 썸네일 컬럼이 아니라 스냅샷이 참조하는 키 전체를 담는 색인(별도 자식 테이블)으로 바꿔야 해서 스키마 변경이 필요하다 — 이번 범위 밖으로 두고 여기 기록해둔다.
 - 보존된 키는 참조가 사라질 때까지 R2에 남는다 — 유실 대신 소량의 스토리지 누수를 택했다(원본 교체를 반복하면 스냅샷이 안 쓰는 중간 버전도 함께 남을 수 있다).
 - 자료(`materials`)의 첨부 키는 어떤 삭제 경로에도 들어가 있지 않아 보존 대상에서 제외했다.
 
@@ -437,13 +444,21 @@ DELETED/PRIVATE) enum으로 다시 설계됐다 — 제3자의 삭제 작품 접
 직후 예외로 롤백돼 반영되지 않는다는 걸 구현 중 발견해, `PortfolioBlocker`라는 `REQUIRES_NEW` 전용
 트랜잭션 컴포넌트로 분리했다(`LoginAttemptLimiter.recordFailure`와 같은 계열의 함정).
 
-### 8.6 커서 — 설계보다 단순화
+### 8.6 커서 — 마이크로초 + id 복합 (PA-23에서 정정)
 
-포트폴리오 자체 목록(`/me`)의 정렬 3종은 상위 실행 계획이 제안한 복합 커서(base64(sortValue:id))가
-아니라, **기존 artwork 목록과 동일한 epochMilli 단일값 커서** 관례를 그대로 따랐다(정교한 tie-breaker를
-새로 설계하지 않음 — 기존 코드베이스가 이미 그 수준으로 충분하다고 판단해온 곳이라 일관성을 우선함).
+포트폴리오 자체 목록(`/me`)의 정렬 3종은 처음에 기존 artwork 목록과 같은 **epochMilli 단일값 커서**
+관례를 따랐으나, 두 가지로 깨져 PA-23에서 정정했다. (1) `DATETIME(6)`이 마이크로초까지 저장하는데
+커서를 밀리초로 자르면 같은 밀리초 안의 뒷부분 행이 통째로 건너뛰어지고(LATEST/UPDATED), (2) OLDEST는
+잘라낸 커서가 방금 돌려준 행을 다시 잡아 페이지가 앞으로 나아가지 못한다.
+
+현재 형식은 `"<epochMicros>_<id>"`이고 조회 조건도 `기준시각 < v OR (기준시각 = v AND id < 커서id)`
+복합이다(OLDEST는 부등호 반대). 정렬도 `(기준 시각, id)` 복합이라 커서가 가리키는 지점이 유일하다.
+형식은 계약이 아니다 — 컨트롤러·REST Docs 설명을 "직전 응답의 `nextCursor`를 그대로 전달"로 고쳤다.
+
 공유 포트폴리오의 작품 목록(`/shared/{id}/artworks`)은 정렬 기준이 `ordinal` 정수 하나뿐이라 그 값을
-그대로 커서로 쓴다(base64 인코딩도 하지 않음 — 불투명하게 만들 이유가 없는 값).
+그대로 커서로 쓴다(base64 인코딩도 하지 않음 — 불투명하게 만들 이유가 없는 값). 이 목록은 한 요청이
+이어 읽는 청크 수에 상한이 있고(PA-24), 상한에 걸리면 마지막으로 읽은 `ordinal`을 커서로 돌려준다 —
+이때만 `size`보다 적은(0건일 수도 있는) 페이지가 나올 수 있다.
 
 ### 8.7 Jackson — Spring Boot 4는 Jackson 3
 
@@ -458,9 +473,11 @@ Hibernate가 JSON을 정규화하므로, 원문 문자열과 재조회한 문자
 
 PA-10 시점에는 "알려진 제약 수용"으로 정리했으나, 2026-08-12 명세 대조 QA에서 영구 삭제뿐 아니라
 **원본 이미지 교체(고아 키 정리 스케줄러)** 경로로도 유실된다는 사실이 확인돼 PA-15에서 핫픽스했다.
-현재 상태와 남은 제약은 §5.6에 갱신돼 있다.
+PA-20에서 보존 판정 자체의 구멍 두 개를 추가로 막았다 — (1) 사용자 지정 썸네일 키가 삭제 후보에서
+빠져 보존 판정이 무력화되던 문제, (2) 보존된 키가 어디에도 기록되지 않아 고정형 포트폴리오 삭제 후
+R2에 영구 누수되던 문제. 현재 상태와 남은 제약은 §5.6에 갱신돼 있다.
 
-### 8.9 portfolio_items 소속 유지(보존) 정책 — 확정, 구현 완료(PA-18)
+### 8.9 portfolio_items 소속 유지(보존) 정책 — 확정, 구현 완료(PA-18, PA-19)
 
 **정책(확정)**: 라이브 포트폴리오(작가 페이지·최신 반영형)에 담긴 작품이 휴지통으로 이동해도
 `portfolio_items` 행 자체는 지우지 않는다. 노출(카드·목록·개수)에서만 빼고, 원본이 복원되면 다시
@@ -538,3 +555,33 @@ dirty로 만들지 않아, 병합 결과 개수가 우연히 그대로면 `Portf
 모두 `PESSIMISTIC_WRITE` 잠금 조회로 바꿔 애초에 오래된 스냅샷을 쥐지 않게 하는 방식이다. 다만 이는
 모듈 전체의 동시성 의미(실패 대신 대기)를 바꾸고 `PortfolioMembershipReconciler`와의 잠금 순서를 다시
 설계해야 하므로, 별도 과제로 남긴다.
+
+**결함 D — 보존 규칙이 명시적 제거까지 막았다(2026-08-13 발견, PA-19에서 수정)**: 결함 A 수정이
+"요청 목록에 없고 열람 불가능한 기존 항목은 항상 다시 합친다"를 무조건 적용해, 사용자가 실제로
+[빼기]를 누른 경로(`removeArtwork`→`detachArtwork`, `applyPortfolioSelection`의 해제)에서도 휴지통·
+운영 차단 작품이 절대 빠지지 않았다(204를 받고도 구성은 그대로).
+
+수정은 `replaceItems()`/`withRetainedItems()`에 `removedArtworkIds`(명시적 제거 요청 집합)를 넘겨
+보존 대상에서 빼는 것이다. 이 집합을 채우는 곳은 `detachArtwork()` 하나뿐이라 두 제거 경로가 함께
+고쳐지고, 추가·전체 재선택·업로드 편입 재선언은 빈 집합을 쓰는 기존 오버로드를 그대로 써서 소속
+유지 정책이 유지된다. 즉 구분 기준은 "요청 목록에 없다"(암묵적, 보존)와 "빼달라고 했다"(명시적, 제거)다.
+
+**결함 E — lock 순서 위반 3곳(2026-08-13 발견, PA-19에서 수정)**: `flushWithVersionCheck()`가 전제하는
+"`portfolio_items`를 먼저 쓰고 `portfolios`를 나중에 쓴다"를 세 호출부가 지키지 않아, 반대 순서로 같은
+두 테이블을 갱신하는 경로와 겹치면 MariaDB 데드락(1213)이 날 수 있었다.
+
+- `PortfolioServiceImpl.updatePortfolio()` — `markEdited()`/`updateTitle()`이 `replaceItems()`보다
+  앞에 있어 `Portfolio`가 먼저 dirty가 됐고, `deleteByPortfolioId`의 `@Modifying(flushAutomatically)`가
+  그 변경을 먼저 flush했다. 두 호출을 구성 교체 뒤로 옮겼다. 제목 검증 실패는 같은 트랜잭션이라 구성
+  교체까지 함께 롤백돼 관측 가능한 동작은 종전과 같다.
+- `PortfolioMembershipReconciler.reconcilePortfolio()` — 고아 행 삭제(plain delete)와 `itemCount`
+  변경 감지가 모두 커밋 시점 flush로 미뤄져 Hibernate 기본 flush 순서(UPDATE가 DELETE보다 먼저)상
+  `portfolios`가 먼저 쓰였다. 고아 행을 지운 경우에만 `portfolioItemRepository.flush()`로 DELETE를
+  먼저 확정한 뒤 개수·편입 여부를 쓴다(원본 조회 결과는 한 번만 읽어 재사용).
+- `ArtworkServiceImpl.updatePublication()` — `changeVisibility()`가 `artworks`를 먼저 dirty로 만든 뒤
+  동기 이벤트로 구성 교체를 태워 `artworks`가 `portfolio_items`보다 먼저 잠겼다(`deletePortfolio()`는
+  items → artworks 순이라 반대 방향). 공개 상태 변경과 `save()`를 편입 반영 이벤트 뒤로 옮겼다.
+
+회귀 테스트는 결함 B와 같은 원칙으로 **실제 동시 트랜잭션·스레드·잠금 API를 쓰지 않는다** — 세 경로가
+기능적으로 깨지지 않았는지(두 변경이 한 호출로 함께 반영되는지, 실패 시 전부 롤백되는지)만 확인한다.
+쓰기 순서 자체는 코드 배치로 보장되는 성질이라 단위 테스트로 관측할 대상이 아니다.

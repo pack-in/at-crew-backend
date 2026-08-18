@@ -28,6 +28,7 @@ import com.atcrew.portfolio.internal.exception.PortfolioException;
 import com.atcrew.portfolio.internal.persistence.PortfolioItemRepository;
 import com.atcrew.portfolio.internal.persistence.PortfolioItemSnapshotRepository;
 import com.atcrew.portfolio.internal.persistence.PortfolioRepository;
+import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -66,6 +67,11 @@ public class PortfolioServiceImpl {
 
     // 카드 커버는 2x2 배치라 최대 4장이다(마이페이지_작가-R39).
     private static final int COVER_THUMBNAIL_LIMIT = 4;
+
+    // 공유 목록 한 요청이 이어서 읽을 수 있는 구성 행 청크 수 상한 — 청크 크기가 요청한 size+1이므로
+    // 상한도 요청 크기에 비례한다(기본 size=20이면 210행). 비인증 요청이 대량의 휴지통·차단 구성 행을
+    // 무제한으로 훑지 않게 하는 안전장치다.
+    private static final int MAX_SCAN_CHUNKS = 10;
 
     private final PortfolioRepository portfolioRepository;
     private final PortfolioItemRepository portfolioItemRepository;
@@ -119,9 +125,7 @@ public class PortfolioServiceImpl {
         }
         boolean hasNext = portfolios.size() > size;
         List<Portfolio> page = hasNext ? portfolios.subList(0, size) : portfolios;
-        String nextCursor = hasNext
-                ? String.valueOf(cursorValueOf(page.get(page.size() - 1), appliedSort).toEpochMilli())
-                : null;
+        String nextCursor = hasNext ? formatCursor(page.get(page.size() - 1), appliedSort) : null;
         return CursorPage.of(
                 page.stream()
                         .map(p -> PortfolioMapper.toSummaryInfo(p, itemCountOf(p), loadCoverThumbnails(p)))
@@ -173,8 +177,11 @@ public class PortfolioServiceImpl {
     /**
      * 공유 포트폴리오 헤더 조회 (§4). 인증 없이 접근하며 소유자 검증도 하지 않는다 —
      * 링크를 아는 사람은 항상 열람 가능한 설계라 슬러그의 추측 불가능성이 유일한 보호막이다(§2.6).
+     *
+     * <p>handle로 접근한 작가 페이지는 이 시점에 lazy 생성될 수 있어 읽기 전용 트랜잭션이 아니다
+     * ({@code resolveArtistPageByHandle}).
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public PortfolioSharedInfo getSharedPortfolio(String identifier) {
         Portfolio portfolio = resolveSharedPortfolio(identifier);
         assertNotBlocked(portfolio);
@@ -194,8 +201,10 @@ public class PortfolioServiceImpl {
      *
      * <p>최신 반영형·작가 페이지는 원본을 조회 시점에 읽으므로 원본이 사라졌거나 휴지통에 있는 작품은
      * 조용히 빠진다 — 링크 자체는 여전히 유효하다. 고정형은 원본을 보지 않고 스냅샷 행만 읽는다(§5.1).
+     *
+     * <p>헤더 조회와 마찬가지로 handle 접근 시 작가 페이지가 lazy 생성될 수 있어 읽기 전용이 아니다.
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public CursorPage<PortfolioArtworkCardInfo> getSharedPortfolioArtworks(String identifier, String cursor, int size) {
         Portfolio portfolio = resolveSharedPortfolio(identifier);
         assertNotBlocked(portfolio);
@@ -224,8 +233,11 @@ public class PortfolioServiceImpl {
      * <p>포트폴리오 유형이 고정형이 아니거나, 식별자가 다른 포트폴리오의 스냅샷이거나, 운영 차단된
      * 스냅샷이면 전부 {@code PORTFOLIO_NOT_FOUND}로 응답한다 — 어느 경우인지 구분해 알려주면 다른
      * 포트폴리오의 스냅샷 존재 여부가 새기 때문이다.
+     *
+     * <p>식별자 해석을 공유하므로 여기서도 읽기 전용 트랜잭션을 쓰지 않는다 — 다만 작가 페이지는 항상
+     * LIVE라 handle로 들어오면 곧바로 404가 되고, 그때 생성된 행은 함께 롤백된다.
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public PortfolioSnapshotDetailInfo getSharedSnapshotDetail(String identifier, String snapshotId) {
         Portfolio portfolio = resolveSharedPortfolio(identifier);
         assertNotBlocked(portfolio);
@@ -252,6 +264,12 @@ public class PortfolioServiceImpl {
      * <p>휴지통으로 간 원본은 조회 시점에 빠지므로, 원본 행 개수로 다음 페이지 존재 여부를 판정하면
      * "items는 비었는데 hasNext=true"인 응답이 나온다. 그래서 필터를 통과한 카드가 size+1개가 될 때까지
      * 원본 행을 이어서 읽어 판정 기준을 필터 이후로 옮긴다 — 커서도 필터를 통과한 마지막 행의 ordinal이다.
+     *
+     * <p>다만 이어 읽기에는 상한을 둔다({@link #MAX_SCAN_CHUNKS}) — 휴지통·차단 작품이 대량으로 쌓인
+     * 포트폴리오의 공유 링크는 비인증 요청 한 번이 구성 전체를 훑게 돼 매 요청마다 큰 비용이 든다.
+     * 상한에 걸리면 <b>거기까지 모은 카드와 마지막으로 읽은 행의 커서</b>를 돌려준다 — 남은 구간을
+     * 감추지 않고(hasNext=false로 끊으면 뒤의 작품이 통째로 사라진다) 다음 요청이 이어서 읽게 한다.
+     * 이 경우에만 size보다 적은(0건일 수도 있는) 페이지가 나올 수 있다.
      */
     private CursorPage<PortfolioArtworkCardInfo> liveArtworkPage(String portfolioId, String cursor, int size) {
         // 한 건은 다음 페이지 존재 여부 판정에만 쓰고 응답에서는 잘라낸다.
@@ -259,8 +277,11 @@ public class PortfolioServiceImpl {
         List<PortfolioItem> viewableItems = new ArrayList<>();
         List<PortfolioArtworkCardInfo> cards = new ArrayList<>();
         Integer scanFrom = cursor != null ? parseOrdinalCursor(cursor) : null;
+        Integer lastScannedOrdinal = null;
+        int scannedChunks = 0;
+        boolean exhausted = false;
 
-        while (cards.size() < target) {
+        while (cards.size() < target && scannedChunks < MAX_SCAN_CHUNKS) {
             Pageable pageable = PageRequest.of(0, target);
             List<PortfolioItem> rows = scanFrom == null
                     ? portfolioItemRepository.findByPortfolioIdOrderByOrdinal(portfolioId, pageable)
@@ -268,14 +289,17 @@ public class PortfolioServiceImpl {
                             portfolioId, scanFrom, pageable);
             if (rows.isEmpty()) {
                 // 더 읽을 원본 행이 없다 — 여기까지 모은 카드가 마지막 페이지다.
+                exhausted = true;
                 break;
             }
+            scannedChunks++;
             for (PortfolioItem row : rows) {
                 if (cards.size() == target) {
                     break;
                 }
+                lastScannedOrdinal = row.getOrdinal();
                 Optional<ArtworkInfo> artwork = artworkService.getArtworkForIndexing(row.getArtworkId())
-                        .filter(PortfolioServiceImpl::viewable);
+                        .filter(PortfolioServiceImpl::sharedViewable);
                 if (artwork.isPresent()) {
                     viewableItems.add(row);
                     cards.add(PortfolioMapper.toCardInfo(artwork.get()));
@@ -285,9 +309,15 @@ public class PortfolioServiceImpl {
             scanFrom = rows.getLast().getOrdinal();
         }
 
-        boolean hasNext = cards.size() > size;
-        return CursorPage.of(hasNext ? cards.subList(0, size) : cards,
-                hasNext ? String.valueOf(viewableItems.get(size - 1).getOrdinal()) : null);
+        if (cards.size() > size) {
+            return CursorPage.of(cards.subList(0, size),
+                    String.valueOf(viewableItems.get(size - 1).getOrdinal()));
+        }
+        if (exhausted || lastScannedOrdinal == null) {
+            return CursorPage.of(cards, null);
+        }
+        // 스캔 상한에 걸려 중단한 경우 — 마지막으로 읽은 행까지의 커서를 줘 다음 요청이 이어받게 한다.
+        return CursorPage.of(cards, String.valueOf(lastScannedOrdinal));
     }
 
     /**
@@ -301,9 +331,20 @@ public class PortfolioServiceImpl {
                         "identifier=" + identifier));
     }
 
-    // 탈퇴 회원은 handle이 클리어되므로 이 조회 자체가 실패한다 — 별도 활성 필터가 필요 없다.
-    // 작가 페이지가 아직 lazy 생성되지 않았어도 여기서 만들지 않는다 — 열람 요청이 쓰기를 유발하면 안 된다.
-    // 인프라 장애를 404로 둔갑시키지 않도록 회원 부재를 뜻하는 DomainException만 잡는다.
+    /**
+     * 작가 handle로 작가 페이지를 해석한다 — 행이 아직 없으면 이 자리에서 만든다(§2.5).
+     *
+     * <p>작가 페이지는 가입 시가 아니라 최초 조회 시 lazy 생성되므로, 본인이 포트폴리오 탭을 한 번도
+     * 열지 않은 회원은 행 자체가 없다. 여기서 만들지 않으면 커뮤니티 "작가 찾아보기"로 그 회원을 발견한
+     * 제3자의 공유 링크 접근이 404가 된다 — 그래서 공유 열람 경로는 읽기 전용 트랜잭션이 아니다
+     * ({@code getMyPortfolios}와 같은 이유).
+     *
+     * <p>비인증 요청이 쓰기를 유발하지만 생성 대상은 <b>실재하는 회원의 빈 작가 페이지 1행</b>뿐이고
+     * (uk_pf_owner_artist_page), 본인이 탭을 열었을 때 어차피 만들어질 행과 같다.
+     *
+     * <p>탈퇴 회원은 handle이 클리어되므로 이 조회 자체가 실패해 생성도 일어나지 않는다.
+     * 인프라 장애를 404로 둔갑시키지 않도록 회원 부재를 뜻하는 DomainException만 잡는다.
+     */
     private Optional<Portfolio> resolveArtistPageByHandle(String handle) {
         String ownerMemberId;
         try {
@@ -311,7 +352,7 @@ public class PortfolioServiceImpl {
         } catch (DomainException e) {
             return Optional.empty();
         }
-        return portfolioRepository.findByOwnerMemberIdAndKind(ownerMemberId, PortfolioKind.ARTIST_PAGE);
+        return Optional.of(getOrCreateArtistPage(ownerMemberId));
     }
 
     /**
@@ -435,15 +476,20 @@ public class PortfolioServiceImpl {
                                          List<String> artworkIds) {
         Portfolio portfolio = findOwned(memberId, portfolioId);
         assertEditable(portfolio, memberId);
-        portfolio.markEdited();
-        if (title != null) {
-            // 작가 페이지면 엔티티가 ARTIST_PAGE_TITLE_IMMUTABLE을 던진다.
-            portfolio.updateTitle(validateTitle(title));
-        }
+        String validatedTitle = title != null ? validateTitle(title) : null;
         if (artworkIds != null) {
             List<ArtworkInfo> artworks = orderByUploadedAt(resolveOwnedArtworks(memberId, artworkIds));
             replaceItems(portfolio, artworks.stream().map(ArtworkInfo::id).toList());
         }
+        // portfolios를 건드리는 것은 구성 교체 뒤다 — 앞에서 엔티티를 dirty로 만들면 replaceItems의 벌크
+        // DELETE(flushAutomatically)가 portfolios를 먼저 flush해 portfolio_items → portfolios 쓰기 순서가
+        // 뒤집힌다(§8.9). 작가 페이지 제목 변경은 여기서 예외를 던지지만 같은 트랜잭션이라 구성 교체까지 함께
+        // 롤백돼 결과는 종전과 같다.
+        if (validatedTitle != null) {
+            // 작가 페이지면 엔티티가 ARTIST_PAGE_TITLE_IMMUTABLE을 던진다.
+            portfolio.updateTitle(validatedTitle);
+        }
+        portfolio.markEdited();
         // 변경 감지로 반영된다 — 별도 save() 호출은 중복이다.
         return PortfolioMapper.toInfo(portfolio, itemCountOf(portfolio), loadCards(portfolio));
     }
@@ -512,11 +558,12 @@ public class PortfolioServiceImpl {
                 .stream().map(ArtworkInfo::id).toList());
     }
 
+    // 사용자가 명시적으로 뺀 작품은 휴지통·운영 차단 상태여도 소속 유지 대상이 아니다(§8.9 결함 D).
     private void detachArtwork(Portfolio portfolio, String artworkId) {
         List<String> remaining = itemArtworkIds(portfolio.getId()).stream()
                 .filter(id -> !id.equals(artworkId))
                 .toList();
-        replaceItems(portfolio, remaining);
+        replaceItems(portfolio, remaining, Set.of(artworkId));
     }
 
     // === 삭제 ===
@@ -648,6 +695,19 @@ public class PortfolioServiceImpl {
     }
 
     /**
+     * 공유 링크(비인증) 노출 판정 — {@link #viewable}에 "이미지 처리 완료(READY)"를 더한다.
+     *
+     * <p>업로드 시 포트폴리오 선택이 즉시 반영되므로(업로드-R09) 이미지가 아직 처리 중인 작품이 공유
+     * 목록에 잠깐 노출되는데, 그 작품의 상세({@code GET /api/artworks/{id}})는 제3자에게 열리지 않는다
+     * ({@code Artwork.accessFor}가 비소유자에게 READY를 요구한다) — 카드는 보이는데 눌러도 안 열리는
+     * 불일치라 목록 쪽을 상세 기준에 맞춘다. 본인 화면(포트폴리오 상세·카드 커버)은 처리 중 작품도
+     * 그대로 보여주므로 {@link #viewable}을 쓴다.
+     */
+    private static boolean sharedViewable(ArtworkInfo artwork) {
+        return artwork.status() == ArtworkStatus.READY && !artwork.blocked();
+    }
+
+    /**
      * 카드 "N개" 표기 기준 (마이페이지_작가-R39). 최신 반영형·작가 페이지는 캐시된 {@code item_count}를 쓰고,
      * 고정형은 스냅샷 행을 직접 세어 운영 차단된 스냅샷을 뺀다 — 차단은 이벤트를 발행하지 않는 DB 직접
      * UPDATE라 캐시에 반영되지 않기 때문이다(docs/operations/moderation-block.md).
@@ -744,13 +804,24 @@ public class PortfolioServiceImpl {
      * 처리하면 새 호출부가 생길 때마다 같은 결함이 재현된다.
      */
     private void replaceItems(Portfolio portfolio, List<String> orderedArtworkIds) {
+        replaceItems(portfolio, orderedArtworkIds, Set.of());
+    }
+
+    /**
+     * @param removedArtworkIds 사용자가 <b>명시적으로</b> 빼겠다고 요청한 작품 — 소속 유지 대상에서 제외한다.
+     *                          목록에 안 적힌 것(암묵적 미선택)과 빼달라고 한 것을 구분하지 않으면 휴지통·차단
+     *                          작품은 제거 요청을 해도 영원히 빠지지 않는다(§8.9 결함 D).
+     */
+    private void replaceItems(Portfolio portfolio, List<String> orderedArtworkIds,
+                              Set<String> removedArtworkIds) {
         List<String> currentArtworkIds = itemArtworkIds(portfolio.getId());
         Set<String> affectedArtworkIds = new LinkedHashSet<>(currentArtworkIds);
         affectedArtworkIds.addAll(orderedArtworkIds);
         // 원본 상태는 보존 판정·개수 산정·편입 여부 반영에 모두 쓰이므로 한 번만 읽어 재사용한다
         // (artwork에 배치 조회 API가 없어 건당 조회한다, §8.3).
         Map<String, ArtworkInfo> artworks = loadArtworks(affectedArtworkIds);
-        List<ArtworkInfo> finalItems = withRetainedItems(currentArtworkIds, orderedArtworkIds, artworks);
+        List<ArtworkInfo> finalItems =
+                withRetainedItems(currentArtworkIds, orderedArtworkIds, removedArtworkIds, artworks);
 
         portfolioItemRepository.deleteByPortfolioId(portfolio.getId());
         List<PortfolioItem> items = new ArrayList<>();
@@ -772,9 +843,12 @@ public class PortfolioServiceImpl {
      * 원본이 영구 삭제됐을 때뿐이다({@code PortfolioMembershipReconciler}).
      *
      * <p>원본이 이미 사라진 고아 행은 되돌릴 원본이 없어 보존 대상이 아니므로 여기서 함께 정리된다.
+     *
+     * <p>사용자가 명시적으로 제거를 요청한 작품({@code removedArtworkIds})도 보존 대상이 아니다 —
+     * 그렇지 않으면 휴지통·차단 작품은 [빼기]를 눌러도 계속 남는다(§8.9 결함 D).
      */
     private List<ArtworkInfo> withRetainedItems(List<String> currentArtworkIds, List<String> orderedArtworkIds,
-                                                Map<String, ArtworkInfo> artworks) {
+                                                Set<String> removedArtworkIds, Map<String, ArtworkInfo> artworks) {
         List<ArtworkInfo> merged = new ArrayList<>(orderedArtworkIds.stream()
                 .map(artworks::get)
                 .filter(Objects::nonNull)
@@ -782,6 +856,7 @@ public class PortfolioServiceImpl {
         Set<String> requested = new LinkedHashSet<>(orderedArtworkIds);
         List<ArtworkInfo> retained = currentArtworkIds.stream()
                 .filter(artworkId -> !requested.contains(artworkId))
+                .filter(artworkId -> !removedArtworkIds.contains(artworkId))
                 .map(artworks::get)
                 .filter(Objects::nonNull)
                 .filter(artwork -> !viewable(artwork))
@@ -835,7 +910,7 @@ public class PortfolioServiceImpl {
     private void syncPortfolioInclusion(Collection<ArtworkInfo> artworks) {
         for (ArtworkInfo artwork : artworks) {
             artworkService.updatePortfolioInclusion(artwork.id(),
-                    portfolioItemRepository.countByArtworkId(artwork.id()) > 0);
+                    portfolioItemRepository.countActiveByArtworkId(artwork.id()) > 0);
         }
     }
 
@@ -852,10 +927,16 @@ public class PortfolioServiceImpl {
                 predicates.add(cb.equal(root.get("reflectionType"), reflectionType));
             }
             if (cursor != null) {
-                Instant cursorValue = parseCursor(cursor);
+                PortfolioCursor parsed = parseCursor(cursor);
+                Path<Instant> sortField = root.get(cursorField(sort));
+                Path<String> id = root.get("id");
+                // 시각이 완전히 같은 행은 id로 가른다 — 정렬도 같은 순서(시각, id)라 커서가 가리키는
+                // 지점이 유일하게 정해진다.
                 predicates.add(sort == PortfolioSort.OLDEST
-                        ? cb.greaterThan(root.get(cursorField(sort)), cursorValue)
-                        : cb.lessThan(root.get(cursorField(sort)), cursorValue));
+                        ? cb.or(cb.greaterThan(sortField, parsed.value()),
+                                cb.and(cb.equal(sortField, parsed.value()), cb.greaterThan(id, parsed.id())))
+                        : cb.or(cb.lessThan(sortField, parsed.value()),
+                                cb.and(cb.equal(sortField, parsed.value()), cb.lessThan(id, parsed.id()))));
             }
             return cb.and(predicates.toArray(new Predicate[0]));
         };
@@ -863,11 +944,13 @@ public class PortfolioServiceImpl {
 
     // "업데이트순"은 감사 컬럼(updatedAt)이 아니라 [수정하기] 시점(lastEditedAt) 기준이다 —
     // 작품 추가/제거나 원본 변경에 따른 재계산으로 순서가 바뀌면 안 된다(마이페이지_작가-R37).
+    // 2차 정렬 키(id)는 커서의 동률 판정과 짝을 이룬다 — 정렬이 유일하지 않으면 커서가 가리키는
+    // 지점도 유일하지 않다.
     private Sort sortOf(PortfolioSort sort) {
         return switch (sort) {
-            case OLDEST -> Sort.by(Sort.Direction.ASC, "createdAt");
-            case LATEST -> Sort.by(Sort.Direction.DESC, "createdAt");
-            case UPDATED -> Sort.by(Sort.Direction.DESC, "lastEditedAt");
+            case OLDEST -> Sort.by(Sort.Order.asc("createdAt"), Sort.Order.asc("id"));
+            case LATEST -> Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"));
+            case UPDATED -> Sort.by(Sort.Order.desc("lastEditedAt"), Sort.Order.desc("id"));
         };
     }
 
@@ -879,10 +962,37 @@ public class PortfolioServiceImpl {
         return sort == PortfolioSort.UPDATED ? portfolio.getLastEditedAt() : portfolio.getCreatedAt();
     }
 
-    // 커서는 기준 컬럼의 epochMilli 단일값이다(artwork 목록과 동일 관례).
-    private Instant parseCursor(String cursor) {
+    /**
+     * 목록 커서 — 정렬 기준 시각과 동률을 가르는 id 쌍이다(§8.6).
+     *
+     * <p>epochMilli 단일값이던 종전 커서는 두 가지로 깨졌다: (1) DATETIME(6)이 마이크로초까지 저장하는데
+     * 커서를 밀리초로 자르면 같은 밀리초의 뒷부분 행이 통째로 건너뛰어지고(LATEST/UPDATED),
+     * (2) OLDEST에서는 잘라낸 커서가 방금 돌려준 행을 다시 잡아 페이지가 앞으로 나아가지 못한다.
+     * 그래서 마이크로초 해상도로 인코딩하고 동률은 id로 가른다.
+     */
+    private record PortfolioCursor(
+            Instant value,   // 정렬 기준 시각 — DB 저장 해상도(마이크로초)를 그대로 보존한다
+            String id        // 시각이 완전히 같을 때 순서를 가르는 보조 키
+    ) { }
+
+    // 커서 문자열은 "<epochMicros>_<id>"다 — id(UUID)에는 '_'가 없어 첫 구분자로 안전하게 나뉜다.
+    private String formatCursor(Portfolio portfolio, PortfolioSort sort) {
+        Instant value = cursorValueOf(portfolio, sort);
+        long micros = value.getEpochSecond() * 1_000_000 + value.getNano() / 1_000;
+        return micros + "_" + portfolio.getId();
+    }
+
+    private PortfolioCursor parseCursor(String cursor) {
+        int separator = cursor.indexOf('_');
+        if (separator <= 0 || separator == cursor.length() - 1) {
+            throw new PortfolioException(PortfolioErrorCode.INVALID_CURSOR, cursor);
+        }
         try {
-            return Instant.ofEpochMilli(Long.parseLong(cursor));
+            long micros = Long.parseLong(cursor.substring(0, separator));
+            return new PortfolioCursor(
+                    Instant.ofEpochSecond(Math.floorDiv(micros, 1_000_000),
+                            Math.floorMod(micros, 1_000_000) * 1_000L),
+                    cursor.substring(separator + 1));
         } catch (NumberFormatException e) {
             throw new PortfolioException(PortfolioErrorCode.INVALID_CURSOR, cursor);
         }

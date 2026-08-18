@@ -693,7 +693,8 @@
 |--------|---------|--------------|------|
 | publishToFeed 누락 | publishToFeed 생략 | COMMON_INVALID_INPUT | 400 |
 | 고정형 포트폴리오 지정 | portfolioIds에 고정형 ID | SNAPSHOT_PORTFOLIO_IMMUTABLE | 409 |
-| 처리 중인 작품 | status=PROCESSING | ARTWORK_NOT_READY | 400 |
+| 처리 중인 작품 | status=PROCESSING | (허용 — 업로드 시와 같은 조합을 그대로 받는다) | 204 |
+| 휴지통 작품 | status=DELETED | ARTWORK_DELETED | 410 |
 | 존재하지 않는 작품 | 없는 artworkId | ARTWORK_NOT_FOUND | 404 |
 | 타인 작품 | 비소유자 토큰 | ARTWORK_ACCESS_DENIED | 403 |
 | 토큰 없음 | Authorize 미등록 | UNAUTHENTICATED | 401 |

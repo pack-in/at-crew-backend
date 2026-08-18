@@ -4,6 +4,7 @@ import com.atcrew.artwork.AgeRating;
 import com.atcrew.artwork.ArtworkField;
 import com.atcrew.artwork.ArtworkRole;
 import com.atcrew.artwork.ArtworkService;
+import com.atcrew.artwork.ArtworkStatus;
 import com.atcrew.artwork.CreativeType;
 import com.atcrew.artwork.ImageLayoutType;
 import com.atcrew.artwork.UploadArtworkCommand;
@@ -12,6 +13,9 @@ import com.atcrew.billing.Plan;
 import com.atcrew.billing.SubscriptionStatus;
 import com.atcrew.billing.internal.domain.Subscription;
 import com.atcrew.billing.internal.persistence.SubscriptionRepository;
+import com.atcrew.media.MediaOwnerType;
+import com.atcrew.media.MediaProcessingStatus;
+import com.atcrew.media.internal.application.MediaCallbackService;
 import com.atcrew.support.RestDocsIntegrationSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,6 +24,8 @@ import org.springframework.http.MediaType;
 import org.springframework.restdocs.payload.JsonFieldType;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -49,8 +55,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 포트폴리오 API 문서화 통합 테스트 (docs/design/portfolio-module-design.md §4).
  *
  * <p>작품은 presign → R2 업로드 HTTP 플로우 대신 {@link ArtworkService}를 직접 호출해 준비한다
- * (ApplicationApiDocTest가 RecruitService를 직접 쓰는 것과 동일한 패턴). 이미지가 PROCESSING에
- * 머물러도 포트폴리오 편입 검증은 DELETED만 거르므로 문서화에 지장이 없다.
+ * (ApplicationApiDocTest가 RecruitService를 직접 쓰는 것과 동일한 패턴). 포트폴리오 편입 검증은
+ * DELETED만 거르므로 대부분의 문서화는 PROCESSING 상태 그대로 진행하고, 공유 목록 문서화만
+ * media webhook 경로로 READY까지 올린다 — 비인증 공유 목록은 처리 완료된 작품만 노출한다(§5.4).
  *
  * <p>공유 포트폴리오는 프로 전용이라 billing 웹훅 대신 구독 행을 직접 만들어 플랜을 승급한다
  * (PortfolioServiceTests와 동일).
@@ -62,6 +69,10 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
 
     @Autowired
     SubscriptionRepository subscriptionRepository;
+
+    // Worker webhook 도달 지점 — 공유 목록 문서화용 작품을 READY까지 올리는 데 쓴다.
+    @Autowired
+    MediaCallbackService mediaCallbackService;
 
     @Test
     void 공유_포트폴리오_생성_조회_수정_삭제_문서화() throws Exception {
@@ -356,7 +367,9 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
                                 parameterWithName("kind").description("유형 필터 — ARTIST_PAGE / SHARED").optional(),
                                 parameterWithName("reflectionType").description("반영 유형 필터 — LIVE / SNAPSHOT").optional(),
                                 parameterWithName("sort").description("정렬 — OLDEST / LATEST / UPDATED (기본 LATEST)").optional(),
-                                parameterWithName("cursor").description("커서 — 직전 페이지 마지막 항목의 정렬 기준 시각 millis").optional(),
+                                parameterWithName("cursor")
+                                        .description("커서 — 직전 페이지 응답의 nextCursor를 그대로 전달한다(내부 형식은 보장하지 않는다)")
+                                        .optional(),
                                 parameterWithName("size").description("페이지 크기 (기본 20, 최대 50)").optional()
                         ),
                         relaxedResponseFields(
@@ -537,9 +550,9 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
     @Test
     void 공유_포트폴리오_작품_목록_문서화() throws Exception {
         RegisteredMember member = registerProMember("공유작품목록유저");
-        String firstArtworkId = uploadArtwork(member.memberId(), "첫 번째 작품");
-        String secondArtworkId = uploadArtwork(member.memberId(), "두 번째 작품");
-        String thirdArtworkId = uploadArtwork(member.memberId(), "세 번째 작품");
+        String firstArtworkId = uploadReadyArtwork(member.memberId(), "첫 번째 작품");
+        String secondArtworkId = uploadReadyArtwork(member.memberId(), "두 번째 작품");
+        String thirdArtworkId = uploadReadyArtwork(member.memberId(), "세 번째 작품");
 
         MvcResult createResult = mockMvc.perform(post("/api/portfolios")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + member.accessToken())
@@ -654,12 +667,43 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
 
     /** presign·R2 업로드 HTTP 플로우 대신 ArtworkService를 직접 호출해 작품을 준비한다. */
     private String uploadArtwork(String memberId, String title) {
+        return uploadArtwork(memberId, title, "raw/" + UUID.randomUUID() + ".png");
+    }
+
+    private String uploadArtwork(String memberId, String title, String imageKey) {
         return artworkService.uploadArtwork(memberId, new UploadArtworkCommand(
-                List.of("raw/" + UUID.randomUUID() + ".png"), 0, null, ImageLayoutType.VERTICAL_SCROLL,
+                List.of(imageKey), 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 title, "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
                 List.of(ArtworkRole.LINEART), List.of("판타지"), List.of("태그"),
                 AgeRating.ALL, true, List.of(), List.of("clip studio"),
                 new WorkDuration(1, 1, 1, 1), 1, List.of(), List.of())).id();
+    }
+
+    /** 비인증 공유 목록은 처리 완료된 작품만 노출하므로(§5.4) media webhook 경로로 READY까지 올린다. */
+    private String uploadReadyArtwork(String memberId, String title) {
+        String imageKey = "raw/" + UUID.randomUUID() + ".png";
+        String artworkId = uploadArtwork(memberId, title, imageKey);
+        mediaCallbackService.process(MediaOwnerType.ARTWORK, artworkId, imageKey,
+                "thumb", null, "avif", MediaProcessingStatus.DONE);
+        awaitReady(memberId, artworkId);
+        return artworkId;
+    }
+
+    /** artwork 리스너는 @ApplicationModuleListener(비동기)라 READY 반영까지 폴링한다. */
+    private void awaitReady(String memberId, String artworkId) {
+        Instant deadline = Instant.now().plus(Duration.ofSeconds(15));
+        while (Instant.now().isBefore(deadline)) {
+            if (artworkService.getArtworkStatus(memberId, artworkId) == ArtworkStatus.READY) {
+                return;
+            }
+            try {
+                Thread.sleep(200);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(e);
+            }
+        }
+        throw new AssertionError("READY 전환 대기 시간 초과");
     }
 
     /** 공유 포트폴리오를 생성하고 portfolioId를 반환한다. */

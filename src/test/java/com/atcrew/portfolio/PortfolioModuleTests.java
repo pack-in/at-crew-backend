@@ -115,7 +115,7 @@ class PortfolioModuleTests {
         assertThat(portfolioItemRepository.findByPortfolioIdOrderByOrdinal(portfolio.getId()))
                 .extracting(PortfolioItem::getArtworkId)
                 .containsExactly(firstArtworkId, secondArtworkId);
-        assertThat(portfolioItemRepository.countByArtworkId(firstArtworkId)).isEqualTo(1);
+        assertThat(portfolioItemRepository.countActiveByArtworkId(firstArtworkId)).isEqualTo(1);
         assertThat(portfolioItemRepository.existsByPortfolioIdAndArtworkId(portfolio.getId(), secondArtworkId))
                 .isTrue();
     }

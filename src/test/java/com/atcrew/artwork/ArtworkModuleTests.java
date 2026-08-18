@@ -12,12 +12,14 @@ import org.springframework.boot.testcontainers.service.connection.ServiceConnect
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.modulith.test.ApplicationModuleTest;
+import org.springframework.modulith.test.PublishedEvents;
 import org.testcontainers.containers.MariaDBContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -204,9 +206,8 @@ class ArtworkModuleTests {
     void 영구삭제하면_다시_조회되지_않는다() {
         String memberId = registerAuthor();
         ArtworkInfo uploaded = uploadMinimal(memberId, "raw/y.png");
-        // 이미지 처리 완료 상태로 만들어 둔다 — permanentlyDeleteArtworks의 allKeys 조합에 List.of()를 쓰는
-        // 기존(Mongo 시절부터의) 로직은 처리되지 않은 null 키가 섞이면 NPE가 나는 사전 존재 결함이라
-        // 이번 마이그레이션 범위 밖으로 두고, 테스트에서는 트리거하지 않도록 우회한다.
+        // 이미지 처리 완료 상태로 만들어 둔다 — 영구 삭제는 처리된 키까지 함께 지우는 경로를 확인해야 한다
+        // (처리 전 null 키가 섞여도 NPE가 나던 사전 존재 결함은 PA-20의 allImageKeys 정리로 해소됐다).
         processImage(uploaded.id(), "raw/y.png", MediaProcessingStatus.DONE);
         awaitReady(memberId, uploaded.id());
         artworkService.deleteArtwork(memberId, uploaded.id());
@@ -215,6 +216,36 @@ class ArtworkModuleTests {
 
         assertThatThrownBy(() -> artworkService.getArtwork(uploaded.id(), memberId))
                 .isInstanceOf(RuntimeException.class);
+    }
+
+    // 사용자 지정 썸네일 key는 media_assets에 행이 없어 삭제 대상 목록에서 빠지면 어디서도 지워지지
+    // 않는다. 더 중요한 것은 고정형 스냅샷 보존 판정이 이 key로 스냅샷을 찾는다는 점이다 —
+    // 후보에 없으면 스냅샷이 매칭되지 않아 상세 이미지까지 삭제된다(portfolio-module-design.md §5.6).
+    @Test
+    void 영구삭제_이벤트는_사용자_지정_썸네일_키까지_담는다(PublishedEvents events) {
+        String memberId = registerAuthor();
+        ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, new UploadArtworkCommand(
+                List.of("raw/ct.png"), 0, "raw/custom-thumb.png", ImageLayoutType.VERTICAL_SCROLL,
+                "테스트 작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
+                List.of(), List.of(), List.of(),
+                AgeRating.ALL, true, List.of(), List.of(), null, null, List.of(), List.of()));
+        processImage(uploaded.id(), "raw/ct.png", MediaProcessingStatus.DONE);
+        awaitReady(memberId, uploaded.id());
+        artworkService.deleteArtwork(memberId, uploaded.id());
+
+        artworkService.permanentlyDeleteArtworks(memberId, List.of(uploaded.id()));
+
+        assertThat(deletedImageKeysOf(events, uploaded.id()))
+                .contains("raw/ct.png", "raw/custom-thumb.png");
+    }
+
+    /** 영구 삭제 이벤트가 실어 보낸 R2 key 목록 — 실제 R2 삭제는 비동기라 이벤트로 확인한다. */
+    private List<String> deletedImageKeysOf(PublishedEvents events, String artworkId) {
+        List<String> keys = new ArrayList<>();
+        events.ofType(ArtworkPermanentlyDeletedEvent.class)
+                .matching(event -> event.artworkId().equals(artworkId))
+                .forEach(event -> keys.addAll(event.allImageKeys()));
+        return keys;
     }
 
     // 운영 차단은 삭제·공개 상태보다 우선한다(마이페이지_작가-R39). 관리자 API가 없어 차단은 DB 직접
