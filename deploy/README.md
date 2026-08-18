@@ -39,6 +39,21 @@ ssh ec2-user@172.31.25.215
 - `.env.example` — EC2 #1의 `.env` 템플릿(실제 값은 채워서 `.env`로 저장, git에 커밋 금지)
 - `deploy.sh` — 로컬에서 빌드→Docker Hub 푸시→EC2 #1 재배포까지 한 번에
 
+## 자동 배포 (`.github/workflows/deploy.yml`)
+
+main push(=PR 머지) 시 빌드·테스트 → Docker Hub 푸시 → EC2 재기동까지 자동으로 돈다.
+
+보안 그룹의 22번은 특정 IP만 허용하는데 GitHub Actions 러너 IP는 매 실행마다 바뀐다. 그래서 배포 직전
+러너 IP만 임시로 열고 끝나면 회수한다(회수 단계는 `if: always()`라 앞 단계가 실패해도 규칙이 남지 않는다).
+
+필요한 저장소 Secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`, `APP_HOST`, `EC2_SSH_KEY`,
+`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`.
+
+**TODO(인프라): SSM Session Manager 전환.** 위 방식은 22번을 잠깐이라도 열고 CI에 SSH 키·AWS 키를
+함께 두는 구성이다. 정석은 22번을 아예 닫고 SSM으로 접속해 IAM으로 통제하고 접속 이력을 CloudTrail에
+남기는 것이다. 인스턴스에 `AmazonSSMManagedInstanceCore` 역할 부착과 워크플로의 `session-manager-plugin`
+설치가 선행 조건이며, 결제 sandbox 검증이 끝난 뒤 착수한다.
+
 ## 최초 1회 설정
 
 보안 그룹·인스턴스·키페어는 이미 위 표대로 만들어져 있다 — 아래는 그 위에서 소프트웨어만 설치하면 된다.

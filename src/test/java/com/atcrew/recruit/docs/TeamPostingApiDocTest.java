@@ -1,7 +1,10 @@
 package com.atcrew.recruit.docs;
 
+import com.atcrew.billing.internal.persistence.EntitlementBalanceRepository;
+import com.atcrew.support.BillingTestSupport;
 import com.atcrew.support.RestDocsIntegrationSupport;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MvcResult;
@@ -27,6 +30,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * TeamPosting은 JobPosting과 달리 승인 절차가 없어 생성 즉시 PUBLISHED로 게시된다(설계 §4.2).
  */
 class TeamPostingApiDocTest extends RestDocsIntegrationSupport {
+
+    @Autowired
+    EntitlementBalanceRepository balanceRepository;
 
     @Test
     void 팀원모집글_전체_생명주기_문서화() throws Exception {
@@ -286,8 +292,11 @@ class TeamPostingApiDocTest extends RestDocsIntegrationSupport {
                                 true, true, true, false, "Asia/Seoul", "KR"))))
                 .andExpect(status().isCreated())
                 .andReturn();
-        return objectMapper.readTree(result.getResponse().getContentAsString())
-                .at("/data/accessToken").asText();
+        String body = result.getResponse().getContentAsString();
+        // 팀원 모집글은 유료 단건 게시 상품이라 게시·끌어올리기에 보유 개수가 필요하다(구인구직-R02).
+        BillingTestSupport.grantAllPostingProducts(balanceRepository,
+                objectMapper.readTree(body).at("/data/member/id").asText());
+        return objectMapper.readTree(body).at("/data/accessToken").asText();
     }
 
     /** 팀원모집글을 생성하고 teamPostingId를 반환한다. */

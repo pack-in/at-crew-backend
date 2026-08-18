@@ -24,6 +24,8 @@ import com.atcrew.recruit.JobPostingInfo;
 import com.atcrew.recruit.JobWorkLocationType;
 import com.atcrew.recruit.JobWorkScheduleType;
 import com.atcrew.recruit.RecruitService;
+import com.atcrew.billing.internal.persistence.EntitlementBalanceRepository;
+import com.atcrew.support.BillingTestSupport;
 import com.atcrew.support.RestDocsIntegrationSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -48,6 +50,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 필터 조합 검색과 최초 진입(결과 미노출) 상태의 요청/응답 구조를 REST Docs 스니펫으로 생성한다.
  */
 class SearchApiDocTest extends RestDocsIntegrationSupport {
+
+    @Autowired
+    EntitlementBalanceRepository balanceRepository;
 
     @Autowired
     ArtworkService artworkService;
@@ -151,6 +156,8 @@ class SearchApiDocTest extends RestDocsIntegrationSupport {
                 "search-recruit-doc-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com",
                 "searchrec" + UUID.randomUUID().toString().replace("-", "").substring(0, 8),
                 "검색문서기업", CreatorRole.WEBTOON).id();
+        // 구인글은 유료 단건 게시 상품이다(구인구직-R02).
+        BillingTestSupport.grantAllPostingProducts(balanceRepository, memberId);
 
         JobPostingInfo created = recruitService.createJobPosting(memberId, new CreateJobPostingCommand(
                 title, "앳크루", "대표", "웹툰", "서울", "02-000-0000", "https://example.com",

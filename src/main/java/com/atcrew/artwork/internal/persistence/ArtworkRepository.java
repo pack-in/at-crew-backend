@@ -42,6 +42,9 @@ public interface ArtworkRepository extends JpaRepository<Artwork, String>, JpaSp
     List<Artwork> findByAuthorIdAndStatusOrderByCreatedAtDesc(
             String authorId, ArtworkStatus status, Pageable pageable);
 
+    // 스타터 플랜 작품 개수 제한 — 휴지통(DELETED)은 제외한 보유 작품 수(마이페이지_작가-R20)
+    long countByAuthorIdAndStatusNot(String authorId, ArtworkStatus status);
+
     // getArtworksForReindex — 생성순 오름차순, 커서 있음/없음
     List<Artwork> findByCreatedAtAfterOrderByCreatedAtAsc(Instant cursor, Pageable pageable);
 

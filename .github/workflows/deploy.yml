@@ -8,6 +8,15 @@ name: Deploy
 #   DOCKERHUB_USERNAME, DOCKERHUB_TOKEN — Docker Hub 로그인/푸시
 #   APP_HOST                            — EC2 #1 탄력적 IP (예: 43.201.142.212)
 #   EC2_SSH_KEY                         — at-crew-key.pem 파일 내용 그대로
+#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY — 보안 그룹 22번 임시 개방/회수용
+#
+# 앱 서버 보안 그룹은 22번을 특정 IP에만 허용한다. 러너 IP는 매 실행마다 바뀌므로 배포 직전에
+# 그 IP만 열고 끝나면 반드시 회수한다(회수는 if: always() — 앞 단계가 실패해도 규칙을 남기지 않는다).
+#
+# TODO(인프라): SSH + 보안그룹 임시 개방 방식을 SSM Session Manager로 대체한다. 22번 포트를 아예
+# 닫고 IAM으로 접근을 통제하며 접속 이력이 CloudTrail에 남는 구성이 정석이다. 인스턴스에
+# AmazonSSMManagedInstanceCore 역할 부착 + 워크플로에 session-manager-plugin 설치가 선행 조건이며,
+# 결제 sandbox 검증이 끝난 뒤 착수한다.
 on:
   push:
     branches: [main]
@@ -17,6 +26,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TZ: UTC
+      AWS_REGION: ap-northeast-2
+      # 앱 서버(EC2 #1) 보안 그룹 — deploy/README.md 참고. 비밀 값이 아니라 식별자다.
+      APP_SECURITY_GROUP_ID: sg-062af5fc0a1f5af5c
     steps:
       - uses: actions/checkout@v6
 
@@ -35,13 +47,39 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: 이미지 빌드 및 푸시 (커밋 SHA + latest 태그)
+      - uses: docker/setup-buildx-action@v3
+
+      - name: 이미지 빌드 및 푸시 (arm64, 커밋 SHA + latest 태그)
         env:
           IMAGE_BASE: ${{ secrets.DOCKERHUB_USERNAME }}/at-crew-backend
+        # 배포 대상 EC2가 ARM64라 러너(amd64) 기본 빌드 결과를 올리면 컨테이너가 뜨지 못한다
+        # (첫 자동 배포에서 "platform does not match"로 실제 발생). 앞 단계의 ./gradlew build가 만든
+        # jar를 Dockerfile.ci로 담기만 하므로 에뮬레이션 없이 arm64 이미지를 만들 수 있다.
         run: |
-          docker build -t "$IMAGE_BASE:${{ github.sha }}" -t "$IMAGE_BASE:latest" .
-          docker push "$IMAGE_BASE:${{ github.sha }}"
-          docker push "$IMAGE_BASE:latest"
+          docker buildx build \
+            --platform linux/arm64 \
+            -f Dockerfile.ci \
+            -t "$IMAGE_BASE:${{ github.sha }}" \
+            -t "$IMAGE_BASE:latest" \
+            --push .
+
+      - name: AWS 자격증명 설정
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: 보안 그룹에 러너 IP 임시 허용 (22번)
+        id: open-ssh
+        run: |
+          RUNNER_IP=$(curl -s --fail https://checkip.amazonaws.com)
+          echo "RUNNER_CIDR=${RUNNER_IP}/32" >> "$GITHUB_ENV"
+          # 이전 실행이 비정상 종료돼 규칙이 남아 있으면 중복 오류가 나므로 무시하고 진행한다.
+          aws ec2 authorize-security-group-ingress \
+            --group-id "$APP_SECURITY_GROUP_ID" \
+            --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=${RUNNER_IP}/32,Description=github-actions-${{ github.run_id }}}]" \
+            || echo "규칙이 이미 존재해 건너뜁니다"
 
       - name: EC2 SSH 키 준비
         run: |
@@ -57,3 +95,12 @@ jobs:
           ssh -i ~/.ssh/deploy_key "ec2-user@${{ secrets.APP_HOST }}" "cd ~/at-crew-backend/deploy && \
             APP_IMAGE=$IMAGE_BASE:${{ github.sha }} docker-compose -f docker-compose.app.yml pull app && \
             APP_IMAGE=$IMAGE_BASE:${{ github.sha }} docker-compose -f docker-compose.app.yml up -d"
+
+      - name: 보안 그룹에서 러너 IP 회수
+        # 앞 단계가 실패해도 반드시 돌려놓는다 — 실패한 배포가 22번을 열어둔 채 끝나면 안 된다.
+        if: always() && env.RUNNER_CIDR != ''
+        run: |
+          aws ec2 revoke-security-group-ingress \
+            --group-id "$APP_SECURITY_GROUP_ID" \
+            --protocol tcp --port 22 --cidr "$RUNNER_CIDR" \
+            || echo "회수할 규칙이 없습니다"

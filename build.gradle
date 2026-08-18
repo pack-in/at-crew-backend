@@ -45,6 +45,8 @@ dependencies {
 	// 스키마는 Modulith 자동 생성을 끄고 Flyway(V13)가 단독 관리한다.
 	implementation 'org.springframework.modulith:spring-modulith-starter-jdbc'
 	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
+	// 결제/구독(plans/260813-stripe-billing) — Stripe 직결. Checkout·Customer Portal·웹훅 서명 검증에 사용한다.
+	implementation 'com.stripe:stripe-java:33.3.0'
 	implementation platform('software.amazon.awssdk:bom:2.31.5')
 	implementation 'software.amazon.awssdk:s3'
 	implementation 'software.amazon.awssdk:url-connection-client'
@@ -68,9 +70,25 @@ dependencyManagement {
 }
 
 tasks.named('test') {
-	useJUnitPlatform()
+	// stripe-sandbox 태그는 실제 Stripe sandbox API를 호출하므로 기본 테스트에서 제외한다.
+	// 실행하려면 ./gradlew stripeSandboxTest (STRIPE_SECRET_KEY·STRIPE_PRICE_* 환경변수 필요).
+	useJUnitPlatform {
+		excludeTags 'stripe-sandbox'
+	}
 	// 글로벌 시간대 전략(docs/design/global-timezone-strategy.md §3.1) — 테스트 JVM은 AtCrewBackendApplication.main()을
 	// 거치지 않아 TimeZone.setDefault(UTC)가 적용되지 않으므로 개발 환경의 로컬 시간대에 결과가 좌우되지 않도록 별도 고정.
+	jvmArgs '-Duser.timezone=UTC'
+}
+
+// Stripe sandbox 실호출 테스트(plans/260813-stripe-billing PA-14). 키가 없으면 각 테스트가 스스로 skip한다.
+tasks.register('stripeSandboxTest', Test) {
+	description = 'Stripe sandbox(test mode) 실호출 테스트 — test clock으로 갱신·결제 실패를 재현한다'
+	group = 'verification'
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath
+	useJUnitPlatform {
+		includeTags 'stripe-sandbox'
+	}
 	jvmArgs '-Duser.timezone=UTC'
 }
 

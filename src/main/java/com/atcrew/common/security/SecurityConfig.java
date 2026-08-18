@@ -93,6 +93,10 @@ class SecurityConfig {
                             // Worker가 새 형식으로 전환된 뒤 LegacyArtworkCallbackController와 함께 제거한다.
                             .requestMatchers(HttpMethod.POST, "/internal/artwork/images/processed").permitAll()
                             .requestMatchers(HttpMethod.POST, "/internal/search/reindex").permitAll()
+                            // 요금제 페이지는 비로그인도 열람한다(요금제-R03).
+                            .requestMatchers(HttpMethod.GET, "/api/billing/catalog").permitAll()
+                            // Stripe 웹훅 — 인증 대신 서명 검증으로 보호한다(BillingWebhookController).
+                            .requestMatchers(HttpMethod.POST, "/internal/billing/stripe/webhook").permitAll()
                             .requestMatchers("/actuator/health", "/actuator/info").permitAll();
 
                     // recruit 모듈 — 공개 목록/상세 조회는 인증 불필요, 나머지는 인증 필요(기본 anyRequest().authenticated()).

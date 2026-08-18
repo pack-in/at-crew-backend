@@ -1,0 +1,13 @@
+# CI 전용 런타임 이미지 — 워크플로가 러너에서 이미 `./gradlew build`로 만든 jar를 그대로 담는다.
+#
+# 루트 `Dockerfile`은 이미지 안에서 Gradle 빌드까지 하는데, 배포 대상 EC2가 ARM64라 CI(amd64 러너)에서
+# 그 이미지를 arm64로 빌드하려면 QEMU 에뮬레이션으로 컴파일해야 해서 몇 배로 느려진다. jar는 아키텍처와
+# 무관한 바이트코드이므로, 컴파일은 러너 네이티브로 하고 여기서는 복사만 한다 — COPY만 있는 빌드는
+# arm64 바이너리를 실행하지 않아 에뮬레이션 없이도 그대로 만들어진다.
+#
+# 로컬 수동 배포(deploy/deploy.sh)는 맥(arm64)에서 도니 기존 루트 Dockerfile을 계속 쓰면 된다.
+FROM eclipse-temurin:21-jre
+WORKDIR /app
+COPY build/libs/*.jar app.jar
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "app.jar"]
