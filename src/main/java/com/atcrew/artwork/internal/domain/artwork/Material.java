@@ -1,5 +1,6 @@
 package com.atcrew.artwork.internal.domain.artwork;
 
+import com.atcrew.artwork.MaterialTarget;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -34,7 +35,7 @@ public class Material {
 
     // 표시 전용 나열 데이터 — 검색·개별 수정이 없어 정규화 대신 JSON 컬럼으로 저장(§3.2)
     @JdbcTypeCode(SqlTypes.JSON)
-    private List<String> targets;
+    private List<MaterialTarget> targets;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "attachment_keys")
@@ -46,7 +47,7 @@ public class Material {
     protected Material() {
     }
 
-    public Material(String name, List<String> targets, List<String> attachmentKeys, List<String> links) {
+    public Material(String name, List<MaterialTarget> targets, List<String> attachmentKeys, List<String> links) {
         this.name = name;
         this.targets = targets;
         this.attachmentKeys = attachmentKeys;
@@ -60,7 +61,7 @@ public class Material {
     }
 
     public String getName() { return name; }
-    public List<String> getTargets() { return targets; }
+    public List<MaterialTarget> getTargets() { return targets; }
     public List<String> getAttachmentKeys() { return attachmentKeys; }
     public List<String> getLinks() { return links; }
 }

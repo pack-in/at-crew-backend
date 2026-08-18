@@ -5,13 +5,17 @@ import com.atcrew.auth.AuthService;
 import com.atcrew.auth.EmailLoginCommand;
 import com.atcrew.auth.EmailRegisterCommand;
 import com.atcrew.auth.GoogleRegisterCommand;
+import com.atcrew.auth.internal.web.dto.ChangePasswordRequest;
 import com.atcrew.auth.internal.web.dto.EmailLoginRequest;
 import com.atcrew.auth.internal.web.dto.EmailRegisterRequest;
 import com.atcrew.auth.internal.web.dto.GoogleLoginRequest;
 import com.atcrew.auth.internal.web.dto.GoogleRegisterRequest;
+import com.atcrew.auth.internal.web.dto.LogoutRequest;
 import com.atcrew.auth.internal.web.dto.RefreshRequest;
+import com.atcrew.common.security.SecurityUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -27,9 +31,11 @@ import org.springframework.web.bind.annotation.RestController;
 class AuthController {
 
     private final AuthService authService;
+    private final SecurityUtils securityUtils;
 
-    AuthController(AuthService authService) {
+    AuthController(AuthService authService, SecurityUtils securityUtils) {
         this.authService = authService;
+        this.securityUtils = securityUtils;
     }
 
     // ─── 이메일 인증 ─────────────────────────────────────────────────────
@@ -62,6 +68,22 @@ class AuthController {
                 request.agreeService(), request.agreePrivacy(),
                 request.agreeThirdParty(), request.agreeMarketing(), request.timezone(), request.countryCode());
         return com.atcrew.common.response.ApiResponse.success(authService.registerWithEmail(command));
+    }
+
+    @Operation(summary = "비밀번호 변경",
+            description = "현재 비밀번호를 확인한 뒤 새 비밀번호로 변경합니다. 이메일 가입 계정 전용이며, "
+                    + "변경 후에는 기존 Refresh Token이 모두 폐기되므로 다시 로그인해야 합니다.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "변경 성공"),
+            @ApiResponse(responseCode = "400", description = "입력 형식 오류·현재 비밀번호 불일치·소셜 로그인 계정"),
+            @ApiResponse(responseCode = "401", description = "인증 필요"),
+            @ApiResponse(responseCode = "428", description = "비밀번호 재설정 필요 (마이그레이션 회원)")
+    })
+    @PostMapping("/email/password-change")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void changePassword(@RequestBody @Valid ChangePasswordRequest request) {
+        authService.changePassword(securityUtils.getCurrentMemberId(),
+                request.currentPassword(), request.newPassword());
     }
 
     // ─── Google 인증 ─────────────────────────────────────────────────────
@@ -100,5 +122,18 @@ class AuthController {
     @PostMapping("/refresh")
     public com.atcrew.common.response.ApiResponse<AuthInfo> refresh(@RequestBody @Valid RefreshRequest request) {
         return com.atcrew.common.response.ApiResponse.success(authService.refresh(request.refreshToken()));
+    }
+
+    @Operation(summary = "로그아웃",
+            description = "전달한 Refresh Token을 폐기합니다. Access Token은 상태 없는 JWT라 만료까지 유효하므로 "
+                    + "클라이언트가 즉시 폐기해야 합니다. 이미 로그아웃된 상태여도 204를 반환합니다.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "로그아웃 성공 (이미 로그아웃된 경우 포함)"),
+            @ApiResponse(responseCode = "401", description = "인증 필요")
+    })
+    @PostMapping("/logout")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void logout(@RequestBody @Valid LogoutRequest request) {
+        authService.logout(securityUtils.getCurrentMemberId(), request.refreshToken());
     }
 }

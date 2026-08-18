@@ -6,6 +6,7 @@ import com.atcrew.artwork.ArtworkRole;
 import com.atcrew.artwork.ArtworkService;
 import com.atcrew.artwork.ArtworkStatus;
 import com.atcrew.artwork.CreativeType;
+import com.atcrew.artwork.Genre;
 import com.atcrew.artwork.ImageLayoutType;
 import com.atcrew.artwork.UploadArtworkCommand;
 import com.atcrew.artwork.WorkDuration;
@@ -229,7 +230,7 @@ class PortfolioMembershipReconcileTests {
         return artworkService.uploadArtwork(memberId, new UploadArtworkCommand(
                 List.of(imageKey), 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 "작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
-                List.of(ArtworkRole.LINEART), List.of("판타지"), List.of("태그"),
+                List.of(ArtworkRole.LINEART), List.of(Genre.FANTASY), List.of("태그"),
                 AgeRating.ALL, true, List.of(), List.of("clip studio"),
                 new WorkDuration(1, 1, 1, 1), 1, List.of(), List.of())).id();
     }

@@ -4,6 +4,8 @@ import com.atcrew.artwork.AgeRating;
 import com.atcrew.artwork.ArtworkField;
 import com.atcrew.artwork.ArtworkRole;
 import com.atcrew.artwork.CreativeType;
+import com.atcrew.artwork.Genre;
+import com.atcrew.artwork.MaterialTarget;
 
 import java.util.List;
 
@@ -18,11 +20,8 @@ public record SearchQuery(
         List<CreativeType> creativeTypes,
         List<AgeRating> ageRatings,
         List<ArtworkRole> roles,
-        // TODO: 장르/소재 대상 정본 목록은 Notion(피그마 UI개편_검색 필터 패널 주석 참고)에 있음 — 피그마가 기획
-        // 기준이므로 정본이 확정되면 enum화 검토. 현재는 자유 문자열 keyword로 색인해 목록이 바뀌어도
-        // 재색인만으로 흡수된다(docs/design/search-module-design.md §1.4).
-        List<String> genres,
-        List<String> materialTargets,
+        List<Genre> genres,
+        List<MaterialTarget> materialTargets,
         SearchSort sort,
         String cursor,
         int size

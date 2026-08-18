@@ -601,3 +601,13 @@ depends on: (없음)
       실제 계약(visibility 입력 경로 자체가 없음)에 맞게 갱신
 - [x] `docs/operations/moderation-block.md`의 차단 해제 SQL이 차단 SQL과 같은 `WHERE ... AND
       blocked_at IS NULL` 조건을 그대로 써서 0행 no-op이 되던 결함 수정 — 별도 해제 SQL 명시
+
+## PA-27. origin/main 병합 (2026-08-18)
+
+이 브랜치가 2026-08-07에 갈라진 뒤 main에 Stripe billing 모듈·genre/material enum 정규화·설정
+API·배포 인프라 등 38커밋이 먼저 들어갔다. 병합 시 마이그레이션 번호가 겹쳐(main V16·V20을 이미
+씀) 이 plan이 쓴 `V20__moderation_block.sql`→`V21`, `V21__snapshot_public_id.sql`→`V22`,
+`V22__portfolio_items_revision.sql`→`V23`로 재채번했다 — 위 태스크들의 "V20/V21/V22" 언급은
+재채번 **이전** 시점 기록이니 실제 파일명은 이 번호를 참고할 것. `com.atcrew.billing.PlanService`
+(PA-01 스텁)는 main의 실제 `BillingService`로 전량 교체됐다 — 상세는
+`plans/260813-pro-plan-gating/PLAN-AGENT.md` PA-01.

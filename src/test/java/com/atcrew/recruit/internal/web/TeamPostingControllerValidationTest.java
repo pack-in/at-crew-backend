@@ -1,5 +1,6 @@
 package com.atcrew.recruit.internal.web;
 
+import com.atcrew.artwork.ArtworkRole;
 import com.atcrew.common.security.SecurityUtils;
 import com.atcrew.common.web.GlobalExceptionHandler;
 import com.atcrew.recruit.RecruitService;
@@ -15,6 +16,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.validation.beanvalidation.MethodValidationPostProcessor;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -99,21 +101,19 @@ class TeamPostingControllerValidationTest {
     }
 
     @Test
-    void 작성_모집_역할_원소_빈_문자열_거부() throws Exception {
+    void 작성_모집_역할_정본에_없는_값_거부() throws Exception {
         mockMvc.perform(post("/api/recruit/team-postings")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "title", "유효한 팀원모집글", "roles", List.of("   ")))))
+                                "title", "유효한 팀원모집글", "roles", List.of("작화")))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
-                .andDo(document("recruit/validation/create-team-posting-blank-role"));
+                .andDo(document("recruit/validation/create-team-posting-unknown-role"));
     }
 
     @Test
     void 작성_모집_역할_21개_초과_거부() throws Exception {
-        List<String> tooManyRoles = List.of(
-                "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10",
-                "r11", "r12", "r13", "r14", "r15", "r16", "r17", "r18", "r19", "r20", "r21");
+        List<String> tooManyRoles = Arrays.stream(ArtworkRole.values()).limit(21).map(Enum::name).toList();
         mockMvc.perform(post("/api/recruit/team-postings")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(

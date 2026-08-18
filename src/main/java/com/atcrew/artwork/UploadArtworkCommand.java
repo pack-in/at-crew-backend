@@ -18,7 +18,7 @@ public record UploadArtworkCommand(
         ArtworkField artworkField,       // 작품 분야
         CreativeType creativeType,       // 창작 유형
         List<ArtworkRole> roles,         // 담당 역할
-        List<String> genres,             // 장르
+        List<Genre> genres,              // 장르 (정본 enum)
         List<String> tags,               // 태그
         AgeRating ageRating,             // 연령 등급
         boolean publishToFeed,           // 앳크루 작품 피드에 공개할지 — 서버가 이 값으로 공개 상태를 계산한다

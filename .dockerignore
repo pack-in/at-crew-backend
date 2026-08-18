@@ -1,0 +1,13 @@
+.git
+.gradle
+build
+# Dockerfile.ci는 러너에서 미리 만든 부트 jar를 복사하므로 그 산출물만 예외로 둔다.
+!build/libs/*.jar
+.idea
+*.iml
+docs
+cloudflare-worker
+.env
+.env.*
+.wrangler
+node_modules

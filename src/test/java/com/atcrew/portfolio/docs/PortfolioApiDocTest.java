@@ -6,16 +6,15 @@ import com.atcrew.artwork.ArtworkRole;
 import com.atcrew.artwork.ArtworkService;
 import com.atcrew.artwork.ArtworkStatus;
 import com.atcrew.artwork.CreativeType;
+import com.atcrew.artwork.Genre;
 import com.atcrew.artwork.ImageLayoutType;
 import com.atcrew.artwork.UploadArtworkCommand;
 import com.atcrew.artwork.WorkDuration;
-import com.atcrew.billing.Plan;
-import com.atcrew.billing.SubscriptionStatus;
-import com.atcrew.billing.internal.domain.Subscription;
 import com.atcrew.billing.internal.persistence.SubscriptionRepository;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaProcessingStatus;
 import com.atcrew.media.internal.application.MediaCallbackService;
+import com.atcrew.support.BillingTestSupport;
 import com.atcrew.support.RestDocsIntegrationSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -660,8 +659,7 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
     /** 공유 포트폴리오는 프로 전용이므로 구독 행을 직접 만들어 플랜을 승급한다. */
     private RegisteredMember registerProMember(String name) throws Exception {
         RegisteredMember member = registerMember(name);
-        subscriptionRepository.save(
-                Subscription.create(member.memberId(), Plan.PRO_MONTHLY, SubscriptionStatus.ACTIVE));
+        BillingTestSupport.grantProPlan(subscriptionRepository, member.memberId());
         return member;
     }
 
@@ -674,7 +672,7 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
         return artworkService.uploadArtwork(memberId, new UploadArtworkCommand(
                 List.of(imageKey), 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 title, "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
-                List.of(ArtworkRole.LINEART), List.of("판타지"), List.of("태그"),
+                List.of(ArtworkRole.LINEART), List.of(Genre.FANTASY), List.of("태그"),
                 AgeRating.ALL, true, List.of(), List.of("clip studio"),
                 new WorkDuration(1, 1, 1, 1), 1, List.of(), List.of())).id();
     }

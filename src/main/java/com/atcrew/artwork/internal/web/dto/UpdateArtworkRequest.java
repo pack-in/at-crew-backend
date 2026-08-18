@@ -4,6 +4,7 @@ import com.atcrew.artwork.AgeRating;
 import com.atcrew.artwork.ArtworkField;
 import com.atcrew.artwork.ArtworkRole;
 import com.atcrew.artwork.CreativeType;
+import com.atcrew.artwork.Genre;
 import com.atcrew.artwork.ImageLayoutType;
 import com.atcrew.artwork.WorkDuration;
 import jakarta.validation.Valid;
@@ -22,7 +23,7 @@ public record UpdateArtworkRequest(
         ArtworkField artworkField,
         CreativeType creativeType,
         List<ArtworkRole> roles,
-        List<String> genres,
+        List<Genre> genres,
         @Size(max = 7) List<String> tags,
         AgeRating ageRating,
         List<String> tools,

@@ -217,6 +217,28 @@ class MemberControllerValidationTest {
                 .andDo(document("member/validation/update-info-too-many-activity-fields"));
     }
 
+    // ─── 설정 토글 ────────────────────────────────────────────────────
+
+    @Test
+    void 마케팅_동의_값_누락_거부() throws Exception {
+        mockMvc.perform(patch("/api/members/me/marketing-agreement")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("member/validation/update-marketing-agreement-null"));
+    }
+
+    @Test
+    void 성인_콘텐츠_표시_값_누락_거부() throws Exception {
+        mockMvc.perform(patch("/api/members/me/adult-content")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("member/validation/update-adult-content-null"));
+    }
+
     // ─── Helper ───────────────────────────────────────────────────────
 
     private String registerBody(String email, String handle, String name, String role) throws Exception {

@@ -290,6 +290,90 @@ class AuthServiceImplTest {
         verify(refreshTokenRepository).deleteAllByMemberId(MEMBER_ID);
     }
 
+    // ─── 로그아웃 ─────────────────────────────────────────────────────
+
+    @Test
+    void 로그아웃_시_refresh_토큰_삭제() {
+        RefreshToken stored = RefreshToken.of(MEMBER_ID, REFRESH_TOKEN, Instant.now().plusSeconds(3600));
+        givenStoredToken(stored);
+
+        authService.logout(MEMBER_ID, REFRESH_TOKEN);
+
+        verify(refreshTokenRepository).deleteByIdReturningCount(stored.getId());
+    }
+
+    @Test
+    void 이미_로그아웃된_토큰이면_조용히_성공() {
+        when(refreshTokenRepository.findByTokenValueAndExpiresAtAfter(eq(REFRESH_TOKEN), any()))
+                .thenReturn(Optional.empty());
+
+        authService.logout(MEMBER_ID, REFRESH_TOKEN);
+
+        verify(refreshTokenRepository, never()).deleteByIdReturningCount(anyString());
+    }
+
+    @Test
+    void 타인_소유_refresh_토큰은_로그아웃되지_않음() {
+        RefreshToken stored = RefreshToken.of("other-member", REFRESH_TOKEN, Instant.now().plusSeconds(3600));
+        givenStoredToken(stored);
+
+        authService.logout(MEMBER_ID, REFRESH_TOKEN);
+
+        verify(refreshTokenRepository, never()).deleteByIdReturningCount(anyString());
+    }
+
+    // ─── 비밀번호 변경 ────────────────────────────────────────────────
+
+    @Test
+    void 비밀번호_변경_성공_시_refresh_토큰_전체_폐기() {
+        when(memberService.findById(MEMBER_ID)).thenReturn(memberInfo(AuthProvider.EMAIL));
+        when(memberService.verifyPassword(EMAIL, PASSWORD)).thenReturn(PasswordVerification.matched(MEMBER_ID));
+
+        authService.changePassword(MEMBER_ID, PASSWORD, "NewPass1!");
+
+        verify(memberService).changePassword(MEMBER_ID, "NewPass1!");
+        verify(refreshTokenRepository).deleteAllByMemberId(MEMBER_ID);
+    }
+
+    @Test
+    void 현재_비밀번호_불일치_시_변경_거부() {
+        when(memberService.findById(MEMBER_ID)).thenReturn(memberInfo(AuthProvider.EMAIL));
+        when(memberService.verifyPassword(EMAIL, PASSWORD)).thenReturn(PasswordVerification.mismatched());
+
+        assertThatThrownBy(() -> authService.changePassword(MEMBER_ID, PASSWORD, "NewPass1!"))
+                .isInstanceOf(AuthException.class)
+                .satisfies(e -> assertThat(((AuthException) e).getCode())
+                        .isEqualTo(AuthErrorCode.CURRENT_PASSWORD_MISMATCH.name()));
+
+        verify(memberService, never()).changePassword(anyString(), anyString());
+    }
+
+    @Test
+    void GOOGLE_계정은_비밀번호_변경_불가() {
+        when(memberService.findById(MEMBER_ID)).thenReturn(memberInfo(AuthProvider.GOOGLE));
+
+        assertThatThrownBy(() -> authService.changePassword(MEMBER_ID, PASSWORD, "NewPass1!"))
+                .isInstanceOf(AuthException.class)
+                .satisfies(e -> assertThat(((AuthException) e).getCode())
+                        .isEqualTo(AuthErrorCode.PASSWORD_CHANGE_NOT_SUPPORTED.name()));
+
+        verify(memberService, never()).verifyPassword(anyString(), anyString());
+        verify(memberService, never()).changePassword(anyString(), anyString());
+    }
+
+    @Test
+    void 마이그레이션_회원_비밀번호_변경_428() {
+        when(memberService.findById(MEMBER_ID)).thenReturn(memberInfo(AuthProvider.EMAIL));
+        when(memberService.verifyPassword(EMAIL, PASSWORD)).thenReturn(PasswordVerification.notSet());
+
+        assertThatThrownBy(() -> authService.changePassword(MEMBER_ID, PASSWORD, "NewPass1!"))
+                .isInstanceOf(AuthException.class)
+                .satisfies(e -> assertThat(((AuthException) e).getCode())
+                        .isEqualTo(AuthErrorCode.PASSWORD_RESET_REQUIRED.name()));
+
+        verify(memberService, never()).changePassword(anyString(), anyString());
+    }
+
     // ─── 헬퍼 ─────────────────────────────────────────────────────────
 
     // 토큰 소비 성공 스텁 — 만료 조건 포함 조회 + DELETE 영향 행 수 1 (§3.3.2)
@@ -304,7 +388,7 @@ class AuthServiceImplTest {
                 provider,
                 "테스트", null, null, List.of(), null, List.of(), List.of(),
                 5, 5, null, null, null, List.of(),
-                true, null, null, Instant.now(), Instant.now(), "Asia/Seoul", "KR");
+                true, null, null, Instant.now(), Instant.now(), "Asia/Seoul", "KR", false, false);
     }
 
     private AuthException catchAuthException(Runnable action) {

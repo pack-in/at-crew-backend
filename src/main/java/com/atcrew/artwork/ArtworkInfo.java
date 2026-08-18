@@ -17,7 +17,7 @@ public record ArtworkInfo(
         ArtworkField artworkField,
         CreativeType creativeType,
         List<ArtworkRole> roles,
-        List<String> genres,
+        List<Genre> genres,
         List<String> tags,
         List<String> tools,
         WorkDuration workDuration,

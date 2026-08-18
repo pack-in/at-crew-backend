@@ -1,5 +1,7 @@
 package com.atcrew.recruit.internal.application;
 
+import com.atcrew.billing.BillingProduct;
+import com.atcrew.billing.BillingService;
 import com.atcrew.common.response.CursorPage;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.recruit.ApplicationInfo;
@@ -53,13 +55,14 @@ class RecruitServiceImpl implements RecruitService {
     private final LikedArtistService likedArtistService;
     private final AuthorNameResolver authorNameResolver;
     private final RecruitImageService recruitImageService;
+    private final BillingService billingService;
     private final ApplicationEventPublisher eventPublisher;
 
     RecruitServiceImpl(JobPostingRepository jobPostingRepository, TeamPostingRepository teamPostingRepository,
             JobSeekingPostService jobSeekingPostService, ApplicationService applicationService,
             LikedArtistService likedArtistService,
             AuthorNameResolver authorNameResolver, RecruitImageService recruitImageService,
-            ApplicationEventPublisher eventPublisher) {
+            BillingService billingService, ApplicationEventPublisher eventPublisher) {
         this.jobPostingRepository = jobPostingRepository;
         this.teamPostingRepository = teamPostingRepository;
         this.jobSeekingPostService = jobSeekingPostService;
@@ -67,6 +70,7 @@ class RecruitServiceImpl implements RecruitService {
         this.likedArtistService = likedArtistService;
         this.authorNameResolver = authorNameResolver;
         this.recruitImageService = recruitImageService;
+        this.billingService = billingService;
         this.eventPublisher = eventPublisher;
     }
 
@@ -121,6 +125,11 @@ class RecruitServiceImpl implements RecruitService {
             jobPosting.submitForApproval();
         }
         JobPosting saved = jobPostingRepository.save(jobPosting);
+        if (command.submit()) {
+            // 구인글은 유료 단건 게시 상품이다(구인구직-R02). 임시저장(DRAFT)은 게시가 아니므로 차감하지 않고,
+            // 이후 submitJobPosting에서 최초 제출될 때 차감한다. 이 트랜잭션이 실패하면 차감도 함께 롤백된다.
+            billingService.consume(memberId, BillingProduct.JOB_POSTING, saved.getId());
+        }
         // 이미지는 presign으로 발급받은 key로 들어온다 — media 모듈에 등록해 Worker 변환을 트리거한다(설계 §10.3).
         RecruitImageService.apply(
                 recruitImageService.register(MediaOwnerType.JOB_POSTING, saved.getId(),
@@ -151,7 +160,12 @@ class RecruitServiceImpl implements RecruitService {
     @Override
     public JobPostingInfo submitJobPosting(String memberId, String jobPostingId) {
         JobPosting jobPosting = getOwned(jobPostingId, memberId);
+        // 반려 후 재제출(PENDING → PENDING)은 이미 차감된 건이므로 최초 제출에서만 차감한다.
+        boolean firstSubmit = jobPosting.getStatus() == JobPostingStatus.DRAFT;
         jobPosting.submitForApproval();
+        if (firstSubmit) {
+            billingService.consume(memberId, BillingProduct.JOB_POSTING, jobPostingId);
+        }
         publishJobPostingChanged(jobPostingId);
         return toInfo(jobPosting);
     }
@@ -255,8 +269,9 @@ class RecruitServiceImpl implements RecruitService {
     @Override
     public JobPostingInfo boostJobPosting(String memberId, String jobPostingId) {
         JobPosting jobPosting = getOwned(jobPostingId, memberId);
-        // TODO(결제): Polar 결제 모듈(로드맵 5번) 완성 후 "구매한 끌어올리기 개수" 확인·차감을 여기에 연결한다(설계 §2.1.1, §7).
+        // 적용에 성공한 뒤에만 차감한다 — 쿨다운·상태 위반으로 boost()가 실패하면 잔량은 그대로다(요금제-R06).
         jobPosting.boost(Instant.now());
+        billingService.consume(memberId, BillingProduct.BOOST, jobPostingId);
         publishJobPostingChanged(jobPostingId);
         return toInfo(jobPosting);
     }
@@ -267,6 +282,8 @@ class RecruitServiceImpl implements RecruitService {
     public TeamPostingInfo createTeamPosting(String memberId, CreateTeamPostingCommand command) {
         TeamPosting teamPosting = TeamPosting.create(memberId, command);
         TeamPosting saved = teamPostingRepository.save(teamPosting);
+        // 팀원 모집글은 유료 단건 게시 상품이다(구인구직-R02) — 임시저장 단계가 없으므로 생성 성공 시 차감한다.
+        billingService.consume(memberId, BillingProduct.TEAM_POSTING, saved.getId());
         // 이미지는 presign으로 발급받은 key로 들어온다 — media 모듈에 등록해 Worker 변환을 트리거한다(설계 §10.3).
         RecruitImageService.apply(
                 recruitImageService.register(MediaOwnerType.TEAM_POSTING, saved.getId(),
@@ -366,8 +383,9 @@ class RecruitServiceImpl implements RecruitService {
     @Override
     public TeamPostingInfo boostTeamPosting(String memberId, String teamPostingId) {
         TeamPosting teamPosting = getOwnedTeamPosting(teamPostingId, memberId);
-        // TODO(결제): Polar 결제 모듈(로드맵 5번) 완성 후 "구매한 끌어올리기 개수" 확인·차감을 여기에 연결한다(설계 §2.1.1, §7).
+        // 적용에 성공한 뒤에만 차감한다 — 쿨다운·상태 위반으로 boost()가 실패하면 잔량은 그대로다(요금제-R06).
         teamPosting.boost(Instant.now());
+        billingService.consume(memberId, BillingProduct.BOOST, teamPostingId);
         publishTeamPostingChanged(teamPostingId);
         return toTeamInfo(teamPosting);
     }

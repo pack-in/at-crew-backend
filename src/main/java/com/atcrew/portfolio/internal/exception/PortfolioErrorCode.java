@@ -6,6 +6,9 @@ public enum PortfolioErrorCode {
 
     PORTFOLIO_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 포트폴리오입니다"),
     PORTFOLIO_ACCESS_DENIED(HttpStatus.FORBIDDEN, "해당 포트폴리오에 접근 권한이 없습니다"),
+    // billing은 hasProPlan(memberId) boolean만 주고 게이팅 예외는 소비 모듈이 던진다
+    // (plans/260813-pro-plan-gating/PLAN-AGENT.md 결정, artwork의 STARTER_ARTWORK_LIMIT_EXCEEDED와 동일 패턴).
+    PRO_PLAN_REQUIRED(HttpStatus.FORBIDDEN, "포트폴리오 생성 및 추가는 유료 기능이에요"),
     PORTFOLIO_BLOCKED(HttpStatus.GONE, "더 이상 열람할 수 없는 포트폴리오입니다"),
     SNAPSHOT_PORTFOLIO_IMMUTABLE(HttpStatus.CONFLICT, "고정형 포트폴리오는 수정할 수 없습니다"),
     ARTIST_PAGE_NOT_DELETABLE(HttpStatus.CONFLICT, "작가 페이지 포트폴리오는 삭제할 수 없습니다"),

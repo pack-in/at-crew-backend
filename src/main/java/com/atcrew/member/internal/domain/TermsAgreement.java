@@ -32,6 +32,15 @@ public class TermsAgreement {
         return new TermsAgreement(privacyPolicy, serviceTerms, thirdPartyProvision, marketingNotification, Instant.now());
     }
 
+    /**
+     * 마케팅 수신 동의만 바꾼 새 인스턴스를 반환한다(설정 화면 토글).
+     * 필수 약관의 동의 시각({@code agreedAt})은 가입 시점 그대로 보존한다 — 마케팅 토글은
+     * 필수 약관에 다시 동의한 것이 아니므로 감사 추적상 시각을 갱신하면 안 된다.
+     */
+    public TermsAgreement withMarketingNotification(boolean agreed) {
+        return new TermsAgreement(privacyPolicy, serviceTerms, thirdPartyProvision, agreed, agreedAt);
+    }
+
     public boolean privacyPolicy() { return privacyPolicy; }
     public boolean serviceTerms() { return serviceTerms; }
     public boolean thirdPartyProvision() { return thirdPartyProvision; }

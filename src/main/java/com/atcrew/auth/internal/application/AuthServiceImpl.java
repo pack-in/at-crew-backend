@@ -178,6 +178,55 @@ class AuthServiceImpl implements AuthService {
         return new AuthInfo(newAccessToken, newRefreshTokenValue, member, false);
     }
 
+    @Override
+    @Transactional
+    public void logout(String memberId, String refreshToken) {
+        RefreshToken stored = refreshTokenRepository
+                .findByTokenValueAndExpiresAtAfter(refreshToken, Instant.now())
+                .orElse(null);
+
+        // 이미 로그아웃됐거나 만료된 토큰 — 재요청·중복 클릭에서 흔하므로 에러로 취급하지 않는다.
+        if (stored == null) {
+            return;
+        }
+        // 남의 refresh token을 넘겨 강제 로그아웃시키는 것을 차단한다.
+        // 토큰의 존재 여부를 알려주지 않도록 응답은 성공 경로와 동일하게 둔다.
+        if (!stored.getMemberId().equals(memberId)) {
+            log.warn("타 회원 소유 refresh token 로그아웃 시도: memberId={}", memberId);
+            return;
+        }
+
+        refreshTokenRepository.deleteByIdReturningCount(stored.getId());
+        log.info("로그아웃: memberId={}", memberId);
+    }
+
+    @Override
+    @Transactional
+    public void changePassword(String memberId, String currentPassword, String newPassword) {
+        MemberInfo member = memberService.findById(memberId);
+
+        // GOOGLE 계정은 비밀번호 자체가 없어 변경 대상이 아니다.
+        if (member.authProvider() != AuthProvider.EMAIL) {
+            throw new AuthException(AuthErrorCode.PASSWORD_CHANGE_NOT_SUPPORTED);
+        }
+
+        PasswordVerification verification = memberService.verifyPassword(member.loginEmail(), currentPassword);
+        if (verification.isNotSet()) {
+            // 마이그레이션 회원 — 확인할 현재 비밀번호가 없으므로 재설정 경로로 유도한다.
+            throw new AuthException(AuthErrorCode.PASSWORD_RESET_REQUIRED);
+        }
+        if (!verification.isMatched()) {
+            log.warn("비밀번호 변경 실패(현재 비밀번호 불일치): memberId={}", memberId);
+            throw new AuthException(AuthErrorCode.CURRENT_PASSWORD_MISMATCH);
+        }
+
+        memberService.changePassword(memberId, newPassword);
+        // 비밀번호가 바뀌면 기존에 유출됐을 수 있는 refresh token도 함께 끊는다 — 재로그인이 필요하다.
+        refreshTokenRepository.deleteAllByMemberId(memberId);
+
+        log.info("비밀번호 변경: memberId={}", memberId);
+    }
+
     // Mongo findAndRemove 대체 (docs/design/mariadb-migration-design.md §3.3.2) —
     // 조회 후 조건부 DELETE의 영향 행 수로 승자를 결정한다. 동시 요청 두 개가 같은 토큰을 들고 와도
     // 1을 가져가는 쪽은 하나뿐이므로 "하나만 토큰을 소비한다"는 보장이 유지된다.

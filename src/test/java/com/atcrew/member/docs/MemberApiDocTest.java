@@ -157,6 +157,79 @@ class MemberApiDocTest extends RestDocsIntegrationSupport {
                 ));
     }
 
+    /**
+     * 마케팅 수신 동의 변경 성공 시나리오 문서화.
+     * 미동의 상태로 가입한 뒤 설정에서 동의로 전환한다.
+     */
+    @Test
+    void 마케팅_수신_동의_변경_성공_문서화() throws Exception {
+        String uniqueEmail = "doc-marketing-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com";
+        String accessToken = registerAndGetAccessToken(uniqueEmail, "마케팅문서유저");
+
+        mockMvc.perform(patch("/api/members/me/marketing-agreement")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .content(objectMapper.writeValueAsString(new UpdateMarketingAgreementRequest(true))))
+                .andExpect(status().isNoContent())
+                .andDo(document("member/update-marketing-agreement",
+                        preprocessRequest(prettyPrint()),
+                        preprocessResponse(prettyPrint()),
+                        requestFields(
+                                fieldWithPath("agreed").description("마케팅 정보 수신 동의 여부")
+                        )
+                ));
+
+        // 로그인 응답으로 변경된 값이 내려오는지 확인
+        mockMvc.perform(post("/api/auth/email/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new LoginRequest(uniqueEmail, "Secure1!"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.member.marketingAgreed").value(true));
+    }
+
+    /**
+     * 성인 콘텐츠 표시 설정 변경 성공 시나리오 문서화.
+     */
+    @Test
+    void 성인_콘텐츠_표시_설정_변경_성공_문서화() throws Exception {
+        String uniqueEmail = "doc-adult-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com";
+        String accessToken = registerAndGetAccessToken(uniqueEmail, "성인설정문서유저");
+
+        mockMvc.perform(patch("/api/members/me/adult-content")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .content(objectMapper.writeValueAsString(new UpdateAdultContentRequest(true))))
+                .andExpect(status().isNoContent())
+                .andDo(document("member/update-adult-content",
+                        preprocessRequest(prettyPrint()),
+                        preprocessResponse(prettyPrint()),
+                        requestFields(
+                                fieldWithPath("visible").description("성인 콘텐츠 표시 여부")
+                        )
+                ));
+
+        mockMvc.perform(post("/api/auth/email/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new LoginRequest(uniqueEmail, "Secure1!"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.member.adultContentVisible").value(true));
+    }
+
+    // ─── 헬퍼 ────────────────────────────────────────────────────────────
+
+    private String registerAndGetAccessToken(String email, String name) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/auth/email/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new RegisterRequest(
+                                email, "Secure1!", "Secure1!", name,
+                                true, true, true, false, "Asia/Seoul", "KR"
+                        ))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString())
+                .at("/data/accessToken").asText();
+    }
+
     // ─── 요청 바디 내부 레코드 ───────────────────────────────────────────
 
     /** 이메일 회원가입 요청 바디 */
@@ -185,4 +258,13 @@ class MemberApiDocTest extends RestDocsIntegrationSupport {
             boolean ongoing,
             String description
     ) {}
+
+    /** 이메일 로그인 요청 바디 */
+    record LoginRequest(String email, String password) {}
+
+    /** 마케팅 수신 동의 변경 요청 바디 */
+    record UpdateMarketingAgreementRequest(Boolean agreed) {}
+
+    /** 성인 콘텐츠 표시 설정 변경 요청 바디 */
+    record UpdateAdultContentRequest(Boolean visible) {}
 }

@@ -1,8 +1,9 @@
 package com.atcrew.billing.internal.domain;
 
-import com.atcrew.billing.Plan;
+import com.atcrew.billing.PlanType;
 import com.atcrew.billing.SubscriptionStatus;
 import com.atcrew.common.id.UuidV7Generator;
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityListeners;
 import jakarta.persistence.EnumType;
@@ -21,95 +22,106 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 import java.time.Instant;
 
 /**
- * 회원당 1개인 구독 상태 (docs/design/billing-module-design.md §2.1).
+ * Stripe 구독 미러. 구독 하나당 한 행이며 취소된 구독도 이력으로 남는다.
  *
- * <p>Stripe 연동 필드(stripeCustomerId/stripeSubscriptionId/lastEvent*)는 스키마에만 존재하며
- * Checkout·Webhook 연동이 붙는 후속 작업에서 채워진다.
+ * <p>웹훅은 순서가 뒤바뀌어 도착할 수 있으므로, Stripe가 준 이벤트 시각(stripeUpdatedAt)보다
+ * 오래된 이벤트는 무시한다(D16).
  */
 @Entity
-@Table(name = "subscriptions")
+@Table(name = "billing_subscriptions")
 @EntityListeners(AuditingEntityListener.class)
 public class Subscription implements Persistable<String> {
 
     @Id
     private String id;
 
+    @Column(name = "member_id", length = 36, nullable = false)
     private String memberId;
 
-    @Enumerated(EnumType.STRING)
-    private Plan plan;
-
-    @Enumerated(EnumType.STRING)
-    private SubscriptionStatus status;
-
-    private String stripeCustomerId;
-
+    @Column(name = "stripe_subscription_id", length = 64, nullable = false)
     private String stripeSubscriptionId;
 
-    private Instant currentPeriodEnd;
-
-    private boolean cancelAtPeriodEnd;
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private PlanType plan;
 
     @Enumerated(EnumType.STRING)
-    private Plan pendingPlan;
+    @Column(nullable = false, length = 20)
+    private SubscriptionStatus status;
 
-    // Stripe event.created — 웹훅 순서 역전 방어용(§4.3 보조 방어).
-    private Instant lastEventAt;
+    @Column(name = "current_period_end")
+    private Instant currentPeriodEnd;
 
-    private String lastEventId;
+    @Column(name = "cancel_at_period_end", nullable = false)
+    private boolean cancelAtPeriodEnd;
+
+    @Column(name = "stripe_updated_at", nullable = false)
+    private Instant stripeUpdatedAt;
 
     @Version
     private Long version;
 
     @CreatedDate
+    @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
     @LastModifiedDate
+    @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
-    // MariaDB 전환(docs/design/mariadb-migration-design.md §3.1) — 애플리케이션이 ID를 직접 할당하므로
-    // 신규 여부를 명시하지 않으면 save()가 매번 merge()(선행 SELECT)로 동작한다.
     @Transient
     private boolean isNew = false;
 
     protected Subscription() {
     }
 
-    public static Subscription create(String memberId, Plan plan, SubscriptionStatus status) {
+    public static Subscription create(String memberId, String stripeSubscriptionId, PlanType plan,
+            SubscriptionStatus status, Instant currentPeriodEnd, boolean cancelAtPeriodEnd,
+            Instant stripeUpdatedAt) {
         Subscription subscription = new Subscription();
         subscription.id = UuidV7Generator.generate();
         subscription.memberId = memberId;
+        subscription.stripeSubscriptionId = stripeSubscriptionId;
         subscription.plan = plan;
         subscription.status = status;
+        subscription.currentPeriodEnd = currentPeriodEnd;
+        subscription.cancelAtPeriodEnd = cancelAtPeriodEnd;
+        subscription.stripeUpdatedAt = stripeUpdatedAt;
         subscription.isNew = true;
         return subscription;
     }
 
     /**
-     * 프로 권한 판정.
+     * Stripe 상태를 반영한다. 이미 반영된 이벤트보다 오래된 이벤트면 아무것도 바꾸지 않는다.
      *
-     * <p>plan과 status를 분리해 두었기 때문에(§2.1) 결제 실패 시 plan=PRO_MONTHLY, status=PAST_DUE가 되어
-     * 게이팅은 스타터로 떨어지면서도 "프로 플랜 월간, 결제 실패" 표기가 동시에 성립한다.
+     * @return 실제로 갱신했으면 true
      */
-    public boolean isPro() {
-        return plan != Plan.STARTER
-                && (status == SubscriptionStatus.ACTIVE || status == SubscriptionStatus.TRIALING);
+    public boolean sync(PlanType plan, SubscriptionStatus status, Instant currentPeriodEnd,
+            boolean cancelAtPeriodEnd, Instant stripeUpdatedAt) {
+        if (stripeUpdatedAt.isBefore(this.stripeUpdatedAt)) {
+            return false;
+        }
+        this.plan = plan;
+        this.status = status;
+        this.currentPeriodEnd = currentPeriodEnd;
+        this.cancelAtPeriodEnd = cancelAtPeriodEnd;
+        this.stripeUpdatedAt = stripeUpdatedAt;
+        return true;
+    }
+
+    public boolean grantsPro() {
+        return status.grantsPro();
     }
 
     @Override
     public String getId() { return id; }
     public String getMemberId() { return memberId; }
-    public Plan getPlan() { return plan; }
-    public SubscriptionStatus getStatus() { return status; }
-    public String getStripeCustomerId() { return stripeCustomerId; }
     public String getStripeSubscriptionId() { return stripeSubscriptionId; }
+    public PlanType getPlan() { return plan; }
+    public SubscriptionStatus getStatus() { return status; }
     public Instant getCurrentPeriodEnd() { return currentPeriodEnd; }
     public boolean isCancelAtPeriodEnd() { return cancelAtPeriodEnd; }
-    public Plan getPendingPlan() { return pendingPlan; }
-    public Instant getLastEventAt() { return lastEventAt; }
-    public String getLastEventId() { return lastEventId; }
-    public Instant getCreatedAt() { return createdAt; }
-    public Instant getUpdatedAt() { return updatedAt; }
+    public Instant getStripeUpdatedAt() { return stripeUpdatedAt; }
 
     @Override
     public boolean isNew() { return isNew; }

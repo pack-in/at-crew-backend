@@ -1,5 +1,7 @@
 package com.atcrew.recruit.internal.domain;
 
+import com.atcrew.artwork.ArtworkRole;
+import com.atcrew.artwork.Genre;
 import com.atcrew.common.id.UuidV7Generator;
 import com.atcrew.common.persistence.StringListJsonConverter;
 import com.atcrew.recruit.CreateJobPostingCommand;
@@ -91,14 +93,16 @@ public class JobPosting {
     @ElementCollection
     @BatchSize(size = 100)   // 목록 조회 시 컬렉션 지연 로딩 N+1 완화
     @CollectionTable(name = "job_posting_roles", joinColumns = @JoinColumn(name = "job_posting_id"))
-    @Column(name = "role", length = 100, nullable = false)
-    private List<String> roles = new ArrayList<>();
+    @Column(name = "role", length = 30, nullable = false)
+    @Enumerated(EnumType.STRING)
+    private List<ArtworkRole> roles = new ArrayList<>();
 
     @ElementCollection
     @BatchSize(size = 100)   // 목록 조회 시 컬렉션 지연 로딩 N+1 완화
     @CollectionTable(name = "job_posting_genres", joinColumns = @JoinColumn(name = "job_posting_id"))
-    @Column(name = "genre", length = 100, nullable = false)
-    private List<String> genres = new ArrayList<>();
+    @Column(name = "genre", length = 30, nullable = false)
+    @Enumerated(EnumType.STRING)
+    private List<Genre> genres = new ArrayList<>();
 
     @Column(name = "work_scope", length = 500)
     private String workScope;
@@ -437,8 +441,8 @@ public class JobPosting {
     public boolean isBusinessRegistered() { return isBusinessRegistered; }
     public boolean isResumeRequired() { return isResumeRequired; }
     public boolean isCoverLetterRequired() { return isCoverLetterRequired; }
-    public List<String> getRoles() { return List.copyOf(roles); }
-    public List<String> getGenres() { return List.copyOf(genres); }
+    public List<ArtworkRole> getRoles() { return List.copyOf(roles); }
+    public List<Genre> getGenres() { return List.copyOf(genres); }
     public String getWorkScope() { return workScope; }
     public LocalDate getDeadline() { return deadline; }
     public Integer getRecruitCount() { return recruitCount; }

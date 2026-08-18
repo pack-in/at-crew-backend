@@ -36,7 +36,7 @@ recruit 모듈은 처음부터 JPA/MariaDB로 짓는다. `docs/design/mariadb-mi
 
 - **ID**: `String`, 컬럼 `VARCHAR(36) CHARACTER SET latin1 COLLATE latin1_bin`, 애플리케이션에서 UUIDv7 생성 (§3.1). 공통 유틸 `com.atcrew.common.id.UuidV7Generator`를 그대로 사용(MariaDB 전환 P1에서 이미 `common`에 추가됨).
 - **정규화 기준**(§3.2): WHERE 절/검색에 쓰이는 리스트는 자식 테이블, 표시 전용 리스트는 JSON 컬럼.
-  - `roles`, `genres` (List\<String\>) → 자식 테이블 (커뮤니티 피드 필터·검색 모듈에서 쓰일 가능성 높음, artwork의 `artwork_roles`/`artwork_genres`와 동일 패턴)
+  - `roles`(`List<ArtworkRole>`), `genres`(`List<Genre>`) → 자식 테이블 (커뮤니티 피드 필터·검색 모듈에서 쓰일 가능성 높음, artwork의 `artwork_roles`/`artwork_genres`와 동일 패턴). 최초 구현은 자유 문자열이었으나 검색 필터와 어휘가 맞지 않아 2026-08-07에 정본 enum으로 고정함(`V15`)
   - `benefitKeywords`, `referenceImages`, `recruitPurposes` → JSON 컬럼 (표시 전용, 검색 대상 아님)
 - **동시성**: `bookmarkCount`/`viewCount` 증가는 원자적 UPDATE(`UPDATE ... SET count = count + 1`)로 처리 — Mongo `$inc` 자리를 대체하는 §3.3 패턴을 그대로 따름.
 - **낙관적 락**: `JobPosting`/`TeamPosting`에 `@Version` 적용 (상태 전이 동시 수정 방지 + `Persistable` 없이 assigned-ID 신규/기존 판별 겸용, §3.1 JPA 주의점).

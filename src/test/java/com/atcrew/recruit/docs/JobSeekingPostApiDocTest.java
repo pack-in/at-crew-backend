@@ -46,8 +46,8 @@ class JobSeekingPostApiDocTest extends RestDocsIntegrationSupport {
                         preprocessResponse(prettyPrint()),
                         requestFields(
                                 fieldWithPath("title").description("구직글 제목 (최대 200자)"),
-                                fieldWithPath("roles").description("희망 역할 (최대 20개)").optional(),
-                                fieldWithPath("genres").description("희망 장르 (최대 20개)").optional(),
+                                fieldWithPath("roles").description("희망 역할 (최대 20개) — 정본 담당 업무 enum 이름 (TOTAL_ARTWORK·LINEART·COLORING·BACKGROUND 등 ArtworkRole 22종)").optional(),
+                                fieldWithPath("genres").description("희망 장르 (최대 20개) — 정본 장르 enum 이름 (FANTASY·ROMANCE_FANTASY·ACTION·BL 등 Genre 29종)").optional(),
                                 fieldWithPath("drawingStyle").description("작화 스타일 (최대 200자)").optional(),
                                 fieldWithPath("preferredFeedbackStyle").description("선호 피드백 방식 (DETAILED·MINIMAL·REAL_TIME·PERIODIC)").optional(),
                                 fieldWithPath("workStyle").description("작업 스타일 (INDEPENDENT·COLLABORATIVE·STRUCTURED·FLEXIBLE)").optional(),
@@ -279,8 +279,8 @@ class JobSeekingPostApiDocTest extends RestDocsIntegrationSupport {
     private Map<String, Object> fullCreateBody(boolean publish) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("title", "웹툰 일러스트레이터 구직");
-        body.put("roles", List.of("일러스트", "채색"));
-        body.put("genres", List.of("판타지", "액션"));
+        body.put("roles", List.of("LINEART", "COLORING"));
+        body.put("genres", List.of("FANTASY", "ACTION"));
         body.put("drawingStyle", "반실사체");
         body.put("preferredFeedbackStyle", "DETAILED");
         body.put("workStyle", "COLLABORATIVE");

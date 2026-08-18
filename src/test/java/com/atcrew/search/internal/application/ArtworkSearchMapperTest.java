@@ -7,9 +7,11 @@ import com.atcrew.artwork.ArtworkInfo;
 import com.atcrew.artwork.ArtworkRole;
 import com.atcrew.artwork.ArtworkStatus;
 import com.atcrew.artwork.CreativeType;
+import com.atcrew.artwork.Genre;
 import com.atcrew.artwork.ImageLayoutType;
 import com.atcrew.artwork.ImageProcessingStatus;
 import com.atcrew.artwork.MaterialInfo;
+import com.atcrew.artwork.MaterialTarget;
 import com.atcrew.artwork.Visibility;
 import com.atcrew.search.internal.domain.ArtworkSearchDocument;
 import org.junit.jupiter.api.Test;
@@ -44,14 +46,15 @@ class ArtworkSearchMapperTest {
     @Test
     void 소재_대상이_여러_material에서_평탄화되고_중복이_제거된다() {
         List<MaterialInfo> materials = List.of(
-                new MaterialInfo("소재1", List.of("무기", "배경"), List.of(), List.of()),
-                new MaterialInfo("소재2", List.of("배경", "인물"), List.of(), List.of())
+                new MaterialInfo("소재1", List.of(MaterialTarget.WEAPON, MaterialTarget.BACKGROUND), List.of(), List.of()),
+                new MaterialInfo("소재2", List.of(MaterialTarget.BACKGROUND, MaterialTarget.CHARACTER), List.of(), List.of())
         );
         ArtworkInfo info = artworkInfo(null, 0, materials);
 
         ArtworkSearchDocument doc = ArtworkSearchMapper.toDocument(info);
 
-        assertThat(doc.getMaterialTargets()).containsExactlyInAnyOrder("무기", "배경", "인물");
+        assertThat(doc.getMaterialTargets()).containsExactlyInAnyOrder(
+                MaterialTarget.WEAPON.name(), MaterialTarget.BACKGROUND.name(), MaterialTarget.CHARACTER.name());
     }
 
     @Test
@@ -83,7 +86,7 @@ class ArtworkSearchMapperTest {
                 "artwork-1", "author-1", "작가이름", "handle1",
                 "제목", "설명", images, representativeImageIndex, thumbnailKey, ImageLayoutType.VERTICAL_SCROLL,
                 ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL, List.of(ArtworkRole.LINEART),
-                List.of("BL"), List.of("태그1", "태그2"), List.of(), null, null, List.of(),
+                List.of(Genre.BL), List.of("태그1", "태그2"), List.of(), null, null, List.of(),
                 AgeRating.ALL, Visibility.PUBLIC, false, false, materials, ArtworkStatus.READY,
                 Instant.parse("2026-07-01T00:00:00Z"), Instant.parse("2026-07-02T00:00:00Z")
         );

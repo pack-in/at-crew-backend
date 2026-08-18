@@ -1,5 +1,7 @@
 package com.atcrew.recruit.internal.web.dto;
 
+import com.atcrew.artwork.ArtworkRole;
+import com.atcrew.artwork.Genre;
 import com.atcrew.recruit.TeamActivityDuration;
 import com.atcrew.recruit.TeamWeeklyActivityTime;
 import com.atcrew.recruit.TeamWorkLocationType;
@@ -7,6 +9,7 @@ import jakarta.validation.constraints.FutureOrPresent;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 import java.time.LocalDate;
@@ -24,8 +27,8 @@ public record UpdateTeamPostingRequest(
         @Size(max = 20) List<@NotBlank @Size(max = 50) String> recruitPurposes,
         TeamWorkLocationType workLocationType,
         @Size(max = 200) String activityRegion,
-        @Size(max = 20) List<@NotBlank @Size(max = 100) String> roles,
-        @Size(max = 20) List<@NotBlank @Size(max = 100) String> genres,
+        @Size(max = 20) List<@NotNull ArtworkRole> roles,
+        @Size(max = 20) List<@NotNull Genre> genres,
         Boolean hasParticipationFee,
         Boolean hasProfitSharing,
         @Size(max = 500) String extraCost,

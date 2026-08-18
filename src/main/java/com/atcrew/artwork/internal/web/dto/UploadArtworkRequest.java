@@ -4,6 +4,7 @@ import com.atcrew.artwork.AgeRating;
 import com.atcrew.artwork.ArtworkField;
 import com.atcrew.artwork.ArtworkRole;
 import com.atcrew.artwork.CreativeType;
+import com.atcrew.artwork.Genre;
 import com.atcrew.artwork.ImageLayoutType;
 import com.atcrew.artwork.WorkDuration;
 import jakarta.validation.Valid;
@@ -25,7 +26,7 @@ public record UploadArtworkRequest(
         @NotNull ArtworkField artworkField,
         @NotNull CreativeType creativeType,
         @NotEmpty List<ArtworkRole> roles,
-        List<String> genres,
+        List<Genre> genres,
         @Size(max = 7) List<String> tags,
         @NotNull AgeRating ageRating,
         // 노출 위치 — 추상적인 공개 상태값을 직접 받지 않고 조합으로 계산한다(업로드-R09).

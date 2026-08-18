@@ -3,8 +3,9 @@ package com.atcrew.portfolio.internal.application;
 import com.atcrew.artwork.ArtworkInfo;
 import com.atcrew.artwork.ArtworkService;
 import com.atcrew.artwork.ArtworkStatus;
+import com.atcrew.artwork.Genre;
 import com.atcrew.artwork.Visibility;
-import com.atcrew.billing.PlanService;
+import com.atcrew.billing.BillingService;
 import com.atcrew.common.exception.DomainException;
 import com.atcrew.common.response.CursorPage;
 import com.atcrew.member.MemberInfo;
@@ -78,7 +79,7 @@ public class PortfolioServiceImpl {
     private final PortfolioItemSnapshotRepository portfolioItemSnapshotRepository;
     private final ArtworkService artworkService;
     private final MemberService memberService;
-    private final PlanService planService;
+    private final BillingService billingService;
     private final ShareSlugGenerator shareSlugGenerator;
     private final PortfolioBlocker portfolioBlocker;
     // Spring Boot 4가 자동 구성한 Jackson 3 매퍼 — HTTP 응답 직렬화와 동일한 설정으로 스냅샷 JSON을 만든다.
@@ -89,7 +90,7 @@ public class PortfolioServiceImpl {
                          PortfolioItemSnapshotRepository portfolioItemSnapshotRepository,
                          ArtworkService artworkService,
                          MemberService memberService,
-                         PlanService planService,
+                         BillingService billingService,
                          ShareSlugGenerator shareSlugGenerator,
                          PortfolioBlocker portfolioBlocker,
                          JsonMapper jsonMapper) {
@@ -98,7 +99,7 @@ public class PortfolioServiceImpl {
         this.portfolioItemSnapshotRepository = portfolioItemSnapshotRepository;
         this.artworkService = artworkService;
         this.memberService = memberService;
-        this.planService = planService;
+        this.billingService = billingService;
         this.shareSlugGenerator = shareSlugGenerator;
         this.portfolioBlocker = portfolioBlocker;
         this.jsonMapper = jsonMapper;
@@ -356,6 +357,18 @@ public class PortfolioServiceImpl {
     }
 
     /**
+     * 프로 플랜 게이팅 (요금제-R01, plans/260813-pro-plan-gating/PLAN-AGENT.md PA-01).
+     * billing 모듈은 {@code hasProPlan(memberId)} boolean만 주고, 게이팅 예외는 소비 모듈이 던진다
+     * (artwork의 {@code STARTER_ARTWORK_LIMIT_EXCEEDED}와 동일 패턴) — billing에 portfolio 관련
+     * 코드를 넣지 않기 위함이다.
+     */
+    private void assertPro(String memberId) {
+        if (!billingService.hasProPlan(memberId)) {
+            throw new PortfolioException(PortfolioErrorCode.PRO_PLAN_REQUIRED, "memberId=" + memberId);
+        }
+    }
+
+    /**
      * 열람 차단 판정 (§5.2) — blocked_at 플래그와 소유자 활성 여부를 이중으로 확인한다.
      * {@code MemberDeactivatedEvent}가 유실돼도 탈퇴 회원의 공유 링크가 살아 있으면 안 되기 때문이다.
      *
@@ -400,7 +413,7 @@ public class PortfolioServiceImpl {
     @Transactional
     public PortfolioInfo createShared(String memberId, String title, ReflectionType reflectionType,
                                       List<String> artworkIds) {
-        planService.assertPro(memberId);
+        assertPro(memberId);
         String validatedTitle = validateTitle(title);
         List<ArtworkInfo> artworks = orderByUploadedAt(resolveOwnedArtworks(memberId, artworkIds));
 
@@ -454,7 +467,7 @@ public class PortfolioServiceImpl {
                 artwork.tags(),
                 artwork.tools(),
                 artwork.roles(),
-                artwork.genres(),
+                artwork.genres().stream().map(Genre::name).toList(),
                 artwork.videoLinks(),
                 artwork.description(),
                 artwork.representativeImageIndex());
@@ -625,7 +638,7 @@ public class PortfolioServiceImpl {
                     "portfolioId=" + portfolio.getId());
         }
         if (portfolio.getKind() == PortfolioKind.SHARED) {
-            planService.assertPro(memberId);
+            assertPro(memberId);
         }
     }
 
