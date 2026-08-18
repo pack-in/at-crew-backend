@@ -44,8 +44,11 @@ class ArtworkSearchIndexer {
         }
     }
 
+    // 운영 차단된 작품은 색인에서 제외한다(마이페이지_작가-R39 — 외부 노출 즉시 중단).
     private boolean isSearchable(ArtworkInfo artwork) {
-        return artwork.status() == ArtworkStatus.READY && artwork.visibility() == Visibility.PUBLIC;
+        return artwork.status() == ArtworkStatus.READY
+                && artwork.visibility() == Visibility.PUBLIC
+                && !artwork.blocked();
     }
 
     void upsert(ArtworkInfo artwork) {

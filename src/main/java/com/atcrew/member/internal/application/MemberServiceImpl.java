@@ -181,6 +181,11 @@ class MemberServiceImpl implements MemberService {
     }
 
     @Override
+    public boolean existsByHandle(String handle) {
+        return memberRepository.existsByHandle(handle);
+    }
+
+    @Override
     public MemberInfo findByLoginEmailAndProvider(String loginEmail, AuthProvider authProvider) {
         return MemberMapper.toInfo(memberRepository.findByLoginEmailAndAuthProvider(loginEmail, authProvider)
                 .orElseThrow(() -> new MemberException(MemberErrorCode.MEMBER_NOT_FOUND, loginEmail)));

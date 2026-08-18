@@ -1,9 +1,14 @@
 # 모듈 개발 로드맵
 
-> 작성일: 2026-07-30 / 갱신: 2026-07-31 (`docs/AT-CREW_서비스기획서_전체_20260728.xlsx` 전체 대조)
+> 작성일: 2026-07-30 / 갱신: 2026-08-10 (출시 마일스톤 설계 — PG를 Polar에서 Stripe로 정정)
 > 상태: 우선순위 확정, 진행 중
 > Figma UI 화면 목록(`docs/design/figma.md`)과 구현 완료 모듈(`auth`/`member`/`artwork`/`community`)을 대조해
 > 미구현 영역을 정리하고 우선순위를 확정한 문서.
+
+> **2026-08-10 PG 변경**: 아래 5번 항목과 정본 기획서는 여전히 Polar를 명시하지만, 이번 출시 마일스톤은
+> 사용자 결정에 따라 **Stripe로 진행**한다. 근거·VAT 처리 방식·대체 매핑은
+> `docs/design/billing-module-design.md` §7 참고. 이 문서의 Polar 언급은 정본 기획서 대조 이력을
+> 보존하기 위해 그대로 두고, 실제 구현 결정만 Stripe를 따른다.
 
 ---
 
@@ -28,7 +33,7 @@
 |---|---|---|
 | 0 | MongoDB → MariaDB 마이그레이션 | **완료(P1~P6 전부)** — self-hosted EC2 배포·DNS 연결·인증/recruit/media 파이프라인 실 prod 스모크 테스트까지 완료(2026-08-10) — `docs/design/mariadb-migration-design.md` |
 | 0.5 | 글로벌 시간대 UTC 전환 | **완료**(§3.1~3.4 전부 구현·병합) — `docs/design/global-timezone-strategy.md` |
-| 1 | 본인/기업 인증(verification) 시스템 | 방식 확정(PASS/수동 이메일 심사), 구현 착수 전 |
+| 1 | 본인/기업 인증(verification) 시스템 | 방식 확정(PASS/수동 이메일 심사), 구현 착수 전. **2026-08-10 출시 마일스톤은 PASS 없이 성인 콘텐츠 표시 토글만 구현**(`settings-i18n-design.md` §6 R5) — 본인 인증 자체는 이번에도 미착수 |
 | 2 | recruit 모듈 | **핵심 CRUD 완료·main 병합**(PR #34) — REST Docs 테스트·검색/기업모듈 포트 연동 잔여, 아래 참고 |
 | 3 | 기업 계정/프로필 모듈 | **완료**, main 머지(`ab61508`) |
 | 4 | 검색 모듈 | **완료**, main 머지(Elasticsearch 기반). `RecruitSearchPort` 스텁 교체 완료(2026-08-01, PR #41) — recruit 3종 검색은 search 위임이 아닌 DB LIKE 기반으로 구현, ES 색인 이관은 별도 스코프 |
@@ -37,6 +42,9 @@
 | 7 | 다국어(i18n) UI 로컬라이제이션 | **신규**, 착수 전 |
 | 8 | 관리자/모더레이션 콘솔 | **신규**, 착수 전 |
 | 9 | 소셜 공유 메타(OG 카드) | **신규**, 착수 전 |
+| 10 | **포트폴리오 도메인(공유)** | **구현 완료**(2026-08-11, `com.atcrew.portfolio` 모듈·Flyway V17). 작가 페이지 lazy 생성, 공유(고정형/최신반영형) 생성·수정·삭제·복제·공유 링크 비로그인 열람, 카드 커버 썸네일까지 전부 병합. REST Docs 스니펫 16종 포함 `com.atcrew.portfolio.*` 56개 테스트 그린. 지금까지 "포트폴리오"는 artwork 완료 항목에 흡수돼 로드맵에 별도 항목이 없었으나, REQ-010/011(작가 페이지 포트폴리오·공유 포트폴리오·공유 링크) 대조 결과 **작품(Artwork)과 완전히 별개인 미구현 도메인**이었음이 확인돼 신설했었음. 정렬 3종·업로드 `portfolioIds` 연동(2026-08-12, `plans/260812-portfolio-snapshot-gap/` PA-05 — 업로드 요청이 `visibility` 3값 대신 `publishToFeed`+`portfolioIds` 조합을 받고 구 `PATCH /visibility`는 제거)·고정형 스냅샷 상세 API·운영 차단 최소 구현까지 완료. 스타터 4개 제한·언어 세그먼트는 아직 artwork 쪽 후속 작업(`plans/260811-portfolio-module/` 밖)으로 남아 있음 — `docs/design/portfolio-module-design.md`(§8에 설계 대비 구현 차이 정리) |
+
+**2026-08-10 — at-crew 출시 마일스톤 설계 착수**: 회원가입/로그인·포트폴리오(업로드~공유)·커뮤니티·검색·유료 요금제·마이페이지·i18n·설정을 이번 주 출시 목표로 전수 재점검한 결과 10번(포트폴리오)·5번(요금제)·6번(설정)·7번(i18n 필드만)이 동시에 필요함이 드러남. 설계 3건(`portfolio-module-design.md`, `billing-module-design.md`, `settings-i18n-design.md`)과 실행 계획을 함께 작성했다. 1번(PASS 본인인증)·8번(관리자)·9번(OG카드)은 이번에도 범위 밖이며 각 설계 문서의 "미확정 항목"에 축소 사항을 명시했다.
 
 사용자 결정 이력:
 1. 인증 시스템을 먼저 제대로 만들고(원래 4번 항목을 1순위로), 그다음 원래 1순위였던 recruit부터 순서대로 진행.
@@ -169,6 +177,8 @@ entitlement 원장, recruit 3종 게이팅, artwork 스타터 4개 제한, 탈�
 
 **Figma/기획서 근거:** `UI개편_설정` (5154:41400) 내 "요금제 및 결제 Tab bar 화면" 섹션(6230:47908). 기획서 REQ-020·021, 정책 설정-R03·R11·요금제-R01·R02·R06, 기능명세 설정-R01~R03·요금제페이지-R01·요금제-R03~R05.
 
+**구현 설계:** `docs/design/billing-module-design.md`(요금제/Stripe), `docs/design/portfolio-module-design.md`(포트폴리오 공유, 스타터 4개 제한 게이팅 소비처), `docs/design/settings-i18n-design.md`(설정 API·이메일 인프라·i18n 필드).
+
 ---
 
 ## 6. 설정 나머지 (로그아웃/비밀번호 변경 등)
@@ -232,6 +242,19 @@ entitlement 원장, recruit 3종 게이팅, artwork 스타터 4개 제한, 탈�
 **스코프:** 각 상세 페이지에 OG 메타 태그(`og:image`/`og:title`/`og:description`) 서버 렌더링 또는 메타 태그 엔드포인트 제공. 성인물(R18/G18) 콘텐츠는 썸네일을 서비스 기본 이미지로 대체. 삭제·비공개·정지 케이스는 각 모듈의 접근 제한 처리와 동일 규칙 적용.
 
 **Figma/기획서 근거:** 기능명세 작품 상세 페이지-R08, 마이페이지_작가-R45, 마이페이지_작가-R44, 마이페이지_기업-R10, 구인글 상세 페이지-R07, 팀원 모집글 상세 페이지-R01.
+
+---
+
+## 11. `Visibility.LINK_ONLY` enum 물리 제거 — 신규(2026-08-12)
+
+**Why 신규 항목인가:** 확정 명세(마이페이지_작가-R04)가 공개 상태를 "피드 공개 여부 × 라이브 포트폴리오
+편입 여부" 2요소 파생 상태로만 정의하면서 "링크 공개"라는 제3의 상태가 사라졌다. `Artwork.accessFor`·
+복제 자동 선택 판정은 이미 2요소 모델로 정합화했고 API 쓰기 경로도 400으로 막았지만, 라이트(Laiteu)
+`ArtworkStatus`에 LINK_ONLY가 실존해 ETL 매핑 대상이므로 enum 상수 자체는 `@Deprecated`로만 남겨뒀다.
+
+**스코프:** 라이트 → 앳크루 마이그레이션(0번 P6) 완료 후 `Visibility.LINK_ONLY` 상수 제거 + 잔존 행
+백필(PRIVATE 전환). ETL이 LINK_ONLY 작품을 어떻게 매핑할지는 `plans/260812-portfolio-snapshot-gap/PLAN-HUMAN.md`
+PH-03에서 확정한다.
 
 ---
 

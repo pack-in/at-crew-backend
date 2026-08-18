@@ -42,6 +42,8 @@ class ArtworkMapper {
                 artwork.getVideoLinks(),
                 artwork.getAgeRating(),
                 artwork.getVisibility(),
+                artwork.isPortfolioIncluded(),
+                artwork.isBlocked(),
                 artwork.getMaterials().stream()
                         .map(m -> new MaterialInfo(m.getName(), m.getTargets(),
                                 m.getAttachmentKeys(), m.getLinks()))
@@ -76,6 +78,7 @@ class ArtworkMapper {
                 artwork.getTags(),
                 artwork.getAgeRating(),
                 artwork.getVisibility(),
+                artwork.isBlocked(),
                 artwork.getStatus(),
                 artwork.getCreatedAt()
         );

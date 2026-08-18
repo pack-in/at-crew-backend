@@ -1,6 +1,7 @@
 package com.atcrew.artwork.internal.domain.artwork;
 
 import com.atcrew.artwork.AgeRating;
+import com.atcrew.artwork.ArtworkAccess;
 import com.atcrew.artwork.ArtworkField;
 import com.atcrew.artwork.ArtworkRole;
 import com.atcrew.artwork.ArtworkStatus;
@@ -122,6 +123,18 @@ public class Artwork implements Persistable<String> {
     @Enumerated(EnumType.STRING)
     private Visibility visibility;
 
+    // 라이브 포트폴리오(작가 페이지 + 최신 반영형) 편입 여부 — portfolio 모듈이 같은 트랜잭션에서 동기 갱신하는
+    // 비정규화 값이다. artwork가 portfolio를 참조하면 순환 의존이 되므로 이 컬럼만 보고 접근을 판정한다
+    // (docs/design/portfolio-module-design.md §1.2).
+    @Column(name = "portfolio_included")
+    private boolean portfolioIncluded;
+
+    // 운영 정책·법적 조치에 따른 외부 노출 중단 시각(마이페이지_작가-R39). 사용자 삭제(status=DELETED)와
+    // 구분되는 별도 축이며, 관리자 API가 없는 현재는 DB 직접 UPDATE로만 설정된다
+    // (docs/operations/moderation-block.md).
+    @Column(name = "blocked_at")
+    private Instant blockedAt;
+
     @Enumerated(EnumType.STRING)
     private Visibility visibilityBeforeDelete;
 
@@ -195,12 +208,6 @@ public class Artwork implements Persistable<String> {
     public void assertOwner(String memberId) {
         if (!authorId.equals(memberId)) {
             throw new ArtworkException(ArtworkErrorCode.ARTWORK_ACCESS_DENIED);
-        }
-    }
-
-    public void assertReady() {
-        if (status != ArtworkStatus.READY) {
-            throw new ArtworkException(ArtworkErrorCode.ARTWORK_NOT_READY);
         }
     }
 
@@ -280,16 +287,31 @@ public class Artwork implements Persistable<String> {
         }
     }
 
+    /**
+     * 노출 위치 재선언(업로드-R09)에 따른 공개 상태 변경.
+     *
+     * <p>이미지 처리 중(PROCESSING)에도 허용한다 — 업로드 시점에는 같은 조합(피드 공개 여부 ×
+     * 포트폴리오)을 PROCESSING 상태에서도 그대로 받는데, 업로드 직후의 정정만 막으면 사용자가 처리
+     * 완료까지 기다려야 한다. PROCESSING 작품은 공개 상태와 무관하게 피드·공유 목록·상세 어디에도
+     * 노출되지 않으므로(status 필터, {@link #accessFor}) 이 값은 처리 완료 시 적용될 의도일 뿐이다.
+     *
+     * <p>휴지통 작품은 복원이 먼저다 — 노출 위치를 바꿀 수 없다.
+     */
     public void changeVisibility(Visibility visibility) {
-        assertReady();
+        if (status == ArtworkStatus.DELETED) {
+            throw new ArtworkException(ArtworkErrorCode.ARTWORK_DELETED);
+        }
         this.visibility = visibility;
     }
 
-    // 탈퇴 이벤트 처리용 — READY 상태 체크 없이 강제 비공개
+    // 탈퇴 이벤트 처리용 — READY 상태 체크 없이 강제 비공개.
+    // 라이브 포트폴리오 편입 여부도 함께 해제한다 — 피드 공개만 끄면 accessFor가 편입을 근거로 여전히
+    // ALLOWED를 돌려줘(§5.4의 2요소 판정) 탈퇴 회원의 작품이 제3자에게 계속 열린다.
     public void forcePrivate() {
         if (this.visibility != Visibility.PRIVATE) {
             this.visibility = Visibility.PRIVATE;
         }
+        this.portfolioIncluded = false;
     }
 
     public void moveToTrash() {
@@ -331,10 +353,25 @@ public class Artwork implements Persistable<String> {
         }
     }
 
-    public boolean isVisibleTo(String viewerMemberId) {
-        if (status != ArtworkStatus.READY) return false;
-        if (authorId.equals(viewerMemberId)) return true;
-        return visibility == Visibility.PUBLIC || visibility == Visibility.LINK_ONLY;
+    // 뷰어별 접근 판정 — 공개 여부는 "피드 공개 여부 × 라이브 포트폴리오 편입 여부" 2요소로 계산한다
+    // (마이페이지_작가-R04, docs/design/portfolio-module-design.md §5.4).
+    // 피드 공개가 아니면서 라이브 포트폴리오에도 없는 작품이 곧 완전 비공개이며, 레거시 LINK_ONLY는
+    // 이 계산에서 PRIVATE와 동일하게 취급한다("링크 공개"라는 제3의 상태를 인정하지 않는다).
+    // 운영 차단은 삭제·공개 상태·고정형 설정보다 우선한다(R39) — 단 작성자 본인의 열람은 막지 않는다
+    // (차단 안내 배지는 프론트가 ArtworkInfo.blocked로 그린다).
+    public ArtworkAccess accessFor(String viewerMemberId) {
+        boolean owner = authorId.equals(viewerMemberId);
+        if (blockedAt != null) return owner ? ArtworkAccess.ALLOWED : ArtworkAccess.BLOCKED;
+        if (status == ArtworkStatus.DELETED) return owner ? ArtworkAccess.ALLOWED : ArtworkAccess.DELETED;
+        if (owner) return ArtworkAccess.ALLOWED;                              // PROCESSING도 본인은 열람
+        if (status != ArtworkStatus.READY) return ArtworkAccess.NOT_FOUND;
+        if (visibility == Visibility.PUBLIC) return ArtworkAccess.ALLOWED;
+        return portfolioIncluded ? ArtworkAccess.ALLOWED : ArtworkAccess.PRIVATE;
+    }
+
+    // 포트폴리오 편입/제외 반영 — 호출 주체는 항상 portfolio 모듈이다(ArtworkService.updatePortfolioInclusion).
+    public void updatePortfolioInclusion(boolean included) {
+        this.portfolioIncluded = included;
     }
 
     public ArtworkImage getRepresentativeImage() {
@@ -384,6 +421,8 @@ public class Artwork implements Persistable<String> {
     public List<String> getVideoLinks() { return videoLinks != null ? List.copyOf(videoLinks) : List.of(); }
     public AgeRating getAgeRating() { return ageRating; }
     public Visibility getVisibility() { return visibility; }
+    public boolean isPortfolioIncluded() { return portfolioIncluded; }
+    public boolean isBlocked() { return blockedAt != null; }
     public List<Material> getMaterials() { return List.copyOf(materials); }
     public ArtworkStatus getStatus() { return status; }
     public Instant getDeletedAt() { return deletedAt; }

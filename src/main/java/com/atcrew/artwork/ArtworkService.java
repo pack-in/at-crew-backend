@@ -17,7 +17,13 @@ public interface ArtworkService {
 
     ArtworkInfo updateArtwork(String memberId, String artworkId, UpdateArtworkCommand command);
 
-    void updateVisibility(String memberId, String artworkId, Visibility visibility);
+    /**
+     * 노출 위치 재선언 (업로드-R09) — 공개 상태값을 직접 받지 않고 "피드 공개 여부 × 담을 포트폴리오"
+     * 조합으로 계산한다. {@code portfolioIds}는 증분이 아니라 전체 재선언이라 목록에 없는 기존 편입은
+     * 해제된다. 편입 반영은 {@link ArtworkPortfolioSelectionRequested} 이벤트를 portfolio가 같은
+     * 트랜잭션에서 동기 처리한다.
+     */
+    void updatePublication(String memberId, String artworkId, boolean publishToFeed, List<String> portfolioIds);
 
     void deleteArtwork(String memberId, String artworkId);
 
@@ -31,6 +37,13 @@ public interface ArtworkService {
     void restoreArtworks(String memberId, List<String> artworkIds);
 
     void permanentlyDeleteArtworks(String memberId, List<String> artworkIds);
+
+    /**
+     * 작품의 라이브 포트폴리오(작가 페이지·최신 반영형) 편입 여부를 갱신한다.
+     * portfolio 모듈이 같은 트랜잭션 안에서 호출한다(docs/design/portfolio-module-design.md §1.2).
+     * 고정형(SNAPSHOT) 포트폴리오는 원본 접근 권한에 영향을 주지 않으므로 호출하지 않는다.
+     */
+    void updatePortfolioInclusion(String artworkId, boolean included);
 
     /**
      * 검색 색인용 조회 — 뷰어 권한 검사 없이 조회한다. 호출 측(search 모듈)이 status/visibility를 보고

@@ -10,7 +10,7 @@ import com.atcrew.artwork.UploadArtworkCommand;
 import com.atcrew.artwork.internal.web.dto.MaterialRequest;
 import com.atcrew.artwork.internal.web.dto.PresignRequest;
 import com.atcrew.artwork.internal.web.dto.UpdateArtworkRequest;
-import com.atcrew.artwork.internal.web.dto.UpdateVisibilityRequest;
+import com.atcrew.artwork.internal.web.dto.UpdatePublicationRequest;
 import com.atcrew.artwork.internal.web.dto.UploadArtworkRequest;
 import com.atcrew.common.response.ApiResponse;
 import com.atcrew.common.security.SecurityUtils;
@@ -91,14 +91,16 @@ class ArtworkController {
         return ApiResponse.success(artworkService.updateArtwork(memberId, artworkId, toCommand(request)));
     }
 
-    @Operation(summary = "공개 상태 변경")
+    @Operation(summary = "노출 위치 재선언",
+            description = "작품 피드 공개 여부와 담을 포트폴리오를 함께 재선언합니다. 공개 상태는 이 조합으로 "
+                    + "서버가 계산하며, portfolioIds는 증분이 아니라 전체 목록이라 빠진 포트폴리오에서는 제외됩니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "204", description = "변경 성공")
-    @PatchMapping("/artworks/{artworkId}/visibility")
+    @PatchMapping("/artworks/{artworkId}/publication")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void updateVisibility(@PathVariable String artworkId,
-                                 @RequestBody @Valid UpdateVisibilityRequest request) {
+    public void updatePublication(@PathVariable String artworkId,
+                                  @RequestBody @Valid UpdatePublicationRequest request) {
         String memberId = securityUtils.getCurrentMemberId();
-        artworkService.updateVisibility(memberId, artworkId, request.visibility());
+        artworkService.updatePublication(memberId, artworkId, request.publishToFeed(), request.portfolioIds());
     }
 
     @Operation(summary = "작품 삭제 (휴지통 이동)")
@@ -136,7 +138,7 @@ class ArtworkController {
                 req.imageKeys(), req.representativeImageIndex(), req.thumbnailKey(),
                 req.imageLayoutType(), req.title(), req.description(),
                 req.artworkField(), req.creativeType(), req.roles(), req.genres(),
-                req.tags(), req.ageRating(), req.visibility(), req.tools(),
+                req.tags(), req.ageRating(), req.publishToFeed(), req.portfolioIds(), req.tools(),
                 req.workDuration(), req.cutCount(), req.videoLinks(), materials);
     }
 

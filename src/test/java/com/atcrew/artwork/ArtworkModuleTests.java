@@ -11,13 +11,17 @@ import com.atcrew.support.BillingTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.modulith.test.ApplicationModuleTest;
+import org.springframework.modulith.test.PublishedEvents;
 import org.testcontainers.containers.MariaDBContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -61,6 +65,10 @@ class ArtworkModuleTests {
     @Autowired
     MediaCallbackService mediaCallbackService;
 
+    // 운영 차단은 관리자 API 없이 DB 직접 UPDATE로 이뤄지므로 테스트도 같은 경로를 쓴다.
+    @Autowired
+    JdbcTemplate jdbcTemplate;
+
     @Test
     void 작품_업로드_후_모든_필드가_그대로_조회된다() {
         String memberId = registerAuthor();
@@ -69,7 +77,7 @@ class ArtworkModuleTests {
                 List.of("raw/1.png", "raw/2.png"), 1, "raw/thumb.png", ImageLayoutType.VERTICAL_SCROLL,
                 "제목", "설명", ArtworkField.WEBTOON, CreativeType.ORIGINAL,
                 List.of(ArtworkRole.LINEART, ArtworkRole.COLORING), List.of(Genre.FANTASY, Genre.ACTION), List.of("태그1", "태그2"),
-                AgeRating.ALL, Visibility.PUBLIC, List.of("clip studio"),
+                AgeRating.ALL, true, List.of(), List.of("clip studio"),
                 new WorkDuration(1, 2, 3, 4), 12, List.of("https://youtube.com/watch?v=1"),
                 List.of(new MaterialData("배경소스", List.of(MaterialTarget.BACKGROUND), List.of("raw/mat.png"), List.of("https://acon3d.com/x")))
         ));
@@ -205,9 +213,8 @@ class ArtworkModuleTests {
     void 영구삭제하면_다시_조회되지_않는다() {
         String memberId = registerAuthor();
         ArtworkInfo uploaded = uploadMinimal(memberId, "raw/y.png");
-        // 이미지 처리 완료 상태로 만들어 둔다 — permanentlyDeleteArtworks의 allKeys 조합에 List.of()를 쓰는
-        // 기존(Mongo 시절부터의) 로직은 처리되지 않은 null 키가 섞이면 NPE가 나는 사전 존재 결함이라
-        // 이번 마이그레이션 범위 밖으로 두고, 테스트에서는 트리거하지 않도록 우회한다.
+        // 이미지 처리 완료 상태로 만들어 둔다 — 영구 삭제는 처리된 키까지 함께 지우는 경로를 확인해야 한다
+        // (처리 전 null 키가 섞여도 NPE가 나던 사전 존재 결함은 PA-20의 allImageKeys 정리로 해소됐다).
         processImage(uploaded.id(), "raw/y.png", MediaProcessingStatus.DONE);
         awaitReady(memberId, uploaded.id());
         artworkService.deleteArtwork(memberId, uploaded.id());
@@ -216,6 +223,64 @@ class ArtworkModuleTests {
 
         assertThatThrownBy(() -> artworkService.getArtwork(uploaded.id(), memberId))
                 .isInstanceOf(RuntimeException.class);
+    }
+
+    // 사용자 지정 썸네일 key는 media_assets에 행이 없어 삭제 대상 목록에서 빠지면 어디서도 지워지지
+    // 않는다. 더 중요한 것은 고정형 스냅샷 보존 판정이 이 key로 스냅샷을 찾는다는 점이다 —
+    // 후보에 없으면 스냅샷이 매칭되지 않아 상세 이미지까지 삭제된다(portfolio-module-design.md §5.6).
+    @Test
+    void 영구삭제_이벤트는_사용자_지정_썸네일_키까지_담는다(PublishedEvents events) {
+        String memberId = registerAuthor();
+        ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, new UploadArtworkCommand(
+                List.of("raw/ct.png"), 0, "raw/custom-thumb.png", ImageLayoutType.VERTICAL_SCROLL,
+                "테스트 작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
+                List.of(), List.of(), List.of(),
+                AgeRating.ALL, true, List.of(), List.of(), null, null, List.of(), List.of()));
+        processImage(uploaded.id(), "raw/ct.png", MediaProcessingStatus.DONE);
+        awaitReady(memberId, uploaded.id());
+        artworkService.deleteArtwork(memberId, uploaded.id());
+
+        artworkService.permanentlyDeleteArtworks(memberId, List.of(uploaded.id()));
+
+        assertThat(deletedImageKeysOf(events, uploaded.id()))
+                .contains("raw/ct.png", "raw/custom-thumb.png");
+    }
+
+    /** 영구 삭제 이벤트가 실어 보낸 R2 key 목록 — 실제 R2 삭제는 비동기라 이벤트로 확인한다. */
+    private List<String> deletedImageKeysOf(PublishedEvents events, String artworkId) {
+        List<String> keys = new ArrayList<>();
+        events.ofType(ArtworkPermanentlyDeletedEvent.class)
+                .matching(event -> event.artworkId().equals(artworkId))
+                .forEach(event -> keys.addAll(event.allImageKeys()));
+        return keys;
+    }
+
+    // 운영 차단은 삭제·공개 상태보다 우선한다(마이페이지_작가-R39). 관리자 API가 없어 차단은 DB 직접
+    // UPDATE로 이뤄지므로(docs/operations/moderation-block.md) 테스트도 같은 방식으로 재현한다.
+    @Test
+    void 운영_차단된_작품은_제3자에게_410이고_본인은_열람한다() {
+        String memberId = registerAuthor();
+        String viewerId = registerAuthor();
+        ArtworkInfo uploaded = uploadMinimal(memberId, "raw/b1.png");
+        processImage(uploaded.id(), "raw/b1.png", MediaProcessingStatus.DONE);
+        awaitReady(memberId, uploaded.id());
+
+        blockArtwork(uploaded.id());
+
+        assertThatThrownBy(() -> artworkService.getArtwork(uploaded.id(), viewerId))
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("ARTWORK_BLOCKED");
+        assertThatThrownBy(() -> artworkService.getArtwork(uploaded.id(), null))
+                .extracting(e -> ((DomainException) e).getStatus())
+                .isEqualTo(HttpStatus.GONE);
+        // 본인은 계속 열람할 수 있고, 응답의 blocked 플래그로 차단 안내 배지를 그린다.
+        ArtworkInfo mine = artworkService.getArtwork(uploaded.id(), memberId);
+        assertThat(mine.blocked()).isTrue();
+    }
+
+    /** 운영 차단 SQL 1건을 재현한다 — 관리자 API가 없어 실제 운영도 같은 UPDATE로 수행한다. */
+    private void blockArtwork(String artworkId) {
+        jdbcTemplate.update("UPDATE artworks SET blocked_at = UTC_TIMESTAMP(6) WHERE id = ?", artworkId);
     }
 
     /** Worker webhook 1건을 재현한다 — media가 자산 상태를 갱신하고 MediaAssetProcessedEvent를 발행한다. */
@@ -309,7 +374,7 @@ class ArtworkModuleTests {
                 imageKeys, 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 "테스트 작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
                 List.of(), List.of(), List.of(),
-                AgeRating.ALL, Visibility.PUBLIC, List.of(), null, null, List.of(), materials);
+                AgeRating.ALL, true, List.of(), List.of(), null, null, List.of(), materials);
     }
 
     private String registerAuthor() {

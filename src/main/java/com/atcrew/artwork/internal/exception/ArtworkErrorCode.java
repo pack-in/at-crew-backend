@@ -6,6 +6,9 @@ public enum ArtworkErrorCode {
 
     ARTWORK_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 작품입니다"),
     ARTWORK_ACCESS_DENIED(HttpStatus.FORBIDDEN, "해당 작품에 접근 권한이 없습니다"),
+    ARTWORK_DELETED(HttpStatus.GONE, "삭제된 작품입니다"),
+    ARTWORK_PRIVATE(HttpStatus.FORBIDDEN, "비공개 작품입니다"),
+    ARTWORK_BLOCKED(HttpStatus.GONE, "운영 정책에 따라 열람할 수 없는 작품입니다"),
     ARTWORK_NOT_READY(HttpStatus.BAD_REQUEST, "이미지 처리 중인 작품은 이 작업을 수행할 수 없습니다"),
     ARTWORK_NOT_DELETED(HttpStatus.BAD_REQUEST, "휴지통에 있는 작품이 아닙니다"),
     // 스타터 플랜 제한(마이페이지_작가-R20) — 프로 플랜으로 전환하면 해제된다. 휴지통 복구에도 동일 적용(휴지통-R03)

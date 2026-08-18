@@ -92,6 +92,30 @@ class MemberModuleTests {
                 .isEqualTo(MemberErrorCode.MEMBER_NOT_FOUND.name());
     }
 
+    // ─── existsByHandle (portfolio 공유 slug 충돌 검사) ──────────────────
+
+    @Test
+    void 존재하는_핸들은_존재로_판단() {
+        memberService.register("exists-handle@atcrew.com", "existshandle", "존재핸들회원", CreatorRole.WEBTOON);
+
+        assertThat(memberService.existsByHandle("existshandle")).isTrue();
+    }
+
+    @Test
+    void 존재하지_않는_핸들은_존재하지_않음으로_판단() {
+        assertThat(memberService.existsByHandle("nosuchhandle")).isFalse();
+    }
+
+    @Test
+    void 탈퇴_회원의_과거_핸들은_존재하지_않음으로_판단() {
+        MemberInfo member = memberService.register("deactivated-handle@atcrew.com", "deactivatedhandle", "탈퇴예정회원", CreatorRole.WEBTOON);
+
+        memberService.deactivate(member.id());
+
+        // 탈퇴 시 handle이 null로 클리어되므로, 과거 핸들은 slug 충돌 검사에서 재사용 가능해야 한다.
+        assertThat(memberService.existsByHandle("deactivatedhandle")).isFalse();
+    }
+
     // ─── updateName ───────────────────────────────────────────────────
 
     @Test
