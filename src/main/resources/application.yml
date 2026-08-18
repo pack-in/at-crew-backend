@@ -73,3 +73,11 @@ artwork:
 search:
   internal:
     secret: ${SEARCH_INTERNAL_SECRET:dev-internal-secret}
+
+app:
+  frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:3000}
+
+mail:
+  resend:
+    api-key: ${RESEND_API_KEY:dummy-resend-key}
+    from-address: ${MAIL_FROM_ADDRESS:AT-CREW <onboarding@resend.dev>}

@@ -3,6 +3,28 @@
 > 이 문서는 세션 인수인계용 체크리스트다. 장기 로드맵 전체는 `docs/roadmap.md`가 정본이고,
 > 이 문서는 "지금 당장 뭐부터 볼지"만 정리한다. 작업 완료 후 이 파일은 삭제해도 된다.
 
+## 2026-08-12 진행 상황 (배포 마무리 점검 + 비밀번호 재설정 구현)
+
+**병렬 워크트리(`turban`/`danhandev-feature-launch-milestone-mvp`) 발견**: 이 세션과 별개로 "출시 마일스톤" 전체(billing/portfolio/i18n/설정)가 진행 중이었음을 뒤늦게 확인. 이 세션에서 먼저 만들었던 `payment` 모듈 설계는 전부 폐기하고 `billing` 모듈(더 진척된 쪽)로 통합하기로 결정 — 상세는 `docs/design/billing-module-design.md`(다른 워크트리) 참고.
+
+**turban 병합 계획 검토 완료(2026-08-13) — 아직 병합할 단계 아님**:
+- turban은 main보다 **27개 커밋 뒤처짐**(merge-base `299ba5b`). 그중 **`0aa5c39`(prod HTTPS 강제 제거 — `NoClassDefFoundError`로 앱이 기동 자체를 못 했던 크래시 수정)가 turban에 없음** — 지금 상태로 배포하면 재발한다. turban을 main으로 rebase/merge할 때 이 커밋 흡수가 최우선.
+- **Flyway 번호 충돌 확정**: main V16(`member_adult_content_visible`)·V17(`password_reset_tokens`)과 turban V16(`billing_subscriptions`)·V17(`portfolio_schema`)·V18(`artwork_portfolio_inclusion`)이 같은 번호에 다른 내용으로 충돌. 병합 시 turban V16~V18 → V19~V21로 재번호 필요.
+- `SecurityConfig.java`/`application.yml`/`roadmap.md`/`CLAUDE.md`는 양쪽 다 수정해서 수동 병합 필요.
+- turban은 2026-08-13 기준 REST Docs 에러 스펙 확장 작업이 커밋 안 된 채 진행 중 — 그 작업부터 마무리·커밋시키고 rebase 진행할 것.
+
+**✅ 해결됨 — prod 521 복구**: root가 Cloudflare SSL/TLS 모드를 Flexible로 되돌려 `api.at-crew.com` 정상화 확인(2026-08-13). 다만 **Cloudflare DNS/SSL 편집 권한 요청은 아직 pending** — 다음에 같은 문제가 재발하면 또 root한테 요청해야 하는 상태 그대로임.
+
+**PASS 본인 인증 영구 폐기**(사용자 결정, 2026-08-12) — 법인이 미국 기준으로 재편되며 한국 전용 서비스인 PASS 연동을 하지 않기로 확정. 로드맵 §1 갱신 완료. 성인 콘텐츠는 표시 토글(OFF/ON+항상 blur) 2단계가 영구 최종 형태. 남는 범위는 기업 인증(수동 심사)뿐 — `Company.verified` 스텁 필드에 실제 상태를 연결하는 작업이 다음 착수 후보(turban과 안 겹침, 확인됨).
+
+**CI/CD 자동 배포 구축**: `.github/workflows/deploy.yml` 신규 — main push 시 빌드+테스트 통과 후 Docker Hub push(커밋 SHA 태그, latest 태그 동시 갱신) + EC2 SSH 재기동까지 자동화. **사용자가 GitHub 저장소 Settings에 Secrets 4개를 직접 등록해야 동작함**(`DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`, `APP_HOST`, `EC2_SSH_KEY`) — 아직 미등록이라 워크플로우는 존재하지만 실행하면 실패한다.
+
+**비밀번호 재설정 + 이메일 발송 인프라 구현 완료**: `docs/design/auth-email-custom-redesign.md` §7이 "별도 설계 필요" 초안이었던 부분을 Figma로 직접 확인(토큰 링크 방식, TTL 1시간 — 초안의 30분에서 정정)해 확정·구현. `com.atcrew.common.mail`(MailSender 포트 + Resend 어댑터, Flyway V17). `./gradlew build` 전체 그린 확인(354개 중 pre-existing flaky 2건은 격리 재실행 시 통과 — `SearchApiDocTest`/`EventPublicationRegistryTest`, 공유 Testcontainer 종료 경쟁 조건, 이 세션 변경과 무관). **root에게 `RESEND_API_KEY` 발급 요청 필요**(자체 가입 가능, 커스텀 도메인 발신 원하면 Cloudflare DNS 편집 권한도 필요 — 기존 pending 요청과 동일 건).
+
+**prod 필수값 fail-fast 검증 추가**: `WORKER_CALLBACK_SECRET`/`ARTWORK_INTERNAL_SECRET`/`SEARCH_INTERNAL_SECRET`/R2 자격증명 4개가 값 누락 시 `dev-internal-secret`/`dummy-*`로 조용히 기동되던 문제를 `application-prod.yml`에서 fail-fast로 전환.
+
+**다음 세션 우선순위**: (1) GitHub Secrets 4개 등록(사용자 작업) (2) PM 답변 받으면 RESEND_API_KEY 확보 (3) turban이 REST Docs 작업 마무리·커밋하면 rebase 진행(위 병합 계획 참고) (4) 기업 인증(로드맵 1번, PASS 폐기로 축소된 범위) 설계 착수 후보.
+
 ## 2026-08-07 진행 상황 (🎉 첫 배포 성공)
 
 **EC2 #1에서 앱+MariaDB가 실제로 돌아가고, nginx를 거쳐 실제 API가 응답하는 것까지 확인 완료**
@@ -296,7 +318,7 @@ recruit 모듈(구인글/팀원모집글/구직글/지원/끌어올리기/관심
 | 순서 | 항목 | 착수 전 필요한 것 |
 |---|---|---|
 | 1 | 본인/기업 인증(verification) | PASS 연동 방식 상세 설계(SDK/API 계약), `Member` 인증 상태 필드 스키마 |
-| 5 | 결제/구독(Polar) | Polar API 연동 상세 설계(Checkout·웹훅 이벤트 스펙), 이메일 발송 인프라(현재 없음) |
+| 5 | 결제/구독(Polar→Stripe, `turban` 워크트리 별도 진행 중) | Stripe API 연동 상세 설계(Checkout·웹훅 이벤트 스펙). 이메일 발송 인프라는 2026-08-12 구현 완료(`com.atcrew.common.mail`, Resend) — 재사용 가능 |
 | 6 | 설정 나머지 | 비교적 작음, 아무 때나 착수 가능 |
 | 7 | 다국어(i18n) | `MessageSource`/로케일 전략 설계, `Member.primaryLanguage`/`postLanguages` 스키마 |
 | 8 | 관리자/모더레이션 콘솔 | 관리자 Role 체계 설계(member 모듈에 아직 없음) |

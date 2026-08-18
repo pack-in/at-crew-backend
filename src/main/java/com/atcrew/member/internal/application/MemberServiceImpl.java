@@ -187,6 +187,13 @@ class MemberServiceImpl implements MemberService {
     }
 
     @Override
+    public Optional<MemberInfo> findActiveByLoginEmailAndProviderOrEmpty(String loginEmail, AuthProvider authProvider) {
+        return memberRepository.findByLoginEmailAndAuthProvider(loginEmail, authProvider)
+                .filter(Member::isActive)
+                .map(MemberMapper::toInfo);
+    }
+
+    @Override
     public MemberInfo findById(String memberId) {
         return MemberMapper.toInfo(findMemberById(memberId));
     }

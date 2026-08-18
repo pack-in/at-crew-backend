@@ -41,3 +41,11 @@ artwork:
 search:
   internal:
     secret: test-internal-secret
+
+app:
+  frontend-base-url: https://at-crew.com
+
+mail:
+  resend:
+    api-key: test-resend-key
+    from-address: AT-CREW <test@at-crew.com>

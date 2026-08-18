@@ -3,6 +3,7 @@ package com.atcrew.member;
 import com.atcrew.common.response.CursorPage;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface MemberService {
 
@@ -24,6 +25,12 @@ public interface MemberService {
     MemberInfo findByHandle(String handle);
 
     MemberInfo findByLoginEmailAndProvider(String loginEmail, AuthProvider authProvider);
+
+    /**
+     * 비밀번호 재설정 요청(§7)처럼 계정 존재 여부를 노출하면 안 되는 흐름에서 사용.
+     * 활성 회원이 아니거나 없으면 empty — {@link #findByLoginEmailAndProvider}와 달리 예외를 던지지 않는다.
+     */
+    Optional<MemberInfo> findActiveByLoginEmailAndProviderOrEmpty(String loginEmail, AuthProvider authProvider);
 
     MemberInfo findById(String memberId);
 

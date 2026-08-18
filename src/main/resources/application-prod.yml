@@ -20,6 +20,34 @@ jwt:
 firebase:
   credentials-path: ${FIREBASE_CREDENTIALS_PATH}
 
+app:
+  frontend-base-url: ${FRONTEND_BASE_URL}
+
+mail:
+  resend:
+    api-key: ${RESEND_API_KEY}
+    from-address: ${MAIL_FROM_ADDRESS}
+
+# application.yml의 dummy/dev 기본값이 prod에서 조용히 쓰이는 걸 막는다 — 값이 비어 있으면
+# 기동 자체가 실패해야 한다(jwt.secret/cors.allowed-origins/firebase.credentials-path와 동일 원칙,
+# 2026-08-12 — 이전까지는 이 4개만 fail-fast가 없어 값 누락 시 "dev-internal-secret"/"dummy-*"로
+# 조용히 뜰 수 있었다).
+cloudflare:
+  r2:
+    endpoint: ${R2_ENDPOINT}
+    access-key: ${R2_ACCESS_KEY}
+    secret-key: ${R2_SECRET_KEY}
+    worker-trigger-url: ${WORKER_TRIGGER_URL}
+    callback-secret: ${WORKER_CALLBACK_SECRET}
+
+artwork:
+  internal:
+    secret: ${ARTWORK_INTERNAL_SECRET}
+
+search:
+  internal:
+    secret: ${SEARCH_INTERNAL_SECRET}
+
 logging:
   level:
     root: WARN          # 프레임워크 노이즈 차단
