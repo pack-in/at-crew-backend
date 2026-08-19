@@ -12,7 +12,9 @@ name: Publish API Docs
 # 필요한 저장소 Secrets(Settings > Secrets and variables > Actions):
 #   CLOUDFLARE_API_TOKEN   — "Cloudflare Pages: Edit" 권한 포함 토큰
 #   CLOUDFLARE_ACCOUNT_ID  — Cloudflare 대시보드 우측 하단에서 확인 가능
-# cloudflare/pages-action이 최초 배포 시 프로젝트(at-crew-api-docs)를 자동 생성한다.
+# cloudflare/pages-action@v1은 프로젝트가 미리 있어야 배포 가능(자동 생성 안 함, 2026-08-19 실패로 확인) —
+# wrangler-action으로 "pages deploy"를 직접 실행한다. wrangler pages deploy는 프로젝트가 없으면
+# 최초 실행 시 자동 생성한다.
 on:
   push:
     branches: [main]
@@ -45,9 +47,8 @@ jobs:
           cp build/openapi/openapi.json site/openapi.json
 
       - name: Cloudflare Pages 배포
-        uses: cloudflare/pages-action@v1
+        uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          projectName: at-crew-api-docs
-          directory: site
+          command: pages deploy site --project-name=at-crew-api-docs --branch=main
