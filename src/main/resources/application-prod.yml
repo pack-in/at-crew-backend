@@ -48,6 +48,14 @@ search:
   internal:
     secret: ${SEARCH_INTERNAL_SECRET}
 
+# billing 모듈(2026-08-18 merge)이 위 fail-fast 원칙 적용 전에 들어와 stripe.*가 application.yml의
+# 빈 문자열 기본값으로 조용히 기동될 수 있었다(2026-08-19 점검에서 발견) — 값이 없으면 결제 API를
+# 처음 호출하는 시점에야 실패했다. 다른 필수값과 동일하게 기동 시점 fail-fast로 맞춘다.
+stripe:
+  secret-key: ${STRIPE_SECRET_KEY}
+  publishable-key: ${STRIPE_PUBLISHABLE_KEY}
+  webhook-secret: ${STRIPE_WEBHOOK_SECRET}
+
 logging:
   level:
     root: WARN          # 프레임워크 노이즈 차단
