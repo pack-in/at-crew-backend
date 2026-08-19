@@ -1,26 +1,27 @@
 name: Publish API Docs
 
-# main push마다 OpenAPI 스펙을 떠서 정적 Swagger UI 사이트로 GitHub Pages에 배포한다.
+# main push마다 OpenAPI 스펙을 떠서 정적 Swagger UI 사이트로 Cloudflare Pages에 배포한다.
 # prod는 보안상 springdoc이 꺼져 있으므로(application-prod.yml) 실서버가 문서 소스가 될 수 없다 —
 # OpenApiExportTest가 유일한 소스. 정적 산출물만 배포하므로 EC2 접근이 필요 없고, deploy.yml과
 # 무관하게 독립적으로 동작한다.
 #
-# 최초 1회 필요: repo Settings > Pages > Source를 "GitHub Actions"로 설정해야 한다(관리자 권한 필요).
+# GitHub Pages 대신 Cloudflare Pages를 쓰는 이유: pack-in 조직이 GitHub Free 플랜이라 private
+# 저장소의 GitHub Pages를 쓸 수 없다(Pro/Team 이상 필요, 2026-08-19 확인). Cloudflare는 이미 DNS·R2로
+# 쓰고 있어 별도 벤더 계정이 필요 없고 private 저장소 제약도 없다.
+#
+# 필요한 저장소 Secrets(Settings > Secrets and variables > Actions):
+#   CLOUDFLARE_API_TOKEN   — "Cloudflare Pages: Edit" 권한 포함 토큰
+#   CLOUDFLARE_ACCOUNT_ID  — Cloudflare 대시보드 우측 하단에서 확인 가능
+# cloudflare/pages-action이 최초 배포 시 프로젝트(at-crew-api-docs)를 자동 생성한다.
 on:
   push:
     branches: [main]
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: false
 
 jobs:
-  build:
+  publish:
     runs-on: ubuntu-latest
     env:
       TZ: UTC
@@ -42,18 +43,10 @@ jobs:
           cp docs/api-site/index.html site/index.html
           cp build/openapi/openapi.json site/openapi.json
 
-      - uses: actions/configure-pages@v5
-
-      - uses: actions/upload-pages-artifact@v3
+      - name: Cloudflare Pages 배포
+        uses: cloudflare/pages-action@v1
         with:
-          path: site
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: at-crew-api-docs
+          directory: site
