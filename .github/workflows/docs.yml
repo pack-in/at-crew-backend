@@ -16,6 +16,7 @@ name: Publish API Docs
 on:
   push:
     branches: [main]
+  workflow_dispatch: # Secrets 등록 직후 수동 실행으로 즉시 검증하기 위함
 
 permissions:
   contents: read
