@@ -77,7 +77,7 @@ private boolean adultContentVisible = true;   // 설정-R10 기본 ON
 ```
 
 - `AccountType`·`Language`는 `com.atcrew.member` 패키지의 공개 enum(기존 `ActivityField`/`ActiveRegion`과 동일 위치).
-- `postLanguages`는 `activeRegions`와 동일한 `@ElementCollection` 패턴(`member_active_regions` 테이블 선례).
+- `postLanguages`는 `teamExperiences`와 동일한 `@ElementCollection` 패턴(`member_team_experiences` 테이블 선례).
 - `Member.updatePostLanguages(Set<Language>)` — 내부에서 `primaryLanguage` 미포함 시 `MemberException(PRIMARY_LANGUAGE_CANNOT_BE_REMOVED)`(설정-R14 "주 사용 언어 칩 해제 불가").
 - `Member.updateMarketingConsent(boolean)` — `TermsAgreement`는 불변 embeddable이라 새 인스턴스로 교체하되 `agreedAt`은 보존.
 - `Member.updateAdultContentVisible(boolean)`.

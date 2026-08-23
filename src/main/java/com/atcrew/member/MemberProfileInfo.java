@@ -23,7 +23,7 @@ public record MemberProfileInfo(
         ExperienceLevel experienceLevel, // 신입·1-2년차·3-4년차·5-9년차·10년차 이상
 
         // === 활동 지역 ===
-        List<ActiveRegion> activeRegions, // 서울·경기도·대전·대구·광주·부산·기타
+        ActiveRegion activeRegion, // 서울·경기도·강원도·충청북도·충청남도·전라북도·전라남도·경상북도·경상남도·제주도
 
         // === 팀 작업 경험 ===
         List<TeamExperience> teamExperiences, // 없음·단기 협업 팀·분업형 팀·정기 마감 팀
