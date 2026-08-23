@@ -18,9 +18,8 @@ public record UpdateCompanyInfoRequest(
         @Schema(description = "회사 형태. null이면 변경 없음")
         CompanyType companyType, // 회사 형태
 
-        @Schema(description = "활동 분야 (최대 5개). null이면 변경 없음, []이면 전체 삭제")
-        @Size(max = 5)
-        List<@NotNull ActivityField> activityFields, // 활동 분야
+        @Schema(description = "활동 분야 (단일 선택). null이면 변경 없음")
+        ActivityField activityField, // 활동 분야
 
         @Schema(description = "활동 지역 (최대 7개). null이면 변경 없음, []이면 전체 삭제")
         @Size(max = 7)

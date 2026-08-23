@@ -210,7 +210,7 @@ class MemberControllerValidationTest {
         mockMvc.perform(patch("/api/members/me/info")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "activityFields", List.of("ILLUSTRATION", "WEBTOON", "MANGA", "ANIMATION", "ILLUSTRATION")
+                                "activityFields", List.of("ILLUSTRATION", "WEBTOON", "PRINT_COMIC", "ANIMATION", "ILLUSTRATION")
                         ))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))

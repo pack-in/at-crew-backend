@@ -110,7 +110,7 @@ class CompanyController {
     public void updateInfo(@RequestBody @Valid UpdateCompanyInfoRequest request) {
         companyService.updateInfo(securityUtils.getCurrentMemberId(), new UpdateCompanyInfoCommand(
                 request.recruitStatus(), request.companyType(),
-                request.activityFields(), request.activeRegions(),
+                request.activityField(), request.activeRegions(),
                 request.contact(), request.sns(), request.hasBusinessRegistration()));
     }
 

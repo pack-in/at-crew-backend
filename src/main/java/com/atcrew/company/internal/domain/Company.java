@@ -59,11 +59,9 @@ public class Company implements Persistable<String> {
     // API로 노출하거나 변경할 수 없다 (docs/design/company-profile-module-design.md §6.3).
     private boolean verified;
 
-    @ElementCollection
-    @CollectionTable(name = "company_activity_fields", joinColumns = @JoinColumn(name = "company_id"))
-    @Column(name = "activity_field")
+    // 단일 선택 — 피그마 5779:32101, 기획서 마이페이지_기업-R07("활동 분야(4)는 단일 칩").
     @Enumerated(EnumType.STRING)
-    private Set<ActivityField> activityFields = new HashSet<>();
+    private ActivityField activityField;
 
     @ElementCollection
     @CollectionTable(name = "company_active_regions", joinColumns = @JoinColumn(name = "company_id"))
@@ -116,10 +114,7 @@ public class Company implements Persistable<String> {
     public void updateInfo(UpdateCompanyInfoCommand command) {
         if (command.recruitStatus() != null) this.recruitStatus = command.recruitStatus();
         if (command.companyType() != null) this.companyType = command.companyType();
-        if (command.activityFields() != null) {
-            this.activityFields.clear();
-            this.activityFields.addAll(command.activityFields());
-        }
+        if (command.activityField() != null) this.activityField = command.activityField();
         if (command.activeRegions() != null) {
             this.activeRegions.clear();
             this.activeRegions.addAll(command.activeRegions());
@@ -141,7 +136,7 @@ public class Company implements Persistable<String> {
     public CompanyType getCompanyType() { return companyType; }
     public boolean hasBusinessRegistration() { return hasBusinessRegistration; }
     public boolean isVerified() { return verified; }
-    public Set<ActivityField> getActivityFields() { return Set.copyOf(activityFields); }
+    public ActivityField getActivityField() { return activityField; }
     public Set<ActiveRegion> getActiveRegions() { return Set.copyOf(activeRegions); }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }

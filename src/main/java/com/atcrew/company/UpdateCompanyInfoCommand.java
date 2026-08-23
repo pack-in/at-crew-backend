@@ -6,7 +6,7 @@ import java.util.List;
 public record UpdateCompanyInfoCommand(
         RecruitStatus recruitStatus,        // 구인구직 상태
         CompanyType companyType,            // 회사 형태
-        List<ActivityField> activityFields, // 활동 분야 (빈 리스트면 전체 삭제)
+        ActivityField activityField,        // 활동 분야 (단일 선택)
         List<ActiveRegion> activeRegions,   // 활동 지역 (빈 리스트면 전체 삭제)
         String contact,                     // 연락처
         String sns,                         // SNS 링크

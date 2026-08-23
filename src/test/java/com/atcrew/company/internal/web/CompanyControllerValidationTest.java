@@ -91,15 +91,15 @@ class CompanyControllerValidationTest {
     // ─── UpdateCompanyInfoRequest ─────────────────────────────────────
 
     @Test
-    void 정보_수정_활동_분야_5개_초과_거부() throws Exception {
+    void 정보_수정_정본_밖_활동_분야_거부() throws Exception {
+        // 활동 분야는 단일 선택이며 정본은 ILLUSTRATION·WEBTOON·PRINT_COMIC·ANIMATION 4종뿐이다
+        // (기획서 마이페이지_기업-R07, 정책 데이터구조-R03).
         mockMvc.perform(patch("/api/companies/me/info")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "activityFields",
-                                List.of("ILLUSTRATION", "WEBTOON", "ANIMATION", "WEB_NOVEL", "OTHER", "WEBTOON")))))
+                        .content(objectMapper.writeValueAsString(Map.of("activityField", "WEB_NOVEL"))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
-                .andDo(document("company/validation/update-info-too-many-activity-fields"));
+                .andDo(document("company/validation/update-info-invalid-activity-field"));
     }
 
     @Test
