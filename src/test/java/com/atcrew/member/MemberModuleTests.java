@@ -202,8 +202,8 @@ class MemberModuleTests {
         MemberInfo available = memberService.register(
                 "search-available@atcrew.com", "searchavailable", "구인가능작가", CreatorRole.WEBTOON);
         memberService.updateInfo(available.id(), new UpdateInfoCommand(
-                null, EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), null, null,
-                null, null, null, null, null, null, null, null));
+                null, EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), ExperienceLevel.THREE_TO_FOUR,
+                null, null, null, null, "010-1234-5678", null, null, null, null));
 
         MemberInfo preparing = memberService.register(
                 "search-preparing@atcrew.com", "searchpreparing", "준비중작가", CreatorRole.WEBTOON);
@@ -221,14 +221,14 @@ class MemberModuleTests {
         MemberInfo webtoon = memberService.register(
                 "search-webtoon@atcrew.com", "searchwebtoon", "웹툰작가", CreatorRole.WEBTOON);
         memberService.updateInfo(webtoon.id(), new UpdateInfoCommand(
-                null, EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), null, null,
-                null, null, null, null, null, null, null, null));
+                null, EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), ExperienceLevel.THREE_TO_FOUR,
+                null, null, null, null, "010-1234-5678", null, null, null, null));
 
         MemberInfo illustration = memberService.register(
                 "search-illust@atcrew.com", "searchillust", "일러스트작가", CreatorRole.ILLUSTRATOR);
         memberService.updateInfo(illustration.id(), new UpdateInfoCommand(
-                null, EmploymentStatus.AVAILABLE, List.of(ActivityField.ILLUSTRATION), null, null,
-                null, null, null, null, null, null, null, null));
+                null, EmploymentStatus.AVAILABLE, List.of(ActivityField.ILLUSTRATION), ExperienceLevel.THREE_TO_FOUR,
+                null, null, null, null, "010-1234-5678", null, null, null, null));
 
         CursorPage<MemberProfileInfo> result = memberService.searchProfiles(new SearchProfilesCommand(
                 List.of(EmploymentStatus.AVAILABLE), ActivityField.WEBTOON, null, null, 20));
@@ -242,19 +242,57 @@ class MemberModuleTests {
         MemberInfo newcomer = memberService.register(
                 "search-exp-newcomer@atcrew.com", "searchexpnew", "신입작가", CreatorRole.WEBTOON);
         memberService.updateInfo(newcomer.id(), new UpdateInfoCommand(
-                null, EmploymentStatus.AVAILABLE, null, ExperienceLevel.NEWCOMER, null,
-                null, null, null, null, null, null, null, null));
+                null, EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), ExperienceLevel.NEWCOMER,
+                null, null, null, null, "010-1234-5678", null, null, null, null));
 
         MemberInfo senior = memberService.register(
                 "search-exp-senior@atcrew.com", "searchexpsenior", "시니어작가", CreatorRole.WEBTOON);
         memberService.updateInfo(senior.id(), new UpdateInfoCommand(
-                null, EmploymentStatus.AVAILABLE, null, ExperienceLevel.TEN_PLUS, null,
-                null, null, null, null, null, null, null, null));
+                null, EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), ExperienceLevel.TEN_PLUS,
+                null, null, null, null, "010-1234-5678", null, null, null, null));
 
         CursorPage<MemberProfileInfo> result = memberService.searchProfiles(new SearchProfilesCommand(
                 List.of(EmploymentStatus.AVAILABLE), null, ProfileSort.EXPERIENCE, null, 20));
 
         List<String> ids = result.items().stream().map(MemberProfileInfo::id).toList();
         assertThat(ids.indexOf(senior.id())).isLessThan(ids.indexOf(newcomer.id()));
+    }
+
+    /**
+     * 기획서 마이페이지_작가-R08 — 구인 가능 상태라도 노출 대상 항목이 비어 있으면 작가 찾기에 나오지 않는다.
+     * 활동 분야는 복수 선택이라 "빈 컬렉션"이 미입력이다.
+     */
+    @Test
+    void 프로필_검색_노출조건_미충족_회원_제외() {
+        MemberInfo complete = memberService.register(
+                "search-complete@atcrew.com", "searchcomplete", "완성작가", CreatorRole.WEBTOON);
+        memberService.updateInfo(complete.id(), new UpdateInfoCommand(
+                null, EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), ExperienceLevel.ONE_TO_TWO,
+                null, null, null, null, "010-1234-5678", null, null, null, null));
+
+        MemberInfo noActivityField = memberService.register(
+                "search-nofield@atcrew.com", "searchnofield", "분야미입력작가", CreatorRole.WEBTOON);
+        memberService.updateInfo(noActivityField.id(), new UpdateInfoCommand(
+                null, EmploymentStatus.AVAILABLE, List.of(), ExperienceLevel.ONE_TO_TWO,
+                null, null, null, null, "010-1234-5678", null, null, null, null));
+
+        MemberInfo noContact = memberService.register(
+                "search-nocontact@atcrew.com", "searchnocontact", "연락처미입력작가", CreatorRole.WEBTOON);
+        memberService.updateInfo(noContact.id(), new UpdateInfoCommand(
+                null, EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), ExperienceLevel.ONE_TO_TWO,
+                null, null, null, null, null, null, null, null, null));
+
+        MemberInfo noExperience = memberService.register(
+                "search-noexp@atcrew.com", "searchnoexp", "경력미입력작가", CreatorRole.WEBTOON);
+        memberService.updateInfo(noExperience.id(), new UpdateInfoCommand(
+                null, EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), null,
+                null, null, null, null, "010-1234-5678", null, null, null, null));
+
+        CursorPage<MemberProfileInfo> result = memberService.searchProfiles(new SearchProfilesCommand(
+                List.of(EmploymentStatus.AVAILABLE), null, null, null, 50));
+
+        assertThat(result.items()).extracting(MemberProfileInfo::id).contains(complete.id());
+        assertThat(result.items()).extracting(MemberProfileInfo::id)
+                .doesNotContain(noActivityField.id(), noContact.id(), noExperience.id());
     }
 }

@@ -61,7 +61,8 @@ class CommunityController {
     }
 
     @Operation(summary = "작가 프로필 탭 — 작가 찾아보기", description =
-            "구인 가능 상태(신규 작업 가능·협의 가능)인 창작자 프로필 목록을 조회합니다. 인증 불필요.")
+            "구인 가능 상태(신규 작업 가능·협의 가능)인 창작자 프로필 목록을 조회합니다. 인증 불필요. "
+            + "노출 대상 항목(사용자 이름·활동 분야·활동 경력·연락처)이 비어 있는 프로필은 제외됩니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공")
     @GetMapping("/authors")
     public ApiResponse<CursorPage<MemberProfileInfo>> getAuthors(
