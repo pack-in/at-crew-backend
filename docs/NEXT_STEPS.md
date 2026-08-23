@@ -307,7 +307,7 @@ recruit 모듈(구인글/팀원모집글/구직글/지원/끌어올리기/관심
 | `RecruitServiceImpl` boostJobPosting/boostTeamPosting | 끌어올리기 구매 개수 확인·차감 | 로드맵 5(Polar 결제) |
 | `JobPostingController` 관리자 섹션, `BannerController` | 인증만 요구, Role 검증 없음 | 로드맵 8(관리자 Role 체계) |
 | `Company.verified` | 항상 false, API 미노출 | 로드맵 1(기업 인증) |
-| `ArtworkField.PRINT_COMIC` | 피그마는 `WEBNOVEL` — enum 교체 + 데이터 마이그레이션 필요 | 피그마 정본 확인 |
+| `ArtworkField.PRINT_COMIC` | 피그마 화면끼리 충돌 — 홈(6107:24822)은 출판만화, 검색(5752:29315)은 웹소설. 기획서 홈-R01·업로드-R06은 출판만화 쪽이고 홈 프레임이 더 최신 | 기획 확정 필요 |
 | `ActiveRegion`(company) | 피그마에서 옵션 값 특정 실패 | 피그마 확인 |
 | search 분석기 | Phase 1은 `standard`, nori 도입 미정 | 검색 품질 이슈 발생 시 |
 

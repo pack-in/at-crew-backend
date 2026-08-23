@@ -167,6 +167,8 @@ AdultGateResult      : VERIFIED(인증완료, 열람가능) /
 - 필터: 전체/웹툰/일러스트/애니메이션/출판만화
 - 정렬: 최신 업데이트순 / 조회순 / **경력순**
 - 피그마 원문: *"구직글의 경우 신규 작업 가능/협의 가능, 즉 구인 가능한 상태의 창작자/개인 계정만 게시된다. (...) 커뮤니티에 노출되는 카드의 경우 checkbox 가 없다."* → community 탭에서는 `employmentStatus`가 `신규 작업 가능` 또는 `협의 가능`인 회원만 노출.
+- **노출 조건 추가(2026-08-23)**: 구인 가능 상태여도 노출 대상 항목이 비어 있으면 목록에서 제외한다(기획서 마이페이지_작가-R08). 정본이 정한 7개 항목 중 구현 가능한 4개(사용자 이름·활동 분야·활동 경력·연락처)만 적용했고, 희망 담당 업무·희망 장르·희망 채용 형태는 "구직 정보" 탭(마이페이지_작가-R24) 미구현이라 도메인에 필드가 없다.
+- **필터 카디널리티**: 칩 필터는 단일 선택이다("전체" 칩 포함, 기획서 홈-R01·홈-R13). 프로필의 활동 분야는 복수 선택이지만 단일값 필터와 충돌하지 않는다 — `member_activity_fields`에 해당 값이 있으면 매칭된다.
 
 이 탭은 `MemberProfileInfo`(§7.2) 필드로 대부분 커버되지만, **검색/필터/정렬 메서드가 `MemberService`에 없다** — 신규 추가 필요.
 
@@ -210,7 +212,7 @@ GET /api/community/authors
   ?size=20
 ```
 
-**의존성**: `MemberService.searchProfiles(SearchProfilesCommand)` 신규 메서드 필요 — `employmentStatus IN (신규 작업 가능, 협의 가능)` 조건과 `activityField` 필터, 3종 정렬을 지원해야 한다. `조회수`(viewCount)는 현재 `MemberProfileInfo`에 없는 필드이므로 member 모듈에 함께 추가 필요.
+**의존성**: `MemberService.searchProfiles(SearchProfilesCommand)` 신규 메서드 필요 — `employmentStatus IN (신규 작업 가능, 협의 가능)` 조건, 노출 조건(§4.3), `activityField` 필터, 3종 정렬을 지원해야 한다. `조회수`(viewCount)는 현재 `MemberProfileInfo`에 없는 필드이므로 member 모듈에 함께 추가 필요.
 
 ### 5.4 구인글 / 팀원모집글 탭 — 설계만, 구현 보류
 
