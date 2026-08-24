@@ -35,6 +35,9 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-web'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+	// 관측(docs/design/observability-design.md §3) — /actuator/prometheus 노출용 레지스트리.
+	// 애플리케이션 코드는 Micrometer 코어 API만 쓰므로 런타임 의존으로 둔다.
+	runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 	implementation 'com.google.firebase:firebase-admin:9.4.3'
 	implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
