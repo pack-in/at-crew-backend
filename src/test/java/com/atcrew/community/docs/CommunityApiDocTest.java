@@ -98,9 +98,10 @@ class CommunityApiDocTest extends RestDocsIntegrationSupport {
                 "author-doc-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com",
                 "authordoc" + UUID.randomUUID().toString().replace("-", "").substring(0, 8),
                 "찾아보기작가", CreatorRole.WEBTOON);
+        // 연락처까지 채워야 작가 찾기에 노출된다 (기획서 마이페이지_작가-R08)
         memberService.updateInfo(author.id(), new UpdateInfoCommand(
                 null, EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), ExperienceLevel.THREE_TO_FOUR,
-                null, null, null, null, null, null, null, null, null));
+                null, null, null, null, "010-1234-5678", null, null, null, null));
 
         mockMvc.perform(get("/api/community/authors").param("activityField", "WEBTOON"))
                 .andExpect(status().isOk())

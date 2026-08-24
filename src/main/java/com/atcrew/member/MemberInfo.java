@@ -34,8 +34,8 @@ public record MemberInfo(
         // === 활동 경력 [피그마: 활동 경력 칩 단일 선택] ===
         ExperienceLevel experienceLevel,
 
-        // === 활동 지역 [피그마: 활동 지역 칩 복수 선택] ===
-        List<ActiveRegion> activeRegions,
+        // === 활동 지역 [피그마: 활동 지역 칩 단일 선택] ===
+        ActiveRegion activeRegion,
 
         // === 팀 작업 경험 [피그마: 팀 작업 경험 칩 복수 선택] ===
         List<TeamExperience> teamExperiences,

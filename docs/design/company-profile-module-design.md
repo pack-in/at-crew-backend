@@ -66,11 +66,8 @@ public class Company implements Persistable<String> {
 
     private boolean verified;              // 기업 인증 완료 여부 — TODO: 로드맵 1번(본인/기업 인증 시스템) 연동 전까지 항상 false, API로 노출/변경 불가
 
-    @ElementCollection
-    @CollectionTable(name = "company_activity_fields", joinColumns = @JoinColumn(name = "company_id"))
-    @Column(name = "activity_field")
     @Enumerated(EnumType.STRING)
-    private Set<ActivityField> activityFields = new HashSet<>();
+    private ActivityField activityField;   // 활동 분야 — 단일 선택(피그마 5779:32101), null 허용(미기입)
 
     @ElementCollection
     @CollectionTable(name = "company_active_regions", joinColumns = @JoinColumn(name = "company_id"))
@@ -132,8 +129,10 @@ public enum CompanyType {
 }
 // 제작사 / 플랫폼 / 에이전시 / 출판사 / 개인스튜디오 / 소규모팀 / 기타
 
-public enum ActivityField { ILLUSTRATION, WEBTOON, ANIMATION, WEB_NOVEL, OTHER }
-// 일러스트 / 웹툰 / 애니메이션 / 웹소설 / 기타 — member.ActivityField와 값은 같지만 모듈 경계상 별도 정의(§0)
+public enum ActivityField { ILLUSTRATION, WEBTOON, PRINT_COMIC, ANIMATION }
+// 일러스트 / 웹툰 / 출판만화 / 애니메이션 — 단일 선택(기획서 마이페이지_기업-R07 "활동 분야(4)는 단일 칩").
+// 정책 데이터구조-R03에 따라 member.ActivityField와 값 집합이 같아야 하며, 모듈 경계상 별도 정의(§0).
+// 상수 이름은 artwork.ArtworkField와 맞춘다 — 홈이 작품 탭과 작가 탭에 같은 칩 행을 쓴다(홈-R01).
 
 public enum ActiveRegion { ... }
 // 활동 지역 — 피그마 수정페이지에서 정확한 편집 UI를 특정하지 못함(설계 시점 조사 한계).
@@ -208,6 +207,7 @@ CREATE TABLE companies (
     sns                         VARCHAR(255) NULL,
     recruit_status              VARCHAR(30)  NOT NULL DEFAULT 'PREPARING',
     company_type                VARCHAR(30)  NULL,
+    activity_field              VARCHAR(30)  NULL,
     has_business_registration   TINYINT(1)   NOT NULL DEFAULT 0,
     verified                    TINYINT(1)   NOT NULL DEFAULT 0,
     version                     BIGINT       NOT NULL DEFAULT 0,
@@ -215,12 +215,6 @@ CREATE TABLE companies (
     updated_at                  DATETIME(6)  NOT NULL,
     PRIMARY KEY (id),
     UNIQUE KEY uk_companies_member (member_id)
-) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE TABLE company_activity_fields (
-    company_id      VARCHAR(36) CHARACTER SET latin1 COLLATE latin1_bin NOT NULL,
-    activity_field  VARCHAR(30) NOT NULL,
-    PRIMARY KEY (company_id, activity_field)
 ) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 CREATE TABLE company_active_regions (

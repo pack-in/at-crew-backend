@@ -43,6 +43,9 @@ public interface MemberService {
     /**
      * 구인 가능 상태 창작자 프로필 검색. 커뮤니티 "작가 찾아보기" 탭에서 사용.
      * 탈퇴 회원은 결과에서 항상 제외된다.
+     *
+     * <p>구인 가능 상태여도 노출 대상 항목(사용자 이름·활동 분야·활동 경력·연락처)이 비어 있으면
+     * 결과에 포함되지 않는다 — 기획서 마이페이지_작가-R08.
      */
     CursorPage<MemberProfileInfo> searchProfiles(SearchProfilesCommand command);
 

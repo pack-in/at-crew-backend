@@ -29,9 +29,8 @@ public record UpdateInfoRequest(
         @Schema(description = "경력 연차. null이면 변경 없음")
         ExperienceLevel experienceLevel,
 
-        @Schema(description = "활동 지역 (최대 7개). null이면 변경 없음, []이면 전체 삭제")
-        @Size(max = 7)
-        List<@NotNull ActiveRegion> activeRegions,
+        @Schema(description = "활동 지역 (단일 선택). null이면 변경 없음")
+        ActiveRegion activeRegion,
 
         @Schema(description = "전체 슬롯 수 (1~5). null이면 변경 없음")
         @Min(1) @Max(5)

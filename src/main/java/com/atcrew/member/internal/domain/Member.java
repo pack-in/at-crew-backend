@@ -109,11 +109,9 @@ public class Member implements Persistable<String> {
     // ordinal을 별도 필드로 캐시해 DB 레벨 정렬에 사용한다 (커뮤니티 "작가 찾아보기" 경력순 정렬).
     private int experienceRank = -1;
 
-    @ElementCollection(fetch = FetchType.EAGER)
-    @CollectionTable(name = "member_active_regions", joinColumns = @JoinColumn(name = "member_id"))
-    @Column(name = "value")
+    // 단일 선택 — 피그마 4971:25431, 기획서 마이페이지_작가-R23("단일 칩: … 활동 지역(10)").
     @Enumerated(EnumType.STRING)
-    private Set<ActiveRegion> activeRegions = new HashSet<>();
+    private ActiveRegion activeRegion;
 
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "member_team_experiences", joinColumns = @JoinColumn(name = "member_id"))
@@ -264,7 +262,7 @@ public class Member implements Persistable<String> {
             this.experienceLevel = command.experienceLevel();
             this.experienceRank = command.experienceLevel().ordinal();
         }
-        if (command.activeRegions() != null) this.activeRegions = new HashSet<>(command.activeRegions());
+        if (command.activeRegion() != null) this.activeRegion = command.activeRegion();
         if (totalSlotCount != null) this.totalSlotCount = effectiveTotal;
         if (totalSlotCount != null || availableSlotCount != null) this.availableSlotCount = effectiveAvailable;
         if (command.teamExperiences() != null) this.teamExperiences = new HashSet<>(command.teamExperiences());
@@ -347,7 +345,7 @@ public class Member implements Persistable<String> {
     public List<ActivityField> getActivityFields() { return activityFields.stream().sorted().toList(); }
     public ExperienceLevel getExperienceLevel() { return experienceLevel; }
     public int getExperienceRank() { return experienceRank; }
-    public List<ActiveRegion> getActiveRegions() { return activeRegions.stream().sorted().toList(); }
+    public ActiveRegion getActiveRegion() { return activeRegion; }
     public List<TeamExperience> getTeamExperiences() { return teamExperiences.stream().sorted().toList(); }
     public int getTotalSlotCount() { return totalSlotCount; }
     public int getAvailableSlotCount() { return availableSlotCount; }

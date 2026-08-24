@@ -7,7 +7,7 @@ public record UpdateInfoCommand(
         EmploymentStatus employmentStatus,
         List<ActivityField> activityFields,
         ExperienceLevel experienceLevel,
-        List<ActiveRegion> activeRegions,
+        ActiveRegion activeRegion,
         Integer totalSlotCount,
         Integer availableSlotCount,
         List<TeamExperience> teamExperiences,

@@ -105,7 +105,7 @@
 
 - **CreatorRole**: `WEBTOON`, `ILLUSTRATOR`, `WEB_NOVELIST`, (기타) — 웹툰작가/일러스트작가/웹소설작가
 - **EmploymentStatus**: `PREPARING`, `AVAILABLE`, `NEGOTIABLE`
-- **ActivityField**: `ILLUSTRATION`, `WEBTOON`, `PUBLISHED_MANGA`
+- **ActivityField**: `ILLUSTRATION`, `WEBTOON`, `PRINT_COMIC`, `ANIMATION` (작가는 복수 선택, 기업은 단일 선택)
 - **ExperienceLevel**: `NEWCOMER`, `ONE_TO_TWO`, `THREE_TO_FOUR`, `FIVE_TO_NINE`, `TEN_PLUS`
 - **ActiveRegion**: `SEOUL`, `GYEONGGI`, `DAEJEON`, `DAEGU`, `GWANGJU`, `BUSAN`, `OTHER`
 - **TeamExperience**: `NONE`, `SHORT_TERM`, `DIVISION`, `REGULAR_DEADLINE`
@@ -362,7 +362,7 @@
   "employmentStatus": "AVAILABLE",
   "activityFields": ["ILLUSTRATION", "WEBTOON"],
   "experienceLevel": "THREE_TO_FOUR",
-  "activeRegions": ["SEOUL", "GYEONGGI"],
+  "activeRegion": "SEOUL",
   "totalSlotCount": 3,
   "availableSlotCount": 2,
   "teamExperiences": ["SHORT_TERM"],
@@ -373,7 +373,7 @@
 ```
 **필드 제약**:
 - `activityFields`: `@Size(max=4)`, 원소 `@NotNull` (`[]` 전송 시 전체 삭제)
-- `activeRegions`: `@Size(max=7)`, 원소 `@NotNull`
+- `activeRegion`: 단일 선택 (SEOUL·GYEONGGI·GANGWON·CHUNGBUK·CHUNGNAM·JEONBUK·JEONNAM·GYEONGBUK·GYEONGNAM·JEJU)
 - `teamExperiences`: `@Size(max=4)`, 원소 `@NotNull`
 - `totalSlotCount`: `@Min(1) @Max(5)`
 - `availableSlotCount`: `@Min(0) @Max(5)`, `totalSlotCount` 이하여야 함(서비스단 검증)
