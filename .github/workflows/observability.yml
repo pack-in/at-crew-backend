@@ -1,0 +1,32 @@
+name: Observability provisioning
+
+# 알람 룰·연락처·알림 정책을 Grafana에 반영한다. 정의의 정본은 deploy/observability/alerts/ 이고
+# UI에서 만든 설정은 다음 실행 때 덮어써진다(docs/design/observability-design.md §7).
+#
+# 필요한 Secrets: GRAFANA_URL, GRAFANA_API_KEY, DISCORD_WEBHOOK_P1, DISCORD_WEBHOOK_P2
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "deploy/observability/alerts/**"
+      - "deploy/observability/dashboards/**"
+      - ".github/workflows/observability.yml"
+
+concurrency:
+  group: observability-provisioning
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: 알람 설정 반영
+        env:
+          GRAFANA_URL: ${{ secrets.GRAFANA_URL }}
+          GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
+          DISCORD_WEBHOOK_P1: ${{ secrets.DISCORD_WEBHOOK_P1 }}
+          DISCORD_WEBHOOK_P2: ${{ secrets.DISCORD_WEBHOOK_P2 }}
+        run: ./deploy/observability/alerts/apply.sh

@@ -47,6 +47,8 @@
 | [docs/design/settings-i18n-design.md](docs/design/settings-i18n-design.md) | 설정 API 전체(로그아웃·비밀번호 변경·마케팅 동의·성인 콘텐츠 토글)·이메일 발송 인프라(Resend)·i18n 필드·언어 세그먼트 설계 |
 | [docs/design/media-module-design.md](docs/design/media-module-design.md) | media 모듈 설계 — artwork에 내장돼 있던 Presigned URL 발급·Worker 트리거·webhook·재시도·고아파일 정리를 범용 모듈로 추출, artwork·recruit이 공용 소비 |
 | [docs/design/global-country-plan-design.md](docs/design/global-country-plan-design.md) | 거주 국가(Member.countryCode) 설계 — Phase 1. Pro 플랜 노출국가(Artwork.targetCountryCodes)는 로드맵 5순위(결제/구독) 도달 후 Phase 2로 보류 |
+| [docs/design/observability-design.md](docs/design/observability-design.md) | 관측·알람 설계 — Grafana Cloud(메트릭·로그·업타임) + Sentry(에러) + Discord 2단계 알람, 배포 헬스체크·조건부 롤백, DB 백업과 백업 실패 감지 |
+| [docs/operations/incident-runbook.md](docs/operations/incident-runbook.md) | 장애 대응 런북 — 알람별 확인·복구 절차, 배포 롤백, DB 복원 |
 | [docs/operations/moderation-block.md](docs/operations/moderation-block.md) | 운영 차단(모더레이션) 절차 — 차단 SQL·재색인 호출 세트·보관 정책. 관리자 API 도입 전까지 DB 직접 UPDATE로 수행 |
 | [docs/testing/rest-docs-guide.md](docs/testing/rest-docs-guide.md) | MockMvc + Spring REST Docs 테스트 전략, 계층 구조, 새 API 개발 체크리스트. §6에 API 문서 자동 퍼블리시 파이프라인(https://at-crew-api-docs.pages.dev/, main push마다 자동 갱신) |
 | [docs/roadmap.md](docs/roadmap.md) | 모듈 개발 로드맵 — Figma 대비 미구현 영역 및 착수 우선순위(인증 시스템 → recruit → 기업 프로필 → 검색 → 결제 → 설정) |
