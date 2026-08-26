@@ -3,7 +3,6 @@ package com.atcrew.member.internal.domain;
 import com.atcrew.member.ActivityField;
 import com.atcrew.member.AuthProvider;
 import com.atcrew.member.CareerEntryInfo;
-import com.atcrew.member.CreatorRole;
 import com.atcrew.member.EmploymentStatus;
 import com.atcrew.member.UpdateInfoCommand;
 import com.atcrew.member.internal.exception.MemberErrorCode;
@@ -23,7 +22,7 @@ class MemberTest {
 
     @BeforeEach
     void setUp() {
-        member = Member.register("test@atcrew.com", "testhandle", "홍길동", CreatorRole.WEBTOON);
+        member = Member.register("test@atcrew.com", "testhandle", "홍길동");
     }
 
     // ─── addCareer ────────────────────────────────────────────────────
@@ -108,8 +107,7 @@ class MemberTest {
 
     @Test
     void 작업가능슬롯이_전체슬롯_초과_시_예외() {
-        UpdateInfoCommand command = new UpdateInfoCommand(
-                null, null, null, null, null, 3, 4, null, null, null, null, null, null);
+        UpdateInfoCommand command = new UpdateInfoCommand(null, null, null, null, 3, 4, null, null, null, null, null, null);
 
         assertThatThrownBy(() -> member.updateInfo(command))
                 .isInstanceOf(MemberException.class)
@@ -120,8 +118,7 @@ class MemberTest {
     @Test
     void 전체슬롯만_줄이면_가능슬롯_자동_조정() {
         // 기본값: totalSlotCount=5, availableSlotCount=5
-        UpdateInfoCommand command = new UpdateInfoCommand(
-                null, null, null, null, null, 2, null, null, null, null, null, null, null);
+        UpdateInfoCommand command = new UpdateInfoCommand(null, null, null, null, 2, null, null, null, null, null, null, null);
 
         member.updateInfo(command);
 
@@ -132,8 +129,7 @@ class MemberTest {
     @Test
     void 기존_전체슬롯_기준_가능슬롯_초과_시_예외() {
         // totalSlotCount 기본값 5, availableSlotCount만 6으로 설정하면 초과
-        UpdateInfoCommand command = new UpdateInfoCommand(
-                null, null, null, null, null, null, 6, null, null, null, null, null, null);
+        UpdateInfoCommand command = new UpdateInfoCommand(null, null, null, null, null, 6, null, null, null, null, null, null);
 
         assertThatThrownBy(() -> member.updateInfo(command))
                 .isInstanceOf(MemberException.class)
@@ -143,8 +139,7 @@ class MemberTest {
 
     @Test
     void 정보_정상_업데이트() {
-        UpdateInfoCommand command = new UpdateInfoCommand(
-                null, EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON, ActivityField.ILLUSTRATION),
+        UpdateInfoCommand command = new UpdateInfoCommand(EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON, ActivityField.ILLUSTRATION),
                 null, null, 3, 2, null, "010-1234-5678", null, null, null, null);
 
         member.updateInfo(command);
@@ -193,8 +188,7 @@ class MemberTest {
     @Test
     void 탈퇴_후_정보_수정_시_예외() {
         member.deactivate();
-        UpdateInfoCommand command = new UpdateInfoCommand(
-                null, EmploymentStatus.AVAILABLE, null, null, null, null, null, null, null, null, null, null, null);
+        UpdateInfoCommand command = new UpdateInfoCommand(EmploymentStatus.AVAILABLE, null, null, null, null, null, null, null, null, null, null, null);
 
         assertThatThrownBy(() -> member.updateInfo(command))
                 .isInstanceOf(MemberException.class)
@@ -347,8 +341,7 @@ class MemberTest {
 
     @Test
     void updateInfo로_시간대_변경() {
-        UpdateInfoCommand command = new UpdateInfoCommand(
-                null, null, null, null, null, null, null, null, null, null, null, "America/New_York", null);
+        UpdateInfoCommand command = new UpdateInfoCommand(null, null, null, null, null, null, null, null, null, null, "America/New_York", null);
 
         member.updateInfo(command);
 
@@ -357,8 +350,7 @@ class MemberTest {
 
     @Test
     void updateInfo에_유효하지_않은_시간대_시_예외() {
-        UpdateInfoCommand command = new UpdateInfoCommand(
-                null, null, null, null, null, null, null, null, null, null, null, "Not/A_Zone", null);
+        UpdateInfoCommand command = new UpdateInfoCommand(null, null, null, null, null, null, null, null, null, null, "Not/A_Zone", null);
 
         assertThatThrownBy(() -> member.updateInfo(command))
                 .isInstanceOf(MemberException.class)
@@ -368,8 +360,7 @@ class MemberTest {
 
     @Test
     void updateInfo로_국가코드_변경() {
-        UpdateInfoCommand command = new UpdateInfoCommand(
-                null, null, null, null, null, null, null, null, null, null, null, null, "JP");
+        UpdateInfoCommand command = new UpdateInfoCommand(null, null, null, null, null, null, null, null, null, null, null, "JP");
 
         member.updateInfo(command);
 
@@ -378,8 +369,7 @@ class MemberTest {
 
     @Test
     void updateInfo에_유효하지_않은_국가코드_시_예외() {
-        UpdateInfoCommand command = new UpdateInfoCommand(
-                null, null, null, null, null, null, null, null, null, null, null, null, "ZZ");
+        UpdateInfoCommand command = new UpdateInfoCommand(null, null, null, null, null, null, null, null, null, null, null, "ZZ");
 
         assertThatThrownBy(() -> member.updateInfo(command))
                 .isInstanceOf(MemberException.class)

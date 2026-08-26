@@ -10,7 +10,7 @@ public interface MemberService {
     MemberInfo register(RegisterMemberCommand command);
 
     // 개발·테스트 전용 (Firebase 인증 없이 직접 가입)
-    MemberInfo register(String loginEmail, String handle, String name, CreatorRole creatorRole);
+    MemberInfo register(String loginEmail, String handle, String name);
 
     MemberProfileInfo findProfileByHandle(String handle);
 

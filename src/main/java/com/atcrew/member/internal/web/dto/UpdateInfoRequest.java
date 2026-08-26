@@ -2,7 +2,6 @@ package com.atcrew.member.internal.web.dto;
 
 import com.atcrew.member.ActiveRegion;
 import com.atcrew.member.ActivityField;
-import com.atcrew.member.CreatorRole;
 import com.atcrew.member.EmploymentStatus;
 import com.atcrew.member.ExperienceLevel;
 import com.atcrew.member.TeamExperience;
@@ -16,9 +15,6 @@ import jakarta.validation.constraints.Size;
 import java.util.List;
 
 public record UpdateInfoRequest(
-        @Schema(description = "창작자 유형. null이면 변경 없음")
-        CreatorRole creatorRole,
-
         @Schema(description = "구인구직 상태. null이면 변경 없음")
         EmploymentStatus employmentStatus,
 

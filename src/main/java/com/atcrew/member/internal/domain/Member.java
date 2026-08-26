@@ -5,7 +5,6 @@ import com.atcrew.member.ActiveRegion;
 import com.atcrew.member.ActivityField;
 import com.atcrew.member.AuthProvider;
 import com.atcrew.member.CareerEntryInfo;
-import com.atcrew.member.CreatorRole;
 import com.atcrew.member.EmploymentStatus;
 import com.atcrew.member.ExperienceLevel;
 import com.atcrew.member.TeamExperience;
@@ -60,9 +59,6 @@ public class Member implements Persistable<String> {
     private String handle;
 
     private String name;
-
-    @Enumerated(EnumType.STRING)
-    private CreatorRole creatorRole;
 
     @Enumerated(EnumType.STRING)
     private AuthProvider authProvider;
@@ -158,18 +154,17 @@ public class Member implements Persistable<String> {
     protected Member() {
     }
 
-    private Member(String loginEmail, String handle, String name, CreatorRole creatorRole) {
+    private Member(String loginEmail, String handle, String name) {
         this.id = UuidV7Generator.generate();
         this.loginEmail = loginEmail;
         this.handle = handle;
         this.name = name;
-        this.creatorRole = creatorRole;
         this.isNew = true;
     }
 
     // 개발·테스트 전용 (authProvider 없이 직접 가입)
-    public static Member register(String loginEmail, String handle, String name, CreatorRole creatorRole) {
-        return new Member(loginEmail, handle, name, creatorRole);
+    public static Member register(String loginEmail, String handle, String name) {
+        return new Member(loginEmail, handle, name);
     }
 
     public static Member registerWithEmail(String loginEmail, String handle, String name,
@@ -178,7 +173,7 @@ public class Member implements Persistable<String> {
         validateTerms(termsAgreement);
         validateTimezone(timezone);
         validateCountryCode(countryCode);
-        Member m = new Member(loginEmail, handle, name, null);
+        Member m = new Member(loginEmail, handle, name);
         m.authProvider = AuthProvider.EMAIL;
         m.passwordHash = passwordHash;
         m.emailVerified = false;
@@ -193,7 +188,7 @@ public class Member implements Persistable<String> {
         validateTerms(termsAgreement);
         validateTimezone(timezone);
         validateCountryCode(countryCode);
-        Member m = new Member(loginEmail, handle, name, null);
+        Member m = new Member(loginEmail, handle, name);
         m.authProvider = AuthProvider.GOOGLE;
         m.emailVerified = true;
         m.termsAgreement = termsAgreement;
@@ -255,7 +250,6 @@ public class Member implements Persistable<String> {
             }
             effectiveAvailable = effectiveTotal;
         }
-        if (command.creatorRole() != null) this.creatorRole = command.creatorRole();
         if (command.employmentStatus() != null) this.employmentStatus = command.employmentStatus();
         if (command.activityFields() != null) this.activityFields = new HashSet<>(command.activityFields());
         if (command.experienceLevel() != null) {
@@ -339,7 +333,6 @@ public class Member implements Persistable<String> {
     public String getLoginEmail() { return loginEmail; }
     public String getHandle() { return handle; }
     public String getName() { return name; }
-    public CreatorRole getCreatorRole() { return creatorRole; }
     public AuthProvider getAuthProvider() { return authProvider; }
     public EmploymentStatus getEmploymentStatus() { return employmentStatus; }
     public List<ActivityField> getActivityFields() { return activityFields.stream().sorted().toList(); }

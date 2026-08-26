@@ -4,7 +4,6 @@ import com.atcrew.member.AddCareerCommand;
 import com.atcrew.member.ArtistProfileViewedEvent;
 import com.atcrew.member.AuthProvider;
 import com.atcrew.member.CareerEntryInfo;
-import com.atcrew.member.CreatorRole;
 import com.atcrew.member.MemberDeactivatedEvent;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberProfileInfo;
@@ -100,13 +99,13 @@ class MemberServiceImpl implements MemberService {
 
     @Override
     @Transactional
-    public MemberInfo register(String loginEmail, String handle, String name, CreatorRole creatorRole) {
+    public MemberInfo register(String loginEmail, String handle, String name) {
         if (memberRepository.existsByHandle(handle)) {
             throw new MemberException(MemberErrorCode.DUPLICATE_HANDLE, handle);
         }
         try {
             // saveAndFlush 이유는 위 register(RegisterMemberCommand) 주석 참고.
-            return MemberMapper.toInfo(memberRepository.saveAndFlush(Member.register(loginEmail, handle, name, creatorRole)));
+            return MemberMapper.toInfo(memberRepository.saveAndFlush(Member.register(loginEmail, handle, name)));
         } catch (DuplicateKeyException e) {
             throw new MemberException(MemberErrorCode.DUPLICATE_MEMBER_INFO);
         }

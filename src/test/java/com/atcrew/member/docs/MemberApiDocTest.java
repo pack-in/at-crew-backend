@@ -1,6 +1,5 @@
 package com.atcrew.member.docs;
 
-import com.atcrew.member.CreatorRole;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
 import com.atcrew.support.RestDocsIntegrationSupport;
@@ -42,9 +41,7 @@ class MemberApiDocTest extends RestDocsIntegrationSupport {
         memberService.register(
                 "doc-member-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com",
                 handle,
-                "문서화멤버",
-                CreatorRole.WEBTOON
-        );
+                "문서화멤버");
 
         mockMvc.perform(get("/api/members/{handle}", handle))
                 .andExpect(status().isOk())
@@ -60,7 +57,6 @@ class MemberApiDocTest extends RestDocsIntegrationSupport {
                                 fieldWithPath("data.id").description("회원 고유 식별자"),
                                 fieldWithPath("data.handle").description("회원 핸들 (@아이디)"),
                                 fieldWithPath("data.name").description("이름·작가명"),
-                                fieldWithPath("data.creatorRole").description("창작자 유형 (WEBTOON·ILLUSTRATION·WEBNOVEL·OTHER)"),
                                 fieldWithPath("data.employmentStatus").description("구직 상태"),
                                 fieldWithPath("data.totalSlotCount").description("총 슬롯 수"),
                                 fieldWithPath("data.availableSlotCount").description("가용 슬롯 수"),

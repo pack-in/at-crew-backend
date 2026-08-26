@@ -32,19 +32,18 @@ class MemberModuleTests {
 
     @Test
     void 회원_가입_후_핸들로_조회() {
-        MemberInfo member = memberService.register("test@atcrew.com", "testhandle", "테스트", CreatorRole.WEBTOON);
+        MemberInfo member = memberService.register("test@atcrew.com", "testhandle", "테스트");
 
         MemberInfo found = memberService.findByHandle("testhandle");
 
         assertThat(found.id()).isEqualTo(member.id());
         assertThat(found.name()).isEqualTo("테스트");
-        assertThat(found.creatorRole()).isEqualTo(CreatorRole.WEBTOON);
         assertThat(found.employmentStatus()).isEqualTo(EmploymentStatus.PREPARING);
     }
 
     @Test
     void 회원_가입_후_ID로_조회() {
-        MemberInfo member = memberService.register("email-lookup@atcrew.com", "emaillookup", "이메일조회", CreatorRole.ILLUSTRATOR);
+        MemberInfo member = memberService.register("email-lookup@atcrew.com", "emaillookup", "이메일조회");
 
         MemberInfo found = memberService.findById(member.id());
 
@@ -54,10 +53,10 @@ class MemberModuleTests {
 
     @Test
     void 중복_핸들_가입_불가_개발용_API() {
-        memberService.register("dup-a@atcrew.com", "duphandle2", "회원A", CreatorRole.ILLUSTRATOR);
+        memberService.register("dup-a@atcrew.com", "duphandle2", "회원A");
 
         assertThatThrownBy(() ->
-                memberService.register("dup-b@atcrew.com", "duphandle2", "회원B", CreatorRole.ILLUSTRATOR)
+                memberService.register("dup-b@atcrew.com", "duphandle2", "회원B")
         ).isInstanceOf(MemberException.class)
                 .extracting(e -> ((MemberException) e).getCode())
                 .isEqualTo(MemberErrorCode.DUPLICATE_HANDLE.name());
@@ -65,10 +64,10 @@ class MemberModuleTests {
 
     @Test
     void 중복_핸들_가입_불가() {
-        memberService.register("member-a@atcrew.com", "duphandle", "회원A", CreatorRole.ILLUSTRATOR);
+        memberService.register("member-a@atcrew.com", "duphandle", "회원A");
 
         assertThatThrownBy(() ->
-                memberService.register("member-b@atcrew.com", "duphandle", "회원B", CreatorRole.ILLUSTRATOR)
+                memberService.register("member-b@atcrew.com", "duphandle", "회원B")
         ).isInstanceOf(MemberException.class)
                 .extracting(e -> ((MemberException) e).getCode())
                 .isEqualTo(MemberErrorCode.DUPLICATE_HANDLE.name());
@@ -96,7 +95,7 @@ class MemberModuleTests {
 
     @Test
     void 존재하는_핸들은_존재로_판단() {
-        memberService.register("exists-handle@atcrew.com", "existshandle", "존재핸들회원", CreatorRole.WEBTOON);
+        memberService.register("exists-handle@atcrew.com", "existshandle", "존재핸들회원");
 
         assertThat(memberService.existsByHandle("existshandle")).isTrue();
     }
@@ -108,7 +107,7 @@ class MemberModuleTests {
 
     @Test
     void 탈퇴_회원의_과거_핸들은_존재하지_않음으로_판단() {
-        MemberInfo member = memberService.register("deactivated-handle@atcrew.com", "deactivatedhandle", "탈퇴예정회원", CreatorRole.WEBTOON);
+        MemberInfo member = memberService.register("deactivated-handle@atcrew.com", "deactivatedhandle", "탈퇴예정회원");
 
         memberService.deactivate(member.id());
 
@@ -120,7 +119,7 @@ class MemberModuleTests {
 
     @Test
     void 이름_수정() {
-        MemberInfo member = memberService.register("name-update@atcrew.com", "nameupdate", "홍길동", CreatorRole.WEBTOON);
+        MemberInfo member = memberService.register("name-update@atcrew.com", "nameupdate", "홍길동");
 
         memberService.updateName(member.id(), "홍길순");
 
@@ -131,16 +130,13 @@ class MemberModuleTests {
 
     @Test
     void 정보_수정() {
-        MemberInfo member = memberService.register("info-update@atcrew.com", "infoupdate", "정보수정", CreatorRole.WEBTOON);
-        UpdateInfoCommand command = new UpdateInfoCommand(
-                CreatorRole.ILLUSTRATOR, EmploymentStatus.AVAILABLE,
-                List.of(ActivityField.ILLUSTRATION), null, null,
+        MemberInfo member = memberService.register("info-update@atcrew.com", "infoupdate", "정보수정");
+        UpdateInfoCommand command = new UpdateInfoCommand(EmploymentStatus.AVAILABLE, List.of(ActivityField.ILLUSTRATION), null, null,
                 3, 2, null, "010-9999-0000", null, null, null, null);
 
         memberService.updateInfo(member.id(), command);
 
         MemberInfo updated = memberService.findById(member.id());
-        assertThat(updated.creatorRole()).isEqualTo(CreatorRole.ILLUSTRATOR);
         assertThat(updated.employmentStatus()).isEqualTo(EmploymentStatus.AVAILABLE);
         assertThat(updated.totalSlotCount()).isEqualTo(3);
         assertThat(updated.availableSlotCount()).isEqualTo(2);
@@ -151,7 +147,7 @@ class MemberModuleTests {
 
     @Test
     void 경력_추가_후_조회() {
-        MemberInfo member = memberService.register("career-add@atcrew.com", "careeradd", "경력추가", CreatorRole.WEBTOON);
+        MemberInfo member = memberService.register("career-add@atcrew.com", "careeradd", "경력추가");
         AddCareerCommand command = new AddCareerCommand(
                 "홍길동전", "작화 전공정",
                 LocalDate.of(2023, 1, 1), LocalDate.of(2024, 6, 30),
@@ -169,7 +165,7 @@ class MemberModuleTests {
 
     @Test
     void 경력_삭제() {
-        MemberInfo member = memberService.register("career-del@atcrew.com", "careerdel", "경력삭제", CreatorRole.WEBTOON);
+        MemberInfo member = memberService.register("career-del@atcrew.com", "careerdel", "경력삭제");
         CareerEntryInfo entry = memberService.addCareer(member.id(), new AddCareerCommand(
                 "삭제할작품", null,
                 LocalDate.of(2022, 1, 1), LocalDate.of(2023, 1, 1),
@@ -184,7 +180,7 @@ class MemberModuleTests {
 
     @Test
     void 회원_탈퇴_후_ID_조회_불가() {
-        MemberInfo member = memberService.register("leave@atcrew.com", "leavehandle", "탈퇴회원", CreatorRole.OTHER);
+        MemberInfo member = memberService.register("leave@atcrew.com", "leavehandle", "탈퇴회원");
 
         memberService.deactivate(member.id());
 
@@ -200,13 +196,12 @@ class MemberModuleTests {
     @Test
     void 프로필_검색_구인가능_상태만_노출() {
         MemberInfo available = memberService.register(
-                "search-available@atcrew.com", "searchavailable", "구인가능작가", CreatorRole.WEBTOON);
-        memberService.updateInfo(available.id(), new UpdateInfoCommand(
-                null, EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), ExperienceLevel.THREE_TO_FOUR,
+                "search-available@atcrew.com", "searchavailable", "구인가능작가");
+        memberService.updateInfo(available.id(), new UpdateInfoCommand(EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), ExperienceLevel.THREE_TO_FOUR,
                 null, null, null, null, "010-1234-5678", null, null, null, null));
 
         MemberInfo preparing = memberService.register(
-                "search-preparing@atcrew.com", "searchpreparing", "준비중작가", CreatorRole.WEBTOON);
+                "search-preparing@atcrew.com", "searchpreparing", "준비중작가");
         // PREPARING(기본값) 유지 — updateInfo 호출 없음
 
         CursorPage<MemberProfileInfo> result = memberService.searchProfiles(new SearchProfilesCommand(
@@ -219,15 +214,13 @@ class MemberModuleTests {
     @Test
     void 프로필_검색_활동분야_필터() {
         MemberInfo webtoon = memberService.register(
-                "search-webtoon@atcrew.com", "searchwebtoon", "웹툰작가", CreatorRole.WEBTOON);
-        memberService.updateInfo(webtoon.id(), new UpdateInfoCommand(
-                null, EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), ExperienceLevel.THREE_TO_FOUR,
+                "search-webtoon@atcrew.com", "searchwebtoon", "웹툰작가");
+        memberService.updateInfo(webtoon.id(), new UpdateInfoCommand(EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), ExperienceLevel.THREE_TO_FOUR,
                 null, null, null, null, "010-1234-5678", null, null, null, null));
 
         MemberInfo illustration = memberService.register(
-                "search-illust@atcrew.com", "searchillust", "일러스트작가", CreatorRole.ILLUSTRATOR);
-        memberService.updateInfo(illustration.id(), new UpdateInfoCommand(
-                null, EmploymentStatus.AVAILABLE, List.of(ActivityField.ILLUSTRATION), ExperienceLevel.THREE_TO_FOUR,
+                "search-illust@atcrew.com", "searchillust", "일러스트작가");
+        memberService.updateInfo(illustration.id(), new UpdateInfoCommand(EmploymentStatus.AVAILABLE, List.of(ActivityField.ILLUSTRATION), ExperienceLevel.THREE_TO_FOUR,
                 null, null, null, null, "010-1234-5678", null, null, null, null));
 
         CursorPage<MemberProfileInfo> result = memberService.searchProfiles(new SearchProfilesCommand(
@@ -240,15 +233,13 @@ class MemberModuleTests {
     @Test
     void 프로필_검색_경력순_정렬() {
         MemberInfo newcomer = memberService.register(
-                "search-exp-newcomer@atcrew.com", "searchexpnew", "신입작가", CreatorRole.WEBTOON);
-        memberService.updateInfo(newcomer.id(), new UpdateInfoCommand(
-                null, EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), ExperienceLevel.NEWCOMER,
+                "search-exp-newcomer@atcrew.com", "searchexpnew", "신입작가");
+        memberService.updateInfo(newcomer.id(), new UpdateInfoCommand(EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), ExperienceLevel.NEWCOMER,
                 null, null, null, null, "010-1234-5678", null, null, null, null));
 
         MemberInfo senior = memberService.register(
-                "search-exp-senior@atcrew.com", "searchexpsenior", "시니어작가", CreatorRole.WEBTOON);
-        memberService.updateInfo(senior.id(), new UpdateInfoCommand(
-                null, EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), ExperienceLevel.TEN_PLUS,
+                "search-exp-senior@atcrew.com", "searchexpsenior", "시니어작가");
+        memberService.updateInfo(senior.id(), new UpdateInfoCommand(EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), ExperienceLevel.TEN_PLUS,
                 null, null, null, null, "010-1234-5678", null, null, null, null));
 
         CursorPage<MemberProfileInfo> result = memberService.searchProfiles(new SearchProfilesCommand(
@@ -265,27 +256,23 @@ class MemberModuleTests {
     @Test
     void 프로필_검색_노출조건_미충족_회원_제외() {
         MemberInfo complete = memberService.register(
-                "search-complete@atcrew.com", "searchcomplete", "완성작가", CreatorRole.WEBTOON);
-        memberService.updateInfo(complete.id(), new UpdateInfoCommand(
-                null, EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), ExperienceLevel.ONE_TO_TWO,
+                "search-complete@atcrew.com", "searchcomplete", "완성작가");
+        memberService.updateInfo(complete.id(), new UpdateInfoCommand(EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), ExperienceLevel.ONE_TO_TWO,
                 null, null, null, null, "010-1234-5678", null, null, null, null));
 
         MemberInfo noActivityField = memberService.register(
-                "search-nofield@atcrew.com", "searchnofield", "분야미입력작가", CreatorRole.WEBTOON);
-        memberService.updateInfo(noActivityField.id(), new UpdateInfoCommand(
-                null, EmploymentStatus.AVAILABLE, List.of(), ExperienceLevel.ONE_TO_TWO,
+                "search-nofield@atcrew.com", "searchnofield", "분야미입력작가");
+        memberService.updateInfo(noActivityField.id(), new UpdateInfoCommand(EmploymentStatus.AVAILABLE, List.of(), ExperienceLevel.ONE_TO_TWO,
                 null, null, null, null, "010-1234-5678", null, null, null, null));
 
         MemberInfo noContact = memberService.register(
-                "search-nocontact@atcrew.com", "searchnocontact", "연락처미입력작가", CreatorRole.WEBTOON);
-        memberService.updateInfo(noContact.id(), new UpdateInfoCommand(
-                null, EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), ExperienceLevel.ONE_TO_TWO,
+                "search-nocontact@atcrew.com", "searchnocontact", "연락처미입력작가");
+        memberService.updateInfo(noContact.id(), new UpdateInfoCommand(EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), ExperienceLevel.ONE_TO_TWO,
                 null, null, null, null, null, null, null, null, null));
 
         MemberInfo noExperience = memberService.register(
-                "search-noexp@atcrew.com", "searchnoexp", "경력미입력작가", CreatorRole.WEBTOON);
-        memberService.updateInfo(noExperience.id(), new UpdateInfoCommand(
-                null, EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), null,
+                "search-noexp@atcrew.com", "searchnoexp", "경력미입력작가");
+        memberService.updateInfo(noExperience.id(), new UpdateInfoCommand(EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), null,
                 null, null, null, null, "010-1234-5678", null, null, null, null));
 
         CursorPage<MemberProfileInfo> result = memberService.searchProfiles(new SearchProfilesCommand(

@@ -10,8 +10,7 @@ public record MemberProfileInfo(
         String handle, // @핸들 (URL 식별자, unique)
 
         // === 기본 프로필 ===
-        String name,             // 사용자 이름·작가명
-        CreatorRole creatorRole, // 창작자 유형
+        String name, // 사용자 이름·작가명
 
         // === 구인구직 상태 ===
         EmploymentStatus employmentStatus, // 준비중·신규 작업 가능·협의 가능·마감

@@ -22,8 +22,6 @@ public record MemberInfo(
 
         // === 기본 프로필 ===
         String name,           // 사용자 이름·작가명 (max 16자)
-        @Schema(nullable = true)
-        CreatorRole creatorRole, // 창작자 유형 (웹툰작가·일러스트작가·웹소설작가·기타)
 
         // === 구인구직 상태 [피그마: 구인구직 상태 칩 선택] ===
         EmploymentStatus employmentStatus,

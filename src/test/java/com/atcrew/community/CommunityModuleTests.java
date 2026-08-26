@@ -1,6 +1,5 @@
 package com.atcrew.community;
 
-import com.atcrew.member.CreatorRole;
 import com.atcrew.member.MemberService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,7 +32,7 @@ class CommunityModuleTests {
     @Test
     void 배너_등록_시_순번_미지정이면_마지막_순번_자동_부여() {
         String memberId = memberService.register(
-                "banner-owner-1@atcrew.com", "bannerowner1", "배너주인1", CreatorRole.WEBTOON).id();
+                "banner-owner-1@atcrew.com", "bannerowner1", "배너주인1").id();
 
         BannerInfo first = bannerService.createBanner(new CreateBannerCommand(
                 memberId, "https://img.example/1.png", "https://example.com/1", null));
@@ -46,7 +45,7 @@ class CommunityModuleTests {
     @Test
     void 배너_등록_시_순번_지정하면_기존_배너들이_밀림() {
         String memberId = memberService.register(
-                "banner-owner-2@atcrew.com", "bannerowner2", "배너주인2", CreatorRole.WEBTOON).id();
+                "banner-owner-2@atcrew.com", "bannerowner2", "배너주인2").id();
         BannerInfo first = bannerService.createBanner(new CreateBannerCommand(
                 memberId, "https://img.example/1.png", "https://example.com/1", null));
 
@@ -62,7 +61,7 @@ class CommunityModuleTests {
     @Test
     void 배너_삭제_후_활성_목록에서_제외() {
         String memberId = memberService.register(
-                "banner-owner-3@atcrew.com", "bannerowner3", "배너주인3", CreatorRole.WEBTOON).id();
+                "banner-owner-3@atcrew.com", "bannerowner3", "배너주인3").id();
         BannerInfo banner = bannerService.createBanner(new CreateBannerCommand(
                 memberId, "https://img.example/3.png", "https://example.com/3", null));
 
@@ -74,7 +73,7 @@ class CommunityModuleTests {
     @Test
     void 배너_수정() {
         String memberId = memberService.register(
-                "banner-owner-4@atcrew.com", "bannerowner4", "배너주인4", CreatorRole.WEBTOON).id();
+                "banner-owner-4@atcrew.com", "bannerowner4", "배너주인4").id();
         BannerInfo banner = bannerService.createBanner(new CreateBannerCommand(
                 memberId, "https://img.example/4.png", "https://example.com/4", null));
 
@@ -90,7 +89,7 @@ class CommunityModuleTests {
     @Test
     void 배너_수정으로_앞으로_당기면_그_사이_배너들이_뒤로_밀림() {
         String memberId = memberService.register(
-                "banner-owner-5@atcrew.com", "bannerowner5", "배너주인5", CreatorRole.WEBTOON).id();
+                "banner-owner-5@atcrew.com", "bannerowner5", "배너주인5").id();
         BannerInfo a = bannerService.createBanner(new CreateBannerCommand(
                 memberId, "https://img.example/a.png", "https://example.com/a", null));
         BannerInfo b = bannerService.createBanner(new CreateBannerCommand(
@@ -112,7 +111,7 @@ class CommunityModuleTests {
     @Test
     void 배너_수정으로_뒤로_밀면_그_사이_배너들이_앞으로_당겨짐() {
         String memberId = memberService.register(
-                "banner-owner-6@atcrew.com", "bannerowner6", "배너주인6", CreatorRole.WEBTOON).id();
+                "banner-owner-6@atcrew.com", "bannerowner6", "배너주인6").id();
         BannerInfo a = bannerService.createBanner(new CreateBannerCommand(
                 memberId, "https://img.example/a.png", "https://example.com/a", null));
         BannerInfo b = bannerService.createBanner(new CreateBannerCommand(

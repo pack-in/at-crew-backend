@@ -77,7 +77,7 @@ class MemberController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void updateInfo(@RequestBody @Valid UpdateInfoRequest request) {
         memberService.updateInfo(securityUtils.getCurrentMemberId(), new UpdateInfoCommand(
-                request.creatorRole(), request.employmentStatus(),
+                request.employmentStatus(),
                 request.activityFields(), request.experienceLevel(), request.activeRegion(),
                 request.totalSlotCount(), request.availableSlotCount(), request.teamExperiences(),
                 request.contact(), request.sns(), request.tools(), request.timezone(), request.countryCode()));

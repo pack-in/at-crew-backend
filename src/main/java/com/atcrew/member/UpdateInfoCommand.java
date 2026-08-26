@@ -3,7 +3,6 @@ package com.atcrew.member;
 import java.util.List;
 
 public record UpdateInfoCommand(
-        CreatorRole creatorRole,
         EmploymentStatus employmentStatus,
         List<ActivityField> activityFields,
         ExperienceLevel experienceLevel,

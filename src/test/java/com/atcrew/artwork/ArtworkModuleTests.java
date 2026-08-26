@@ -5,7 +5,6 @@ import com.atcrew.common.exception.DomainException;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaProcessingStatus;
 import com.atcrew.media.internal.application.MediaCallbackService;
-import com.atcrew.member.CreatorRole;
 import com.atcrew.member.MemberService;
 import com.atcrew.support.BillingTestSupport;
 import org.junit.jupiter.api.Test;
@@ -381,6 +380,6 @@ class ArtworkModuleTests {
         return memberService.register(
                 "artwork-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12) + "@atcrew.com",
                 "aw" + UUID.randomUUID().toString().replace("-", "").substring(0, 10),
-                "작가", CreatorRole.ILLUSTRATOR).id();
+                "작가").id();
     }
 }

@@ -103,7 +103,6 @@
 
 코드에서 정의된 enum 값입니다. 그 외 값을 보내면 `COMMON_INVALID_INPUT`(JSON 파싱 실패)이 발생합니다.
 
-- **CreatorRole**: `WEBTOON`, `ILLUSTRATOR`, `WEB_NOVELIST`, (기타) — 웹툰작가/일러스트작가/웹소설작가
 - **EmploymentStatus**: `PREPARING`, `AVAILABLE`, `NEGOTIABLE`
 - **ActivityField**: `ILLUSTRATION`, `WEBTOON`, `PRINT_COMIC`, `ANIMATION` (작가는 복수 선택, 기업은 단일 선택)
 - **ExperienceLevel**: `NEWCOMER`, `ONE_TO_TWO`, `THREE_TO_FOUR`, `FIVE_TO_NINE`, `TEN_PLUS`
@@ -133,17 +132,15 @@
 {
   "loginEmail": "tester@example.com",
   "handle": "creator_kim",
-  "name": "김창작",
-  "creatorRole": "WEBTOON"
+  "name": "김창작"
 }
 ```
 **필드 제약**:
 - `loginEmail`: `@NotBlank @Email`
 - `handle`: `@NotBlank`, 정규식 `^[a-zA-Z0-9_-]{3,30}$` (영문·숫자·_·- 3~30자)
 - `name`: `@NotBlank @Size(max=16)`
-- `creatorRole`: `@NotNull` (CreatorRole enum)
 
-**정상 응답 (201)**: `data`에 MemberInfo (id, handle, name, creatorRole 등).
+**정상 응답 (201)**: `data`에 MemberInfo (id, handle, name 등).
 
 **예외 케이스**:
 | 케이스 | 변경 값 | 예상 에러 코드 | HTTP |
@@ -151,7 +148,6 @@
 | 이메일 형식 오류 | loginEmail: "notEmail" | COMMON_INVALID_INPUT | 400 |
 | 핸들 형식 오류 | handle: "ab" (3자 미만) | COMMON_INVALID_INPUT | 400 |
 | 이름 길이 초과 | name: 17자 이상 | COMMON_INVALID_INPUT | 400 |
-| creatorRole 누락 | creatorRole 생략 | COMMON_INVALID_INPUT | 400 |
 | 이메일 중복 | 기존 loginEmail 재사용 | DUPLICATE_EMAIL | 409 |
 | 핸들 중복 | 기존 handle 재사용 | DUPLICATE_HANDLE | 409 |
 
@@ -358,7 +354,6 @@
 **Request Body** (전 필드 nullable):
 ```json
 {
-  "creatorRole": "ILLUSTRATOR",
   "employmentStatus": "AVAILABLE",
   "activityFields": ["ILLUSTRATION", "WEBTOON"],
   "experienceLevel": "THREE_TO_FOUR",
