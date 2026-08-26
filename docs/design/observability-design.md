@@ -35,7 +35,7 @@
 | D7 | 관리 포트 8081 분리, 호스트 `127.0.0.1`에만 바인딩 | 경로 화이트리스트 실수로 메트릭이 외부 노출되는 경로를 원천 차단 |
 | D8 | liveness(프로세스+DB)와 의존성 상세(ES·디스크·R2)를 분리 | ES 장애가 "API 전면 다운" P1으로 오인되지 않게 |
 | D9 | Spring Boot 4 내장 구조화 로깅(prod만 JSON) | 의존성 추가 없이 MDC가 필드가 된다 |
-| D10 | 비즈니스 지표는 도메인 이벤트 구독자(`common/observability`)에서 계측 | 모듈 간 직접 의존 금지 규약, 계측 코드의 도메인 침투 방지 |
+| D10 | 비즈니스 지표는 **각 소유 모듈 안의** 이벤트 리스너에서 계측하고, 의존이 없는 것(미완료 이벤트 gauge)만 `common/observability`에 둔다 | 계측을 `common`에 모으면 `common`이 media·billing을 참조하게 되는데 두 모듈은 이미 `common`에 의존해 **모듈 순환**이 생긴다(`ModularStructureTests.modules.verify()` 실패). 2026-08-26 구현 중 발견해 수정 |
 | D11 | 알람 임계값은 절대 건수 + 지속 시간 기준 | 트래픽 0에 가까운 초기에 비율 기준은 오탐 |
 | D12 | DB 백업(일 1회 dump→R2)과 백업 실패 알람을 이번 범위에 포함 | 감지보다 데이터 소실 방지가 우선 |
 | D13 | 배포 실패 시 자동 롤백, 단 새 Flyway 마이그레이션이 포함된 배포는 롤백하지 않고 P1 알람만 | 스키마는 되돌아가지 않아 구버전 앱이 `validate`에서 다시 죽는다 |
@@ -141,19 +141,24 @@ R2는 헬스 인디케이터가 없다(자체 구현 대상 아님) — §6의 �
 
 ## 6. 비즈니스 지표 (D10)
 
-계측 위치는 `common/observability`의 도메인 이벤트 구독자. 이벤트가 없는 외부 I/O 실패만 해당 어댑터에서 직접 센다.
+먼저 **이미 수집되는 HTTP 지표로 표현되는 것은 커스텀 지표를 만들지 않는다.** 가입 성공·실패, 로그인
+실패는 `http_server_requests_seconds_count`의 `uri`+`status` 조합으로 그대로 나온다(2026-08-26
+구현 중 정리 — 초안의 7개 카운터 중 3개가 여기에 해당했다).
 
-| 지표 | 타입 | 출처 |
-|---|---|---|
-| `atcrew_signup_total{result}` | counter | 회원 가입 이벤트 |
-| `atcrew_login_failure_total{reason}` | counter | 인증 실패 경로 |
-| `atcrew_billing_checkout_completed_total` | counter | Stripe Checkout 완료 처리 |
-| `atcrew_billing_webhook_failure_total` | counter | `/internal/billing/stripe/webhook` 처리 실패 |
-| `atcrew_media_callback_failure_total` | counter | 이미지 처리 콜백 실패 |
-| `atcrew_mail_send_failure_total{provider}` | counter | `ResendMailAdapter` |
-| `atcrew_modulith_incomplete_events` | gauge | `event_publication`의 미완료 행 수(주기 조회) |
+새로 만드는 것은 HTTP 지표로 드러나지 않는 것뿐이다.
 
-라벨에 이메일·핸들 등 식별 가능 값이나 고카디널리티 값(memberId 포함)을 넣지 않는다.
+| 지표 | 타입 | 위치 | 왜 필요한가 |
+|---|---|---|---|
+| `atcrew_billing_checkout_completed_total{product}` | counter | `billing` — `BillingMetrics` | 웹훅 엔드포인트가 하나라 HTTP 지표로는 결제 성사 여부를 알 수 없다 |
+| `atcrew_billing_subscription_payment_failed_total{plan}` | counter | `billing` — `SubscriptionPaymentFailedEvent` 리스너 | 정기 결제 실패는 서버 오류가 아니라 이벤트다 |
+| `atcrew_media_processing_total{status,owner_type}` | counter | `media` — `MediaAssetProcessedEvent` 리스너 | 콜백은 실패 상태여도 HTTP 204라 성공과 구분되지 않는다 |
+| `atcrew_mail_send_failure_total{provider}` | counter | `common/mail` — `ResendMailAdapter` | 발송 실패를 예외로 올리지 않고 삼키므로 로그 외 흔적이 없다 |
+| `atcrew_modulith_incomplete_events` | gauge | `common/observability` | 이벤트 소비가 막히면 색인·후처리가 조용히 멈춘다. 스크레이프마다 조회하지 않고 60초 주기로 갱신한 값을 읽는다 |
+
+Stripe 웹훅 **처리 실패**는 따로 세지 않는다 — 서명 검증 실패는 4xx, 처리 중 예외는 5xx로 컨트롤러에서
+그대로 나가므로 해당 URI의 HTTP 지표에 이미 잡힌다.
+
+라벨에 이메일·핸들 등 식별 가능 값이나 고카디널리티 값(`memberId` 포함)을 넣지 않는다.
 
 ## 7. 알람
 
