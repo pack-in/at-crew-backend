@@ -67,7 +67,7 @@ class CommunityController {
     @GetMapping("/authors")
     public ApiResponse<CursorPage<MemberProfileInfo>> getAuthors(
             @Parameter(description = "활동 분야 필터") @RequestParam(required = false) ActivityField activityField,
-            @Parameter(description = "정렬 기준 (기본 RECENTLY_UPDATED)") @RequestParam(required = false) ProfileSort sort,
+            @Parameter(description = "정렬 기준 (RECENTLY_UPDATED·VIEW_COUNT·EXPERIENCE, 기본 RECENTLY_UPDATED)") @RequestParam(required = false) ProfileSort sort,
             @Parameter(description = "커서") @RequestParam(required = false) String cursor,
             @Parameter(description = "페이지 크기 (기본 20, 최대 50)") @RequestParam(required = false) Integer size) {
         return ApiResponse.success(memberService.searchProfiles(new SearchProfilesCommand(

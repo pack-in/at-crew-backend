@@ -209,9 +209,11 @@ class MemberServiceImpl implements MemberService {
         ProfileSort sort = command.sort() != null ? command.sort() : ProfileSort.RECENTLY_UPDATED;
 
         Specification<Member> spec = buildSearchSpecification(command, sort);
-        Sort jpaSort = sort == ProfileSort.EXPERIENCE
-                ? Sort.by(Sort.Direction.DESC, "experienceRank").and(Sort.by(Sort.Direction.DESC, "updatedAt"))
-                : Sort.by(Sort.Direction.DESC, "updatedAt");
+        Sort jpaSort = switch (sort) {
+            case EXPERIENCE -> Sort.by(Sort.Direction.DESC, "experienceRank").and(Sort.by(Sort.Direction.DESC, "updatedAt"));
+            case VIEW_COUNT -> Sort.by(Sort.Direction.DESC, "profileViewCount").and(Sort.by(Sort.Direction.DESC, "updatedAt"));
+            case RECENTLY_UPDATED -> Sort.by(Sort.Direction.DESC, "updatedAt");
+        };
 
         List<Member> members = memberRepository.findAll(spec, PageRequest.of(0, limit, jpaSort)).getContent();
         return toProfilePage(members, command.size(), sort);
@@ -271,14 +273,24 @@ class MemberServiceImpl implements MemberService {
 
     // 기존 복합 커서(keyset) 비교 로직을 SQL 표준 형태로 그대로 이식 — 정렬 기준별 분기 무변경 (§3.6)
     private Predicate buildCursorPredicate(Root<Member> root, CriteriaBuilder cb, ProfileSort sort, String cursor) {
-        if (sort == ProfileSort.EXPERIENCE) {
-            ExperienceCursor c = parseExperienceCursor(cursor);
+        String rankField = rankField(sort);
+        if (rankField != null) {
+            RankCursor c = parseRankCursor(cursor);
             return cb.or(
-                    cb.lessThan(root.get("experienceRank"), c.rank()),
-                    cb.and(cb.equal(root.get("experienceRank"), c.rank()),
+                    cb.lessThan(root.get(rankField), c.rank()),
+                    cb.and(cb.equal(root.get(rankField), c.rank()),
                            cb.lessThan(root.get("updatedAt"), c.updatedAt())));
         }
         return cb.lessThan(root.get("updatedAt"), parseCursor(cursor));
+    }
+
+    /** 복합 커서(정렬 키 + updatedAt)를 쓰는 정렬이면 그 정렬 키 필드명을, 아니면 null을 반환한다. */
+    private String rankField(ProfileSort sort) {
+        return switch (sort) {
+            case EXPERIENCE -> "experienceRank";
+            case VIEW_COUNT -> "profileViewCount";
+            case RECENTLY_UPDATED -> null;
+        };
     }
 
     private CursorPage<MemberProfileInfo> toProfilePage(List<Member> members, int size, ProfileSort sort) {
@@ -289,9 +301,11 @@ class MemberServiceImpl implements MemberService {
         String nextCursor = null;
         if (hasNext) {
             Member last = page.get(page.size() - 1);
-            nextCursor = sort == ProfileSort.EXPERIENCE
-                    ? last.getExperienceRank() + "_" + last.getUpdatedAt().toEpochMilli()
-                    : String.valueOf(last.getUpdatedAt().toEpochMilli());
+            nextCursor = switch (sort) {
+                case EXPERIENCE -> last.getExperienceRank() + "_" + last.getUpdatedAt().toEpochMilli();
+                case VIEW_COUNT -> last.getProfileViewCount() + "_" + last.getUpdatedAt().toEpochMilli();
+                case RECENTLY_UPDATED -> String.valueOf(last.getUpdatedAt().toEpochMilli());
+            };
         }
         return CursorPage.of(items, nextCursor);
     }
@@ -304,13 +318,13 @@ class MemberServiceImpl implements MemberService {
         }
     }
 
-    private record ExperienceCursor(int rank, Instant updatedAt) {
+    private record RankCursor(int rank, Instant updatedAt) {
     }
 
-    private ExperienceCursor parseExperienceCursor(String cursor) {
+    private RankCursor parseRankCursor(String cursor) {
         try {
             String[] parts = cursor.split("_", 2);
-            return new ExperienceCursor(Integer.parseInt(parts[0]), Instant.ofEpochMilli(Long.parseLong(parts[1])));
+            return new RankCursor(Integer.parseInt(parts[0]), Instant.ofEpochMilli(Long.parseLong(parts[1])));
         } catch (RuntimeException e) {
             throw new MemberException(MemberErrorCode.INVALID_CURSOR);
         }

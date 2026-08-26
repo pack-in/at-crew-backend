@@ -19,6 +19,7 @@ class MemberMapper {
                 member.getExperienceLevel(),
                 member.getActiveRegion(),
                 member.getTeamExperiences(),
+                member.getProfileViewCount(),
                 member.getTotalSlotCount(),
                 member.getAvailableSlotCount(),
                 member.getContact(),

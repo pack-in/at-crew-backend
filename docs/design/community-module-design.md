@@ -212,7 +212,7 @@ GET /api/community/authors
   ?size=20
 ```
 
-**의존성**: `MemberService.searchProfiles(SearchProfilesCommand)` 신규 메서드 필요 — `employmentStatus IN (신규 작업 가능, 협의 가능)` 조건, 노출 조건(§4.3), `activityField` 필터, 3종 정렬을 지원해야 한다. `조회수`(viewCount)는 현재 `MemberProfileInfo`에 없는 필드이므로 member 모듈에 함께 추가 필요.
+**의존성**: `MemberService.searchProfiles(SearchProfilesCommand)` 신규 메서드 필요 — `employmentStatus IN (신규 작업 가능, 협의 가능)` 조건, 노출 조건(§4.3), `activityField` 필터, 3종 정렬을 지원해야 한다. `조회순`(VIEW_COUNT)은 V29에서 구현했다.
 
 ### 5.4 구인글 / 팀원모집글 탭 — 설계만, 구현 보류
 
@@ -258,7 +258,7 @@ CursorPage<MemberProfileInfo> authors =
     ));
 ```
 
-`MemberProfileInfo`에 `profileViewCount` 필드 추가가 함께 필요하다 (정렬 기준 "조회순" 지원용).
+`MemberProfileInfo.profileViewCount`로 노출한다 — 집계는 `ArtistProfileViewedEvent`를 member 모듈이 스스로 구독해 처리하고, 동일 조회자의 24시간 이내 반복 조회는 세지 않는다(마이페이지_작가-R03). 비로그인 조회는 중복 제외 키가 미정(홈-R14)이라 집계에서 제외한다.
 
 ### 7.3 community → recruit (미구현, 인터페이스만 정의)
 

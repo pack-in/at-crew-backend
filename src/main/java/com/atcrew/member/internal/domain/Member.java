@@ -105,6 +105,10 @@ public class Member implements Persistable<String> {
     // ordinal을 별도 필드로 캐시해 DB 레벨 정렬에 사용한다 (커뮤니티 "작가 찾아보기" 경력순 정렬).
     private int experienceRank = -1;
 
+    // 프로필 열람수 — 작가 찾기 조회순 정렬용(기획서 홈-R02·마이페이지_작가-R03).
+    // 증분은 항상 DB 레벨 UPDATE로 처리한다(MemberRepository.incrementProfileViewCount).
+    private int profileViewCount = 0;
+
     // 단일 선택 — 피그마 4971:25431, 기획서 마이페이지_작가-R23("단일 칩: … 활동 지역(10)").
     @Enumerated(EnumType.STRING)
     private ActiveRegion activeRegion;
@@ -338,6 +342,7 @@ public class Member implements Persistable<String> {
     public List<ActivityField> getActivityFields() { return activityFields.stream().sorted().toList(); }
     public ExperienceLevel getExperienceLevel() { return experienceLevel; }
     public int getExperienceRank() { return experienceRank; }
+    public int getProfileViewCount() { return profileViewCount; }
     public ActiveRegion getActiveRegion() { return activeRegion; }
     public List<TeamExperience> getTeamExperiences() { return teamExperiences.stream().sorted().toList(); }
     public int getTotalSlotCount() { return totalSlotCount; }

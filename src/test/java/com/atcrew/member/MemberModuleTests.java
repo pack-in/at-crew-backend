@@ -11,6 +11,8 @@ import org.testcontainers.containers.MariaDBContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -249,6 +251,78 @@ class MemberModuleTests {
         assertThat(ids.indexOf(senior.id())).isLessThan(ids.indexOf(newcomer.id()));
     }
 
+    // ─── 프로필 열람수·조회순 (마이페이지_작가-R03, 홈-R02) ─────────────
+
+    @Test
+    void 프로필_열람수_동일_조회자_24시간_내_반복조회는_1회만_집계() {
+        MemberInfo artist = memberService.register("view-artist@atcrew.com", "viewartist", "열람작가");
+        MemberInfo viewer = memberService.register("view-viewer@atcrew.com", "viewviewer", "조회자");
+
+        memberService.findProfileByHandle("viewartist", viewer.id());
+        memberService.findProfileByHandle("viewartist", viewer.id());
+        memberService.findProfileByHandle("viewartist", viewer.id());
+
+        awaitViewCount("viewartist", 1);
+    }
+
+    @Test
+    void 프로필_열람수_조회자가_다르면_각각_집계() {
+        MemberInfo artist = memberService.register("view-artist2@atcrew.com", "viewartist2", "열람작가2");
+        MemberInfo v1 = memberService.register("view-v1@atcrew.com", "viewvone", "조회자1");
+        MemberInfo v2 = memberService.register("view-v2@atcrew.com", "viewvtwo", "조회자2");
+
+        memberService.findProfileByHandle("viewartist2", v1.id());
+        memberService.findProfileByHandle("viewartist2", v2.id());
+
+        awaitViewCount("viewartist2", 2);
+    }
+
+    @Test
+    void 프로필_열람수_비로그인_조회는_집계하지_않는다() {
+        // 중복 제외 키가 정해지지 않아(홈-R14) 집계 대상에서 제외한다 — ProfileViewCounter 주석 참고.
+        memberService.register("view-artist3@atcrew.com", "viewartist3", "열람작가3");
+
+        memberService.findProfileByHandle("viewartist3", null);
+        memberService.findProfileByHandle("viewartist3", null);
+
+        assertViewCountStaysZero("viewartist3");
+    }
+
+    @Test
+    void 프로필_열람수_본인_조회는_집계하지_않는다() {
+        MemberInfo artist = memberService.register("view-self@atcrew.com", "viewself", "본인조회");
+
+        memberService.findProfileByHandle("viewself", artist.id());
+
+        assertViewCountStaysZero("viewself");
+    }
+
+    @Test
+    void 프로필_검색_조회순_정렬() {
+        MemberInfo popular = memberService.register("sort-popular@atcrew.com", "sortpopular", "인기작가");
+        memberService.updateInfo(popular.id(), new UpdateInfoCommand(
+                EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), ExperienceLevel.ONE_TO_TWO,
+                null, null, null, null, "010-1234-5678", null, null, null, null));
+        MemberInfo quiet = memberService.register("sort-quiet@atcrew.com", "sortquiet", "조용작가");
+        memberService.updateInfo(quiet.id(), new UpdateInfoCommand(
+                EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), ExperienceLevel.ONE_TO_TWO,
+                null, null, null, null, "010-1234-5678", null, null, null, null));
+
+        MemberInfo v1 = memberService.register("sort-v1@atcrew.com", "sortvone", "조회자1");
+        MemberInfo v2 = memberService.register("sort-v2@atcrew.com", "sortvtwo", "조회자2");
+        memberService.findProfileByHandle("sortpopular", v1.id());
+        memberService.findProfileByHandle("sortpopular", v2.id());
+        memberService.findProfileByHandle("sortquiet", v1.id());
+
+        awaitViewCount("sortpopular", 2);
+        awaitViewCount("sortquiet", 1);
+
+        CursorPage<MemberProfileInfo> result = memberService.searchProfiles(new SearchProfilesCommand(
+                List.of(EmploymentStatus.AVAILABLE), null, ProfileSort.VIEW_COUNT, null, 50));
+        List<String> ids = result.items().stream().map(MemberProfileInfo::id).toList();
+        assertThat(ids.indexOf(popular.id())).isLessThan(ids.indexOf(quiet.id()));
+    }
+
     /**
      * 기획서 마이페이지_작가-R08 — 구인 가능 상태라도 노출 대상 항목이 비어 있으면 작가 찾기에 나오지 않는다.
      * 활동 분야는 복수 선택이라 "빈 컬렉션"이 미입력이다.
@@ -281,5 +355,34 @@ class MemberModuleTests {
         assertThat(result.items()).extracting(MemberProfileInfo::id).contains(complete.id());
         assertThat(result.items()).extracting(MemberProfileInfo::id)
                 .doesNotContain(noActivityField.id(), noContact.id(), noExperience.id());
+    }
+
+    /** 열람수 집계는 AFTER_COMMIT 별도 트랜잭션이라 반영까지 폴링한다(BookmarkModuleTests와 동일 관용구). */
+    private void awaitViewCount(String handle, int expected) {
+        Instant deadline = Instant.now().plus(Duration.ofSeconds(10));
+        while (Instant.now().isBefore(deadline)) {
+            if (memberService.findProfileByHandle(handle).profileViewCount() == expected) return;
+            sleepBriefly();
+        }
+        throw new AssertionError("열람수 " + expected + " 반영 대기 시간 초과: "
+                + memberService.findProfileByHandle(handle).profileViewCount());
+    }
+
+    /** 집계되지 않아야 하는 케이스 — 잠깐 기다린 뒤에도 0인지 확인한다(반영 지연과 구분하기 위함). */
+    private void assertViewCountStaysZero(String handle) {
+        Instant deadline = Instant.now().plus(Duration.ofSeconds(2));
+        while (Instant.now().isBefore(deadline)) {
+            assertThat(memberService.findProfileByHandle(handle).profileViewCount()).isZero();
+            sleepBriefly();
+        }
+    }
+
+    private void sleepBriefly() {
+        try {
+            Thread.sleep(200);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
     }
 }

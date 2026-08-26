@@ -27,6 +27,9 @@ public record MemberProfileInfo(
         // === 팀 작업 경험 ===
         List<TeamExperience> teamExperiences, // 없음·단기 협업 팀·분업형 팀·정기 마감 팀
 
+        // === 프로필 열람수 ===
+        int profileViewCount, // 작가 찾기 조회순 정렬 기준 (마이페이지_작가-R03)
+
         // === 슬롯 ===
         int totalSlotCount,     // 총 작업 슬롯 수
         int availableSlotCount, // 현재 가능한 슬롯 수
