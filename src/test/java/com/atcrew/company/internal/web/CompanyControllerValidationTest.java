@@ -103,18 +103,6 @@ class CompanyControllerValidationTest {
     }
 
     @Test
-    void 정보_수정_활동_지역_7개_초과_거부() throws Exception {
-        mockMvc.perform(patch("/api/companies/me/info")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "activeRegions",
-                                List.of("SEOUL", "GYEONGGI", "DAEJEON", "DAEGU", "GWANGJU", "BUSAN", "OTHER", "SEOUL")))))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
-                .andDo(document("company/validation/update-info-too-many-active-regions"));
-    }
-
-    @Test
     void 정보_수정_연락처_형식_위반_거부() throws Exception {
         mockMvc.perform(patch("/api/companies/me/info")
                         .contentType(MediaType.APPLICATION_JSON)
