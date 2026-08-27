@@ -12,7 +12,7 @@
 `~/.ssh/config`에 별칭을 만들어 둔다.
 
 ```bash
-ssh -i ~/.ssh/at-crew-key.pem ec2-user@<APP_HOST>
+ssh -i ~/.ssh/<키페어>.pem ec2-user@<APP_HOST>
 cd ~/at-crew-backend/deploy
 docker-compose -f docker-compose.app.yml ps          # 컨테이너 상태
 docker-compose -f docker-compose.app.yml logs --tail=100 app
@@ -21,8 +21,11 @@ df -h /                                               # 디스크
 ```
 
 관측 링크
-- 대시보드: `https://atcrew.grafana.net/dashboards/f/at-crew`
-- 알람 상태: `https://atcrew.grafana.net/alerting/list`
+- 대시보드: `<GRAFANA_URL>/dashboards/f/at-crew`
+- 알람 상태: `<GRAFANA_URL>/alerting/list`
+
+> `<APP_HOST>`·`<키페어>`·`<GRAFANA_URL>`은 실제 값을 적지 않는다(공개 저장소). 각각 저장소 Secrets의
+> `APP_HOST`, 로컬 `~/.ssh/`의 키 파일, Secrets의 `GRAFANA_URL`을 참조한다.
 - 로그 조회: Explore → `grafanacloud-atcrew-logs` → `{service_name="app"} |= "<requestId>"`
 - 에러 상세: Sentry 프로젝트 `at-crew-backend`
 
