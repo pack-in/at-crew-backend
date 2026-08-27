@@ -17,6 +17,12 @@ concurrency:
   group: observability-provisioning
   cancel-in-progress: false
 
+# Grafana API만 호출하고 저장소에는 아무것도 쓰지 않는다 — 쓰기 권한을 주지 않는다.
+# 다만 permissions를 명시하면 나열하지 않은 권한이 전부 none이 되므로 contents는 남겨야 한다.
+# private 저장소에서는 actions/checkout이 contents: read 없이 403으로 실패한다.
+permissions:
+  contents: read
+
 jobs:
   apply:
     runs-on: ubuntu-latest
