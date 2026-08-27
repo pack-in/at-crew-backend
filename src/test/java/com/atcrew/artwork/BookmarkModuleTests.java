@@ -4,7 +4,6 @@ import com.atcrew.common.response.CursorPage;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaProcessingStatus;
 import com.atcrew.media.internal.application.MediaCallbackService;
-import com.atcrew.member.CreatorRole;
 import com.atcrew.member.MemberService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -185,6 +184,6 @@ class BookmarkModuleTests {
         return memberService.register(
                 "bookmark-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12) + "@atcrew.com",
                 "bm" + UUID.randomUUID().toString().replace("-", "").substring(0, 10),
-                "회원", CreatorRole.WEBTOON).id();
+                "회원").id();
     }
 }

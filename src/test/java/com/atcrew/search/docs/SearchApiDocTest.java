@@ -13,7 +13,6 @@ import com.atcrew.artwork.UploadArtworkCommand;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaProcessingStatus;
 import com.atcrew.media.internal.application.MediaCallbackService;
-import com.atcrew.member.CreatorRole;
 import com.atcrew.member.MemberService;
 import com.atcrew.recruit.CreateJobPostingCommand;
 import com.atcrew.recruit.JobEmploymentType;
@@ -154,7 +153,7 @@ class SearchApiDocTest extends RestDocsIntegrationSupport {
         String memberId = memberService.register(
                 "search-recruit-doc-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com",
                 "searchrec" + UUID.randomUUID().toString().replace("-", "").substring(0, 8),
-                "검색문서기업", CreatorRole.WEBTOON).id();
+                "검색문서기업").id();
         // 구인글은 유료 단건 게시 상품이다(구인구직-R02).
         BillingTestSupport.grantAllPostingProducts(balanceRepository, memberId);
 
@@ -175,7 +174,7 @@ class SearchApiDocTest extends RestDocsIntegrationSupport {
         String memberId = memberService.register(
                 "search-doc-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com",
                 "searchdoc" + UUID.randomUUID().toString().replace("-", "").substring(0, 8),
-                "검색문서작가", CreatorRole.WEBTOON).id();
+                "검색문서작가").id();
 
         List<String> imageKeys = List.of("raw/" + UUID.randomUUID() + ".png");
         ArtworkInfo artwork = artworkService.uploadArtwork(memberId, new UploadArtworkCommand(

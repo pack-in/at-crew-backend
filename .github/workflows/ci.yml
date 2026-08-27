@@ -30,6 +30,10 @@ jobs:
 
   build-and-test:
     runs-on: ubuntu-latest
+    # 공개 레포에서는 fork가 연 PR도 이 잡을 돌린다 — PR 브랜치의 build.gradle이 곧 러너에서 실행되는
+    # 코드이므로 토큰 권한을 읽기로 못박는다(pull_request 트리거라 저장소 Secrets는 애초에 주입되지 않는다).
+    permissions:
+      contents: read
     # 글로벌 시간대 전략(docs/design/global-timezone-strategy.md §3.1) — 빌드/테스트 환경 시간대를 UTC로 명시 고정
     env:
       TZ: UTC

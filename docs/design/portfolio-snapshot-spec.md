@@ -1,7 +1,7 @@
 # 포트폴리오 고정형(SNAPSHOT) 스냅샷 정책 — 기능 명세서 발췌 (2026-08-12)
 
-> 출처: Notion 기능 명세서 데이터베이스(사용자 제공, `앳크루 기능 명세서 d5db74c44252835295e8817fd29be014.csv` 및
-> 하위 페이지 export) 중 포트폴리오 고정형(SNAPSHOT)·원본 작품 공개 상태 계산과 직접 관련된 16개 규칙 전문.
+> 출처: Notion 기능 명세서 데이터베이스(사용자 제공 CSV 및 하위 페이지 export) 중
+> 포트폴리오 고정형(SNAPSHOT)·원본 작품 공개 상태 계산과 직접 관련된 16개 규칙 전문.
 > 모든 규칙이 `최종 수정일: 2026년 8월 12일`(오늘), `상태: 확정`(홈-R15만 `보류`/`출시 범위: 이후`)로,
 > `docs/design/portfolio-module-design.md`·`docs/AT-CREW_서비스기획서_전체_20260728.xlsx`보다 최신 소스다.
 > CLAUDE.md는 xlsx를 정본으로 명시하지만, 이 Notion 데이터베이스가 xlsx의 원천이며 이 발췌가 더 최신이므로
@@ -9,14 +9,14 @@
 >
 > 전체 데이터베이스는 191행이며, 이 문서는 그중 포트폴리오 고정형 스냅샷 정책과 직접 관련된 16개 규칙만
 > 발췌했다(마이페이지_작가-R01·R04·R19·R37·R38·R39·R41·R42·R44·R46, 업로드-R09, 작품 상세 페이지-R01·R08,
-> 홈-R05·R15, 휴지통-R04). 원본 CSV/HTML export는
-> `/Users/danhan/Downloads/개인 페이지 & 공유된 페이지 2/`에 있다(프로젝트 저장소 밖, 백업 필요 시 별도 보관).
+> 홈-R05·R15, 휴지통-R04). 원본 CSV/HTML export는 프로젝트 저장소 밖 로컬에 보관한다.
+>
+> 각 규칙 아래의 Figma 링크는 파일 키가 보안 정보라(CLAUDE.md "문서 작성 규칙", `.gitignore`의
+> `docs/design/figma.md`) 이 문서에서 제거했다. 링크가 필요하면 `docs/design/figma.md`를 참고한다.
 
 ---
 
 ## 마이페이지_작가-R01 — 뷰 권한별 차등
-Figma 링크
-https://www.figma.com/design/9LlQstP5i6O9G5uZbENOwq/LAITEU?node-id=4955-2076
 ID
 마이페이지_작가-R01
 구분
@@ -68,8 +68,6 @@ MVP
 
 
 ## 마이페이지_작가-R04 — 공개 범위별 작품 노출·접근 제한
-Figma 링크
-https://www.figma.com/design/9LlQstP5i6O9G5uZbENOwq/LAITEU?node-id=4955-2076
 ID
 마이페이지_작가-R04
 구분
@@ -107,8 +105,6 @@ MVP
 
 
 ## 마이페이지_작가-R19 — 작품 삭제 경로
-Figma 링크
-https://www.figma.com/design/9LlQstP5i6O9G5uZbENOwq/LAITEU?node-id=4955-2076
 ID
 마이페이지_작가-R19
 구분
@@ -144,8 +140,6 @@ MVP
 
 
 ## 마이페이지_작가-R37 — 포트폴리오 관리
-Figma 링크
-https://www.figma.com/design/9LlQstP5i6O9G5uZbENOwq/LAITEU?node-id=4955-2076
 ID
 마이페이지_작가-R37
 구분
@@ -236,8 +230,6 @@ https://at-crew.com/artwork/{작품ID}
 
 
 ## 마이페이지_작가-R38 — 포트폴리오에 작품 추가·제외
-Figma 링크
-https://www.figma.com/design/9LlQstP5i6O9G5uZbENOwq/LAITEU?node-id=4955-2076
 ID
 마이페이지_작가-R38
 구분
@@ -293,8 +285,6 @@ MVP
 
 
 ## 마이페이지_작가-R39 — 포트폴리오 커버·유형별 화면 및 스냅샷 정책
-Figma 링크
-https://www.figma.com/design/9LlQstP5i6O9G5uZbENOwq/LAITEU?node-id=4955-2076
 ID
 마이페이지_작가-R39
 구분
@@ -355,8 +345,6 @@ MVP
 
 
 ## 마이페이지_작가-R41 — 포트폴리오 복제하기
-Figma 링크
-https://www.figma.com/design/9LlQstP5i6O9G5uZbENOwq/LAITEU?node-id=4955-2076
 ID
 마이페이지_작가-R41
 구분
@@ -396,8 +384,6 @@ MVP
 
 
 ## 마이페이지_작가-R42 — 포트폴리오 공유 링크 뷰 및 접근 정책
-Figma 링크
-https://www.figma.com/design/9LlQstP5i6O9G5uZbENOwq/LAITEU?node-id=4955-2076
 ID
 마이페이지_작가-R42
 구분
@@ -446,8 +432,6 @@ MVP
 
 
 ## 마이페이지_작가-R44 — 공유 포트폴리오 링크 미리보기(OG 카드)
-Figma 링크
-https://www.figma.com/design/9LlQstP5i6O9G5uZbENOwq/LAITEU?node-id=4955-2076
 ID
 마이페이지_작가-R44
 구분
@@ -480,8 +464,6 @@ MVP
 
 
 ## 마이페이지_작가-R46 — 포트폴리오 생성
-Figma 링크
-https://www.figma.com/design/9LlQstP5i6O9G5uZbENOwq/LAITEU?node-id=4955-2076
 ID
 마이페이지_작가-R46
 구분
@@ -534,8 +516,6 @@ MVP
 
 
 ## 업로드-R09 — 작품 공개 위치 설정
-Figma 링크
-https://www.figma.com/design/9LlQstP5i6O9G5uZbENOwq/LAITEU?node-id=4979-871
 ID
 업로드-R09
 구분
@@ -594,8 +574,6 @@ MVP
 
 
 ## 작품 상세 페이지-R01 — 작품 상세 페이지 이미지 영역 구성
-Figma 링크
-https://www.figma.com/design/9LlQstP5i6O9G5uZbENOwq/LAITEU?node-id=4927-1354
 ID
 작품 상세 페이지-R01
 구분
@@ -639,8 +617,6 @@ https://at-crew.com/artwork/{작품ID}
 
 
 ## 작품 상세 페이지-R08 — 작품 공유 링크 미리보기(OG 카드)
-Figma 링크
-https://www.figma.com/design/9LlQstP5i6O9G5uZbENOwq/LAITEU?node-id=4927-1354
 ID
 작품 상세 페이지-R08
 구분
@@ -675,8 +651,6 @@ MVP
 
 
 ## 홈-R05 — 작품 카드 공통 규칙
-Figma 링크
-https://www.figma.com/design/9LlQstP5i6O9G5uZbENOwq/LAITEU?node-id=4856-14126
 ID
 홈-R05
 구분
@@ -719,8 +693,6 @@ MVP
 
 
 ## 휴지통-R04 — 작품 영구 삭제
-Figma 링크
-https://www.figma.com/design/9LlQstP5i6O9G5uZbENOwq/LAITEU?node-id=5154-41399
 ID
 휴지통-R04
 구분
@@ -752,8 +724,6 @@ MVP
 
 
 ## 홈-R15 — 신고 및 운영
-Figma 링크
-https://www.figma.com/design/9LlQstP5i6O9G5uZbENOwq/LAITEU?node-id=4856-14126
 ID
 홈-R15
 구분

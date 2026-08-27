@@ -89,12 +89,14 @@
 
 ## 2026-08-07 진행 상황 (EC2 프로비저닝 완료)
 
-**AWS IAM 인증 완료·EC2 2대 실제 생성 완료**: root(sehandev)로부터 전용 IAM 사용자(`at-crew-be`,
-Account `820010786587`) Access Key 발급받아 `aws configure` 완료(리전 `ap-northeast-2` — laiteu
-인스턴스로 실제 확인함, 추정 아니었음). laiteu와 같은 기본 VPC(`<VPC_ID>`) 재사용해 EC2 #1(앱+MariaDB,
-`<APP_INSTANCE_ID>`, 탄력적 IP `<APP_HOST>`)·EC2 #2(Elasticsearch, `<SEARCH_INSTANCE_ID>`,
-프라이빗 IP `<SEARCH_PRIVATE_IP>`만) 생성. 보안 그룹·키페어(`at-crew-key`)까지 다 만들고 SSH 왕복(앱 서버 직접,
-검색 서버는 앱 서버 경유) 검증 완료. 상세는 `deploy/README.md` "프로비저닝된 리소스" 표.
+**AWS IAM 인증 완료·EC2 2대 실제 생성 완료**: root로부터 전용 IAM 사용자 Access Key를 발급받아
+`aws configure` 완료(리전 `ap-northeast-2` — laiteu 인스턴스로 실제 확인함, 추정 아니었음).
+laiteu와 같은 기본 VPC를 재사용해 EC2 #1(앱+MariaDB, 탄력적 IP 있음)·EC2 #2(Elasticsearch,
+프라이빗 IP만) 생성. 보안 그룹·키페어까지 다 만들고 SSH 왕복(앱 서버 직접, 검색 서버는 앱 서버 경유)
+검증 완료. 상세 구성은 `deploy/README.md` "프로비저닝된 리소스" 표.
+
+> 이 레포는 공개되어 있다 — AWS 계정 ID·IAM 사용자명·인스턴스 ID·탄력적 IP·VPC/SG/AMI ID 같은 실제
+> 식별자는 이 문서에도 적지 않는다. 그 자체로 자격증명은 아니지만 계정 정찰의 출발점이 된다.
 
 - **중간에 뚫린 구멍 하나 있었음**: 검색 서버 보안 그룹에 SSH를 "내 홈 IP"로만 열었는데, 그 서버는
   애초에 퍼블릭 IP가 없어서 홈 IP로는 절대 못 닿는 구성이었다 — 실제 SSH 테스트(앱 서버 경유)를 해보고서야
@@ -108,7 +110,7 @@ Account `820010786587`) Access Key 발급받아 `aws configure` 완료(리전 `a
   `nginx/api.at-crew.com.conf` 적용해 기동 확인(`/etc/nginx/conf.d/`). `~/at-crew-backend/deploy/`에
   `docker-compose.app.yml`·`.env.example` 업로드해둠 — 아직 `.env`로 채우지 않음.
 - EC2 #2: Docker+docker-compose 설치, `docker.elastic.co/elasticsearch/elasticsearch:9.2.8` 이미지까지
-  받아서 실제로 띄우고 앱 서버에서 `<SEARCH_PRIVATE_IP>:9200` 접근되는 것까지 검증 완료.
+  받아서 실제로 띄우고 앱 서버에서 EC2 #2 프라이빗 IP의 `:9200` 접근되는 것까지 검증 완료.
 - **⚠️ 설계에서 놓쳤던 것 — 프라이빗 서브넷은 아웃바운드도 막힌다**: EC2 #2가 처음부터 퍼블릭 IP가
   없다 보니 dnf 저장소도 GitHub도 전혀 못 닿아서(NAT Gateway 없음) `dnf install docker`부터 실패했다.
   "퍼블릭 IP 없음 = 인바운드만 차단"이라고 생각했는데 아웃바운드(인터넷 나가는 것) 자체가 막히는 거였음 —
@@ -176,17 +178,16 @@ SecurityConfig가 `/swagger-ui/**`를 permitAll로 열어둬서 꺼두지 않으
 
 Cloudflare Worker 배포 및 전체 파이프라인(트리거→이미지 변환→콜백) 검증까지 완료했다.
 
-- R2 버킷은 팀 공용 계정 `sehandev-account`(Account ID `8ffe00cd867bc560cfef7b6ab0711b14`)에
-  `at-crew-storage`라는 이름으로 이미 2026-07-11에 만들어져 있었음 — 애초에 개인 계정
-  `Danhandev@gmail.com's Account`가 아니라 이 계정을 썼어야 했다. `wrangler.toml`에 `account_id`를
-  고정해 매번 계정 선택 프롬프트가 안 뜨게 함. `application.yml`/`wrangler.toml`/README의 버킷 이름도
+- R2 버킷은 팀 공용 Cloudflare 계정에 `at-crew-storage`라는 이름으로 이미 2026-07-11에 만들어져
+  있었음 — 애초에 개인 계정이 아니라 이 계정을 썼어야 했다. 계정 ID는 `wrangler.toml`에 적지 않고
+  `CLOUDFLARE_ACCOUNT_ID` 환경변수로 넘겨 매번 계정 선택 프롬프트가 안 뜨게 함. `application.yml`/`wrangler.toml`/README의 버킷 이름도
   설계 당시 가정했던 `at-crew-media`에서 실제 버킷명 `at-crew-storage`로 전부 정정함.
 - `wrangler dev --remote`로 실제 Cloudflare Images를 통해 이미지 변환 파이프라인을 먼저 검증함(테스트
   이미지 업로드 → Worker 트리거 → 변환된 original/thumb/thumb-adult 다운로드 → 육안 확인, 정상). 이 과정에서
   `src/index.js`의 실버그 발견: `env.IMAGES...output({...})`이 Promise를 반환하는데 `await` 없이 바로
   `.response()`를 체이닝해서 "response is not a function" 에러 발생 — `encodeOriginal`/`encodeThumb`를
   `async` 함수로 바꾸고 `output()` 결과를 `await`한 뒤 `.response()`를 호출하도록 수정(커밋 완료).
-- `wrangler deploy`로 실배포 완료 — `https://at-crew-media-worker.sehandev.workers.dev`. 프로덕션
+- `wrangler deploy`로 실배포 완료 — `https://<워커이름>.<계정서브도메인>.workers.dev`. 프로덕션
   시크릿(`CALLBACK_SECRET`/`INTERNAL_SECRET`/`SERVER_CALLBACK_URL`)도 `wrangler secret put`으로 등록함.
   로컬 서버를 `cloudflared tunnel --url http://localhost:8080`로 임시 공개해 배포된 Worker가 실제로
   콜백을 보내는지까지 왕복 검증함 — Worker 트리거(202) → Cloudflare Images 처리 → R2 저장 → 터널 경유
@@ -307,7 +308,7 @@ recruit 모듈(구인글/팀원모집글/구직글/지원/끌어올리기/관심
 | `RecruitServiceImpl` boostJobPosting/boostTeamPosting | 끌어올리기 구매 개수 확인·차감 | 로드맵 5(Polar 결제) |
 | `JobPostingController` 관리자 섹션, `BannerController` | 인증만 요구, Role 검증 없음 | 로드맵 8(관리자 Role 체계) |
 | `Company.verified` | 항상 false, API 미노출 | 로드맵 1(기업 인증) |
-| `ArtworkField.PRINT_COMIC` | 피그마는 `WEBNOVEL` — enum 교체 + 데이터 마이그레이션 필요 | 피그마 정본 확인 |
+| `ArtworkField.PRINT_COMIC` | 피그마 화면끼리 충돌 — 홈(6107:24822)은 출판만화, 검색(5752:29315)은 웹소설. 기획서 홈-R01·업로드-R06은 출판만화 쪽이고 홈 프레임이 더 최신 | 기획 확정 필요 |
 | `ActiveRegion`(company) | 피그마에서 옵션 값 특정 실패 | 피그마 확인 |
 | search 분석기 | Phase 1은 `standard`, nori 도입 미정 | 검색 품질 이슈 발생 시 |
 

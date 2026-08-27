@@ -3,12 +3,23 @@ package com.atcrew.member.internal.domain;
 import com.atcrew.common.id.UuidV7Generator;
 import com.atcrew.member.ActiveRegion;
 import com.atcrew.member.ActivityField;
+import com.atcrew.member.AvailableStartPeriod;
 import com.atcrew.member.AuthProvider;
 import com.atcrew.member.CareerEntryInfo;
-import com.atcrew.member.CreatorRole;
+import com.atcrew.member.CustomTagInfo;
+import com.atcrew.member.CustomTagType;
+import com.atcrew.member.DesiredAnnualSalary;
+import com.atcrew.member.DesiredEmploymentType;
+import com.atcrew.member.DesiredGenre;
+import com.atcrew.member.DesiredMinimumGuarantee;
+import com.atcrew.member.DesiredRole;
+import com.atcrew.member.DesiredWorkLocation;
+import com.atcrew.member.DrawingStyle;
+import com.atcrew.member.FeedbackPreference;
 import com.atcrew.member.EmploymentStatus;
 import com.atcrew.member.ExperienceLevel;
 import com.atcrew.member.TeamExperience;
+import com.atcrew.member.WorkPace;
 import com.atcrew.member.internal.exception.MemberErrorCode;
 import com.atcrew.member.internal.exception.MemberException;
 import jakarta.persistence.AttributeOverride;
@@ -62,9 +73,6 @@ public class Member implements Persistable<String> {
     private String name;
 
     @Enumerated(EnumType.STRING)
-    private CreatorRole creatorRole;
-
-    @Enumerated(EnumType.STRING)
     private AuthProvider authProvider;
 
     @Embedded
@@ -109,17 +117,71 @@ public class Member implements Persistable<String> {
     // ordinal을 별도 필드로 캐시해 DB 레벨 정렬에 사용한다 (커뮤니티 "작가 찾아보기" 경력순 정렬).
     private int experienceRank = -1;
 
-    @ElementCollection(fetch = FetchType.EAGER)
-    @CollectionTable(name = "member_active_regions", joinColumns = @JoinColumn(name = "member_id"))
-    @Column(name = "value")
+    // 프로필 열람수 — 작가 찾기 조회순 정렬용(기획서 홈-R02·마이페이지_작가-R03).
+    // 증분은 항상 DB 레벨 UPDATE로 처리한다(MemberRepository.incrementProfileViewCount).
+    private int profileViewCount = 0;
+
+    // 단일 선택 — 피그마 4971:25431, 기획서 마이페이지_작가-R23("단일 칩: … 활동 지역(10)").
     @Enumerated(EnumType.STRING)
-    private Set<ActiveRegion> activeRegions = new HashSet<>();
+    private ActiveRegion activeRegion;
 
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "member_team_experiences", joinColumns = @JoinColumn(name = "member_id"))
     @Column(name = "value")
     @Enumerated(EnumType.STRING)
     private Set<TeamExperience> teamExperiences = new HashSet<>();
+
+    // ── 기본 정보 탭 나머지 (마이페이지_작가-R23) ──
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "member_drawing_styles", joinColumns = @JoinColumn(name = "member_id"))
+    @Column(name = "value")
+    @Enumerated(EnumType.STRING)
+    private Set<DrawingStyle> drawingStyles = new HashSet<>();
+
+    @Enumerated(EnumType.STRING)
+    private WorkPace workPace;
+
+    // ── 구직 정보 탭 (마이페이지_작가-R24) ──
+    @Enumerated(EnumType.STRING)
+    private AvailableStartPeriod availableStartPeriod;
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "member_desired_roles", joinColumns = @JoinColumn(name = "member_id"))
+    @Column(name = "value")
+    @Enumerated(EnumType.STRING)
+    private Set<DesiredRole> desiredRoles = new HashSet<>();
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "member_desired_genres", joinColumns = @JoinColumn(name = "member_id"))
+    @Column(name = "value")
+    @Enumerated(EnumType.STRING)
+    private Set<DesiredGenre> desiredGenres = new HashSet<>();
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "member_desired_employment_types", joinColumns = @JoinColumn(name = "member_id"))
+    @Column(name = "value")
+    @Enumerated(EnumType.STRING)
+    private Set<DesiredEmploymentType> desiredEmploymentTypes = new HashSet<>();
+
+    @Enumerated(EnumType.STRING)
+    private DesiredWorkLocation desiredWorkLocation;
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "member_feedback_preferences", joinColumns = @JoinColumn(name = "member_id"))
+    @Column(name = "value")
+    @Enumerated(EnumType.STRING)
+    private Set<FeedbackPreference> feedbackPreferences = new HashSet<>();
+
+    @Enumerated(EnumType.STRING)
+    private DesiredMinimumGuarantee desiredMinimumGuarantee;
+
+    @Enumerated(EnumType.STRING)
+    private DesiredAnnualSalary desiredAnnualSalary;
+
+    // 직접입력 태그 — 항목(type)을 함께 저장해 한 테이블로 관리한다(CustomTagType 참고).
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "member_custom_tags", joinColumns = @JoinColumn(name = "member_id"))
+    private Set<CustomTag> customTags = new HashSet<>();
 
     private int totalSlotCount = 5;
     private int availableSlotCount = 5;
@@ -160,18 +222,17 @@ public class Member implements Persistable<String> {
     protected Member() {
     }
 
-    private Member(String loginEmail, String handle, String name, CreatorRole creatorRole) {
+    private Member(String loginEmail, String handle, String name) {
         this.id = UuidV7Generator.generate();
         this.loginEmail = loginEmail;
         this.handle = handle;
         this.name = name;
-        this.creatorRole = creatorRole;
         this.isNew = true;
     }
 
     // 개발·테스트 전용 (authProvider 없이 직접 가입)
-    public static Member register(String loginEmail, String handle, String name, CreatorRole creatorRole) {
-        return new Member(loginEmail, handle, name, creatorRole);
+    public static Member register(String loginEmail, String handle, String name) {
+        return new Member(loginEmail, handle, name);
     }
 
     public static Member registerWithEmail(String loginEmail, String handle, String name,
@@ -180,7 +241,7 @@ public class Member implements Persistable<String> {
         validateTerms(termsAgreement);
         validateTimezone(timezone);
         validateCountryCode(countryCode);
-        Member m = new Member(loginEmail, handle, name, null);
+        Member m = new Member(loginEmail, handle, name);
         m.authProvider = AuthProvider.EMAIL;
         m.passwordHash = passwordHash;
         m.emailVerified = false;
@@ -195,7 +256,7 @@ public class Member implements Persistable<String> {
         validateTerms(termsAgreement);
         validateTimezone(timezone);
         validateCountryCode(countryCode);
-        Member m = new Member(loginEmail, handle, name, null);
+        Member m = new Member(loginEmail, handle, name);
         m.authProvider = AuthProvider.GOOGLE;
         m.emailVerified = true;
         m.termsAgreement = termsAgreement;
@@ -257,17 +318,33 @@ public class Member implements Persistable<String> {
             }
             effectiveAvailable = effectiveTotal;
         }
-        if (command.creatorRole() != null) this.creatorRole = command.creatorRole();
         if (command.employmentStatus() != null) this.employmentStatus = command.employmentStatus();
         if (command.activityFields() != null) this.activityFields = new HashSet<>(command.activityFields());
         if (command.experienceLevel() != null) {
             this.experienceLevel = command.experienceLevel();
             this.experienceRank = command.experienceLevel().ordinal();
         }
-        if (command.activeRegions() != null) this.activeRegions = new HashSet<>(command.activeRegions());
+        if (command.activeRegion() != null) this.activeRegion = command.activeRegion();
         if (totalSlotCount != null) this.totalSlotCount = effectiveTotal;
         if (totalSlotCount != null || availableSlotCount != null) this.availableSlotCount = effectiveAvailable;
         if (command.teamExperiences() != null) this.teamExperiences = new HashSet<>(command.teamExperiences());
+        if (command.drawingStyles() != null) this.drawingStyles = new HashSet<>(command.drawingStyles());
+        if (command.workPace() != null) this.workPace = command.workPace();
+        if (command.availableStartPeriod() != null) this.availableStartPeriod = command.availableStartPeriod();
+        if (command.desiredRoles() != null) this.desiredRoles = new HashSet<>(command.desiredRoles());
+        if (command.desiredGenres() != null) this.desiredGenres = new HashSet<>(command.desiredGenres());
+        if (command.desiredEmploymentTypes() != null) {
+            this.desiredEmploymentTypes = new HashSet<>(command.desiredEmploymentTypes());
+        }
+        if (command.desiredWorkLocation() != null) this.desiredWorkLocation = command.desiredWorkLocation();
+        if (command.feedbackPreferences() != null) {
+            this.feedbackPreferences = new HashSet<>(command.feedbackPreferences());
+        }
+        if (command.desiredMinimumGuarantee() != null) {
+            this.desiredMinimumGuarantee = command.desiredMinimumGuarantee();
+        }
+        if (command.desiredAnnualSalary() != null) this.desiredAnnualSalary = command.desiredAnnualSalary();
+        if (command.customTags() != null) this.customTags = normalizeCustomTags(command.customTags());
         if (command.contact() != null) this.contact = command.contact();
         if (command.sns() != null) this.sns = command.sns();
         if (command.tools() != null) this.tools = command.tools();
@@ -296,6 +373,34 @@ public class Member implements Persistable<String> {
     public void updateAdultContentVisible(boolean visible) {
         assertActive();
         this.adultContentVisible = visible;
+    }
+
+    private static final int MAX_CUSTOM_TAGS_PER_TYPE = 10;
+
+    /**
+     * 직접입력 태그 정규화 (기획서 업로드-R13): 앞뒤 공백 제거, 공백만 남으면 저장하지 않음,
+     * 최대 10자, 같은 항목 안에서 중복 불가(Set이 대소문자까지 구분하는 그대로의 중복만 거른다).
+     * 항목당 개수 상한은 명세에 없지만, 무제한 저장을 막기 위해 10개로 둔다.
+     */
+    private Set<CustomTag> normalizeCustomTags(List<CustomTagInfo> tags) {
+        Set<CustomTag> normalized = new HashSet<>();
+        java.util.Map<CustomTagType, Integer> counts = new java.util.EnumMap<>(CustomTagType.class);
+        for (CustomTagInfo tag : tags) {
+            if (tag == null || tag.type() == null || tag.value() == null) continue;
+            String value = tag.value().trim();
+            if (value.isEmpty()) continue; // 공백만 입력 시 미저장
+            if (value.length() > CustomTag.MAX_LENGTH) {
+                throw new MemberException(MemberErrorCode.INVALID_CUSTOM_TAG,
+                        "최대 " + CustomTag.MAX_LENGTH + "자: " + value);
+            }
+            if (!normalized.add(new CustomTag(tag.type(), value))) continue; // 중복은 조용히 무시
+            int count = counts.merge(tag.type(), 1, Integer::sum);
+            if (count > MAX_CUSTOM_TAGS_PER_TYPE) {
+                throw new MemberException(MemberErrorCode.INVALID_CUSTOM_TAG,
+                        tag.type() + " 항목당 최대 " + MAX_CUSTOM_TAGS_PER_TYPE + "개");
+            }
+        }
+        return normalized;
     }
 
     private static final int MAX_CAREER_COUNT = 50;
@@ -341,14 +446,32 @@ public class Member implements Persistable<String> {
     public String getLoginEmail() { return loginEmail; }
     public String getHandle() { return handle; }
     public String getName() { return name; }
-    public CreatorRole getCreatorRole() { return creatorRole; }
     public AuthProvider getAuthProvider() { return authProvider; }
     public EmploymentStatus getEmploymentStatus() { return employmentStatus; }
     public List<ActivityField> getActivityFields() { return activityFields.stream().sorted().toList(); }
     public ExperienceLevel getExperienceLevel() { return experienceLevel; }
     public int getExperienceRank() { return experienceRank; }
-    public List<ActiveRegion> getActiveRegions() { return activeRegions.stream().sorted().toList(); }
+    public int getProfileViewCount() { return profileViewCount; }
+    public ActiveRegion getActiveRegion() { return activeRegion; }
     public List<TeamExperience> getTeamExperiences() { return teamExperiences.stream().sorted().toList(); }
+    public List<DrawingStyle> getDrawingStyles() { return drawingStyles.stream().sorted().toList(); }
+    public WorkPace getWorkPace() { return workPace; }
+    public AvailableStartPeriod getAvailableStartPeriod() { return availableStartPeriod; }
+    public List<DesiredRole> getDesiredRoles() { return desiredRoles.stream().sorted().toList(); }
+    public List<DesiredGenre> getDesiredGenres() { return desiredGenres.stream().sorted().toList(); }
+    public List<DesiredEmploymentType> getDesiredEmploymentTypes() { return desiredEmploymentTypes.stream().sorted().toList(); }
+    public DesiredWorkLocation getDesiredWorkLocation() { return desiredWorkLocation; }
+    public List<FeedbackPreference> getFeedbackPreferences() { return feedbackPreferences.stream().sorted().toList(); }
+    public DesiredMinimumGuarantee getDesiredMinimumGuarantee() { return desiredMinimumGuarantee; }
+    public DesiredAnnualSalary getDesiredAnnualSalary() { return desiredAnnualSalary; }
+
+    /** 직접입력 태그 — 항목별로 묶어 보기 좋게 (유형, 값) 순으로 정렬해 돌려준다. */
+    public List<CustomTagInfo> getCustomTags() {
+        return customTags.stream()
+                .sorted(java.util.Comparator.comparing(CustomTag::getType).thenComparing(CustomTag::getValue))
+                .map(t -> new CustomTagInfo(t.getType(), t.getValue()))
+                .toList();
+    }
     public int getTotalSlotCount() { return totalSlotCount; }
     public int getAvailableSlotCount() { return availableSlotCount; }
     public String getContact() { return contact; }

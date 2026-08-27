@@ -14,7 +14,6 @@ import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaProcessingStatus;
 import com.atcrew.media.internal.application.MediaCallbackService;
 import com.atcrew.billing.internal.persistence.EntitlementBalanceRepository;
-import com.atcrew.member.CreatorRole;
 import com.atcrew.member.MemberService;
 import com.atcrew.recruit.CreateJobPostingCommand;
 import com.atcrew.recruit.JobEmploymentType;
@@ -323,8 +322,7 @@ class SearchModuleTests {
     }
 
     private String registerMember() {
-        String memberId = memberService.register(uniqueEmail(), uniqueHandle(), "검색테스트작가",
-                CreatorRole.WEBTOON).id();
+        String memberId = memberService.register(uniqueEmail(), uniqueHandle(), "검색테스트작가").id();
         // 구인글·팀원모집글은 유료 단건 게시 상품이다(구인구직-R02).
         BillingTestSupport.grantAllPostingProducts(balanceRepository, memberId);
         return memberId;

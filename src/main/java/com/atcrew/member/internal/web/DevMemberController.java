@@ -31,12 +31,12 @@ class DevMemberController {
         this.memberService = memberService;
     }
 
-    @Operation(summary = "회원 가입 (개발용)", description = "Firebase 인증 없이 이메일·핸들·이름·창작자 유형으로 직접 가입합니다. 개발·테스트 환경 전용.")
+    @Operation(summary = "회원 가입 (개발용)", description = "Firebase 인증 없이 이메일·핸들·이름으로 직접 가입합니다. 개발·테스트 환경 전용.")
     @ApiResponses(@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "회원 가입 성공"))
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<MemberInfo> register(@RequestBody @Valid RegisterRequest request) {
         return ApiResponse.success(
-                memberService.register(request.loginEmail(), request.handle(), request.name(), request.creatorRole()));
+                memberService.register(request.loginEmail(), request.handle(), request.name()));
     }
 }

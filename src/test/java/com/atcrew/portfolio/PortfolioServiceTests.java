@@ -22,7 +22,6 @@ import com.atcrew.common.response.CursorPage;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaProcessingStatus;
 import com.atcrew.media.internal.application.MediaCallbackService;
-import com.atcrew.member.CreatorRole;
 import com.atcrew.member.MemberService;
 import com.atcrew.portfolio.internal.application.PortfolioServiceImpl;
 import com.atcrew.portfolio.internal.domain.Portfolio;
@@ -1664,7 +1663,7 @@ class PortfolioServiceTests {
         return memberService.register(
                 "pf-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12) + "@atcrew.com",
                 "pf" + UUID.randomUUID().toString().replace("-", "").substring(0, 10),
-                "작가", CreatorRole.ILLUSTRATOR).id();
+                "작가").id();
     }
 
     private String registerProMember() {

@@ -10,7 +10,6 @@ import com.atcrew.media.MediaAssetProcessedEvent;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaProcessingStatus;
 import com.atcrew.media.MediaService;
-import com.atcrew.member.CreatorRole;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
 import com.atcrew.recruit.internal.domain.RecruitImageProcessingStatus;
@@ -289,7 +288,7 @@ class RecruitModuleTests {
         String companyId = registerMember("view-event-company");
         MemberInfo artist = memberService.register(
                 "view-event-artist-" + UUID.randomUUID().toString().substring(0, 8) + "@atcrew.com",
-                "viewevent" + UUID.randomUUID().toString().substring(0, 8), "조회대상작가", CreatorRole.WEBTOON);
+                "viewevent" + UUID.randomUUID().toString().substring(0, 8), "조회대상작가");
 
         memberService.findProfileByHandle(artist.handle(), companyId);
 
@@ -301,7 +300,7 @@ class RecruitModuleTests {
     void 본인_프로필_조회는_최근_본_작가로_기록되지_않는다() {
         MemberInfo self = memberService.register(
                 "view-event-self-" + UUID.randomUUID().toString().substring(0, 8) + "@atcrew.com",
-                "viewselfevent" + UUID.randomUUID().toString().substring(0, 8), "본인조회", CreatorRole.WEBTOON);
+                "viewselfevent" + UUID.randomUUID().toString().substring(0, 8), "본인조회");
 
         memberService.findProfileByHandle(self.handle(), self.id());
 
@@ -556,7 +555,7 @@ class RecruitModuleTests {
     private String registerMemberWithName(String handlePrefix, String name) {
         String suffix = UUID.randomUUID().toString().substring(0, 8);
         String memberId = memberService.register(
-                handlePrefix + "-" + suffix + "@atcrew.com", handlePrefix + suffix, name, CreatorRole.WEBTOON).id();
+                handlePrefix + "-" + suffix + "@atcrew.com", handlePrefix + suffix, name).id();
         // 구인글·팀원모집글·끌어올리기는 유료 단건 게시 상품이다(구인구직-R02, 요금제-R06).
         BillingTestSupport.grantAllPostingProducts(balanceRepository, memberId);
         return memberId;
