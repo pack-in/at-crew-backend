@@ -79,7 +79,7 @@ class RecruitImageApiDocTest extends RestDocsIntegrationSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new RegisterRequest(
                                 uniqueEmail, "Secure1!", "Secure1!", name,
-                                true, true, true, false, "Asia/Seoul", "KR"))))
+                                true, true, true, false, "Asia/Seoul", "KR", "KO"))))
                 .andExpect(status().isCreated())
                 .andReturn();
         return objectMapper.readTree(result.getResponse().getContentAsString())
@@ -90,7 +90,7 @@ class RecruitImageApiDocTest extends RestDocsIntegrationSupport {
     record RegisterRequest(
             String email, String password, String passwordConfirm, String name,
             boolean agreeService, boolean agreePrivacy, boolean agreeThirdParty,
-            boolean agreeMarketing, String timezone, String countryCode
+            boolean agreeMarketing, String timezone, String countryCode, String primaryLanguage
     ) {
     }
 }

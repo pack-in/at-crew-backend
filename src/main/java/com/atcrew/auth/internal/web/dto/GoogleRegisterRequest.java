@@ -1,7 +1,9 @@
 package com.atcrew.auth.internal.web.dto;
 
+import com.atcrew.member.Language;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
@@ -22,5 +24,9 @@ public record GoogleRegisterRequest(
         @NotBlank(message = "거주 국가를 입력해주세요")
         @Pattern(regexp = "^[A-Z]{2}$", message = "국가 코드는 ISO 3166-1 alpha-2 형식이어야 합니다")
         @Schema(description = "거주 국가 (ISO 3166-1 alpha-2)", example = "KR")
-        String countryCode
+        String countryCode,
+
+        @NotNull(message = "주 사용 언어를 선택해주세요")
+        @Schema(description = "주 사용 언어 — 가입 후 변경할 수 없습니다(로그인-R19)", example = "KO")
+        Language primaryLanguage
 ) {}

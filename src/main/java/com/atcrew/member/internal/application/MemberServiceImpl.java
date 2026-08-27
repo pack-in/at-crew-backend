@@ -1,9 +1,11 @@
 package com.atcrew.member.internal.application;
 
+import com.atcrew.member.AccountInfo;
 import com.atcrew.member.AddCareerCommand;
 import com.atcrew.member.ArtistProfileViewedEvent;
 import com.atcrew.member.AuthProvider;
 import com.atcrew.member.CareerEntryInfo;
+import com.atcrew.member.Language;
 import com.atcrew.member.MemberDeactivatedEvent;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberProfileInfo;
@@ -38,6 +40,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -91,10 +94,10 @@ class MemberServiceImpl implements MemberService {
         if (command.authProvider() == AuthProvider.EMAIL) {
             String passwordHash = passwordEncoder.encode(command.rawPassword());
             return Member.registerWithEmail(command.loginEmail(), handle, command.name(), passwordHash, terms,
-                    command.timezone(), command.countryCode());
+                    command.timezone(), command.countryCode(), command.primaryLanguage());
         }
         return Member.registerWithGoogle(command.loginEmail(), handle, command.name(), terms,
-                command.timezone(), command.countryCode());
+                command.timezone(), command.countryCode(), command.primaryLanguage());
     }
 
     @Override
@@ -240,6 +243,13 @@ class MemberServiceImpl implements MemberService {
             if (command.activityField() != null) {
                 predicates.add(cb.isMember(command.activityField(), root.get("activityFields")));
             }
+            // 언어 세그먼트(로그인-R16) — 작가는 작품과 달리 계정의 주 사용 언어로 판정한다.
+            // 주 사용 언어가 없는 마이그레이션 이전 회원은 항상 노출한다(필터 도입 폴백).
+            if (command.viewerLanguages() != null && !command.viewerLanguages().isEmpty()) {
+                predicates.add(cb.or(
+                        cb.isNull(root.get("primaryLanguage")),
+                        root.get("primaryLanguage").in(command.viewerLanguages())));
+            }
             if (command.cursor() != null) {
                 predicates.add(buildCursorPredicate(root, cb, sort, command.cursor()));
             }
@@ -345,6 +355,36 @@ class MemberServiceImpl implements MemberService {
         Member member = findMemberById(memberId);
         member.updateAdultContentVisible(visible);
         memberRepository.save(member);
+    }
+
+    @Override
+    @Transactional
+    public void updatePostLanguages(String memberId, Set<Language> languages) {
+        Member member = findMemberById(memberId);
+        member.updatePostLanguages(languages);
+        memberRepository.save(member);
+    }
+
+    @Override
+    public AccountInfo getAccount(String memberId) {
+        Member member = findMemberById(memberId);
+        return new AccountInfo(
+                member.getLoginEmail(),
+                member.getAuthProvider(),
+                member.getPrimaryLanguage(),
+                member.getPostLanguages(),
+                member.isMarketingAgreed(),
+                member.isAdultContentVisible());
+    }
+
+    @Override
+    public List<Language> findPostLanguages(String memberId) {
+        if (memberId == null) {
+            return List.of();
+        }
+        return memberRepository.findById(memberId)
+                .map(Member::getPostLanguages)
+                .orElseGet(List::of);
     }
 
     @Override

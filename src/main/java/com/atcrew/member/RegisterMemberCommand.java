@@ -10,7 +10,8 @@ public record RegisterMemberCommand(
         boolean agreeThirdParty,  // [필수] 개인정보 제3자 제공 동의
         boolean agreeMarketing,
         String timezone,          // IANA tz ID, 가입 시 클라이언트 자동감지값
-        String countryCode        // ISO 3166-1 alpha-2, 거주 국가
+        String countryCode,       // ISO 3166-1 alpha-2, 거주 국가
+        Language primaryLanguage  // 주 사용 언어, 가입 시 필수·이후 변경 불가(로그인-R19)
 ) {
     @Override
     public String toString() {
@@ -19,6 +20,7 @@ public record RegisterMemberCommand(
                ", rawPassword=****, agreePrivacy=" + agreePrivacy +
                ", agreeService=" + agreeService + ", agreeThirdParty=" + agreeThirdParty +
                ", agreeMarketing=" + agreeMarketing + ", timezone=" + timezone +
-               ", countryCode=" + countryCode + "]";
+               ", countryCode=" + countryCode +
+               ", primaryLanguage=" + primaryLanguage + "]";
     }
 }

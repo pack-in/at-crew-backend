@@ -18,6 +18,7 @@ import com.atcrew.member.DrawingStyle;
 import com.atcrew.member.FeedbackPreference;
 import com.atcrew.member.EmploymentStatus;
 import com.atcrew.member.ExperienceLevel;
+import com.atcrew.member.Language;
 import com.atcrew.member.TeamExperience;
 import com.atcrew.member.WorkPace;
 import com.atcrew.member.internal.exception.MemberErrorCode;
@@ -96,6 +97,19 @@ public class Member implements Persistable<String> {
 
     // ISO 3166-1 alpha-2 국가 코드(예: "KR", "JP"). 거주 국가 — 가입 시 필수 수집, 설정에서 변경 가능.
     private String countryCode;
+
+    // 주 사용 언어 — 가입 시 필수 선택이며 가입 후 변경 불가(로그인-R19). setter를 두지 않는다.
+    // 마이그레이션 이전 기존 회원은 NULL이며, 언어 세그먼트 필터에서 "항상 노출"로 폴백한다.
+    @Enumerated(EnumType.STRING)
+    private Language primaryLanguage;
+
+    // 설정 화면에서 복수 선택하는 "보고 싶은 게시물 언어"(설정-R14). 기본값은 {primaryLanguage} 1개이며
+    // 주 사용 언어 칩은 해제할 수 없다. teamExperiences와 동일한 @ElementCollection 패턴.
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "member_post_languages", joinColumns = @JoinColumn(name = "member_id"))
+    @Column(name = "value")
+    @Enumerated(EnumType.STRING)
+    private Set<Language> postLanguages = new HashSet<>();
 
     // 설정 화면 "성인 콘텐츠 표시" 토글. 기본 false(끔).
     // 순수 표시 설정이며, 본인 인증 완료 여부에 따른 실제 콘텐츠 접근 게이팅은 별도 과제다(PASS 본인인증).
@@ -237,10 +251,11 @@ public class Member implements Persistable<String> {
 
     public static Member registerWithEmail(String loginEmail, String handle, String name,
                                            String passwordHash, TermsAgreement termsAgreement,
-                                           String timezone, String countryCode) {
+                                           String timezone, String countryCode, Language primaryLanguage) {
         validateTerms(termsAgreement);
         validateTimezone(timezone);
         validateCountryCode(countryCode);
+        validatePrimaryLanguage(primaryLanguage);
         Member m = new Member(loginEmail, handle, name);
         m.authProvider = AuthProvider.EMAIL;
         m.passwordHash = passwordHash;
@@ -248,21 +263,37 @@ public class Member implements Persistable<String> {
         m.termsAgreement = termsAgreement;
         m.timezone = timezone;
         m.countryCode = countryCode;
+        m.applyPrimaryLanguage(primaryLanguage);
         return m;
     }
 
     public static Member registerWithGoogle(String loginEmail, String handle, String name,
-                                            TermsAgreement termsAgreement, String timezone, String countryCode) {
+                                            TermsAgreement termsAgreement, String timezone, String countryCode,
+                                            Language primaryLanguage) {
         validateTerms(termsAgreement);
         validateTimezone(timezone);
         validateCountryCode(countryCode);
+        validatePrimaryLanguage(primaryLanguage);
         Member m = new Member(loginEmail, handle, name);
         m.authProvider = AuthProvider.GOOGLE;
         m.emailVerified = true;
         m.termsAgreement = termsAgreement;
         m.timezone = timezone;
         m.countryCode = countryCode;
+        m.applyPrimaryLanguage(primaryLanguage);
         return m;
+    }
+
+    private static void validatePrimaryLanguage(Language primaryLanguage) {
+        if (primaryLanguage == null) {
+            throw new MemberException(MemberErrorCode.PRIMARY_LANGUAGE_REQUIRED);
+        }
+    }
+
+    // 가입 시점에 게시물 언어를 주 사용 언어 1개로 초기화한다(설정-R14 "기본값은 주 사용 언어 1개 선택 상태").
+    private void applyPrimaryLanguage(Language primaryLanguage) {
+        this.primaryLanguage = primaryLanguage;
+        this.postLanguages = new HashSet<>(Set.of(primaryLanguage));
     }
 
     private static void validateTerms(TermsAgreement terms) {
@@ -403,6 +434,21 @@ public class Member implements Persistable<String> {
         return normalized;
     }
 
+    /**
+     * 설정 화면에서 노출받을 게시물 언어를 교체한다(설정-R14). 주 사용 언어 칩은 해제할 수 없다.
+     * 주 사용 언어가 NULL인 마이그레이션 이전 회원은 해제 검사 대상이 아니다.
+     */
+    public void updatePostLanguages(Set<Language> languages) {
+        assertActive();
+        if (languages == null || languages.isEmpty()) {
+            throw new MemberException(MemberErrorCode.PRIMARY_LANGUAGE_CANNOT_BE_REMOVED);
+        }
+        if (primaryLanguage != null && !languages.contains(primaryLanguage)) {
+            throw new MemberException(MemberErrorCode.PRIMARY_LANGUAGE_CANNOT_BE_REMOVED);
+        }
+        this.postLanguages = new HashSet<>(languages);
+    }
+
     private static final int MAX_CAREER_COUNT = 50;
 
     public CareerEntryInfo addCareer(String workTitle, String role, LocalDate startDate,
@@ -479,6 +525,8 @@ public class Member implements Persistable<String> {
     public String getTools() { return tools; }
     public String getTimezone() { return timezone; }
     public String getCountryCode() { return countryCode; }
+    public Language getPrimaryLanguage() { return primaryLanguage; }
+    public List<Language> getPostLanguages() { return postLanguages.stream().sorted().toList(); }
     public boolean isMarketingAgreed() { return termsAgreement != null && termsAgreement.marketingNotification(); }
     public boolean isAdultContentVisible() { return adultContentVisible; }
     public List<CareerEntryInfo> getCareers() { return careers.stream().map(this::toCareerInfo).toList(); }

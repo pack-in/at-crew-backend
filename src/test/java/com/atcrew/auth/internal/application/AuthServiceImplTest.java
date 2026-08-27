@@ -16,6 +16,7 @@ import com.atcrew.common.exception.DomainException;
 import com.atcrew.common.mail.MailSender;
 import com.atcrew.common.security.JwtProvider;
 import com.atcrew.member.AuthProvider;
+import com.atcrew.member.Language;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
 import com.atcrew.member.PasswordVerification;
@@ -187,7 +188,7 @@ class AuthServiceImplTest {
         when(memberService.register(any())).thenReturn(memberInfo(AuthProvider.EMAIL));
 
         AuthInfo result = authService.registerWithEmail(
-                new EmailRegisterCommand(EMAIL, "Pass1234!", "홍길동", true, true, true, false, "Asia/Seoul", "KR"));
+                new EmailRegisterCommand(EMAIL, "Pass1234!", "홍길동", true, true, true, false, "Asia/Seoul", "KR", Language.KO));
 
         assertThat(result.isNewUser()).isTrue();
         verify(memberService).register(argThat(cmd ->
@@ -203,7 +204,7 @@ class AuthServiceImplTest {
                 .thenThrow(new MemberException(MemberErrorCode.DUPLICATE_EMAIL, EMAIL));
 
         assertThatThrownBy(() -> authService.registerWithEmail(
-                new EmailRegisterCommand(EMAIL, "Pass1234!", "홍길동", true, true, true, false, "Asia/Seoul", "KR")))
+                new EmailRegisterCommand(EMAIL, "Pass1234!", "홍길동", true, true, true, false, "Asia/Seoul", "KR", Language.KO)))
                 .isInstanceOf(DomainException.class)
                 .satisfies(e -> assertThat(((DomainException) e).getStatus()).isEqualTo(HttpStatus.CONFLICT));
     }
@@ -216,7 +217,7 @@ class AuthServiceImplTest {
         when(memberService.register(any())).thenReturn(memberInfo(AuthProvider.GOOGLE));
 
         AuthInfo result = authService.registerWithGoogle(
-                new GoogleRegisterCommand(TOKEN, "홍길동", true, true, true, false, "Asia/Seoul", "KR"));
+                new GoogleRegisterCommand(TOKEN, "홍길동", true, true, true, false, "Asia/Seoul", "KR", Language.KO));
 
         assertThat(result.isNewUser()).isTrue();
         verify(memberService).register(argThat(cmd ->
@@ -499,7 +500,7 @@ class AuthServiceImplTest {
                 "테스트", null, List.of(), null, null, List.of(),
                 List.of(), null, null, List.of(), List.of(), List.of(), null, List.of(), null, null, List.of(),
                 5, 5, null, null, null, List.of(),
-                true, null, null, Instant.now(), Instant.now(), "Asia/Seoul", "KR", false, false);
+                true, null, null, Instant.now(), Instant.now(), "Asia/Seoul", "KR", Language.KO, List.of(Language.KO), false, false);
     }
 
     private AuthException catchAuthException(Runnable action) {

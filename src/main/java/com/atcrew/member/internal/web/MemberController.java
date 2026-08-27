@@ -2,6 +2,7 @@ package com.atcrew.member.internal.web;
 
 import com.atcrew.common.security.MemberPrincipal;
 import com.atcrew.common.security.SecurityUtils;
+import com.atcrew.member.AccountInfo;
 import com.atcrew.member.AddCareerCommand;
 import com.atcrew.member.CareerEntryInfo;
 import com.atcrew.member.MemberProfileInfo;
@@ -12,6 +13,7 @@ import com.atcrew.member.internal.web.dto.UpdateAdultContentRequest;
 import com.atcrew.member.internal.web.dto.UpdateInfoRequest;
 import com.atcrew.member.internal.web.dto.UpdateMarketingAgreementRequest;
 import com.atcrew.member.internal.web.dto.UpdateNameRequest;
+import com.atcrew.member.internal.web.dto.UpdatePostLanguagesRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -110,6 +112,32 @@ class MemberController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void updateAdultContentVisible(@RequestBody @Valid UpdateAdultContentRequest request) {
         memberService.updateAdultContentVisible(securityUtils.getCurrentMemberId(), request.visible());
+    }
+
+    @Operation(summary = "게시물 언어 변경",
+            description = "홈 등에 노출받을 게시물 언어를 복수 선택합니다(설정-R14). "
+                    + "주 사용 언어는 항상 포함돼야 하며 해제할 수 없습니다.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "변경 성공"),
+            @ApiResponse(responseCode = "400", description = "주 사용 언어 미포함(PRIMARY_LANGUAGE_CANNOT_BE_REMOVED)"),
+            @ApiResponse(responseCode = "401", description = "인증 필요")
+    })
+    @PatchMapping("/me/post-languages")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void updatePostLanguages(@RequestBody @Valid UpdatePostLanguagesRequest request) {
+        memberService.updatePostLanguages(securityUtils.getCurrentMemberId(), request.languages());
+    }
+
+    @Operation(summary = "내 계정 정보 조회",
+            description = "설정 > 계정 정보 화면용 응답입니다. 로그인 이메일·가입 경로·언어 설정·수신 동의 토글을 반환합니다.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "조회 성공"),
+            @ApiResponse(responseCode = "401", description = "인증 필요")
+    })
+    @GetMapping("/me/account")
+    public com.atcrew.common.response.ApiResponse<AccountInfo> getAccount() {
+        return com.atcrew.common.response.ApiResponse.success(
+                memberService.getAccount(securityUtils.getCurrentMemberId()));
     }
 
     @Operation(summary = "경력 추가", description = "참여작 정보를 경력으로 추가합니다.")

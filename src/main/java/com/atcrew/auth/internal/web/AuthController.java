@@ -59,7 +59,7 @@ class AuthController {
     @Operation(summary = "이메일 회원가입",
             description = "이메일·비밀번호로 회원가입합니다. 가입 즉시 활성화됩니다.")
     @ApiResponse(responseCode = "201", description = "회원가입 성공")
-    @ApiResponse(responseCode = "400", description = "입력 형식 오류 또는 비밀번호 불일치")
+    @ApiResponse(responseCode = "400", description = "입력 형식 오류·비밀번호 불일치·주 사용 언어 미선택(PRIMARY_LANGUAGE_REQUIRED)")
     @ApiResponse(responseCode = "409", description = "이미 가입된 이메일")
     @ResponseStatus(HttpStatus.CREATED)
     @PostMapping("/email/register")
@@ -68,7 +68,8 @@ class AuthController {
         EmailRegisterCommand command = new EmailRegisterCommand(
                 request.email(), request.password(), request.name(),
                 request.agreeService(), request.agreePrivacy(),
-                request.agreeThirdParty(), request.agreeMarketing(), request.timezone(), request.countryCode());
+                request.agreeThirdParty(), request.agreeMarketing(), request.timezone(), request.countryCode(),
+                request.primaryLanguage());
         return com.atcrew.common.response.ApiResponse.success(authService.registerWithEmail(command));
     }
 
@@ -132,6 +133,7 @@ class AuthController {
     @Operation(summary = "Google 회원가입",
             description = "Firebase ID Token으로 Google 계정 회원가입합니다.")
     @ApiResponse(responseCode = "201", description = "회원가입 성공")
+    @ApiResponse(responseCode = "400", description = "주 사용 언어 미선택(PRIMARY_LANGUAGE_REQUIRED)")
     @ApiResponse(responseCode = "401", description = "Firebase 토큰 검증 실패")
     @ApiResponse(responseCode = "409", description = "이미 가입된 Google 계정")
     @ResponseStatus(HttpStatus.CREATED)
@@ -141,7 +143,8 @@ class AuthController {
         GoogleRegisterCommand command = new GoogleRegisterCommand(
                 request.firebaseIdToken(), request.name(),
                 request.agreeService(), request.agreePrivacy(),
-                request.agreeThirdParty(), request.agreeMarketing(), request.timezone(), request.countryCode());
+                request.agreeThirdParty(), request.agreeMarketing(), request.timezone(), request.countryCode(),
+                request.primaryLanguage());
         return com.atcrew.common.response.ApiResponse.success(authService.registerWithGoogle(command));
     }
 
