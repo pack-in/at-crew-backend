@@ -45,6 +45,16 @@ public interface ArtworkRepository extends JpaRepository<Artwork, String>, JpaSp
     // 스타터 플랜 작품 개수 제한 — 휴지통(DELETED)은 제외한 보유 작품 수(마이페이지_작가-R20)
     long countByAuthorIdAndStatusNot(String authorId, ArtworkStatus status);
 
+    /**
+     * 스타터 제한 검사를 동시 요청 사이에 직렬화하기 위해 보유 작품 행에 비관적 락을 건다 —
+     * 락 없이 개수만 세면 동시 업로드/복구 두 건이 같은 카운트를 보고 둘 다 통과해 제한을 넘길 수 있다
+     * ({@code ArtworkServiceImpl.assertArtworkQuota} 전용).
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT a FROM Artwork a WHERE a.authorId = :authorId AND a.status <> :excludedStatus")
+    List<Artwork> findByAuthorIdAndStatusNotForUpdate(
+            @Param("authorId") String authorId, @Param("excludedStatus") ArtworkStatus excludedStatus);
+
     // getArtworksForReindex — 생성순 오름차순, 커서 있음/없음
     List<Artwork> findByCreatedAtAfterOrderByCreatedAtAsc(Instant cursor, Pageable pageable);
 

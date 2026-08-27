@@ -3,13 +3,14 @@ package com.atcrew.member;
 import com.atcrew.common.response.CursorPage;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface MemberService {
 
     MemberInfo register(RegisterMemberCommand command);
 
     // 개발·테스트 전용 (Firebase 인증 없이 직접 가입)
-    MemberInfo register(String loginEmail, String handle, String name, CreatorRole creatorRole);
+    MemberInfo register(String loginEmail, String handle, String name);
 
     MemberProfileInfo findProfileByHandle(String handle);
 
@@ -23,13 +24,28 @@ public interface MemberService {
 
     MemberInfo findByHandle(String handle);
 
+    /**
+     * 주어진 handle을 가진(탈퇴 여부 무관) 회원이 존재하는지 확인한다. 포트폴리오 공유 slug 발급 시 충돌 검사용.
+     * 탈퇴 시 회원의 handle은 null로 클리어되므로, 활성 회원의 handle만 "존재"로 판단한다 — 별도 필터 불필요.
+     */
+    boolean existsByHandle(String handle);
+
     MemberInfo findByLoginEmailAndProvider(String loginEmail, AuthProvider authProvider);
+
+    /**
+     * 비밀번호 재설정 요청(§7)처럼 계정 존재 여부를 노출하면 안 되는 흐름에서 사용.
+     * 활성 회원이 아니거나 없으면 empty — {@link #findByLoginEmailAndProvider}와 달리 예외를 던지지 않는다.
+     */
+    Optional<MemberInfo> findActiveByLoginEmailAndProviderOrEmpty(String loginEmail, AuthProvider authProvider);
 
     MemberInfo findById(String memberId);
 
     /**
      * 구인 가능 상태 창작자 프로필 검색. 커뮤니티 "작가 찾아보기" 탭에서 사용.
      * 탈퇴 회원은 결과에서 항상 제외된다.
+     *
+     * <p>구인 가능 상태여도 노출 대상 항목(사용자 이름·활동 분야·활동 경력·희망 담당 업무·희망 장르·
+     * 희망 채용 형태·연락처)이 비어 있으면 결과에 포함되지 않는다 — 기획서 마이페이지_작가-R08.
      */
     CursorPage<MemberProfileInfo> searchProfiles(SearchProfilesCommand command);
 

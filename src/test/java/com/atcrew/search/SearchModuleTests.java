@@ -10,12 +10,10 @@ import com.atcrew.artwork.Genre;
 import com.atcrew.artwork.ImageLayoutType;
 import com.atcrew.artwork.ArtworkStatus;
 import com.atcrew.artwork.UploadArtworkCommand;
-import com.atcrew.artwork.Visibility;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaProcessingStatus;
 import com.atcrew.media.internal.application.MediaCallbackService;
 import com.atcrew.billing.internal.persistence.EntitlementBalanceRepository;
-import com.atcrew.member.CreatorRole;
 import com.atcrew.member.MemberService;
 import com.atcrew.recruit.CreateJobPostingCommand;
 import com.atcrew.recruit.JobEmploymentType;
@@ -301,7 +299,7 @@ class SearchModuleTests {
 
         awaitSearchResult(() -> searchService.search(queryWithArtworkField(ArtworkField.PRINT_COMIC)));
 
-        artworkService.updateVisibility(artwork.authorId(), artwork.id(), Visibility.PRIVATE);
+        artworkService.updatePublication(artwork.authorId(), artwork.id(), false, List.of());
 
         awaitCondition(() -> {
             SearchPage<SearchResultItem> page = searchService.search(queryWithArtworkField(ArtworkField.PRINT_COMIC));
@@ -324,8 +322,7 @@ class SearchModuleTests {
     }
 
     private String registerMember() {
-        String memberId = memberService.register(uniqueEmail(), uniqueHandle(), "검색테스트작가",
-                CreatorRole.WEBTOON).id();
+        String memberId = memberService.register(uniqueEmail(), uniqueHandle(), "검색테스트작가").id();
         // 구인글·팀원모집글은 유료 단건 게시 상품이다(구인구직-R02).
         BillingTestSupport.grantAllPostingProducts(balanceRepository, memberId);
         return memberId;
@@ -367,7 +364,7 @@ class SearchModuleTests {
                 imageKeys, 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 title, "설명",
                 field, creativeType, roles, genres, List.of("태그"),
-                ageRating, Visibility.PUBLIC, List.of(), null, null, List.of(), List.of()
+                ageRating, true, List.of(), List.of(), null, null, List.of(), List.of()
         ));
 
         // media webhook → MediaAssetProcessedEvent → artwork 리스너(비동기)로 READY 전환된다.

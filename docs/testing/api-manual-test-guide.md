@@ -75,7 +75,7 @@
   ├─ GET /api/artworks/{artworkId}/status
   ├─ GET /api/members/me/artworks
   ├─ PATCH /api/artworks/{artworkId}
-  ├─ PATCH /api/artworks/{artworkId}/visibility
+  ├─ PATCH /api/artworks/{artworkId}/publication
   └─ GET /api/community/artworks      (공개)
         ▼
 [4단계] 북마크
@@ -103,9 +103,17 @@
 
 코드에서 정의된 enum 값입니다. 그 외 값을 보내면 `COMMON_INVALID_INPUT`(JSON 파싱 실패)이 발생합니다.
 
-- **CreatorRole**: `WEBTOON`, `ILLUSTRATOR`, `WEB_NOVELIST`, (기타) — 웹툰작가/일러스트작가/웹소설작가
 - **EmploymentStatus**: `PREPARING`, `AVAILABLE`, `NEGOTIABLE`
-- **ActivityField**: `ILLUSTRATION`, `WEBTOON`, `PUBLISHED_MANGA`
+- **ActivityField**: `ILLUSTRATION`, `WEBTOON`, `PRINT_COMIC`, `ANIMATION` (작가는 복수 선택, 기업은 단일 선택)
+- **DrawingStyle** (작화 스타일, 복수+직접입력): `FEMALE_ORIENTED`, `MALE_ORIENTED`, `REALISTIC`, `SEMI_REALISTIC`, `THIN_LINE`, `THICK_LINE`, `ROUGH_LINE`, `CLEAN_LINE`, `SHOJO`, `SHONEN`, `MINIMAL`, `DARK_TONE`, `BRIGHT_TONE`, `INK_HEAVY`
+- **WorkPace** (작업 스타일, 단일): `QUALITY_FIRST`, `SPEED_FIRST`, `PER_PROJECT`
+- **AvailableStartPeriod** (투입 가능 시기, 단일): `WITHIN_ONE_WEEK`, `WITHIN_TWO_WEEKS`, `WITHIN_ONE_MONTH`, `WITHIN_TWO_MONTHS`, `AFTER_TWO_MONTHS`
+- **DesiredRole** (희망 담당 업무, 복수 23종+직접입력) / **DesiredGenre** (희망 장르, 복수 29종+직접입력)
+- **DesiredEmploymentType** (희망 채용 형태, 복수): `FULL_TIME`, `CONTRACT`, `FREELANCE`, `OUTSOURCING`, `NEGOTIABLE`
+- **DesiredWorkLocation** (희망 근무 방식, 단일): `OFFICE`, `REMOTE`, `HYBRID`, `NEGOTIABLE`
+- **FeedbackPreference** (선호 피드백 방식, 복수): `SPECIFIC`, `AUTONOMOUS`, `DIRECT`, `GENTLE`, `AT_ONCE`, `FREQUENT`, `NO_PREFERENCE`
+- **DesiredMinimumGuarantee** (희망 MG, 단일 10구간) / **DesiredAnnualSalary** (희망 연봉, 단일 5구간)
+- **CustomTagType** (직접입력 항목): `DRAWING_STYLE`, `DESIRED_ROLE`, `DESIRED_GENRE` — 값은 최대 10자, 항목당 10개, 앞뒤 공백 제거, 중복 무시
 - **ExperienceLevel**: `NEWCOMER`, `ONE_TO_TWO`, `THREE_TO_FOUR`, `FIVE_TO_NINE`, `TEN_PLUS`
 - **ActiveRegion**: `SEOUL`, `GYEONGGI`, `DAEJEON`, `DAEGU`, `GWANGJU`, `BUSAN`, `OTHER`
 - **TeamExperience**: `NONE`, `SHORT_TERM`, `DIVISION`, `REGULAR_DEADLINE`
@@ -113,7 +121,7 @@
 - **CreativeType**: `ORIGINAL`, `SECONDARY`, `FAN_ART`, `OC`, `COMMISSION`
 - **ArtworkRole**: `TOTAL_ARTWORK`, `ADAPTATION_STORYBOARD`, `STORYBOARD`, `DIRECTION`, `LINEART`, `SKETCH`, `COLORING`, `BASE_COLOR`, `TONE_WORK`, `POST_PROCESSING`, `FULL_COLOR`, `PANEL_DECORATION`, `THREE_D_MODELING`, `MATERIAL_MAKING`, `MATERIAL_PLACEMENT`, `BACKGROUND`, `WEBNOVEL_COVER`, `CHARACTER_DESIGN`, `CHARACTER_SHEET`, `TYPOGRAPHY`, `BROADCAST_THUMBNAIL`
 - **AgeRating**: `ALL`, `R18`, `G18`
-- **Visibility**: `PUBLIC`, `LINK_ONLY`, `PRIVATE`
+- **노출 위치**: `publishToFeed`(피드 공개 ON/OFF) × `portfolioIds`(담을 라이브 포트폴리오) 조합 — 공개 상태값을 직접 고르는 필드는 없다(업로드-R09)
 - **ImageLayoutType**: `VERTICAL_SCROLL`, `HORIZONTAL_SWIPE`
 - **ArtworkStatus**: `PROCESSING`, `READY`, `DELETED`
 - **ImageProcessingStatus**: `PENDING`, `DONE`, `FAILED`
@@ -133,17 +141,15 @@
 {
   "loginEmail": "tester@example.com",
   "handle": "creator_kim",
-  "name": "김창작",
-  "creatorRole": "WEBTOON"
+  "name": "김창작"
 }
 ```
 **필드 제약**:
 - `loginEmail`: `@NotBlank @Email`
 - `handle`: `@NotBlank`, 정규식 `^[a-zA-Z0-9_-]{3,30}$` (영문·숫자·_·- 3~30자)
 - `name`: `@NotBlank @Size(max=16)`
-- `creatorRole`: `@NotNull` (CreatorRole enum)
 
-**정상 응답 (201)**: `data`에 MemberInfo (id, handle, name, creatorRole 등).
+**정상 응답 (201)**: `data`에 MemberInfo (id, handle, name 등).
 
 **예외 케이스**:
 | 케이스 | 변경 값 | 예상 에러 코드 | HTTP |
@@ -151,7 +157,6 @@
 | 이메일 형식 오류 | loginEmail: "notEmail" | COMMON_INVALID_INPUT | 400 |
 | 핸들 형식 오류 | handle: "ab" (3자 미만) | COMMON_INVALID_INPUT | 400 |
 | 이름 길이 초과 | name: 17자 이상 | COMMON_INVALID_INPUT | 400 |
-| creatorRole 누락 | creatorRole 생략 | COMMON_INVALID_INPUT | 400 |
 | 이메일 중복 | 기존 loginEmail 재사용 | DUPLICATE_EMAIL | 409 |
 | 핸들 중복 | 기존 handle 재사용 | DUPLICATE_HANDLE | 409 |
 
@@ -358,11 +363,10 @@
 **Request Body** (전 필드 nullable):
 ```json
 {
-  "creatorRole": "ILLUSTRATOR",
   "employmentStatus": "AVAILABLE",
   "activityFields": ["ILLUSTRATION", "WEBTOON"],
   "experienceLevel": "THREE_TO_FOUR",
-  "activeRegions": ["SEOUL", "GYEONGGI"],
+  "activeRegion": "SEOUL",
   "totalSlotCount": 3,
   "availableSlotCount": 2,
   "teamExperiences": ["SHORT_TERM"],
@@ -373,7 +377,7 @@
 ```
 **필드 제약**:
 - `activityFields`: `@Size(max=4)`, 원소 `@NotNull` (`[]` 전송 시 전체 삭제)
-- `activeRegions`: `@Size(max=7)`, 원소 `@NotNull`
+- `activeRegion`: 단일 선택 (SEOUL·GYEONGGI·GANGWON·CHUNGBUK·CHUNGNAM·JEONBUK·JEONNAM·GYEONGBUK·GYEONGNAM·JEJU)
 - `teamExperiences`: `@Size(max=4)`, 원소 `@NotNull`
 - `totalSlotCount`: `@Min(1) @Max(5)`
 - `availableSlotCount`: `@Min(0) @Max(5)`, `totalSlotCount` 이하여야 함(서비스단 검증)
@@ -513,7 +517,8 @@
   "genres": ["판타지"],
   "tags": ["오리지널", "캐릭터"],
   "ageRating": "ALL",
-  "visibility": "PUBLIC",
+  "publishToFeed": true,
+  "portfolioIds": ["4c8c0d5e-1b2a-7c3d-8e4f-5a6b7c8d9e0f"],
   "tools": ["Procreate"],
   "workDuration": { "months": 0, "days": 3, "hours": 5, "minutes": 0 },
   "cutCount": 12,
@@ -535,7 +540,8 @@
 - `imageLayoutType`: `@NotNull`
 - `title`: `@NotBlank @Size(max=100)`
 - `description`: `@Size(max=500)`
-- `artworkField`/`creativeType`/`ageRating`/`visibility`: `@NotNull`
+- `artworkField`/`creativeType`/`ageRating`/`publishToFeed`: `@NotNull`
+- `portfolioIds`: 선택. 본인 소유의 작가 페이지·최신 반영형 포트폴리오만 지정할 수 있다(고정형은 409, 타인 소유는 403, 스타터가 공유 포트폴리오를 지정하면 403 — 이때 작품도 생성되지 않는다)
 - `roles`: `@NotEmpty`
 - `tags`: `@Size(max=7)`
 - `videoLinks`: `@Size(max=5)`
@@ -554,7 +560,9 @@
 | 제목 길이 초과 | title: 101자 | COMMON_INVALID_INPUT | 400 |
 | roles 비어있음 | roles: [] | COMMON_INVALID_INPUT | 400 |
 | 태그 8개 이상 | tags 8개 | COMMON_INVALID_INPUT | 400 |
-| 필수 enum 누락 | visibility 생략 | COMMON_INVALID_INPUT | 400 |
+| 필수 값 누락 | publishToFeed 생략 | COMMON_INVALID_INPUT | 400 |
+| 고정형 포트폴리오 지정 | portfolioIds에 고정형 ID | SNAPSHOT_PORTFOLIO_IMMUTABLE | 409 |
+| 타인 포트폴리오 지정 | portfolioIds에 타인 ID | PORTFOLIO_ACCESS_DENIED | 403 |
 | 대표 인덱스 범위 초과 | representativeImageIndex: 99 | INVALID_REPRESENTATIVE_INDEX | 400 |
 | 토큰 없음 | Authorize 미등록 | UNAUTHENTICATED | 401 |
 
@@ -650,9 +658,9 @@
 
 **Request Body** (예시 — 일부만):
 ```json
-{ "title": "수정된 제목", "description": "수정된 설명", "visibility 제외 모든 필드 부분 전송 가능": true }
+{ "title": "수정된 제목", "description": "수정된 설명", "노출 위치 제외 모든 필드 부분 전송 가능": true }
 ```
-> 참고: 수정 요청에는 `visibility` 필드가 없습니다 (공개 상태는 3-8 전용 API로 변경). 제약은 업로드와 동일하되 모두 선택(nullable).
+> 참고: 수정 요청에는 노출 위치 필드가 없습니다 (3-8 전용 API로 재선언). 제약은 업로드와 동일하되 모두 선택(nullable).
 
 **필드 제약**: `imageKeys` `@Size(max=20)`, `representativeImageIndex` `@Min(0)`, `title` `@Size(max=100)`, `description` `@Size(max=500)`, `tags` `@Size(max=7)`, `videoLinks` `@Size(max=5)`, `materials[].name` `@NotBlank`.
 
@@ -670,26 +678,27 @@
 
 ---
 
-### 3-8. 공개 상태 변경 [PATCH /api/artworks/{artworkId}/visibility]
+### 3-8. 노출 위치 재선언 [PATCH /api/artworks/{artworkId}/publication]
 
-**목적**: 작품 공개 상태 변경.
+**목적**: 작품 피드 공개 여부와 담을 포트폴리오를 재선언한다. 공개 상태는 이 조합으로 서버가 계산한다(업로드-R09).
 **인증**: 필요 (소유자)
 **Path Variable**: `artworkId`.
 
 **Request Body**:
 ```json
-{ "visibility": "LINK_ONLY" }
+{ "publishToFeed": false, "portfolioIds": ["4c8c0d5e-1b2a-7c3d-8e4f-5a6b7c8d9e0f"] }
 ```
-**필드 제약**: `visibility` `@NotNull` (PUBLIC/LINK_ONLY/PRIVATE).
+**필드 제약**: `publishToFeed` `@NotNull`. `portfolioIds`는 증분이 아니라 **전체 목록**이라 빠진 포트폴리오에서는 제외된다(빈 배열 = 전부 제외).
 
 **정상 응답 (204)**: 본문 없음.
 
 **예외 케이스**:
 | 케이스 | 변경 값 | 예상 에러 코드 | HTTP |
 |--------|---------|--------------|------|
-| visibility 누락 | visibility 생략 | COMMON_INVALID_INPUT | 400 |
-| 잘못된 enum | visibility: "FOO" | COMMON_INVALID_INPUT | 400 |
-| 처리 중인 작품 | status=PROCESSING | ARTWORK_NOT_READY | 400 |
+| publishToFeed 누락 | publishToFeed 생략 | COMMON_INVALID_INPUT | 400 |
+| 고정형 포트폴리오 지정 | portfolioIds에 고정형 ID | SNAPSHOT_PORTFOLIO_IMMUTABLE | 409 |
+| 처리 중인 작품 | status=PROCESSING | (허용 — 업로드 시와 같은 조합을 그대로 받는다) | 204 |
+| 휴지통 작품 | status=DELETED | ARTWORK_DELETED | 410 |
 | 존재하지 않는 작품 | 없는 artworkId | ARTWORK_NOT_FOUND | 404 |
 | 타인 작품 | 비소유자 토큰 | ARTWORK_ACCESS_DENIED | 403 |
 | 토큰 없음 | Authorize 미등록 | UNAUTHENTICATED | 401 |
@@ -964,7 +973,7 @@
 - [ ] GET /api/artworks/{artworkId}
 - [ ] GET /api/artworks/{artworkId}/status
 - [ ] PATCH /api/artworks/{artworkId}
-- [ ] PATCH /api/artworks/{artworkId}/visibility
+- [ ] PATCH /api/artworks/{artworkId}/publication
 - [ ] DELETE /api/artworks/{artworkId}
 - [ ] GET /api/members/me/artworks
 

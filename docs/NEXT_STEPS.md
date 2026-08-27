@@ -3,6 +3,28 @@
 > 이 문서는 세션 인수인계용 체크리스트다. 장기 로드맵 전체는 `docs/roadmap.md`가 정본이고,
 > 이 문서는 "지금 당장 뭐부터 볼지"만 정리한다. 작업 완료 후 이 파일은 삭제해도 된다.
 
+## 2026-08-12 진행 상황 (배포 마무리 점검 + 비밀번호 재설정 구현)
+
+**병렬 워크트리(`turban`/`danhandev-feature-launch-milestone-mvp`) 발견**: 이 세션과 별개로 "출시 마일스톤" 전체(billing/portfolio/i18n/설정)가 진행 중이었음을 뒤늦게 확인. 이 세션에서 먼저 만들었던 `payment` 모듈 설계는 전부 폐기하고 `billing` 모듈(더 진척된 쪽)로 통합하기로 결정 — 상세는 `docs/design/billing-module-design.md`(다른 워크트리) 참고.
+
+**turban 병합 계획 검토 완료(2026-08-13) — 아직 병합할 단계 아님**:
+- turban은 main보다 **27개 커밋 뒤처짐**(merge-base `299ba5b`). 그중 **`0aa5c39`(prod HTTPS 강제 제거 — `NoClassDefFoundError`로 앱이 기동 자체를 못 했던 크래시 수정)가 turban에 없음** — 지금 상태로 배포하면 재발한다. turban을 main으로 rebase/merge할 때 이 커밋 흡수가 최우선.
+- **Flyway 번호 충돌 확정**: main V16(`member_adult_content_visible`)·V17(`password_reset_tokens`)과 turban V16(`billing_subscriptions`)·V17(`portfolio_schema`)·V18(`artwork_portfolio_inclusion`)이 같은 번호에 다른 내용으로 충돌. 병합 시 turban V16~V18 → V19~V21로 재번호 필요.
+- `SecurityConfig.java`/`application.yml`/`roadmap.md`/`CLAUDE.md`는 양쪽 다 수정해서 수동 병합 필요.
+- turban은 2026-08-13 기준 REST Docs 에러 스펙 확장 작업이 커밋 안 된 채 진행 중 — 그 작업부터 마무리·커밋시키고 rebase 진행할 것.
+
+**✅ 해결됨 — prod 521 복구**: root가 Cloudflare SSL/TLS 모드를 Flexible로 되돌려 `api.at-crew.com` 정상화 확인(2026-08-13). 다만 **Cloudflare DNS/SSL 편집 권한 요청은 아직 pending** — 다음에 같은 문제가 재발하면 또 root한테 요청해야 하는 상태 그대로임.
+
+**PASS 본인 인증 영구 폐기**(사용자 결정, 2026-08-12) — 법인이 미국 기준으로 재편되며 한국 전용 서비스인 PASS 연동을 하지 않기로 확정. 로드맵 §1 갱신 완료. 성인 콘텐츠는 표시 토글(OFF/ON+항상 blur) 2단계가 영구 최종 형태. 남는 범위는 기업 인증(수동 심사)뿐 — `Company.verified` 스텁 필드에 실제 상태를 연결하는 작업이 다음 착수 후보(turban과 안 겹침, 확인됨).
+
+**CI/CD 자동 배포 구축**: `.github/workflows/deploy.yml` 신규 — main push 시 빌드+테스트 통과 후 Docker Hub push(커밋 SHA 태그, latest 태그 동시 갱신) + EC2 SSH 재기동까지 자동화. **사용자가 GitHub 저장소 Settings에 Secrets 4개를 직접 등록해야 동작함**(`DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`, `APP_HOST`, `EC2_SSH_KEY`) — 아직 미등록이라 워크플로우는 존재하지만 실행하면 실패한다.
+
+**비밀번호 재설정 + 이메일 발송 인프라 구현 완료**: `docs/design/auth-email-custom-redesign.md` §7이 "별도 설계 필요" 초안이었던 부분을 Figma로 직접 확인(토큰 링크 방식, TTL 1시간 — 초안의 30분에서 정정)해 확정·구현. `com.atcrew.common.mail`(MailSender 포트 + Resend 어댑터, Flyway V17). `./gradlew build` 전체 그린 확인(354개 중 pre-existing flaky 2건은 격리 재실행 시 통과 — `SearchApiDocTest`/`EventPublicationRegistryTest`, 공유 Testcontainer 종료 경쟁 조건, 이 세션 변경과 무관). **root에게 `RESEND_API_KEY` 발급 요청 필요**(자체 가입 가능, 커스텀 도메인 발신 원하면 Cloudflare DNS 편집 권한도 필요 — 기존 pending 요청과 동일 건).
+
+**prod 필수값 fail-fast 검증 추가**: `WORKER_CALLBACK_SECRET`/`ARTWORK_INTERNAL_SECRET`/`SEARCH_INTERNAL_SECRET`/R2 자격증명 4개가 값 누락 시 `dev-internal-secret`/`dummy-*`로 조용히 기동되던 문제를 `application-prod.yml`에서 fail-fast로 전환.
+
+**다음 세션 우선순위**: (1) GitHub Secrets 4개 등록(사용자 작업) (2) PM 답변 받으면 RESEND_API_KEY 확보 (3) turban이 REST Docs 작업 마무리·커밋하면 rebase 진행(위 병합 계획 참고) (4) 기업 인증(로드맵 1번, PASS 폐기로 축소된 범위) 설계 착수 후보.
+
 ## 2026-08-07 진행 상황 (🎉 첫 배포 성공)
 
 **EC2 #1에서 앱+MariaDB가 실제로 돌아가고, nginx를 거쳐 실제 API가 응답하는 것까지 확인 완료**
@@ -67,12 +89,14 @@
 
 ## 2026-08-07 진행 상황 (EC2 프로비저닝 완료)
 
-**AWS IAM 인증 완료·EC2 2대 실제 생성 완료**: root(sehandev)로부터 전용 IAM 사용자(`at-crew-be`,
-Account `820010786587`) Access Key 발급받아 `aws configure` 완료(리전 `ap-northeast-2` — laiteu
-인스턴스로 실제 확인함, 추정 아니었음). laiteu와 같은 기본 VPC(`vpc-9f11ccf4`) 재사용해 EC2 #1(앱+MariaDB,
-`i-0987d8df61c4b84d3`, 탄력적 IP `43.201.142.212`)·EC2 #2(Elasticsearch, `i-07b421fdc2d3f5aff`,
-프라이빗 IP `172.31.25.215`만) 생성. 보안 그룹·키페어(`at-crew-key`)까지 다 만들고 SSH 왕복(앱 서버 직접,
-검색 서버는 앱 서버 경유) 검증 완료. 상세는 `deploy/README.md` "프로비저닝된 리소스" 표.
+**AWS IAM 인증 완료·EC2 2대 실제 생성 완료**: root로부터 전용 IAM 사용자 Access Key를 발급받아
+`aws configure` 완료(리전 `ap-northeast-2` — laiteu 인스턴스로 실제 확인함, 추정 아니었음).
+laiteu와 같은 기본 VPC를 재사용해 EC2 #1(앱+MariaDB, 탄력적 IP 있음)·EC2 #2(Elasticsearch,
+프라이빗 IP만) 생성. 보안 그룹·키페어까지 다 만들고 SSH 왕복(앱 서버 직접, 검색 서버는 앱 서버 경유)
+검증 완료. 상세 구성은 `deploy/README.md` "프로비저닝된 리소스" 표.
+
+> 이 레포는 공개되어 있다 — AWS 계정 ID·IAM 사용자명·인스턴스 ID·탄력적 IP·VPC/SG/AMI ID 같은 실제
+> 식별자는 이 문서에도 적지 않는다. 그 자체로 자격증명은 아니지만 계정 정찰의 출발점이 된다.
 
 - **중간에 뚫린 구멍 하나 있었음**: 검색 서버 보안 그룹에 SSH를 "내 홈 IP"로만 열었는데, 그 서버는
   애초에 퍼블릭 IP가 없어서 홈 IP로는 절대 못 닿는 구성이었다 — 실제 SSH 테스트(앱 서버 경유)를 해보고서야
@@ -86,7 +110,7 @@ Account `820010786587`) Access Key 발급받아 `aws configure` 완료(리전 `a
   `nginx/api.at-crew.com.conf` 적용해 기동 확인(`/etc/nginx/conf.d/`). `~/at-crew-backend/deploy/`에
   `docker-compose.app.yml`·`.env.example` 업로드해둠 — 아직 `.env`로 채우지 않음.
 - EC2 #2: Docker+docker-compose 설치, `docker.elastic.co/elasticsearch/elasticsearch:9.2.8` 이미지까지
-  받아서 실제로 띄우고 앱 서버에서 `172.31.25.215:9200` 접근되는 것까지 검증 완료.
+  받아서 실제로 띄우고 앱 서버에서 EC2 #2 프라이빗 IP의 `:9200` 접근되는 것까지 검증 완료.
 - **⚠️ 설계에서 놓쳤던 것 — 프라이빗 서브넷은 아웃바운드도 막힌다**: EC2 #2가 처음부터 퍼블릭 IP가
   없다 보니 dnf 저장소도 GitHub도 전혀 못 닿아서(NAT Gateway 없음) `dnf install docker`부터 실패했다.
   "퍼블릭 IP 없음 = 인바운드만 차단"이라고 생각했는데 아웃바운드(인터넷 나가는 것) 자체가 막히는 거였음 —
@@ -154,17 +178,16 @@ SecurityConfig가 `/swagger-ui/**`를 permitAll로 열어둬서 꺼두지 않으
 
 Cloudflare Worker 배포 및 전체 파이프라인(트리거→이미지 변환→콜백) 검증까지 완료했다.
 
-- R2 버킷은 팀 공용 계정 `sehandev-account`(Account ID `8ffe00cd867bc560cfef7b6ab0711b14`)에
-  `at-crew-storage`라는 이름으로 이미 2026-07-11에 만들어져 있었음 — 애초에 개인 계정
-  `Danhandev@gmail.com's Account`가 아니라 이 계정을 썼어야 했다. `wrangler.toml`에 `account_id`를
-  고정해 매번 계정 선택 프롬프트가 안 뜨게 함. `application.yml`/`wrangler.toml`/README의 버킷 이름도
+- R2 버킷은 팀 공용 Cloudflare 계정에 `at-crew-storage`라는 이름으로 이미 2026-07-11에 만들어져
+  있었음 — 애초에 개인 계정이 아니라 이 계정을 썼어야 했다. 계정 ID는 `wrangler.toml`에 적지 않고
+  `CLOUDFLARE_ACCOUNT_ID` 환경변수로 넘겨 매번 계정 선택 프롬프트가 안 뜨게 함. `application.yml`/`wrangler.toml`/README의 버킷 이름도
   설계 당시 가정했던 `at-crew-media`에서 실제 버킷명 `at-crew-storage`로 전부 정정함.
 - `wrangler dev --remote`로 실제 Cloudflare Images를 통해 이미지 변환 파이프라인을 먼저 검증함(테스트
   이미지 업로드 → Worker 트리거 → 변환된 original/thumb/thumb-adult 다운로드 → 육안 확인, 정상). 이 과정에서
   `src/index.js`의 실버그 발견: `env.IMAGES...output({...})`이 Promise를 반환하는데 `await` 없이 바로
   `.response()`를 체이닝해서 "response is not a function" 에러 발생 — `encodeOriginal`/`encodeThumb`를
   `async` 함수로 바꾸고 `output()` 결과를 `await`한 뒤 `.response()`를 호출하도록 수정(커밋 완료).
-- `wrangler deploy`로 실배포 완료 — `https://at-crew-media-worker.sehandev.workers.dev`. 프로덕션
+- `wrangler deploy`로 실배포 완료 — `https://<워커이름>.<계정서브도메인>.workers.dev`. 프로덕션
   시크릿(`CALLBACK_SECRET`/`INTERNAL_SECRET`/`SERVER_CALLBACK_URL`)도 `wrangler secret put`으로 등록함.
   로컬 서버를 `cloudflared tunnel --url http://localhost:8080`로 임시 공개해 배포된 Worker가 실제로
   콜백을 보내는지까지 왕복 검증함 — Worker 트리거(202) → Cloudflare Images 처리 → R2 저장 → 터널 경유
@@ -285,7 +308,7 @@ recruit 모듈(구인글/팀원모집글/구직글/지원/끌어올리기/관심
 | `RecruitServiceImpl` boostJobPosting/boostTeamPosting | 끌어올리기 구매 개수 확인·차감 | 로드맵 5(Polar 결제) |
 | `JobPostingController` 관리자 섹션, `BannerController` | 인증만 요구, Role 검증 없음 | 로드맵 8(관리자 Role 체계) |
 | `Company.verified` | 항상 false, API 미노출 | 로드맵 1(기업 인증) |
-| `ArtworkField.PRINT_COMIC` | 피그마는 `WEBNOVEL` — enum 교체 + 데이터 마이그레이션 필요 | 피그마 정본 확인 |
+| `ArtworkField.PRINT_COMIC` | 피그마 화면끼리 충돌 — 홈(6107:24822)은 출판만화, 검색(5752:29315)은 웹소설. 기획서 홈-R01·업로드-R06은 출판만화 쪽이고 홈 프레임이 더 최신 | 기획 확정 필요 |
 | `ActiveRegion`(company) | 피그마에서 옵션 값 특정 실패 | 피그마 확인 |
 | search 분석기 | Phase 1은 `standard`, nori 도입 미정 | 검색 품질 이슈 발생 시 |
 
@@ -296,7 +319,7 @@ recruit 모듈(구인글/팀원모집글/구직글/지원/끌어올리기/관심
 | 순서 | 항목 | 착수 전 필요한 것 |
 |---|---|---|
 | 1 | 본인/기업 인증(verification) | PASS 연동 방식 상세 설계(SDK/API 계약), `Member` 인증 상태 필드 스키마 |
-| 5 | 결제/구독(Polar) | Polar API 연동 상세 설계(Checkout·웹훅 이벤트 스펙), 이메일 발송 인프라(현재 없음) |
+| 5 | 결제/구독(Polar→Stripe, `turban` 워크트리 별도 진행 중) | Stripe API 연동 상세 설계(Checkout·웹훅 이벤트 스펙). 이메일 발송 인프라는 2026-08-12 구현 완료(`com.atcrew.common.mail`, Resend) — 재사용 가능 |
 | 6 | 설정 나머지 | 비교적 작음, 아무 때나 착수 가능 |
 | 7 | 다국어(i18n) | `MessageSource`/로케일 전략 설계, `Member.primaryLanguage`/`postLanguages` 스키마 |
 | 8 | 관리자/모더레이션 콘솔 | 관리자 Role 체계 설계(member 모듈에 아직 없음) |

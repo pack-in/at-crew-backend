@@ -1,6 +1,7 @@
 package com.atcrew.auth.internal.application;
 
 import com.atcrew.auth.internal.persistence.LoginAttemptRepository;
+import com.atcrew.auth.internal.persistence.PasswordResetTokenRepository;
 import com.atcrew.auth.internal.persistence.RefreshTokenRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,11 +25,14 @@ class AuthCleanupScheduler {
 
     private final RefreshTokenRepository refreshTokenRepository;
     private final LoginAttemptRepository loginAttemptRepository;
+    private final PasswordResetTokenRepository passwordResetTokenRepository;
 
     AuthCleanupScheduler(RefreshTokenRepository refreshTokenRepository,
-                         LoginAttemptRepository loginAttemptRepository) {
+                         LoginAttemptRepository loginAttemptRepository,
+                         PasswordResetTokenRepository passwordResetTokenRepository) {
         this.refreshTokenRepository = refreshTokenRepository;
         this.loginAttemptRepository = loginAttemptRepository;
+        this.passwordResetTokenRepository = passwordResetTokenRepository;
     }
 
     @Scheduled(fixedDelay = 3_600_000)
@@ -38,9 +42,11 @@ class AuthCleanupScheduler {
         int expiredTokens = refreshTokenRepository.deleteExpired(now);
         int expiredAttempts = loginAttemptRepository
                 .deleteExpired(now.minusSeconds(LoginAttemptLimiter.WINDOW_SECONDS));
+        int expiredResetTokens = passwordResetTokenRepository.deleteExpired(now);
 
-        if (expiredTokens > 0 || expiredAttempts > 0) {
-            log.info("만료 데이터 정리: refreshTokens={} loginAttempts={}", expiredTokens, expiredAttempts);
+        if (expiredTokens > 0 || expiredAttempts > 0 || expiredResetTokens > 0) {
+            log.info("만료 데이터 정리: refreshTokens={} loginAttempts={} passwordResetTokens={}",
+                    expiredTokens, expiredAttempts, expiredResetTokens);
         }
     }
 }

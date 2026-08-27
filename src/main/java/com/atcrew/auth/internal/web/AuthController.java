@@ -11,6 +11,8 @@ import com.atcrew.auth.internal.web.dto.EmailRegisterRequest;
 import com.atcrew.auth.internal.web.dto.GoogleLoginRequest;
 import com.atcrew.auth.internal.web.dto.GoogleRegisterRequest;
 import com.atcrew.auth.internal.web.dto.LogoutRequest;
+import com.atcrew.auth.internal.web.dto.PasswordResetConfirmRequest;
+import com.atcrew.auth.internal.web.dto.PasswordResetRequestRequest;
 import com.atcrew.auth.internal.web.dto.RefreshRequest;
 import com.atcrew.common.security.SecurityUtils;
 import io.swagger.v3.oas.annotations.Operation;
@@ -84,6 +86,34 @@ class AuthController {
     public void changePassword(@RequestBody @Valid ChangePasswordRequest request) {
         authService.changePassword(securityUtils.getCurrentMemberId(),
                 request.currentPassword(), request.newPassword());
+    }
+
+    @Operation(summary = "비밀번호 재설정 요청",
+            description = "가입 여부와 무관하게 항상 200을 반환합니다(계정 존재 노출 방지, "
+                    + "docs/design/auth-email-custom-redesign.md §7.2). "
+                    + "EMAIL 가입 계정이면 재설정 링크를, 동일 이메일의 Google 계정만 있으면 안내 메일을 발송합니다.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "요청 접수 (메일 발송 여부와 무관하게 항상 반환)"),
+            @ApiResponse(responseCode = "400", description = "입력 형식 오류"),
+            @ApiResponse(responseCode = "429", description = "요청 횟수 초과")
+    })
+    @PostMapping("/email/password-reset/request")
+    public void requestPasswordReset(@RequestBody @Valid PasswordResetRequestRequest request) {
+        authService.requestPasswordReset(request.email());
+    }
+
+    @Operation(summary = "비밀번호 재설정 확정",
+            description = "메일로 받은 토큰과 새 비밀번호로 재설정을 완료합니다. 토큰은 1회용이며, "
+                    + "성공 시 기존 Refresh Token이 모두 폐기되므로 다시 로그인해야 합니다.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "재설정 성공"),
+            @ApiResponse(responseCode = "400", description = "입력 형식 오류·비밀번호 불일치"),
+            @ApiResponse(responseCode = "401", description = "토큰이 유효하지 않거나 만료됨")
+    })
+    @PostMapping("/email/password-reset/confirm")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void confirmPasswordReset(@RequestBody @Valid PasswordResetConfirmRequest request) {
+        authService.confirmPasswordReset(request.token(), request.newPassword());
     }
 
     // ─── Google 인증 ─────────────────────────────────────────────────────

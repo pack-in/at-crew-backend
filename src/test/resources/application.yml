@@ -42,6 +42,14 @@ search:
   internal:
     secret: test-internal-secret
 
+app:
+  frontend-base-url: https://at-crew.com
+
+mail:
+  resend:
+    api-key: test-resend-key
+    from-address: AT-CREW <test@at-crew.com>
+
 # 결제/구독(plans/260813-stripe-billing) — 이 파일이 main application.yml을 완전히 대체하므로
 # 상품 카탈로그를 여기에도 둔다. 없으면 요금제 API가 "상품 설정이 없습니다"로 500을 낸다.
 # 실제 Stripe 호출은 테스트에서 하지 않으므로 키는 비워 두고, Price ID만 판별 가능한 더미 값을 쓴다.
@@ -52,21 +60,30 @@ stripe:
 
 billing:
   frontend-base-url: http://localhost:3000
+  # MVP 단일 요금제(PH-08) — main application.yml과 동일하게 pro-monthly만 enabled.
   products:
     pro-monthly:
       price-id: price_test_pro_monthly
-      amount: 599
-      list-amount: 1199
+      amount: 800
+      list-amount:
+      enabled: true
     pro-yearly:
       price-id: price_test_pro_yearly
       amount: 5999
       list-amount: 11999
+      enabled: false
     team-posting:
       price-id: price_test_team_posting
       amount: 3999
+      list-amount:
+      enabled: false
     boost:
       price-id: price_test_boost
       amount: 799
+      list-amount:
+      enabled: false
     job-posting:
       price-id: price_test_job_posting
       amount: 9999
+      list-amount:
+      enabled: false

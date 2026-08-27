@@ -551,9 +551,17 @@ public enum AuthErrorCode {
 
 ---
 
-## 7. 비밀번호 재설정 플로우 (초안 — **별도 설계 필요**)
+## 7. 비밀번호 재설정 플로우 (2026-08-12 구현 완료)
 
-> Figma에 "비밀번호 재설정" 링크는 존재하나 상세 화면 미확인. 이메일 발송 인프라(SMTP/SES 등)가 현재 코드베이스에 없음. 본 절은 방향 합의용 초안이며, 화면 확정 후 별도 설계 문서로 분리한다. 보안 요건은 §10.7·§10.14에 정리.
+> **구현 완료(2026-08-12)** — Figma "비밀번호 재설정" 섹션(node `6626:4159`)을 직접 확인해 아래 초안의
+> 미확정 항목을 전부 확정했다. **토큰 링크 방식 확정**(§7.1 권장안 그대로). **TTL은 1시간**으로
+> 확정 — 아래 §7.3 초안의 30분은 Figma 이메일 문구("링크는 이메일 발송 시점으로부터 1시간 동안
+> 유효합니다")와 달라 정정됨. 메일 발송 인프라는 **Resend**로 결정, `com.atcrew.common.mail`
+> (`MailSender` 포트 + `ResendMailAdapter`)에 구현했고 다른 모듈(예: 결제 실패 알림)도 재사용
+> 가능하다. `PasswordResetToken`(Flyway V17)·`PasswordResetAttemptLimiter`(기존
+> `login_attempts` 테이블 재사용, `pwreset:` 접두사)까지 전부 `com.atcrew.auth` 모듈에 구현 완료.
+> Google 전용 계정에 보내는 안내 메일도 Figma "Google 계정 가입 이메일" 화면 문구 그대로 구현했다.
+> 아래 §7.1~§7.3은 최초 설계 근거 기록으로 남겨두고, 실제 값이 다른 곳(TTL)만 위에서 정정했다.
 
 ### 7.1 방식 비교: 토큰 링크 vs OTP
 
@@ -588,7 +596,10 @@ POST /api/auth/email/password-reset/confirm   { "token": "...", "newPassword": "
 - 저장소: auth.internal에 `PasswordResetToken` 문서 + TTL 인덱스 (RefreshToken과 동일 패턴).
 - 요청 rate limit: 이메일당 예: 5분 3회.
 
-**별도 설계 필요 항목**: 메일 발송 인프라 선정(SES/SendGrid 등), 메일 템플릿, 재설정 페이지 URL 체계(프론트 라우트), Figma 화면 확정.
+**(해결됨, 2026-08-12)** 메일 발송 인프라는 Resend로 확정·구현. 메일 템플릿은 Figma 문구 그대로 반영.
+재설정 페이지 URL은 `{FRONTEND_BASE_URL}/reset-password?token=...`로 백엔드가 링크를 생성한다 —
+프론트가 이 경로와 다르게 라우트를 만들었다면 인계 시 반드시 맞춰야 한다(백엔드 쪽 값 변경은
+`app.frontend-base-url` 설정 하나로 가능).
 
 ---
 

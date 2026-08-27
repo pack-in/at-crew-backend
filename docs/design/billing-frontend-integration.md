@@ -14,6 +14,12 @@
 
 ## 1. 요금제 페이지 (`PLAN-P01`, 비로그인 포함)
 
+**⚠️ MVP 단일 요금제(PH-08, 2026-08-18)**: 카탈로그는 지금 **Portfolio Pro(`PRO_MONTHLY`) 하나만**
+내려온다. 연간 플랜·단건 상품 3종(팀원모집글·끌어올리기·구인글)은 판매를 중단해 카탈로그 응답에서
+아예 빠진다 — 프론트가 별도로 숨길 필요 없이 배열 길이만큼만 그리면 된다. 요금제 페이지는 "스타터
+카드 + Portfolio Pro 카드" 2장 구성으로 충분하다. 단건 상품 구매 버튼·연간 전환 UI는 이번 스코프에서
+만들지 않아도 된다(추후 재개 시 다시 안내).
+
 ```
 GET /api/billing/catalog
 ```
@@ -21,27 +27,24 @@ GET /api/billing/catalog
 ```json
 {
   "data": [
-    {"product": "PRO_MONTHLY", "amount": 599, "listAmount": 1199, "currency": "USD", "cta": "AVAILABLE"},
-    {"product": "PRO_YEARLY", "amount": 5999, "listAmount": 11999, "currency": "USD", "cta": "AVAILABLE"},
-    {"product": "TEAM_POSTING", "amount": 3999, "listAmount": null, "currency": "USD", "cta": "AVAILABLE"},
-    {"product": "BOOST", "amount": 799, "listAmount": null, "currency": "USD", "cta": "AVAILABLE"},
-    {"product": "JOB_POSTING", "amount": 9999, "listAmount": null, "currency": "USD", "cta": "AVAILABLE"}
+    {"product": "PRO_MONTHLY", "amount": 800, "listAmount": null, "currency": "USD", "cta": "AVAILABLE"}
   ]
 }
 ```
 
-- `listAmount`가 있으면 취소선 정가로 표기한다.
+- `listAmount`가 있으면 취소선 정가로 표기한다. Portfolio Pro는 지금 정가 표기 없이 $8 단일가다.
 - 로그인 상태로 호출하면 현재 구독이 반영된다. `cta` 매핑:
 
 | cta | 버튼 |
 |-----|------|
-| `AVAILABLE` | "시작하기" / "연간 플랜 시작하기" / "구매하기" |
+| `AVAILABLE` | "시작하기" |
 | `CURRENT` | "이용 중인 플랜" (비활성, 취소선 미노출) |
-| `CHANGE` | "월간 플랜으로 변경하기" / "연간 플랜으로 변경하기" |
 | `UNAVAILABLE` | 기업 계정 — 프로 카드 구매 불가 처리 |
 
-- 혜택 문구·"2개월 무료" 배지 같은 마케팅 카피는 프론트가 갖는다.
-- 스타터 카드는 비로그인 요금제 페이지에서만 노출하고, 설정 탭에는 프로·단건 카드만 노출한다(요금제-R03).
+- 혜택 문구는 프론트가 갖는다.
+- 스타터 카드는 비로그인 요금제 페이지에서만 노출하고, 설정 탭에는 프로 카드만 노출한다(요금제-R03).
+- 판매 중단 상품을 API로 직접 호출해도(`POST /api/billing/checkout-sessions`) 503
+  `PRICE_NOT_CONFIGURED`로 막힌다 — 카탈로그에 없는 상품 버튼을 실수로 남겨둬도 결제까지 새지 않는다.
 
 ## 2. 결제 진입
 
@@ -105,8 +108,14 @@ POST /api/billing/portal-sessions
 | 팀원모집글 생성 / 구인글 제출 / 끌어올리기 | `ENTITLEMENT_REQUIRED` | "게시 권한이 필요해요" + [취소]/[요금제 바로가기] |
 | 작품 업로드 · 휴지통 복구 | `STARTER_ARTWORK_LIMIT_EXCEEDED` | 스타터 4개 제한 안내 + 프로 전환 유도 |
 
-단건 상품 구매 전에는 환불 안내 모달이 필수다(요금제-R06): "미사용 권한은 환불 가능, 사용 후 환불 불가",
-[취소]/[구매하기] → §2의 Checkout으로 이동.
+**⚠️ MVP 기간 중 팀원모집글·구인글·끌어올리기는 사실상 막혀 있다(PH-08).** 단건 상품 3종 판매를
+중단했지만 게이팅은 그대로 둬서, `ENTITLEMENT_REQUIRED` 모달의 "[요금제 바로가기]"를 눌러도 살 수 있는
+상품이 카탈로그에 없다(§1). 이 모달을 그대로 쓰면 사용자가 막다른 길에 빠지므로, "요금제 바로가기" 대신
+"준비 중이에요" 같은 문구로 바꾸거나, 아예 이 세 가지 액션의 진입 버튼을 잠그는 걸 권장한다 — 백엔드
+판단이 아니라 프론트 UX 재량이라 어느 쪽으로 할지는 프론트에서 정하면 된다.
+
+단건 상품 판매가 재개되면(§1 안내와 함께 별도 공지) 구매 전 환불 안내 모달이 필요하다(요금제-R06):
+"미사용 권한은 환불 가능, 사용 후 환불 불가", [취소]/[구매하기] → §2의 Checkout으로 이동.
 
 ## 6. 결제 실패 배너
 

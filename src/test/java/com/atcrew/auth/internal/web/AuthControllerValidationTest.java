@@ -232,11 +232,59 @@ class AuthControllerValidationTest {
                 .andDo(document("auth/validation/password-change-confirm-mismatch"));
     }
 
+    @Test
+    void 비밀번호_재설정_요청_email_형식_오류_400() throws Exception {
+        mockMvc.perform(post("/api/auth/email/password-reset/request")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("email", "not-an-email"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("auth/validation/password-reset-request-invalid-email"));
+    }
+
+    @Test
+    void 비밀번호_재설정_확정_token_blank_400() throws Exception {
+        mockMvc.perform(post("/api/auth/email/password-reset/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(passwordResetConfirmBody("", "NewPass1!", "NewPass1!")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("auth/validation/password-reset-confirm-blank-token"));
+    }
+
+    @Test
+    void 비밀번호_재설정_확정_새_비밀번호_정책_위반_400() throws Exception {
+        mockMvc.perform(post("/api/auth/email/password-reset/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(passwordResetConfirmBody("some-token", "short", "short")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("auth/validation/password-reset-confirm-invalid-policy"));
+    }
+
+    @Test
+    void 비밀번호_재설정_확정_확인값_불일치_400() throws Exception {
+        mockMvc.perform(post("/api/auth/email/password-reset/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(passwordResetConfirmBody("some-token", "NewPass1!", "Different1!")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("auth/validation/password-reset-confirm-mismatch"));
+    }
+
     // ─── 헬퍼 ─────────────────────────────────────────────────────────
 
     private String passwordChangeBody(String current, String next, String confirm) throws Exception {
         return objectMapper.writeValueAsString(Map.of(
                 "currentPassword", current,
+                "newPassword", next,
+                "newPasswordConfirm", confirm
+        ));
+    }
+
+    private String passwordResetConfirmBody(String token, String next, String confirm) throws Exception {
+        return objectMapper.writeValueAsString(Map.of(
+                "token", token,
                 "newPassword", next,
                 "newPasswordConfirm", confirm
         ));

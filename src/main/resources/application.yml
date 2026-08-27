@@ -48,8 +48,11 @@ management:
 cors:
   allowed-origins: http://localhost:3000
 
+# 레포가 공개되어 있으므로 이 파일에는 "그대로 쓰면 동작하는" 기본 시크릿을 두지 않는다 —
+# 기본값이 있으면 값 주입을 깜빡한 환경이 공개된 키로 조용히 뜨고, 그 키로 누구나 토큰을 위조할 수 있다.
+# 로컬 개발용 값은 application-local.yml에, prod는 application-prod.yml이 환경변수를 강제한다.
 jwt:
-  secret: ${JWT_SECRET:at-crew-default-secret-key-for-dev-only-must-be-at-least-64-chars-long}
+  secret: ${JWT_SECRET}
   access-token-expiration: 3600000       # 1시간 (ms)
   refresh-token-expiration: 2592000000   # 30일 (ms)
 
@@ -64,15 +67,24 @@ cloudflare:
     bucket: ${R2_BUCKET:at-crew-storage}
     presign-expiration-minutes: 10
     worker-trigger-url: ${WORKER_TRIGGER_URL:http://localhost:8080/internal/artwork/images/processed}
-    callback-secret: ${WORKER_CALLBACK_SECRET:dev-internal-secret}
+    # 기본값 없음 — jwt.secret과 같은 이유(application-local.yml 참고)
+    callback-secret: ${WORKER_CALLBACK_SECRET}
 
 artwork:
   internal:
-    secret: ${ARTWORK_INTERNAL_SECRET:dev-internal-secret}
+    secret: ${ARTWORK_INTERNAL_SECRET}
 
 search:
   internal:
-    secret: ${SEARCH_INTERNAL_SECRET:dev-internal-secret}
+    secret: ${SEARCH_INTERNAL_SECRET}
+
+app:
+  frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:3000}
+
+mail:
+  resend:
+    api-key: ${RESEND_API_KEY:dummy-resend-key}
+    from-address: ${MAIL_FROM_ADDRESS:AT-CREW <onboarding@resend.dev>}
 
 # 결제/구독(plans/260813-stripe-billing) — 키가 없어도 기동은 되고, 결제 API 호출 시점에만 실패한다.
 stripe:
@@ -85,21 +97,33 @@ billing:
   frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:3000}
   # 통화는 USD 단일. amount·list-amount는 센트 단위 정수($5.99 = 599)다.
   # 실제 청구액의 정본은 Stripe의 Price이며, 여기 amount는 카탈로그 표시용이다 — Price 변경 시 함께 갱신한다.
+  # MVP 단일 요금제(PH-08, 2026-08-18) — Portfolio Pro(pro-monthly) $8 하나만 판매한다.
+  # 나머지 4개는 enabled=false로 카탈로그·Checkout 양쪽에서 막되, 기존 보유자 게이팅(entitlement 소비)은
+  # 그대로 둔다 — 단건 상품 3종은 판매만 중단하고 구인글·팀원모집글·끌어올리기 게시 자체는 계속 막힌 채로 둔다
+  # (plans/260813-stripe-billing/PLAN-HUMAN.md PH-08 "판매 중단 + 게이팅 유지" 결정).
   products:
     pro-monthly:
       price-id: ${STRIPE_PRICE_PRO_MONTHLY:}
-      amount: 599
-      list-amount: 1199
+      amount: 800
+      list-amount:
+      enabled: true
     pro-yearly:
       price-id: ${STRIPE_PRICE_PRO_YEARLY:}
       amount: 5999
       list-amount: 11999
+      enabled: false
     team-posting:
       price-id: ${STRIPE_PRICE_TEAM_POSTING:}
       amount: 3999
+      list-amount:
+      enabled: false
     boost:
       price-id: ${STRIPE_PRICE_BOOST:}
       amount: 799
+      list-amount:
+      enabled: false
     job-posting:
       price-id: ${STRIPE_PRICE_JOB_POSTING:}
       amount: 9999
+      list-amount:
+      enabled: false

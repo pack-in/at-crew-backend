@@ -4,7 +4,6 @@ import com.atcrew.common.response.CursorPage;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaProcessingStatus;
 import com.atcrew.media.internal.application.MediaCallbackService;
-import com.atcrew.member.CreatorRole;
 import com.atcrew.member.MemberService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -114,6 +113,40 @@ class BookmarkModuleTests {
         assertThat(page.items()).extracting(BookmarkEntryInfo::artworkId).doesNotContain(artwork.id());
     }
 
+    // 저장 기준(accessFor)과 목록 기준이 어긋나면 저장은 되는데 목록에는 영원히 안 보이는 북마크가 생긴다.
+    @Test
+    void 포트폴리오_한정_공개_작품도_북마크_목록에_보인다() {
+        String memberId = registerMember();
+        String authorId = registerMember();
+        ArtworkInfo artwork = uploadReadyArtwork(authorId);
+        // 피드 공개 OFF + 라이브 포트폴리오 편입 = 포트폴리오 한정 공개(업로드-R09).
+        artworkService.updatePublication(authorId, artwork.id(), false, List.of());
+        artworkService.updatePortfolioInclusion(artwork.id(), true);
+
+        bookmarkService.saveBookmark(memberId, artwork.id(), null);
+
+        assertThat(bookmarkService.getBookmarks(memberId, null, null, 10).items())
+                .extracting(BookmarkEntryInfo::artworkId)
+                .containsExactly(artwork.id());
+    }
+
+    // 반대로 편입이 풀려 완전 비공개가 되면 목록에서도 빠져야 한다 — 목록은 현재 접근 권한을 따른다.
+    @Test
+    void 완전_비공개로_바뀐_작품은_북마크_목록에서_빠진다() {
+        String memberId = registerMember();
+        String authorId = registerMember();
+        ArtworkInfo artwork = uploadReadyArtwork(authorId);
+        artworkService.updatePublication(authorId, artwork.id(), false, List.of());
+        artworkService.updatePortfolioInclusion(artwork.id(), true);
+        bookmarkService.saveBookmark(memberId, artwork.id(), null);
+
+        artworkService.updatePortfolioInclusion(artwork.id(), false);
+
+        assertThat(bookmarkService.getBookmarks(memberId, null, null, 10).items())
+                .extracting(BookmarkEntryInfo::artworkId)
+                .doesNotContain(artwork.id());
+    }
+
     private Class<?> catchThrowableClass(org.assertj.core.api.ThrowableAssert.ThrowingCallable callable) {
         return org.assertj.core.api.Assertions.catchThrowable(callable).getClass();
     }
@@ -124,7 +157,7 @@ class BookmarkModuleTests {
                 imageKeys, 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 "북마크테스트 작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
                 List.of(), List.of(), List.of(),
-                AgeRating.ALL, Visibility.PUBLIC, List.of(), null, null, List.of(), List.of()));
+                AgeRating.ALL, true, List.of(), List.of(), null, null, List.of(), List.of()));
         // media webhook → MediaAssetProcessedEvent → artwork 리스너(비동기)로 READY 전환된다.
         mediaCallbackService.process(MediaOwnerType.ARTWORK, artwork.id(), imageKeys.get(0),
                 "thumb", null, "avif", MediaProcessingStatus.DONE);
@@ -151,6 +184,6 @@ class BookmarkModuleTests {
         return memberService.register(
                 "bookmark-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12) + "@atcrew.com",
                 "bm" + UUID.randomUUID().toString().replace("-", "").substring(0, 10),
-                "회원", CreatorRole.WEBTOON).id();
+                "회원").id();
     }
 }

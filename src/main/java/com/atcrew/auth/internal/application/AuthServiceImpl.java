@@ -8,11 +8,14 @@ import com.atcrew.auth.GoogleRegisterCommand;
 import com.atcrew.auth.internal.domain.RefreshToken;
 import com.atcrew.auth.internal.exception.AuthErrorCode;
 import com.atcrew.auth.internal.exception.AuthException;
+import com.atcrew.auth.internal.domain.PasswordResetToken;
 import com.atcrew.auth.internal.infra.firebase.FirebaseUser;
 import com.atcrew.auth.internal.infra.firebase.FirebaseVerifier;
+import com.atcrew.auth.internal.persistence.PasswordResetTokenRepository;
 import com.atcrew.auth.internal.persistence.RefreshTokenRepository;
 import com.atcrew.common.exception.DomainException;
 import com.atcrew.common.logging.LogMask;
+import com.atcrew.common.mail.MailSender;
 import com.atcrew.common.security.JwtProvider;
 import com.atcrew.member.AuthProvider;
 import com.atcrew.member.MemberInfo;
@@ -21,31 +24,53 @@ import com.atcrew.member.PasswordVerification;
 import com.atcrew.member.RegisterMemberCommand;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
 import java.time.Instant;
+import java.util.Base64;
+import java.util.HexFormat;
+import java.util.Optional;
 
 @Service
 class AuthServiceImpl implements AuthService {
 
     private static final Logger log = LoggerFactory.getLogger(AuthServiceImpl.class);
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+    private static final int RESET_TOKEN_TTL_SECONDS = 3600; // 1시간 — Figma 이메일 문구 확인(§7.3 정정)
 
     private final FirebaseVerifier firebaseVerifier;
     private final MemberService memberService;
     private final JwtProvider jwtProvider;
     private final RefreshTokenRepository refreshTokenRepository;
     private final LoginAttemptLimiter loginAttemptLimiter;
+    private final PasswordResetTokenRepository passwordResetTokenRepository;
+    private final PasswordResetAttemptLimiter passwordResetAttemptLimiter;
+    private final MailSender mailSender;
+    private final String frontendBaseUrl;
 
     AuthServiceImpl(FirebaseVerifier firebaseVerifier, MemberService memberService,
                     JwtProvider jwtProvider, RefreshTokenRepository refreshTokenRepository,
-                    LoginAttemptLimiter loginAttemptLimiter) {
+                    LoginAttemptLimiter loginAttemptLimiter,
+                    PasswordResetTokenRepository passwordResetTokenRepository,
+                    PasswordResetAttemptLimiter passwordResetAttemptLimiter,
+                    MailSender mailSender,
+                    @Value("${app.frontend-base-url}") String frontendBaseUrl) {
         this.firebaseVerifier = firebaseVerifier;
         this.memberService = memberService;
         this.jwtProvider = jwtProvider;
         this.refreshTokenRepository = refreshTokenRepository;
         this.loginAttemptLimiter = loginAttemptLimiter;
+        this.passwordResetTokenRepository = passwordResetTokenRepository;
+        this.passwordResetAttemptLimiter = passwordResetAttemptLimiter;
+        this.mailSender = mailSender;
+        this.frontendBaseUrl = frontendBaseUrl;
     }
 
     @Override
@@ -225,6 +250,95 @@ class AuthServiceImpl implements AuthService {
         refreshTokenRepository.deleteAllByMemberId(memberId);
 
         log.info("비밀번호 변경: memberId={}", memberId);
+    }
+
+    @Override
+    @Transactional
+    public void requestPasswordReset(String email) {
+        // 레이트리밋만 선검사 — 존재 여부 조회 전이라 아직 enumeration 정보가 없다.
+        passwordResetAttemptLimiter.checkBlocked(email);
+        passwordResetAttemptLimiter.recordAttempt(email);
+
+        Optional<MemberInfo> emailMember = memberService.findActiveByLoginEmailAndProviderOrEmpty(email, AuthProvider.EMAIL);
+        if (emailMember.isPresent()) {
+            sendResetLinkEmail(emailMember.get());
+        } else {
+            // EMAIL 계정이 없을 때만 GOOGLE 계정 존재를 확인한다 — 두 provider가 같은 이메일로 공존할 수
+            // 있으므로(rev.2) EMAIL이 있으면 그쪽이 우선이고, 없을 때만 안내 메일 발송을 시도한다.
+            memberService.findActiveByLoginEmailAndProviderOrEmpty(email, AuthProvider.GOOGLE)
+                    .ifPresent(this::sendGoogleAccountNoticeEmail);
+            // 둘 다 없으면(미가입) 아무 메일도 보내지 않는다 — 응답은 항상 동일하므로 노출되지 않는다.
+        }
+        // 항상 성공으로 끝난다 — 호출자(컨트롤러)는 결과와 무관하게 동일 200을 반환한다(§10.14).
+    }
+
+    @Override
+    @Transactional
+    public void confirmPasswordReset(String token, String newPassword) {
+        String tokenHash = sha256Hex(token);
+        PasswordResetToken stored = passwordResetTokenRepository
+                .findByTokenHashAndExpiresAtAfter(tokenHash, Instant.now())
+                .orElse(null);
+
+        // consumeRefreshToken과 동일한 findAndDelete 패턴 — 영향 행 수로 승자를 가려 동시 재사용을 막는다.
+        if (stored == null || passwordResetTokenRepository.deleteByIdReturningCount(stored.getId()) == 0) {
+            log.warn("비밀번호 재설정 토큰 미존재 또는 재사용 시도");
+            throw new AuthException(AuthErrorCode.INVALID_PASSWORD_RESET_TOKEN);
+        }
+
+        memberService.changePassword(stored.getMemberId(), newPassword);
+        // 재설정 성공 시 전 기기 로그아웃(§7.3) — 유출됐을 수 있는 세션을 함께 끊는다.
+        refreshTokenRepository.deleteAllByMemberId(stored.getMemberId());
+
+        log.info("비밀번호 재설정 완료: memberId={}", stored.getMemberId());
+    }
+
+    private void sendResetLinkEmail(MemberInfo member) {
+        String rawToken = generateToken();
+        passwordResetTokenRepository.deleteAllByMemberId(member.id()); // 이전 미사용 토큰 무효화
+        passwordResetTokenRepository.save(PasswordResetToken.of(
+                member.id(), sha256Hex(rawToken), Instant.now().plusSeconds(RESET_TOKEN_TTL_SECONDS)));
+
+        String resetUrl = frontendBaseUrl + "/reset-password?token=" + rawToken;
+        String html = """
+                <p>@ 비밀번호를 잊으셨나요?</p>
+                <p>%s님의 새 비밀번호 설정을 안내해드려요.<br/>
+                아래 링크를 누른 다음, 새 비밀번호를 설정해주세요.<br/>
+                링크는 이메일 발송 시점으로부터 1시간 동안 유효합니다.</p>
+                <p><a href="%s">비밀번호 재설정</a></p>
+                <p>앳크루를 이용해주셔서 감사합니다.</p>
+                """.formatted(member.name(), resetUrl);
+        mailSender.send(member.loginEmail(), "비밀번호 재설정 안내", html);
+        log.info("비밀번호 재설정 메일 발송: memberId={}", member.id());
+    }
+
+    private void sendGoogleAccountNoticeEmail(MemberInfo member) {
+        String html = """
+                <p>@ Google 계정 가입 이메일</p>
+                <p>해당 이메일은 Google 계정으로 가입되어 있어요.<br/>
+                앳크루에서는 Google 계정의 비밀번호를 재설정할 수 없어요.<br/>
+                Google 비밀번호를 잊으셨다면 Google에서 비밀번호를 재설정해주세요.</p>
+                <p>앳크루를 이용해주셔서 감사합니다.</p>
+                """;
+        mailSender.send(member.loginEmail(), "Google 계정으로 가입된 이메일이에요", html);
+        log.info("Google 계정 안내 메일 발송: memberId={}", member.id());
+    }
+
+    // SecureRandom 128bit+ → URL-safe 인코딩 (§7.3). DB에는 저장하지 않고 이메일에만 담긴다.
+    private static String generateToken() {
+        byte[] bytes = new byte[32]; // 256bit
+        SECURE_RANDOM.nextBytes(bytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    // DB 유출 시 토큰 직접 사용을 막기 위해 해시만 저장한다(§7.3).
+    private static String sha256Hex(String value) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(digest.digest(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 알고리즘을 사용할 수 없습니다", e);
+        }
     }
 
     // Mongo findAndRemove 대체 (docs/design/mariadb-migration-design.md §3.3.2) —

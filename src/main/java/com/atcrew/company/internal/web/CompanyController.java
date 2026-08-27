@@ -100,7 +100,7 @@ class CompanyController {
     }
 
     @Operation(summary = "기업 정보 수정",
-            description = "구인구직 상태·회사 형태·활동 분야·활동 지역·연락처·SNS·사업자 등록 여부를 수정합니다. null인 필드는 변경하지 않습니다.")
+            description = "구인구직 상태·회사 형태·활동 분야·연락처·SNS·사업자 등록 여부를 수정합니다. null인 필드는 변경하지 않습니다.")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "204", description = "수정 성공"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 필요")
@@ -110,7 +110,7 @@ class CompanyController {
     public void updateInfo(@RequestBody @Valid UpdateCompanyInfoRequest request) {
         companyService.updateInfo(securityUtils.getCurrentMemberId(), new UpdateCompanyInfoCommand(
                 request.recruitStatus(), request.companyType(),
-                request.activityFields(), request.activeRegions(),
+                request.activityField(),
                 request.contact(), request.sns(), request.hasBusinessRegistration()));
     }
 

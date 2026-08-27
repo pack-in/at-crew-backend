@@ -38,6 +38,14 @@ public interface MemberRepository extends JpaRepository<Member, String>, JpaSpec
             """)
     List<String> findIdsByKeyword(@Param("memberIds") List<String> memberIds, @Param("keyword") String keyword);
 
+    /**
+     * 프로필 열람수를 1 올린다. 읽고-쓰는 대신 DB 레벨 증분이라 동시 조회에서도 유실되지 않는다.
+     * updatedAt은 건드리지 않는다 — 열람은 프로필 "수정"이 아니라서 업데이트순 정렬을 흔들면 안 된다.
+     */
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE Member m SET m.profileViewCount = m.profileViewCount + 1 WHERE m.id = :id")
+    int incrementProfileViewCount(@Param("id") String id);
+
     // Mongo findAndModify → 조건부 UPDATE + 영향 행 수 판별 (docs/design/mariadb-migration-design.md §3.3.1)
     @Modifying(clearAutomatically = true)
     @Query("UPDATE Member m SET m.lastLoginAt = :now, m.updatedAt = :now WHERE m.id = :id AND m.active = true")

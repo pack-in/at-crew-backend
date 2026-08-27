@@ -64,14 +64,18 @@ class LoginAttemptLimiter {
         return Instant.now().minusSeconds(WINDOW_SECONDS);
     }
 
+    // X-Forwarded-For의 첫 항목은 클라이언트가 그대로 채워 보낼 수 있어 신뢰할 수 없다 -- 요청마다 임의
+    // 값을 넣으면 IP 리밋이 무력화되고, 반대로 남의 IP를 넣으면 그 IP를 대신 차단시킬 수도 있다.
+    // 리버스 프록시(nginx)가 클라이언트 값을 무시하고 자기가 관측한 주소로 덮어쓰는 X-Real-IP만 신뢰하고,
+    // 프록시가 없는 로컬 실행에서는 소켓 주소로 폴백한다(deploy/nginx/api.at-crew.com.conf와 한 쌍).
     private String extractIp() {
         try {
             ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
             if (attrs == null) return "unknown";
             HttpServletRequest request = attrs.getRequest();
-            String xForwardedFor = request.getHeader("X-Forwarded-For");
-            if (xForwardedFor != null && !xForwardedFor.isBlank()) {
-                return xForwardedFor.split(",")[0].trim();
+            String realIp = request.getHeader("X-Real-IP");
+            if (realIp != null && !realIp.isBlank()) {
+                return realIp.trim();
             }
             return request.getRemoteAddr();
         } catch (Exception e) {

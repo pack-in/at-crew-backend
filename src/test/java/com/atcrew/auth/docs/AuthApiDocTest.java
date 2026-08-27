@@ -1,11 +1,18 @@
 package com.atcrew.auth.docs;
 
+import com.atcrew.auth.internal.domain.PasswordResetToken;
+import com.atcrew.auth.internal.persistence.PasswordResetTokenRepository;
 import com.atcrew.support.RestDocsIntegrationSupport;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.time.Instant;
+import java.util.HexFormat;
 import java.util.UUID;
 
 import static org.springframework.restdocs.mockmvc.MockMvcRestDocumentation.document;
@@ -22,6 +29,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 이메일 회원가입·로그인·토큰 갱신 API의 요청/응답 구조를 REST Docs 스니펫으로 생성한다.
  */
 class AuthApiDocTest extends RestDocsIntegrationSupport {
+
+    @Autowired
+    private PasswordResetTokenRepository passwordResetTokenRepository;
 
     /**
      * 이메일 회원가입 성공 시나리오 문서화.
@@ -261,7 +271,122 @@ class AuthApiDocTest extends RestDocsIntegrationSupport {
                 .andExpect(status().isNoContent());
     }
 
+    /**
+     * 비밀번호 재설정 요청 성공 시나리오 문서화. 가입 여부와 무관하게 항상 200을 반환한다
+     * (docs/design/auth-email-custom-redesign.md §7.2 — enumeration 방지).
+     */
+    @Test
+    void 비밀번호_재설정_요청_성공_문서화() throws Exception {
+        String uniqueEmail = "doc-pwreset-req-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com";
+        mockMvc.perform(post("/api/auth/email/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new RegisterRequest(
+                                uniqueEmail, "Secure1!", "Secure1!", "재설정요청유저",
+                                true, true, true, false, "Asia/Seoul", "KR"
+                        ))))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post("/api/auth/email/password-reset/request")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new PasswordResetRequestRequest(uniqueEmail))))
+                .andExpect(status().isOk())
+                .andDo(document("auth/password-reset-request",
+                        preprocessRequest(prettyPrint()),
+                        requestFields(
+                                fieldWithPath("email").description("가입 시 사용한 이메일 주소")
+                        )
+                ));
+    }
+
+    /**
+     * 가입되지 않은 이메일이어도 동일하게 200을 반환해 계정 존재 여부를 노출하지 않는지 확인한다.
+     */
+    @Test
+    void 비밀번호_재설정_요청_미가입_이메일도_200() throws Exception {
+        mockMvc.perform(post("/api/auth/email/password-reset/request")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new PasswordResetRequestRequest("no-such-account@example.com"))))
+                .andExpect(status().isOk());
+    }
+
+    /**
+     * 비밀번호 재설정 확정 성공 시나리오 문서화. 실제 이메일 발송 없이(메일 어댑터는 best-effort라
+     * 테스트 환경에서도 예외 없이 통과한다), 회원가입 후 토큰을 직접 발급해(§7.3 SHA-256 해시 저장과
+     * 동일한 방식) 확정 API를 검증한다 — 원문 토큰은 저장하지 않는 설계라 API 응답으로는 얻을 수 없다.
+     */
+    @Test
+    void 비밀번호_재설정_확정_성공_문서화() throws Exception {
+        String uniqueEmail = "doc-pwreset-confirm-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com";
+        MvcResult registerResult = mockMvc.perform(post("/api/auth/email/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new RegisterRequest(
+                                uniqueEmail, "Secure1!", "Secure1!", "재설정확정유저",
+                                true, true, true, false, "Asia/Seoul", "KR"
+                        ))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String memberId = objectMapper.readTree(registerResult.getResponse().getContentAsString())
+                .at("/data/member/id").asText();
+
+        String rawToken = "doc-test-raw-token-" + UUID.randomUUID();
+        passwordResetTokenRepository.save(PasswordResetToken.of(
+                memberId, sha256Hex(rawToken), Instant.now().plusSeconds(3600)));
+
+        mockMvc.perform(post("/api/auth/email/password-reset/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new PasswordResetConfirmRequest(rawToken, "Reset12!", "Reset12!"))))
+                .andExpect(status().isNoContent())
+                .andDo(document("auth/password-reset-confirm",
+                        preprocessRequest(prettyPrint()),
+                        requestFields(
+                                fieldWithPath("token").description("이메일로 받은 재설정 토큰"),
+                                fieldWithPath("newPassword").description("새 비밀번호 (영문·숫자·특수문자 포함 8자 이상)"),
+                                fieldWithPath("newPasswordConfirm").description("새 비밀번호 확인")
+                        )
+                ));
+
+        // 토큰은 1회용 — 같은 토큰으로 재시도하면 401
+        mockMvc.perform(post("/api/auth/email/password-reset/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new PasswordResetConfirmRequest(rawToken, "Reset23!", "Reset23!"))))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("INVALID_PASSWORD_RESET_TOKEN"));
+
+        // 새 비밀번호로 로그인되는지 확인
+        mockMvc.perform(post("/api/auth/email/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new LoginRequest(uniqueEmail, "Reset12!"))))
+                .andExpect(status().isOk());
+    }
+
+    /**
+     * 존재하지 않는 토큰으로 확정을 시도하면 401을 반환하는지 확인한다.
+     */
+    @Test
+    void 비밀번호_재설정_확정_유효하지않은_토큰_401() throws Exception {
+        mockMvc.perform(post("/api/auth/email/password-reset/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new PasswordResetConfirmRequest("no-such-token", "Reset12!", "Reset12!"))))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("INVALID_PASSWORD_RESET_TOKEN"));
+    }
+
     // ─── 헬퍼 ────────────────────────────────────────────────────────────
+
+    // AuthServiceImpl.sha256Hex와 동일한 방식(§7.3) — 원문 토큰은 저장하지 않으므로 테스트에서
+    // API 응답으로 얻을 수 없어, 서비스가 저장할 값을 직접 계산해 리포지토리에 심어둔다.
+    private static String sha256Hex(String value) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(digest.digest(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
 
     private String registerAndGetAccessToken(String email, String password, String name) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/auth/email/register")
@@ -303,4 +428,10 @@ class AuthApiDocTest extends RestDocsIntegrationSupport {
 
     /** 비밀번호 변경 요청 바디 */
     record ChangePasswordRequest(String currentPassword, String newPassword, String newPasswordConfirm) {}
+
+    /** 비밀번호 재설정 요청 바디 */
+    record PasswordResetRequestRequest(String email) {}
+
+    /** 비밀번호 재설정 확정 요청 바디 */
+    record PasswordResetConfirmRequest(String token, String newPassword, String newPasswordConfirm) {}
 }

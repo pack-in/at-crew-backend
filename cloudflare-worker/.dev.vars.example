@@ -1,3 +1,6 @@
-CALLBACK_SECRET=dev-internal-secret
-INTERNAL_SECRET=dev-internal-secret
+# `wrangler dev`용 로컬 값. 실제 배포는 `wrangler secret put <이름>`으로 등록한다(.dev.vars는 gitignore).
+# CALLBACK_SECRET / INTERNAL_SECRET은 서버의 로컬 값과 반드시 같아야 한다
+# (src/main/resources/application-local.yml의 cloudflare.r2.callback-secret / artwork.internal.secret).
+CALLBACK_SECRET=local-only-internal-secret
+INTERNAL_SECRET=local-only-internal-secret
 SERVER_CALLBACK_URL=http://localhost:8080/internal/media/images/processed

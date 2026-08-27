@@ -23,7 +23,7 @@
 | Career Section | member의 `CareerEntry`와 동일 구조이나 **`role`(담당 업무) 필드 제외**, **삭제 엔드포인트 미제공**(로드맵 §3 명시 결정) — 피그마 수정페이지에 경력 삭제 확인 모달이 남아있으나 창작자 편집 컴포넌트를 그대로 복사해온 잔재로 판단, 로드맵의 명시적 결정을 우선함 |
 | 접근 권한 | 비로그인/타 회원도 열람 가능(공개 GET), 본인 기업 계정으로 볼 때만 수정/업로드/관리 액션 노출 — artwork 모듈의 `assertOwner` 패턴 재사용 |
 | recruit 연동 | recruit 모듈이 아직 없으므로 "구인글 업로드 카드"는 진입점 UI 훅만 두고 실제 업로드는 `CompanyRecruitPort`(§7.3) 스텁으로 501/빈 목록 처리 |
-| 모듈 간 활동분야/지역 enum | member의 `ActivityField`/`ActiveRegion`을 import하지 않고 company 모듈에 동일 의미의 자체 enum을 새로 정의(모듈 간 직접 의존 금지 원칙, artwork/community도 동일 패턴) |
+| 모듈 간 활동분야 enum | member의 `ActivityField`를 import하지 않고 company 모듈에 동일 의미의 자체 enum을 새로 정의(모듈 간 직접 의존 금지 원칙, artwork/community도 동일 패턴). 활동 지역은 기업 프로필에 두지 않는다(V27) |
 
 ---
 
@@ -66,17 +66,9 @@ public class Company implements Persistable<String> {
 
     private boolean verified;              // 기업 인증 완료 여부 — TODO: 로드맵 1번(본인/기업 인증 시스템) 연동 전까지 항상 false, API로 노출/변경 불가
 
-    @ElementCollection
-    @CollectionTable(name = "company_activity_fields", joinColumns = @JoinColumn(name = "company_id"))
-    @Column(name = "activity_field")
     @Enumerated(EnumType.STRING)
-    private Set<ActivityField> activityFields = new HashSet<>();
+    private ActivityField activityField;   // 활동 분야 — 단일 선택(피그마 5779:32101), null 허용(미기입)
 
-    @ElementCollection
-    @CollectionTable(name = "company_active_regions", joinColumns = @JoinColumn(name = "company_id"))
-    @Column(name = "value")
-    @Enumerated(EnumType.STRING)
-    private Set<ActiveRegion> activeRegions = new HashSet<>();
 
     @Version
     private Long version;
@@ -132,12 +124,13 @@ public enum CompanyType {
 }
 // 제작사 / 플랫폼 / 에이전시 / 출판사 / 개인스튜디오 / 소규모팀 / 기타
 
-public enum ActivityField { ILLUSTRATION, WEBTOON, ANIMATION, WEB_NOVEL, OTHER }
-// 일러스트 / 웹툰 / 애니메이션 / 웹소설 / 기타 — member.ActivityField와 값은 같지만 모듈 경계상 별도 정의(§0)
+public enum ActivityField { ILLUSTRATION, WEBTOON, PRINT_COMIC, ANIMATION }
+// 일러스트 / 웹툰 / 출판만화 / 애니메이션 — 단일 선택(기획서 마이페이지_기업-R07 "활동 분야(4)는 단일 칩").
+// 정책 데이터구조-R03에 따라 member.ActivityField와 값 집합이 같아야 하며, 모듈 경계상 별도 정의(§0).
+// 상수 이름은 artwork.ArtworkField와 맞춘다 — 홈이 작품 탭과 작가 탭에 같은 칩 행을 쓴다(홈-R01).
 
-public enum ActiveRegion { ... }
-// 활동 지역 — 피그마 수정페이지에서 정확한 편집 UI를 특정하지 못함(설계 시점 조사 한계).
-// member.ActiveRegion과 동일한 값 집합으로 우선 정의하고, 실제 화면 확인 시 조정. TODO 표시.
+// ActiveRegion(활동 지역)은 기업 프로필에 두지 않는다 — 피그마 5779:32101에 항목 자체가 없고,
+// 기획서 마이페이지_기업-R07·정책 데이터구조-R03이 "기업 프로필에서 제외"로 명시한다(V27에서 제거).
 ```
 
 ---
@@ -145,7 +138,7 @@ public enum ActiveRegion { ... }
 ## 4. 피그마 비즈니스 규칙
 
 - **페이지 접근 권한** (피그마 원문): "비로그인 사용자도 기업 마이페이지 열람 가능함. 로그인 사용자도 다른 기업의 마이페이지 열람 가능함. 본인 기업 계정으로 본인 페이지를 볼 때만 수정/업로드/관리 액션 노출함. 다른 사용자가 보는 기업 페이지에서는 수정 아이콘, 구인글 업로드 카드, 카드 더보기 메뉴 미노출함."
-- **Company Info Section** 표시 항목(읽기 전용, 순서): 구인구직 상태 → 활동 분야 → 회사 형태 → 활동 지역 → 연락처 → SNS → 사업자 등록 여부. 미기입 항목은 `-`로 표시(클라이언트 책임, API는 null 반환).
+- **Company Info Section** 표시 항목(읽기 전용, 순서): 구인구직 상태 → 활동 분야 → 회사 형태 → 연락처 → SNS → 사업자 등록 여부. 미기입 항목은 `-`로 표시(클라이언트 책임, API는 null 반환).
 - **구인글 업로드 모달_기업 인증 전 / 기업 인증 후_요금제 안내 로직**: 구인글 업로드 카드 진입 시 기업 인증 여부에 따라 분기하는 화면이 피그마에 존재하나, 인증 시스템과 결제/요금제 모듈이 모두 미구현이므로 이번 스코프에서는 업로드 카드를 recruit 모듈 완성 전까지 비활성 상태(스텁 메시지)로만 노출한다(§7.3).
 
 ---
@@ -208,6 +201,7 @@ CREATE TABLE companies (
     sns                         VARCHAR(255) NULL,
     recruit_status              VARCHAR(30)  NOT NULL DEFAULT 'PREPARING',
     company_type                VARCHAR(30)  NULL,
+    activity_field              VARCHAR(30)  NULL,
     has_business_registration   TINYINT(1)   NOT NULL DEFAULT 0,
     verified                    TINYINT(1)   NOT NULL DEFAULT 0,
     version                     BIGINT       NOT NULL DEFAULT 0,
@@ -215,18 +209,6 @@ CREATE TABLE companies (
     updated_at                  DATETIME(6)  NOT NULL,
     PRIMARY KEY (id),
     UNIQUE KEY uk_companies_member (member_id)
-) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE TABLE company_activity_fields (
-    company_id      VARCHAR(36) CHARACTER SET latin1 COLLATE latin1_bin NOT NULL,
-    activity_field  VARCHAR(30) NOT NULL,
-    PRIMARY KEY (company_id, activity_field)
-) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE TABLE company_active_regions (
-    company_id  VARCHAR(36) CHARACTER SET latin1 COLLATE latin1_bin NOT NULL,
-    value       VARCHAR(30) NOT NULL,
-    PRIMARY KEY (company_id, value)
 ) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 CREATE TABLE company_careers (
@@ -258,4 +240,4 @@ Flyway `V3__company_module.sql`로 커밋(V2는 member 모듈 전환 중 발견�
 - 구인글 업로드 실제 CRUD — recruit 모듈
 - 요금제/결제 안내 로직 — 로드맵 5번
 - 회원 탈퇴 시 소유 기업 프로필 처리(고아 데이터 방지) — 미결정, TODO
-- `활동 지역(ActiveRegion)` 편집 UI의 정확한 옵션 값 — 피그마 조사 시 특정 못함, 구현 시 member와 동일 값으로 우선 진행 후 재확인 필요
+- ~~`활동 지역(ActiveRegion)` 편집 UI의 정확한 옵션 값~~ — 해소(2026-08-26): 기업 프로필에 활동 지역 항목이 없다(피그마 5779:32101, 마이페이지_기업-R07). V27에서 제거함

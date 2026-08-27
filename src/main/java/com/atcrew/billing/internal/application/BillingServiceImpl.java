@@ -104,6 +104,9 @@ class BillingServiceImpl implements BillingService {
         List<CatalogItemInfo> items = new ArrayList<>();
         for (BillingProduct product : BillingProduct.values()) {
             BillingProperties.Product config = properties.product(product);
+            if (!config.enabled()) {
+                continue; // 판매 중단 상품(PH-08) — 카탈로그에는 노출하지 않는다. 기존 보유자 게이팅은 별개.
+            }
             items.add(new CatalogItemInfo(product, config.amount(), config.listAmount(),
                     BillingProperties.CURRENCY, ctaState(product, subscription, company)));
         }
@@ -113,6 +116,10 @@ class BillingServiceImpl implements BillingService {
     @Override
     @Transactional
     public CheckoutSessionInfo createCheckoutSession(String memberId, BillingProduct product) {
+        if (!properties.product(product).enabled()) {
+            // 카탈로그에서 숨겨도 API를 직접 호출하면 우회 구매가 가능하므로 여기서도 막는다(PH-08).
+            throw new BillingException(BillingErrorCode.PRICE_NOT_CONFIGURED, "product=" + product + " disabled");
+        }
         if (product.isSubscription()) {
             assertSubscribable(memberId, product);
         }

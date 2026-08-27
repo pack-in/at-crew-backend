@@ -34,9 +34,28 @@ class BillingPropertiesBindingTest {
                 .orElseThrow(() -> new AssertionError("billing 설정이 바인딩되지 않았습니다"));
 
         assertThat(properties.products()).containsOnlyKeys(BillingProduct.values());
-        assertThat(properties.product(BillingProduct.PRO_MONTHLY).amount()).isEqualTo(599);
-        assertThat(properties.product(BillingProduct.PRO_MONTHLY).listAmount()).isEqualTo(1199);
+        assertThat(properties.product(BillingProduct.PRO_MONTHLY).amount()).isEqualTo(800);
+        assertThat(properties.product(BillingProduct.PRO_MONTHLY).listAmount()).isNull();
+        assertThat(properties.product(BillingProduct.PRO_MONTHLY).enabled()).isTrue();
         assertThat(properties.product(BillingProduct.JOB_POSTING).amount()).isEqualTo(9999);
         assertThat(properties.frontendBaseUrl()).isNotBlank();
+    }
+
+    @Test
+    void MVP_단일_요금제_외_4종은_비활성이다() throws IOException {
+        StandardEnvironment environment = new StandardEnvironment();
+        List<PropertySource<?>> sources =
+                new YamlPropertySourceLoader().load("application", new ClassPathResource("application.yml"));
+        sources.forEach(source -> environment.getPropertySources().addFirst(source));
+
+        BillingProperties properties = Binder.get(environment)
+                .bind("billing", BillingProperties.class)
+                .orElseThrow(() -> new AssertionError("billing 설정이 바인딩되지 않았습니다"));
+
+        // PH-08: Portfolio Pro(pro-monthly) 하나만 판매. 나머지는 카탈로그·Checkout에서 막힌다.
+        assertThat(properties.product(BillingProduct.PRO_YEARLY).enabled()).isFalse();
+        assertThat(properties.product(BillingProduct.TEAM_POSTING).enabled()).isFalse();
+        assertThat(properties.product(BillingProduct.BOOST).enabled()).isFalse();
+        assertThat(properties.product(BillingProduct.JOB_POSTING).enabled()).isFalse();
     }
 }

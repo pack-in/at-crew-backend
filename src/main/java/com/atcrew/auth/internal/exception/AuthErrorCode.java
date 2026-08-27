@@ -23,7 +23,11 @@ public enum AuthErrorCode {
     PASSWORD_CHANGE_NOT_SUPPORTED(HttpStatus.BAD_REQUEST, "소셜 로그인 계정은 비밀번호를 변경할 수 없어요"),
 
     // 토큰
-    INVALID_REFRESH_TOKEN(HttpStatus.UNAUTHORIZED, "Refresh Token이 유효하지 않거나 만료되었습니다");
+    INVALID_REFRESH_TOKEN(HttpStatus.UNAUTHORIZED, "Refresh Token이 유효하지 않거나 만료되었습니다"),
+
+    // 비밀번호 재설정 (§7) — 요청 자체는 계정 존재 여부와 무관하게 항상 200이므로 여기 코드들은
+    // confirm 단계에서만 발생한다.
+    INVALID_PASSWORD_RESET_TOKEN(HttpStatus.UNAUTHORIZED, "재설정 링크가 유효하지 않거나 만료되었어요");
 
     private final HttpStatus status;
     private final String message;

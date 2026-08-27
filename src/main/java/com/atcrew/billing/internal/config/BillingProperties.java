@@ -21,8 +21,10 @@ public record BillingProperties(String frontendBaseUrl, Map<BillingProduct, Prod
      * @param priceId    Stripe Price ID. 비어 있으면 해당 상품 결제를 시작할 수 없다
      * @param amount     청구 금액(센트)
      * @param listAmount 취소선 정가(센트). 할인이 없으면 null
+     * @param enabled    판매 여부. false면 카탈로그에서 빠지고 Checkout 생성도 막힌다(PH-08, MVP
+     *                   단일 요금제) — 기존 보유자의 게이팅(entitlement 소비)은 이 값과 무관하게 그대로 유지된다.
      */
-    public record Product(String priceId, long amount, Long listAmount) {
+    public record Product(String priceId, long amount, Long listAmount, boolean enabled) {
     }
 
     public Product product(BillingProduct product) {
