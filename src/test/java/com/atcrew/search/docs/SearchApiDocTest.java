@@ -13,6 +13,7 @@ import com.atcrew.artwork.UploadArtworkCommand;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaProcessingStatus;
 import com.atcrew.media.internal.application.MediaCallbackService;
+import com.atcrew.member.Language;
 import com.atcrew.member.MemberService;
 import com.atcrew.recruit.CreateJobPostingCommand;
 import com.atcrew.recruit.JobEmploymentType;
@@ -182,7 +183,7 @@ class SearchApiDocTest extends RestDocsIntegrationSupport {
                 "검색문서화 작품", "설명",
                 ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL, List.of(ArtworkRole.LINEART),
                 List.of(Genre.BL), List.of("태그"),
-                AgeRating.ALL, true, List.of(), List.of(), null, null, List.of(), List.of()
+                AgeRating.ALL, List.of(Language.KO), true, List.of(), List.of(), null, null, List.of(), List.of()
         ));
 
         // media webhook → MediaAssetProcessedEvent → artwork 리스너(비동기)로 READY 전환된다.

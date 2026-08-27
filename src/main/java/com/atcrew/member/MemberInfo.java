@@ -78,6 +78,11 @@ public record MemberInfo(
         String timezone,   // IANA tz ID, 예: "Asia/Tokyo"
         String countryCode, // ISO 3166-1 alpha-2, 거주 국가. 예: "KR"
 
+        // === 언어 [피그마: 가입 완료 화면 주 사용 언어 / 설정 게시물 언어 칩] ===
+        @Schema(nullable = true)
+        Language primaryLanguage,     // 주 사용 언어. 마이그레이션 이전 기존 회원은 null
+        List<Language> postLanguages, // 노출받을 게시물 언어 (복수, 설정-R14)
+
         // === 설정 [피그마: 설정 화면 토글] ===
         // 본인 계정에만 반환되는 값이라 공개 프로필(MemberProfileInfo)에는 포함하지 않는다.
         boolean marketingAgreed,     // 마케팅 정보 수신 동의

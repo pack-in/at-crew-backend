@@ -26,13 +26,13 @@ class MediaServiceImpl implements MediaService {
         return contentTypes.stream().map(type -> { String key = "raw/" + UuidV7Generator.generate() + extensionFor(type); return new PresignedUrlInfo(key, storagePort.generatePresignedPutUrl(key, type)); }).toList();
     }
     @Override @Transactional public void registerAndTriggerProcessing(MediaOwnerType ownerType, String ownerId,
-            List<String> imageKeys, MediaVariantProfile variantProfile) {
-        validate(ownerType, ownerId, imageKeys, variantProfile);
-        for (int i = 0; i < imageKeys.size(); i++) assets.save(MediaAsset.pending(ownerType, ownerId, i, imageKeys.get(i), variantProfile));
-        worker.triggerAsync(ownerType, ownerId, imageKeys, variantProfile);
+            List<String> imageKeys, MediaVariantProfile variantProfile, MediaQualityTier qualityTier) {
+        validate(ownerType, ownerId, imageKeys, variantProfile, qualityTier);
+        for (int i = 0; i < imageKeys.size(); i++) assets.save(MediaAsset.pending(ownerType, ownerId, i, imageKeys.get(i), variantProfile, qualityTier));
+        worker.triggerAsync(ownerType, ownerId, imageKeys, variantProfile, qualityTier);
     }
     @Override @Transactional public void replaceAndTriggerProcessing(MediaOwnerType ownerType, String ownerId,
-            List<String> newImageKeys, MediaVariantProfile variantProfile) {
+            List<String> newImageKeys, MediaVariantProfile variantProfile, MediaQualityTier qualityTier) {
         var previous = assets.findByOwnerTypeAndOwnerIdOrderByOrdinalAsc(ownerType, ownerId);
         // 아직 처리되지 않은 자산은 thumb/avif key가 null이라 List.of로 묶으면 NPE가 난다 — Stream.of로 받아 걸러낸다.
         var oldKeys = previous.stream().flatMap(a -> java.util.stream.Stream.of(a.getOriginalKey(), a.getThumbKey(), a.getThumbAdultKey(), a.getOriginalAvifKey())).filter(k -> k != null && !k.isBlank()).toList();
@@ -41,7 +41,7 @@ class MediaServiceImpl implements MediaService {
         // 먼저 실행해 uk_ma_owner_order와 충돌한다(설계 §2.1이 artwork에서 그대로 옮겨오라고 명시한 2단계 패턴).
         assets.deleteAll(previous);
         assets.flush();
-        registerAndTriggerProcessing(ownerType, ownerId, newImageKeys, variantProfile);
+        registerAndTriggerProcessing(ownerType, ownerId, newImageKeys, variantProfile, qualityTier);
     }
     @Override @Transactional(readOnly = true) public List<MediaAssetInfo> getAssets(MediaOwnerType ownerType, String ownerId) {
         return assets.findByOwnerTypeAndOwnerIdOrderByOrdinalAsc(ownerType, ownerId).stream()
@@ -52,8 +52,8 @@ class MediaServiceImpl implements MediaService {
     }
     @Override public void deleteFiles(List<String> keys) { storagePort.deleteFiles(keys); }
     @Override @Transactional public void markOrphaned(List<String> keys) { if (keys != null && keys.stream().anyMatch(k -> k != null && !k.isBlank())) orphans.save(OrphanedMediaKey.ofKeys(keys)); }
-    private static void validate(MediaOwnerType ownerType, String ownerId, List<String> imageKeys, MediaVariantProfile profile) {
-        if (ownerType == null || ownerId == null || ownerId.isBlank() || profile == null || imageKeys == null || imageKeys.isEmpty() || imageKeys.stream().anyMatch(k -> k == null || k.isBlank())) throw new IllegalArgumentException("유효하지 않은 media asset 요청입니다.");
+    private static void validate(MediaOwnerType ownerType, String ownerId, List<String> imageKeys, MediaVariantProfile profile, MediaQualityTier qualityTier) {
+        if (ownerType == null || ownerId == null || ownerId.isBlank() || profile == null || qualityTier == null || imageKeys == null || imageKeys.isEmpty() || imageKeys.stream().anyMatch(k -> k == null || k.isBlank())) throw new IllegalArgumentException("유효하지 않은 media asset 요청입니다.");
     }
     private static String extensionFor(String contentType) { return switch (contentType) { case "image/jpeg" -> ".jpg"; case "image/png" -> ".png"; case "image/webp" -> ".webp"; default -> throw new IllegalArgumentException("지원하지 않는 이미지 content type입니다."); }; }
 }

@@ -6,6 +6,7 @@ import com.atcrew.artwork.ArtworkField;
 import com.atcrew.artwork.CreativeType;
 import com.atcrew.artwork.ImageLayoutType;
 import com.atcrew.artwork.Visibility;
+import com.atcrew.member.Language;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -66,7 +67,7 @@ class ArtworkAccessTest {
     private Artwork readyArtwork(Visibility visibility) {
         Artwork artwork = Artwork.create("author-1", "제목", "설명", List.of("raw/1.png"), 0, null,
                 ImageLayoutType.VERTICAL_SCROLL, ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
-                List.of(), List.of(), List.of(), AgeRating.ALL, visibility,
+                List.of(), List.of(), List.of(), AgeRating.ALL, List.of(Language.KO), visibility,
                 List.of(), null, null, List.of(), List.of());
         artwork.markImageProcessed("raw/1.png", "thumb/1.avif", null, "original/1.avif", true);
         return artwork;

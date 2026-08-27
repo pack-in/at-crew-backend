@@ -212,6 +212,11 @@ GET /api/community/authors
   ?size=20
 ```
 
+**언어 세그먼트 필터(로그인-R16, 2026-08-26 추가)**: 작품 탭(`/api/community/artworks`)은 **작품의 언어**
+(`artwork_languages`), 작가 탭(`/api/community/authors`)은 **작성자 계정의 주 사용 언어**(`members.primary_language`)로
+거른다. 기준은 로그인 뷰어의 `postLanguages`이며, 비로그인·언어 미지정 작품·주 사용 언어가 NULL인 회원은
+전부 노출한다(`docs/design/settings-i18n-design.md` §5.1 폴백 규칙).
+
 **의존성**: `MemberService.searchProfiles(SearchProfilesCommand)` 신규 메서드 필요 — `employmentStatus IN (신규 작업 가능, 협의 가능)` 조건, 노출 조건(§4.3), `activityField` 필터, 3종 정렬을 지원해야 한다. `조회순`(VIEW_COUNT)은 V29에서 구현했다.
 
 ### 5.4 구인글 / 팀원모집글 탭 — 설계만, 구현 보류

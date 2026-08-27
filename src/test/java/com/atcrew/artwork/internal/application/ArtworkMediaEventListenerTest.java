@@ -13,6 +13,7 @@ import com.atcrew.artwork.internal.persistence.ArtworkRepository;
 import com.atcrew.media.MediaAssetProcessedEvent;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaProcessingStatus;
+import com.atcrew.member.Language;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationEventPublisher;
 
@@ -85,7 +86,7 @@ class ArtworkMediaEventListenerTest {
     private Artwork artworkWith(String... imageKeys) {
         return Artwork.create("author-1", "제목", "설명", List.of(imageKeys), 0, null,
                 ImageLayoutType.VERTICAL_SCROLL, ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
-                List.of(), List.of(), List.of(), AgeRating.ALL, Visibility.PUBLIC,
+                List.of(), List.of(), List.of(), AgeRating.ALL, List.of(Language.KO), Visibility.PUBLIC,
                 List.of(), null, null, List.of(), List.of());
     }
 }

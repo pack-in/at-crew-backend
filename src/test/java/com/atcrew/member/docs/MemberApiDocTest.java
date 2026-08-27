@@ -9,6 +9,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.util.List;
 import java.util.UUID;
 
 import static org.springframework.restdocs.mockmvc.MockMvcRestDocumentation.document;
@@ -78,8 +79,7 @@ class MemberApiDocTest extends RestDocsIntegrationSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new RegisterRequest(
                                 uniqueEmail, "Secure1!", "Secure1!", "원래이름",
-                                true, true, true, false, "Asia/Seoul", "KR"
-                        ))))
+                                true, true, true, false, "Asia/Seoul", "KR", "KO"))))
                 .andExpect(status().isCreated())
                 .andReturn();
 
@@ -113,8 +113,7 @@ class MemberApiDocTest extends RestDocsIntegrationSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new RegisterRequest(
                                 uniqueEmail, "Secure1!", "Secure1!", "경력문서유저",
-                                true, true, true, false, "Asia/Seoul", "KR"
-                        ))))
+                                true, true, true, false, "Asia/Seoul", "KR", "KO"))))
                 .andExpect(status().isCreated())
                 .andReturn();
 
@@ -211,6 +210,48 @@ class MemberApiDocTest extends RestDocsIntegrationSupport {
                 .andExpect(jsonPath("$.data.member.adultContentVisible").value(true));
     }
 
+    /**
+     * 게시물 언어 변경·계정 정보 조회 시나리오 문서화(설정-R04·R14).
+     */
+    @Test
+    void 게시물_언어_변경과_계정_정보_조회_문서화() throws Exception {
+        String uniqueEmail = "doc-language-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com";
+        String accessToken = registerAndGetAccessToken(uniqueEmail, "언어설정문서유저");
+
+        mockMvc.perform(patch("/api/members/me/post-languages")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .content(objectMapper.writeValueAsString(
+                                new UpdatePostLanguagesRequest(List.of("KO", "JA")))))
+                .andExpect(status().isNoContent())
+                .andDo(document("member/update-post-languages",
+                        preprocessRequest(prettyPrint()),
+                        preprocessResponse(prettyPrint()),
+                        requestFields(
+                                fieldWithPath("languages").description(
+                                        "노출받을 게시물 언어 목록 (KO·JA·ZH·EN, 주 사용 언어 포함 필수)")
+                        )
+                ));
+
+        mockMvc.perform(get("/api/members/me/account")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.primaryLanguage").value("KO"))
+                .andDo(document("member/get-account",
+                        preprocessRequest(prettyPrint()),
+                        preprocessResponse(prettyPrint()),
+                        relaxedResponseFields(
+                                fieldWithPath("code").description("응답 코드 (SUCCESS)"),
+                                fieldWithPath("data.loginEmail").description("로그인 이메일"),
+                                fieldWithPath("data.authProvider").description("가입 경로 (EMAIL·GOOGLE)"),
+                                fieldWithPath("data.primaryLanguage").description("주 사용 언어 — 가입 후 변경 불가"),
+                                fieldWithPath("data.postLanguages").description("노출받을 게시물 언어 목록"),
+                                fieldWithPath("data.marketingAgreed").description("마케팅 정보 수신 동의 여부"),
+                                fieldWithPath("data.adultContentVisible").description("성인 콘텐츠 표시 여부")
+                        )
+                ));
+    }
+
     // ─── 헬퍼 ────────────────────────────────────────────────────────────
 
     private String registerAndGetAccessToken(String email, String name) throws Exception {
@@ -218,8 +259,7 @@ class MemberApiDocTest extends RestDocsIntegrationSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new RegisterRequest(
                                 email, "Secure1!", "Secure1!", name,
-                                true, true, true, false, "Asia/Seoul", "KR"
-                        ))))
+                                true, true, true, false, "Asia/Seoul", "KR", "KO"))))
                 .andExpect(status().isCreated())
                 .andReturn();
         return objectMapper.readTree(result.getResponse().getContentAsString())
@@ -227,6 +267,9 @@ class MemberApiDocTest extends RestDocsIntegrationSupport {
     }
 
     // ─── 요청 바디 내부 레코드 ───────────────────────────────────────────
+
+    /** 게시물 언어 변경 요청 바디 */
+    record UpdatePostLanguagesRequest(List<String> languages) {}
 
     /** 이메일 회원가입 요청 바디 */
     record RegisterRequest(
@@ -239,7 +282,8 @@ class MemberApiDocTest extends RestDocsIntegrationSupport {
             boolean agreeThirdParty,
             boolean agreeMarketing,
             String timezone,
-            String countryCode
+            String countryCode,
+            String primaryLanguage
     ) {}
 
     /** 이름 수정 요청 바디 */

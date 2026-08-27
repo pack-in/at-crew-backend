@@ -4,6 +4,7 @@ import com.atcrew.common.response.CursorPage;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 public interface MemberService {
 
@@ -72,6 +73,21 @@ public interface MemberService {
      * 본인 인증 여부에 따른 실제 콘텐츠 접근 게이팅은 이 값과 별개다.
      */
     void updateAdultContentVisible(String memberId, boolean visible);
+
+    /**
+     * 노출받을 게시물 언어를 교체한다(설정-R14). 주 사용 언어는 해제할 수 없다.
+     */
+    void updatePostLanguages(String memberId, Set<Language> languages);
+
+    /** 설정 &gt; 계정 정보 화면용 — 로그인 이메일·가입 경로·언어·토글 값(설정-R04·R05). */
+    AccountInfo getAccount(String memberId);
+
+    /**
+     * 언어 세그먼트 필터용 — 뷰어가 노출받기로 한 게시물 언어 목록(로그인-R16).
+     *
+     * @param memberId 비로그인이면 null — 이때는 빈 목록(필터 미적용)을 반환한다
+     */
+    List<Language> findPostLanguages(String memberId);
 
     void updateName(String memberId, String name);
 

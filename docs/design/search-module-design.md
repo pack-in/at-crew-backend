@@ -147,7 +147,11 @@ GET /api/search
 ```
 
 - 인증 불필요(`CommunityController` 피드 API와 동일 정책). `SecurityConfig`에 공개 경로로 등록한다.
-- `q`와 모든 필터가 비어 있으면 `SearchPage.empty()`를 반환한다(§1.5).
+- `q`와 모든 필터가 비어 있으면 `SearchPage.empty()`를 반환한다(§1.5). 언어 세그먼트는 사용자가 고르는
+  필터 축이 아니라 서버가 뷰어 설정에서 채우는 값이라 이 판정에 넣지 않는다.
+- **언어 세그먼트 필터(로그인-R16, 2026-08-26 추가)**: 로그인 뷰어의 `postLanguages`를 `ArtworkSearchDocument.languages`
+  keyword 필드에 `terms`로 건다. 언어 값이 없는 문서(마이그레이션 이전 작품)는 `must_not exists` should 절로
+  함께 통과시킨다. 비로그인은 필터를 걸지 않는다. recruit 문서에는 언어 필드가 없어 아직 미적용이다.
 - 필터 다중선택 의미: 축 내부는 OR(terms 쿼리), 축 간에는 AND(bool filter).
 - `postTypes`에 recruit 소유 유형만 지정되면 `RecruitSearchPort`로 위임 → Phase 1에서는 빈 결과. Swagger 설명에 "recruit 모듈 미구현으로 현재 빈 목록"을 명시한다(`CommunityController` 구인글 탭 서술 선례).
 

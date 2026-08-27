@@ -15,6 +15,7 @@ import com.atcrew.artwork.internal.persistence.ArtworkRepository;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaProcessingStatus;
 import com.atcrew.media.internal.application.MediaCallbackService;
+import com.atcrew.member.Language;
 import com.atcrew.member.MemberService;
 import com.atcrew.portfolio.PortfolioSelectableInfo;
 import com.atcrew.portfolio.internal.domain.Portfolio;
@@ -230,7 +231,7 @@ class PortfolioMembershipReconcileTests {
                 List.of(imageKey), 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 "작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
                 List.of(ArtworkRole.LINEART), List.of(Genre.FANTASY), List.of("태그"),
-                AgeRating.ALL, true, List.of(), List.of("clip studio"),
+                AgeRating.ALL, List.of(Language.KO), true, List.of(), List.of("clip studio"),
                 new WorkDuration(1, 1, 1, 1), 1, List.of(), List.of())).id();
     }
 

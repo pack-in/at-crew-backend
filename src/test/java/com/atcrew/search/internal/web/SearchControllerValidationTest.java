@@ -1,6 +1,7 @@
 package com.atcrew.search.internal.web;
 
 import com.atcrew.common.web.GlobalExceptionHandler;
+import com.atcrew.member.MemberService;
 import com.atcrew.search.SearchPage;
 import com.atcrew.search.SearchQuery;
 import com.atcrew.search.SearchService;
@@ -41,7 +42,7 @@ class SearchControllerValidationTest {
         searchService = mock(SearchService.class);
         when(searchService.search(any())).thenReturn(SearchPage.empty());
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new SearchController(searchService))
+                .standaloneSetup(new SearchController(searchService, mock(MemberService.class)))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .apply(documentationConfiguration(restDoc)
                         .operationPreprocessors()

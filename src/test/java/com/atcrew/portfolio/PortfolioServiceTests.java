@@ -16,6 +16,7 @@ import com.atcrew.artwork.internal.domain.artwork.Artwork;
 import com.atcrew.artwork.internal.persistence.ArtworkRepository;
 import com.atcrew.billing.SubscriptionStatus;
 import com.atcrew.billing.internal.persistence.SubscriptionRepository;
+import com.atcrew.member.Language;
 import com.atcrew.support.BillingTestSupport;
 import com.atcrew.common.exception.DomainException;
 import com.atcrew.common.response.CursorPage;
@@ -210,7 +211,7 @@ class PortfolioServiceTests {
 
         artworkService.updateArtwork(memberId, renamedArtworkId, new UpdateArtworkCommand(
                 null, null, null, null, "바뀐 제목", null, null, null,
-                null, null, null, null, null, null, null, null, null));
+                null, null, null, null, null, null, null, null, null, null));
         // 휴지통 이동은 원본을 DELETED + PRIVATE로 바꾼다 — 삭제·비공개 전환을 한 번에 검증한다.
         artworkService.deleteArtwork(memberId, trashedArtworkId);
 
@@ -994,7 +995,7 @@ class PortfolioServiceTests {
         // 원본을 바꿔도 스냅샷 상세는 생성 시점 값을 유지해야 한다(§5.1).
         artworkService.updateArtwork(memberId, artworkId, new UpdateArtworkCommand(
                 null, null, null, null, "바뀐 제목", "바뀐 설명", null, null,
-                null, null, null, null, null, null, null, null, null));
+                null, null, null, null, null, null, null, null, null, null));
         memberService.updateName(memberId, "바뀐 이름");
 
         PortfolioSnapshotDetailInfo detail =
@@ -1703,7 +1704,7 @@ class PortfolioServiceTests {
                 List.of(imageKey), 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 "작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
                 List.of(ArtworkRole.LINEART), List.of(Genre.FANTASY), List.of("태그"),
-                AgeRating.ALL, publishToFeed, portfolioIds, List.of("clip studio"),
+                AgeRating.ALL, List.of(Language.KO), publishToFeed, portfolioIds, List.of("clip studio"),
                 new WorkDuration(1, 1, 1, 1), 1, List.of(), List.of())).id();
     }
 
@@ -1712,7 +1713,7 @@ class PortfolioServiceTests {
                 List.of(imageKey), 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 "작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
                 List.of(ArtworkRole.LINEART), List.of(Genre.FANTASY), List.of("태그"),
-                AgeRating.ALL, true, List.of(), List.of("clip studio"),
+                AgeRating.ALL, List.of(Language.KO), true, List.of(), List.of("clip studio"),
                 new WorkDuration(1, 1, 1, 1), 1, List.of(), List.of())).id();
     }
 

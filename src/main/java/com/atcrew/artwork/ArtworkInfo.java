@@ -1,5 +1,7 @@
 package com.atcrew.artwork;
 
+import com.atcrew.member.Language;
+
 import java.time.Instant;
 import java.util.List;
 
@@ -24,6 +26,8 @@ public record ArtworkInfo(
         Integer cutCount,
         List<String> videoLinks,
         AgeRating ageRating,
+        // 게시물 작성·노출 언어(업로드-R30). 마이그레이션 이전 작품은 비어 있다
+        List<Language> languages,
         Visibility visibility,
         // 라이브 포트폴리오(작가 페이지 + 최신 반영형) 편입 여부 —
         // visibility가 PRIVATE여도 이 값이 true면 포트폴리오 한정 공개라 완전 비공개가 아니다

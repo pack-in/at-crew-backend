@@ -7,6 +7,9 @@ import com.atcrew.artwork.CreativeType;
 import com.atcrew.artwork.Genre;
 import com.atcrew.artwork.MaterialTarget;
 import com.atcrew.common.response.ApiResponse;
+import com.atcrew.common.security.MemberPrincipal;
+import com.atcrew.member.Language;
+import com.atcrew.member.MemberService;
 import com.atcrew.search.PostType;
 import com.atcrew.search.SearchPage;
 import com.atcrew.search.SearchQuery;
@@ -18,6 +21,8 @@ import com.atcrew.search.internal.exception.SearchException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -40,9 +45,11 @@ class SearchController {
     private static final int MAX_SIZE = 50;
 
     private final SearchService searchService;
+    private final MemberService memberService;
 
-    SearchController(SearchService searchService) {
+    SearchController(SearchService searchService, MemberService memberService) {
         this.searchService = searchService;
+        this.memberService = memberService;
     }
 
     @Operation(summary = "검색", description =
@@ -68,7 +75,16 @@ class SearchController {
             @Parameter(description = "페이지 크기 (기본 20, 최대 50)") @RequestParam(required = false) Integer size) {
         return ApiResponse.success(searchService.search(new SearchQuery(
                 q, postTypes, artworkFields, creativeTypes, ageRatings, roles, genres, materialTargets,
-                sort, cursor, resolveSize(size))));
+                viewerLanguages(), sort, cursor, resolveSize(size))));
+    }
+
+    // 언어 세그먼트 필터 기준(로그인-R16). 비로그인은 빈 목록 → 필터 미적용(전체 노출).
+    private List<Language> viewerLanguages() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.isAuthenticated() && auth.getPrincipal() instanceof MemberPrincipal principal) {
+            return memberService.findPostLanguages(principal.memberId());
+        }
+        return List.of();
     }
 
     private int resolveSize(Integer size) {

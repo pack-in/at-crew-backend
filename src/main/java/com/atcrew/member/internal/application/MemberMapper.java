@@ -78,6 +78,8 @@ class MemberMapper {
                 member.getUpdatedAt(),
                 member.getTimezone(),
                 member.getCountryCode(),
+                member.getPrimaryLanguage(),
+                member.getPostLanguages(),
                 member.isMarketingAgreed(),
                 member.isAdultContentVisible()
         );

@@ -6,6 +6,7 @@ import com.atcrew.artwork.ArtworkRole;
 import com.atcrew.artwork.CreativeType;
 import com.atcrew.artwork.Genre;
 import com.atcrew.artwork.MaterialTarget;
+import com.atcrew.member.Language;
 
 import java.util.List;
 
@@ -22,6 +23,9 @@ public record SearchQuery(
         List<ArtworkRole> roles,
         List<Genre> genres,
         List<MaterialTarget> materialTargets,
+        // 뷰어가 노출받기로 한 게시물 언어(로그인-R16). 비어 있으면 언어 필터 미적용(비로그인).
+        // 사용자가 고르는 필터 축이 아니라 서버가 뷰어 설정에서 채우는 값이라 isEmptyCriteria에 넣지 않는다.
+        List<Language> viewerLanguages,
         SearchSort sort,
         String cursor,
         int size

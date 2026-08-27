@@ -21,10 +21,14 @@ class ImageRetryScheduler {
                 Instant.now().minus(10, ChronoUnit.MINUTES));
         if (stuck.isEmpty()) return;
         log.info("이미지 처리 재시도: count={}", stuck.size());
-        stuck.stream().collect(Collectors.groupingBy(a -> new RetryGroup(a.getOwnerType(), a.getOwnerId(), a.getVariantProfile())))
+        stuck.stream().collect(Collectors.groupingBy(a -> new RetryGroup(a.getOwnerType(), a.getOwnerId(),
+                        a.getVariantProfile(), a.getQualityTier())))
                 .forEach((group, grouped) -> worker.triggerAsync(group.ownerType(), group.ownerId(),
-                        grouped.stream().map(a -> a.getOriginalKey()).toList(), group.variantProfile()));
+                        grouped.stream().map(a -> a.getOriginalKey()).toList(),
+                        group.variantProfile(), group.qualityTier()));
     }
+    // 재시도도 최초 업로드와 같은 화질로 처리해야 하므로 화질 등급까지 그룹 키에 넣는다.
     private record RetryGroup(com.atcrew.media.MediaOwnerType ownerType, String ownerId,
-                              com.atcrew.media.MediaVariantProfile variantProfile) { }
+                              com.atcrew.media.MediaVariantProfile variantProfile,
+                              com.atcrew.media.MediaQualityTier qualityTier) { }
 }

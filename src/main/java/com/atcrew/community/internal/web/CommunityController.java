@@ -7,7 +7,9 @@ import com.atcrew.artwork.ArtworkSummaryInfo;
 import com.atcrew.common.response.ApiResponse;
 import com.atcrew.common.response.CursorPage;
 import com.atcrew.member.ActivityField;
+import com.atcrew.common.security.MemberPrincipal;
 import com.atcrew.member.EmploymentStatus;
+import com.atcrew.member.Language;
 import com.atcrew.member.MemberProfileInfo;
 import com.atcrew.member.MemberService;
 import com.atcrew.member.ProfileSort;
@@ -19,6 +21,8 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -57,7 +61,7 @@ class CommunityController {
             @Parameter(description = "커서 (마지막 작품 createdAt millis)") @RequestParam(required = false) String cursor,
             @Parameter(description = "페이지 크기 (기본 20, 최대 50)") @RequestParam(required = false) Integer size) {
         return ApiResponse.success(artworkService.getCommunityArtworks(
-                artworkField, ageRating, cursor, resolveSize(size)));
+                artworkField, ageRating, viewerLanguages(), cursor, resolveSize(size)));
     }
 
     @Operation(summary = "작가 프로필 탭 — 작가 찾아보기", description =
@@ -73,7 +77,7 @@ class CommunityController {
             @Parameter(description = "페이지 크기 (기본 20, 최대 50)") @RequestParam(required = false) Integer size) {
         return ApiResponse.success(memberService.searchProfiles(new SearchProfilesCommand(
                 List.of(EmploymentStatus.AVAILABLE, EmploymentStatus.NEGOTIABLE),
-                activityField, sort, cursor, resolveSize(size))));
+                activityField, sort, viewerLanguages(), cursor, resolveSize(size))));
     }
 
     @Operation(summary = "구인글 탭", description = "구인글 카드 목록을 PUBLISHED 상태만 커서 페이지네이션으로 조회합니다. 인증 불필요.")
@@ -96,5 +100,14 @@ class CommunityController {
 
     private int resolveSize(Integer size) {
         return size != null ? Math.min(size, MAX_SIZE) : DEFAULT_SIZE;
+    }
+
+    // 언어 세그먼트 필터 기준(로그인-R16). 비로그인은 빈 목록 → 필터 미적용(전체 노출).
+    private List<Language> viewerLanguages() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.isAuthenticated() && auth.getPrincipal() instanceof MemberPrincipal principal) {
+            return memberService.findPostLanguages(principal.memberId());
+        }
+        return List.of();
     }
 }

@@ -14,6 +14,7 @@ import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaProcessingStatus;
 import com.atcrew.media.internal.application.MediaCallbackService;
 import com.atcrew.billing.internal.persistence.EntitlementBalanceRepository;
+import com.atcrew.member.Language;
 import com.atcrew.member.MemberService;
 import com.atcrew.recruit.CreateJobPostingCommand;
 import com.atcrew.recruit.JobEmploymentType;
@@ -130,7 +131,7 @@ class SearchModuleTests {
         awaitSearchResult(() -> searchService.search(queryWithArtworkField(ArtworkField.WEBTOON)));
 
         SearchPage<SearchResultItem> mismatched = searchService.search(new SearchQuery(
-                null, null, List.of(ArtworkField.ANIMATION), null, null, null, null, null,
+                null, null, List.of(ArtworkField.ANIMATION), null, null, null, null, null, null,
                 null, null, 20));
 
         assertThat(mismatched.items()).isEmpty();
@@ -144,12 +145,12 @@ class SearchModuleTests {
 
         // RecruitSearchIndexer도 ArtworkSearchIndexer와 동일하게 @ApplicationModuleListener(비동기)라 폴링한다.
         List<SearchResultItem> found = awaitSearchResult(() -> searchService.search(new SearchQuery(
-                token, List.of(PostType.JOB_POSTING), null, null, null, null, null, null, null, null, 20)));
+                token, List.of(PostType.JOB_POSTING), null, null, null, null, null, null, null, null, null, 20)));
 
         assertThat(found).extracting(SearchResultItem::id).containsExactly(jobPostingId);
         assertThat(found).extracting(SearchResultItem::postType).containsOnly(PostType.JOB_POSTING);
         SearchPage<SearchResultItem> page = searchService.search(new SearchQuery(
-                token, List.of(PostType.JOB_POSTING), null, null, null, null, null, null, null, null, 20));
+                token, List.of(PostType.JOB_POSTING), null, null, null, null, null, null, null, null, null, 20));
         assertThat(page.totalCount()).isEqualTo(1);
     }
 
@@ -176,7 +177,7 @@ class SearchModuleTests {
         assertThat(firstPage.hasNext()).isTrue();
 
         SearchPage<SearchResultItem> secondPage = searchService.search(new SearchQuery(
-                token, null, null, null, null, null, null, null, null, firstPage.nextCursor(), 1));
+                token, null, null, null, null, null, null, null, null, null, firstPage.nextCursor(), 1));
         assertThat(secondPage.items()).hasSize(1);
         assertThat(secondPage.items().get(0).id()).isNotEqualTo(firstPage.items().get(0).id());
     }
@@ -189,7 +190,7 @@ class SearchModuleTests {
 
         // 작품 분야는 recruit 게시글에 없는 속성이라 축 간 AND 결합상 결과가 없다
         SearchPage<SearchResultItem> page = searchService.search(new SearchQuery(
-                token, List.of(PostType.JOB_POSTING), List.of(ArtworkField.WEBTOON), null, null, null, null, null,
+                token, List.of(PostType.JOB_POSTING), List.of(ArtworkField.WEBTOON), null, null, null, null, null, null,
                 null, null, 20));
 
         assertThat(page.items()).isEmpty();
@@ -223,7 +224,7 @@ class SearchModuleTests {
         publishedJobPosting(authorId, token + " 구인 공고"); // 장르가 다른(ROMANCE_FANTASY) 구인글 — 걸리지 않아야 한다
 
         List<SearchResultItem> byGenre = awaitSearchResult(() -> searchService.search(new SearchQuery(
-                token, null, null, null, null, null, List.of(Genre.ACTION), null, null, null, 20)));
+                token, null, null, null, null, null, List.of(Genre.ACTION), null, null, null, null, 20)));
 
         assertThat(byGenre).extracting(SearchResultItem::id).containsExactly(teamPostingId);
     }
@@ -248,7 +249,7 @@ class SearchModuleTests {
 
         SearchPage<SearchResultItem> secondPage = searchService.search(new SearchQuery(
                 token, List.of(PostType.JOB_POSTING, PostType.JOB_SEEKING, PostType.TEAM_RECRUIT),
-                null, null, null, null, null, null, null, firstPage.nextCursor(), 1));
+                null, null, null, null, null, null, null, null, firstPage.nextCursor(), 1));
         assertThat(secondPage.items()).hasSize(1);
         assertThat(secondPage.hasNext()).isFalse();
         assertThat(List.of(firstPage.items().get(0).id(), secondPage.items().get(0).id()))
@@ -271,7 +272,7 @@ class SearchModuleTests {
 
     private SearchQuery recruitQuery(String q, int size) {
         return new SearchQuery(q, List.of(PostType.JOB_POSTING, PostType.JOB_SEEKING, PostType.TEAM_RECRUIT),
-                null, null, null, null, null, null, null, null, size);
+                null, null, null, null, null, null, null, null, null, size);
     }
 
     private CreateTeamPostingCommand teamPostingCommand(String title, Genre genre) {
@@ -286,7 +287,7 @@ class SearchModuleTests {
     @Test
     void 검색어와_필터가_모두_없으면_빈_결과를_반환한다() {
         SearchPage<SearchResultItem> result = searchService.search(new SearchQuery(
-                null, null, null, null, null, null, null, null, null, null, 20));
+                null, null, null, null, null, null, null, null, null, null, null, 20));
 
         assertThat(result.items()).isEmpty();
         assertThat(result.totalCount()).isZero();
@@ -308,12 +309,12 @@ class SearchModuleTests {
     }
 
     private SearchQuery queryWithArtworkField(ArtworkField field) {
-        return new SearchQuery(null, null, List.of(field), null, null, null, null, null, null, null, 20);
+        return new SearchQuery(null, null, List.of(field), null, null, null, null, null, null, null, null, 20);
     }
 
     // 포트폴리오와 recruit 소유 유형을 함께 요청하는 질의(유형 필터 미지정 = 전체 유형)
     private SearchQuery mergedQuery(String q, int size) {
-        return new SearchQuery(q, null, null, null, null, null, null, null, null, null, size);
+        return new SearchQuery(q, null, null, null, null, null, null, null, null, null, null, size);
     }
 
     // 같은 DB/색인을 공유하는 다른 테스트와 겹치지 않는 검색 토큰
@@ -364,7 +365,7 @@ class SearchModuleTests {
                 imageKeys, 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 title, "설명",
                 field, creativeType, roles, genres, List.of("태그"),
-                ageRating, true, List.of(), List.of(), null, null, List.of(), List.of()
+                ageRating, List.of(Language.KO), true, List.of(), List.of(), null, null, List.of(), List.of()
         ));
 
         // media webhook → MediaAssetProcessedEvent → artwork 리스너(비동기)로 READY 전환된다.

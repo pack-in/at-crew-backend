@@ -1,5 +1,7 @@
 package com.atcrew.artwork;
 
+import com.atcrew.member.Language;
+
 import java.util.List;
 
 /**
@@ -21,6 +23,7 @@ public record UploadArtworkCommand(
         List<Genre> genres,              // 장르 (정본 enum)
         List<String> tags,               // 태그
         AgeRating ageRating,             // 연령 등급
+        List<Language> languages,        // 게시물 작성·노출 언어 (업로드-R30) — 스타터 1개, 프로 다중
         boolean publishToFeed,           // 앳크루 작품 피드에 공개할지 — 서버가 이 값으로 공개 상태를 계산한다
         List<String> portfolioIds,       // 담을 라이브 포트폴리오 ID 목록 — null/빈 목록이면 편입 없음
         List<String> tools,              // 사용 툴

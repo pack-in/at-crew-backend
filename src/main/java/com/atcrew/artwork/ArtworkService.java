@@ -1,6 +1,7 @@
 package com.atcrew.artwork;
 
 import com.atcrew.common.response.CursorPage;
+import com.atcrew.member.Language;
 
 import java.util.List;
 import java.util.Optional;
@@ -27,7 +28,14 @@ public interface ArtworkService {
 
     void deleteArtwork(String memberId, String artworkId);
 
+    /**
+     * 커뮤니티 작품 피드.
+     *
+     * @param viewerLanguages 뷰어가 노출받기로 한 게시물 언어(로그인-R16). 비어 있으면 언어 필터를
+     *                        적용하지 않는다 — 비로그인 뷰어가 여기에 해당한다
+     */
     CursorPage<ArtworkSummaryInfo> getCommunityArtworks(ArtworkField artworkField, AgeRating ageRating,
+                                                        List<Language> viewerLanguages,
                                                         String cursor, int size);
 
     CursorPage<ArtworkSummaryInfo> getMyArtworks(String memberId, String cursor, int size);

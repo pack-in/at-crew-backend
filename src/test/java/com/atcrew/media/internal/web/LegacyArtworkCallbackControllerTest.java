@@ -3,6 +3,7 @@ package com.atcrew.media.internal.web;
 import com.atcrew.media.MediaAssetProcessedEvent;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaProcessingStatus;
+import com.atcrew.media.MediaQualityTier;
 import com.atcrew.media.MediaVariantProfile;
 import com.atcrew.media.internal.application.MediaCallbackService;
 import com.atcrew.media.internal.domain.MediaAsset;
@@ -40,7 +41,7 @@ class LegacyArtworkCallbackControllerTest {
         events = mock(ApplicationEventPublisher.class);
         when(assets.findByOwnerTypeAndOwnerIdAndOriginalKey(eq(MediaOwnerType.ARTWORK), eq("artwork-1"), eq("raw/a.jpg")))
                 .thenReturn(Optional.of(MediaAsset.pending(MediaOwnerType.ARTWORK, "artwork-1", 0, "raw/a.jpg",
-                        MediaVariantProfile.STANDARD_WITH_ADULT_BLUR)));
+                        MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.ORIGINAL)));
         mockMvc = MockMvcBuilders.standaloneSetup(
                 new LegacyArtworkCallbackController(new MediaCallbackService(assets, events), "secret")).build();
     }

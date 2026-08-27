@@ -84,7 +84,22 @@ public class ArtworkSearchQueryRepository {
         addTerms(bool, "roles", names(query.roles()));
         addTerms(bool, "genres", names(query.genres()));
         addTerms(bool, "materialTargets", names(query.materialTargets()));
+        addLanguageSegment(bool, names(query.viewerLanguages()));
         return Query.of(q -> q.bool(bool.build()));
+    }
+
+    /**
+     * 언어 세그먼트 필터(로그인-R16) — 다른 축과 달리 "값 없음"도 통과시켜야 한다.
+     * 언어를 고른 적 없는 문서(마이그레이션 이전 작품)까지 걸러내면 기존 작품이 검색에서 사라진다.
+     */
+    private void addLanguageSegment(BoolQuery.Builder bool, List<String> viewerLanguages) {
+        if (viewerLanguages == null || viewerLanguages.isEmpty()) return;
+        bool.filter(f -> f.bool(b -> b
+                .should(s -> s.terms(t -> t
+                        .field("languages")
+                        .terms(ts -> ts.value(viewerLanguages.stream().map(FieldValue::of).toList()))))
+                .should(s -> s.bool(nb -> nb.mustNot(mn -> mn.exists(e -> e.field("languages")))))
+                .minimumShouldMatch("1")));
     }
 
     private void addTerms(BoolQuery.Builder bool, String field, List<String> values) {
