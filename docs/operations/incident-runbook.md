@@ -87,9 +87,9 @@ Alloy만 죽었다면 사용자 영향은 없지만 **다른 모든 알람이 �
 ### [P1] DB 백업 26시간 미실행
 
 ```bash
-tail -50 ~/backup.log                      # cron 실행 로그
-crontab -l | grep backup                   # 등록 여부
-~/at-crew-backend/deploy/backup.sh         # 수동 실행해 실패 지점 확인
+journalctl -u atcrew-backup.service --since "-3 days"   # 실행 이력과 실패 지점
+systemctl list-timers atcrew-backup.timer               # 다음 실행 예정 시각
+sudo systemctl start atcrew-backup.service              # 즉시 수동 실행
 cat /var/lib/node_exporter/textfile_collector/backup.prom
 ```
 

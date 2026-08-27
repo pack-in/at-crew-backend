@@ -8,8 +8,11 @@
 # 설치(EC2 #1에서 1회):
 #   chmod +x ~/at-crew-backend/deploy/backup.sh
 #   sudo mkdir -p /var/lib/node_exporter/textfile_collector && sudo chown ec2-user /var/lib/node_exporter/textfile_collector
-#   crontab -e  →  0 18 * * * /home/ec2-user/at-crew-backend/deploy/backup.sh >> /home/ec2-user/backup.log 2>&1
-#   (18:00 UTC = 03:00 KST, 트래픽 최저 시간대)
+#   sudo cp systemd/atcrew-backup.{service,timer} /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now atcrew-backup.timer
+#   (매일 18:00 UTC = 03:00 KST. Amazon Linux 2023에는 cron이 없어 systemd 타이머를 쓴다)
+#
+# 실행 이력: journalctl -u atcrew-backup.service --since "-7 days"
 #
 # 실패 감지는 이 스크립트가 하지 않는다 — 성공했을 때만 타임스탬프를 갱신하고, "26시간 넘게 갱신이
 # 없으면" 알람을 울리는 쪽(PA-09)이 판단한다. 스크립트가 죽어서 아무 신호도 못 보내는 경우까지
@@ -35,15 +38,21 @@ read_env() { sed -n "s/^$1=//p" "$ENV_FILE" | tail -1 | sed -e 's/^"//' -e 's/"$
 
 MARIADB_ROOT_PASSWORD="$(read_env MARIADB_ROOT_PASSWORD)"
 R2_ENDPOINT="$(read_env R2_ENDPOINT)"
-R2_ACCESS_KEY="$(read_env R2_ACCESS_KEY)"
-R2_SECRET_KEY="$(read_env R2_SECRET_KEY)"
 BACKUP_BUCKET="${R2_BACKUP_BUCKET:-$(read_env R2_BACKUP_BUCKET)}"
 BACKUP_BUCKET="${BACKUP_BUCKET:-at-crew-backups}"
 
+# 백업 버킷에만 권한이 있는 전용 키를 쓴다. 이미지용 키(R2_ACCESS_KEY)는 백업 버킷 권한이 없고,
+# 그 토큰을 건드리면 돌아가고 있는 이미지 업로드가 깨진다. 전용 키가 없으면 기존 키로 떨어뜨리되
+# 그 경우 업로드 단계에서 권한 오류로 실패한다(조용히 성공한 척하지 않는다).
+ACCESS_KEY="$(read_env R2_BACKUP_ACCESS_KEY)"
+SECRET_KEY="$(read_env R2_BACKUP_SECRET_KEY)"
+[ -n "$ACCESS_KEY" ] || ACCESS_KEY="$(read_env R2_ACCESS_KEY)"
+[ -n "$SECRET_KEY" ] || SECRET_KEY="$(read_env R2_SECRET_KEY)"
+
 : "${MARIADB_ROOT_PASSWORD:?[backup] MARIADB_ROOT_PASSWORD 없음}"
 : "${R2_ENDPOINT:?[backup] R2_ENDPOINT 없음}"
-: "${R2_ACCESS_KEY:?[backup] R2_ACCESS_KEY 없음}"
-: "${R2_SECRET_KEY:?[backup] R2_SECRET_KEY 없음}"
+: "${ACCESS_KEY:?[backup] R2_BACKUP_ACCESS_KEY(또는 R2_ACCESS_KEY) 없음}"
+: "${SECRET_KEY:?[backup] R2_BACKUP_SECRET_KEY(또는 R2_SECRET_KEY) 없음}"
 
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 WORK="$(mktemp -d)"
@@ -64,8 +73,8 @@ SIZE=$(stat -c%s "$DUMP")
 [ "$SIZE" -gt 1024 ] || { echo "[backup] 덤프가 비정상적으로 작다(${SIZE}B) — 업로드하지 않는다" >&2; exit 1; }
 echo "[backup] 덤프 완료: $(basename "$DUMP") ($((SIZE/1024))KB)"
 
-export AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY"
-export AWS_SECRET_ACCESS_KEY="$R2_SECRET_KEY"
+export AWS_ACCESS_KEY_ID="$ACCESS_KEY"
+export AWS_SECRET_ACCESS_KEY="$SECRET_KEY"
 export AWS_DEFAULT_REGION=auto
 export AWS_REQUEST_CHECKSUM_CALCULATION=when_required
 export AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
