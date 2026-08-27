@@ -2,9 +2,9 @@ name = "at-crew-media-worker"
 main = "src/index.js"
 compatibility_date = "2026-08-05"
 
-# 계정이 여러 개인 경우(danhandev 개인 계정 vs sehandev-account 팀 공용 계정) 매번 선택 프롬프트가
-# 뜨는 걸 막기 위해 고정. at-crew-storage 버킷이 있는 sehandev-account로 지정함.
-account_id = "8ffe00cd867bc560cfef7b6ab0711b14"
+# 계정이 여러 개면 wrangler가 매번 선택 프롬프트를 띄운다. 레포가 공개라 계정 ID를 파일에 적는 대신
+# 환경변수로 넘긴다 — at-crew-storage 버킷이 있는 팀 공용 계정 ID를 셸에 export 해두면 된다:
+#   export CLOUDFLARE_ACCOUNT_ID=<팀 공용 계정 ID>   (값은 Cloudflare 대시보드 우측 하단)
 
 # R2 버킷 바인딩 — 서버(application.yml의 cloudflare.r2.bucket)와 반드시 같은 버킷 이름이어야 한다.
 # artwork·recruit(구인글/팀원모집글/구직글) 이미지가 전부 이 한 버킷을 공유한다 — media 모듈은

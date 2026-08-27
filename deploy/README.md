@@ -12,23 +12,33 @@
 
 도메인은 `api.at-crew.com` — Cloudflare DNS에서 #1의 탄력적 IP로 A레코드 연결.
 
-## 프로비저닝된 리소스 (2026-08-07, ap-northeast-2, VPC `vpc-9f11ccf4` — laiteu와 동일 기본 VPC)
+## 프로비저닝된 리소스 (2026-08-07, ap-northeast-2)
 
-| 항목 | 값 |
+이 레포는 공개되어 있으므로 **인스턴스 ID·탄력적 IP·프라이빗 IP·VPC/보안 그룹/AMI ID 같은 실제
+식별자는 여기에 적지 않는다.** 그대로 계정 정찰과 origin 직접 타격의 출발점이 되기 때문이다.
+실제 값은 AWS 콘솔과 저장소 Secrets에만 둔다.
+
+| 항목 | 구성 |
 |---|---|
-| EC2 #1(앱 서버) | `i-0987d8df61c4b84d3`, 탄력적 IP `43.201.142.212` |
-| EC2 #2(Elasticsearch) | `i-07b421fdc2d3f5aff`, 프라이빗 IP `172.31.25.215`(퍼블릭 IP 없음) |
-| 키페어 | `at-crew-key` — 로컬 `~/.ssh/at-crew-key.pem`(git 추적 안 됨, 최초 생성 시 한 번만 다운로드됨) |
-| 보안 그룹 | 앱 `sg-062af5fc0a1f5af5c`(22 본인IP/80·443 전체), 검색 `sg-017f063fc146bdaf6`(22는 앱 SG에서만, 9200도 앱 SG에서만) |
-| AMI | Amazon Linux 2023 ARM64(`ami-0ab38814a224c51c1`) — 패키지 관리자는 `dnf`(Ubuntu `apt` 아님) |
+| EC2 #1(앱 서버) | 퍼블릭(탄력적) IP 있음. 앱 + MariaDB 컨테이너 |
+| EC2 #2(Elasticsearch) | 퍼블릭 IP 없음, 같은 VPC 프라이빗 IP로만 접근 |
+| 키페어 | 로컬 `~/.ssh/`에만 보관(git 추적 안 됨, 최초 생성 시 한 번만 다운로드됨) |
+| 보안 그룹(앱) | 22는 배포용 임시 개방만, **80/443은 Cloudflare 엣지 대역으로 제한** |
+| 보안 그룹(검색) | 22·9200 모두 앱 SG에서만 |
+| AMI | Amazon Linux 2023 ARM64 — 패키지 관리자는 `dnf`(Ubuntu `apt` 아님) |
+
+> **80/443을 전체 개방하지 말 것.** 전체 개방이면 origin IP를 알아낸 누구나 Cloudflare의 WAF·
+> 레이트리밋·봇 차단을 건너뛰고 평문 HTTP로 직접 붙을 수 있다(Flexible 모드라 origin 구간은 평문이다).
+> `nginx/api.at-crew.com.conf`가 애플리케이션 레벨에서 같은 차단을 하지만, 보안 그룹에서도 함께 막는
+> 이중 방어가 정석이다. 대역 목록은 https://www.cloudflare.com/ips/ 참고.
 
 검색 서버는 퍼블릭 IP가 없어 직접 SSH 불가 — 앱 서버를 경유해서 접속한다. 개인키를 서버에 복사해두지
 않고 SSH 에이전트 포워딩을 쓴다:
 ```bash
-ssh-add ~/.ssh/at-crew-key.pem
-ssh -A ec2-user@43.201.142.212
+ssh-add ~/.ssh/<키페어>.pem
+ssh -A ec2-user@<EC2 #1 탄력적 IP>
 # 접속 후 서버 안에서
-ssh ec2-user@172.31.25.215
+ssh ec2-user@<EC2 #2 프라이빗 IP>
 ```
 
 ## 이 디렉토리 파일
@@ -47,7 +57,7 @@ main push(=PR 머지) 시 빌드·테스트 → Docker Hub 푸시 → EC2 재기
 러너 IP만 임시로 열고 끝나면 회수한다(회수 단계는 `if: always()`라 앞 단계가 실패해도 규칙이 남지 않는다).
 
 필요한 저장소 Secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`, `APP_HOST`, `EC2_SSH_KEY`,
-`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`.
+`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `APP_SECURITY_GROUP_ID`.
 
 **TODO(인프라): SSM Session Manager 전환.** 위 방식은 22번을 잠깐이라도 열고 CI에 SSH 키·AWS 키를
 함께 두는 구성이다. 정석은 22번을 아예 닫고 SSM으로 접속해 IAM으로 통제하고 접속 이력을 CloudTrail에
@@ -68,6 +78,8 @@ main push(=PR 머지) 시 빌드·테스트 → Docker Hub 푸시 → EC2 재기
    sudo chmod +x /usr/local/bin/docker-compose
    ```
    `nginx/api.at-crew.com.conf`를 `/etc/nginx/conf.d/`에 올리고 `sudo nginx -t && sudo systemctl enable --now nginx`.
+   기본 `/etc/nginx/nginx.conf`의 `listen 80 default_server;` 서버 블록은 먼저 주석 처리한다
+   (이 파일의 default_server와 충돌해 기동이 실패한다).
    이 레포의 `deploy/` 디렉토리를 EC2에 올리고(`git clone` 또는 `scp`), `.env.example`을 `.env`로
    복사해 값을 채운다. Firebase 서비스 계정 JSON도 별도로 올려 `FIREBASE_CREDENTIALS_PATH`에 지정.
 2. **EC2 #2(Elasticsearch)**: 위와 동일하게 Docker 설치(nginx는 불필요) 후
@@ -81,5 +93,5 @@ main push(=PR 머지) 시 빌드·테스트 → Docker Hub 푸시 → EC2 재기
 ## 이후 배포
 
 ```bash
-DOCKERHUB_USER=<본인 계정> SSH_KEY=~/.ssh/at-crew-key.pem APP_HOST=ec2-user@43.201.142.212 ./deploy/deploy.sh
+DOCKERHUB_USER=<본인 계정> SSH_KEY=~/.ssh/<키페어>.pem APP_HOST=ec2-user@<EC2 #1 탄력적 IP> ./deploy/deploy.sh
 ```
