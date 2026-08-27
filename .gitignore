@@ -55,3 +55,6 @@ at-crew-dev-firebase-adminsdk-fbsvc-19b8c64b54.json
 
 ### Wrangler (레포 루트에서 잘못 실행했을 때 생기는 캐시) ###
 .wrangler/
+
+### 개인 작업 계획 문서 (전역 CLAUDE.md 정책 — 커밋하지 않음) ###
+/plans/
