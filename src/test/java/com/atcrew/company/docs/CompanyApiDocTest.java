@@ -54,7 +54,6 @@ class CompanyApiDocTest extends RestDocsIntegrationSupport {
                                 fieldWithPath("data.recruitStatus").description("구인구직 상태 (기본 PREPARING)"),
                                 fieldWithPath("data.hasBusinessRegistration").description("사업자 등록 여부(자기 신고)"),
                                 fieldWithPath("data.activityField").description("활동 분야 (단일 선택, 미기입 시 null)").type(JsonFieldType.STRING).optional(),
-                                fieldWithPath("data.activeRegions").description("활동 지역 목록"),
                                 fieldWithPath("data.isOwner").description("조회자가 소유자인지 여부"),
                                 fieldWithPath("data.createdAt").description("생성 일시 (ISO 8601)")
                         )
@@ -150,7 +149,6 @@ class CompanyApiDocTest extends RestDocsIntegrationSupport {
         body.put("recruitStatus", "RECRUITING");
         body.put("companyType", "STUDIO");
         body.put("activityField", "WEBTOON");
-        body.put("activeRegions", List.of("SEOUL"));
         body.put("contact", "010-1234-5678");
         body.put("sns", "https://instagram.com/atcrew");
         body.put("hasBusinessRegistration", true);
@@ -166,7 +164,6 @@ class CompanyApiDocTest extends RestDocsIntegrationSupport {
                                 fieldWithPath("recruitStatus").description("구인구직 상태 (PREPARING·RECRUITING·ALWAYS_RECRUITING·CLOSED). null이면 변경 없음").optional(),
                                 fieldWithPath("companyType").description("회사 형태 (STUDIO·PLATFORM·AGENCY·PUBLISHER·INDIVIDUAL_STUDIO·SMALL_TEAM·OTHER). null이면 변경 없음").optional(),
                                 fieldWithPath("activityField").description("활동 분야 (ILLUSTRATION·WEBTOON·PRINT_COMIC·ANIMATION 단일 선택). null이면 변경 없음").optional(),
-                                fieldWithPath("activeRegions").description("활동 지역 (최대 7개). null이면 변경 없음, []이면 전체 삭제").optional(),
                                 fieldWithPath("contact").description("연락처 (전화번호 또는 이메일)").optional(),
                                 fieldWithPath("sns").description("SNS 링크 (최대 200자)").optional(),
                                 fieldWithPath("hasBusinessRegistration").description("사업자 등록 여부(자기 신고)").optional()
@@ -180,8 +177,7 @@ class CompanyApiDocTest extends RestDocsIntegrationSupport {
                 .andExpect(jsonPath("$.data.companyType").value("STUDIO"))
                 .andExpect(jsonPath("$.data.contact").value("010-1234-5678"))
                 .andExpect(jsonPath("$.data.hasBusinessRegistration").value(true))
-                .andExpect(jsonPath("$.data.activityField").value("WEBTOON"))
-                .andExpect(jsonPath("$.data.activeRegions[0]").value("SEOUL"));
+                .andExpect(jsonPath("$.data.activityField").value("WEBTOON"));
     }
 
     @Test

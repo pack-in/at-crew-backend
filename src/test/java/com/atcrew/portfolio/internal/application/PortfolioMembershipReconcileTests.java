@@ -15,7 +15,6 @@ import com.atcrew.artwork.internal.persistence.ArtworkRepository;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaProcessingStatus;
 import com.atcrew.media.internal.application.MediaCallbackService;
-import com.atcrew.member.CreatorRole;
 import com.atcrew.member.MemberService;
 import com.atcrew.portfolio.PortfolioSelectableInfo;
 import com.atcrew.portfolio.internal.domain.Portfolio;
@@ -212,7 +211,7 @@ class PortfolioMembershipReconcileTests {
         return memberService.register(
                 "rc-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12) + "@atcrew.com",
                 "rc" + UUID.randomUUID().toString().replace("-", "").substring(0, 10),
-                "작가", CreatorRole.ILLUSTRATOR).id();
+                "작가").id();
     }
 
     private String artistPageId(String memberId) {

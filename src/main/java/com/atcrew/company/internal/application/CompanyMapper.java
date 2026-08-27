@@ -23,8 +23,6 @@ class CompanyMapper {
                 company.getCompanyType(),
                 company.hasBusinessRegistration(),
                 company.getActivityField(),
-                // Set은 순서가 보장되지 않으므로 enum 선언 순으로 정렬해 응답 순서를 고정한다.
-                company.getActiveRegions().stream().sorted().toList(),
                 hasOpenJobPosting,
                 isOwner,
                 company.getCreatedAt(),

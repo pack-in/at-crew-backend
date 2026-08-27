@@ -103,9 +103,17 @@
 
 코드에서 정의된 enum 값입니다. 그 외 값을 보내면 `COMMON_INVALID_INPUT`(JSON 파싱 실패)이 발생합니다.
 
-- **CreatorRole**: `WEBTOON`, `ILLUSTRATOR`, `WEB_NOVELIST`, (기타) — 웹툰작가/일러스트작가/웹소설작가
 - **EmploymentStatus**: `PREPARING`, `AVAILABLE`, `NEGOTIABLE`
 - **ActivityField**: `ILLUSTRATION`, `WEBTOON`, `PRINT_COMIC`, `ANIMATION` (작가는 복수 선택, 기업은 단일 선택)
+- **DrawingStyle** (작화 스타일, 복수+직접입력): `FEMALE_ORIENTED`, `MALE_ORIENTED`, `REALISTIC`, `SEMI_REALISTIC`, `THIN_LINE`, `THICK_LINE`, `ROUGH_LINE`, `CLEAN_LINE`, `SHOJO`, `SHONEN`, `MINIMAL`, `DARK_TONE`, `BRIGHT_TONE`, `INK_HEAVY`
+- **WorkPace** (작업 스타일, 단일): `QUALITY_FIRST`, `SPEED_FIRST`, `PER_PROJECT`
+- **AvailableStartPeriod** (투입 가능 시기, 단일): `WITHIN_ONE_WEEK`, `WITHIN_TWO_WEEKS`, `WITHIN_ONE_MONTH`, `WITHIN_TWO_MONTHS`, `AFTER_TWO_MONTHS`
+- **DesiredRole** (희망 담당 업무, 복수 23종+직접입력) / **DesiredGenre** (희망 장르, 복수 29종+직접입력)
+- **DesiredEmploymentType** (희망 채용 형태, 복수): `FULL_TIME`, `CONTRACT`, `FREELANCE`, `OUTSOURCING`, `NEGOTIABLE`
+- **DesiredWorkLocation** (희망 근무 방식, 단일): `OFFICE`, `REMOTE`, `HYBRID`, `NEGOTIABLE`
+- **FeedbackPreference** (선호 피드백 방식, 복수): `SPECIFIC`, `AUTONOMOUS`, `DIRECT`, `GENTLE`, `AT_ONCE`, `FREQUENT`, `NO_PREFERENCE`
+- **DesiredMinimumGuarantee** (희망 MG, 단일 10구간) / **DesiredAnnualSalary** (희망 연봉, 단일 5구간)
+- **CustomTagType** (직접입력 항목): `DRAWING_STYLE`, `DESIRED_ROLE`, `DESIRED_GENRE` — 값은 최대 10자, 항목당 10개, 앞뒤 공백 제거, 중복 무시
 - **ExperienceLevel**: `NEWCOMER`, `ONE_TO_TWO`, `THREE_TO_FOUR`, `FIVE_TO_NINE`, `TEN_PLUS`
 - **ActiveRegion**: `SEOUL`, `GYEONGGI`, `DAEJEON`, `DAEGU`, `GWANGJU`, `BUSAN`, `OTHER`
 - **TeamExperience**: `NONE`, `SHORT_TERM`, `DIVISION`, `REGULAR_DEADLINE`
@@ -133,17 +141,15 @@
 {
   "loginEmail": "tester@example.com",
   "handle": "creator_kim",
-  "name": "김창작",
-  "creatorRole": "WEBTOON"
+  "name": "김창작"
 }
 ```
 **필드 제약**:
 - `loginEmail`: `@NotBlank @Email`
 - `handle`: `@NotBlank`, 정규식 `^[a-zA-Z0-9_-]{3,30}$` (영문·숫자·_·- 3~30자)
 - `name`: `@NotBlank @Size(max=16)`
-- `creatorRole`: `@NotNull` (CreatorRole enum)
 
-**정상 응답 (201)**: `data`에 MemberInfo (id, handle, name, creatorRole 등).
+**정상 응답 (201)**: `data`에 MemberInfo (id, handle, name 등).
 
 **예외 케이스**:
 | 케이스 | 변경 값 | 예상 에러 코드 | HTTP |
@@ -151,7 +157,6 @@
 | 이메일 형식 오류 | loginEmail: "notEmail" | COMMON_INVALID_INPUT | 400 |
 | 핸들 형식 오류 | handle: "ab" (3자 미만) | COMMON_INVALID_INPUT | 400 |
 | 이름 길이 초과 | name: 17자 이상 | COMMON_INVALID_INPUT | 400 |
-| creatorRole 누락 | creatorRole 생략 | COMMON_INVALID_INPUT | 400 |
 | 이메일 중복 | 기존 loginEmail 재사용 | DUPLICATE_EMAIL | 409 |
 | 핸들 중복 | 기존 handle 재사용 | DUPLICATE_HANDLE | 409 |
 
@@ -358,7 +363,6 @@
 **Request Body** (전 필드 nullable):
 ```json
 {
-  "creatorRole": "ILLUSTRATOR",
   "employmentStatus": "AVAILABLE",
   "activityFields": ["ILLUSTRATION", "WEBTOON"],
   "experienceLevel": "THREE_TO_FOUR",

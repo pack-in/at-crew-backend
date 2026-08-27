@@ -61,7 +61,7 @@ class MemberControllerValidationTest {
     void 이름_16자_초과_가입_거부() throws Exception {
         mockMvc.perform(post("/api/members")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(registerBody("user@test.com", "valid_handle", "가".repeat(17), "WEBTOON")))
+                        .content(registerBody("user@test.com", "valid_handle", "가".repeat(17))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
                 .andDo(document("member/validation/register-name-too-long"));
@@ -71,7 +71,7 @@ class MemberControllerValidationTest {
     void 이메일_형식_아닌_값_가입_거부() throws Exception {
         mockMvc.perform(post("/api/members")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(registerBody("not-an-email", "valid_handle", "홍길동", "WEBTOON")))
+                        .content(registerBody("not-an-email", "valid_handle", "홍길동")))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
                 .andDo(document("member/validation/register-invalid-email-format"));
@@ -81,27 +81,28 @@ class MemberControllerValidationTest {
     void 핸들_패턴_위반_가입_거부() throws Exception {
         mockMvc.perform(post("/api/members")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(registerBody("user@test.com", "invalid handle!", "홍길동", "WEBTOON")))
+                        .content(registerBody("user@test.com", "invalid handle!", "홍길동")))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
                 .andDo(document("member/validation/register-invalid-handle-pattern"));
     }
 
     @Test
-    void 존재하지_않는_enum_값_가입_거부() throws Exception {
-        mockMvc.perform(post("/api/members")
+    void 정보_수정_존재하지_않는_enum_값_거부() throws Exception {
+        // 가입 요청(RegisterRequest)에는 enum 필드가 없어졌으므로(창작자 유형 제거) 정보 수정으로 검증한다.
+        mockMvc.perform(patch("/api/members/me/info")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(registerBody("user@test.com", "valid_handle", "홍길동", "INVALID_ROLE")))
+                        .content(objectMapper.writeValueAsString(Map.of("activeRegion", "INVALID_REGION"))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
-                .andDo(document("member/validation/register-invalid-enum-value"));
+                .andDo(document("member/validation/update-info-invalid-enum-value"));
     }
 
     @Test
     void 이름_빈_문자열_가입_거부() throws Exception {
         mockMvc.perform(post("/api/members")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(registerBody("user@test.com", "valid_handle", "   ", "WEBTOON")))
+                        .content(registerBody("user@test.com", "valid_handle", "   ")))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
                 .andDo(document("member/validation/register-blank-name"));
@@ -241,12 +242,11 @@ class MemberControllerValidationTest {
 
     // ─── Helper ───────────────────────────────────────────────────────
 
-    private String registerBody(String email, String handle, String name, String role) throws Exception {
+    private String registerBody(String email, String handle, String name) throws Exception {
         return objectMapper.writeValueAsString(Map.of(
                 "loginEmail", email,
                 "handle", handle,
-                "name", name,
-                "creatorRole", role
+                "name", name
         ));
     }
 }

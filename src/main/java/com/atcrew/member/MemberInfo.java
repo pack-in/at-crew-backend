@@ -22,8 +22,6 @@ public record MemberInfo(
 
         // === 기본 프로필 ===
         String name,           // 사용자 이름·작가명 (max 16자)
-        @Schema(nullable = true)
-        CreatorRole creatorRole, // 창작자 유형 (웹툰작가·일러스트작가·웹소설작가·기타)
 
         // === 구인구직 상태 [피그마: 구인구직 상태 칩 선택] ===
         EmploymentStatus employmentStatus,
@@ -39,6 +37,23 @@ public record MemberInfo(
 
         // === 팀 작업 경험 [피그마: 팀 작업 경험 칩 복수 선택] ===
         List<TeamExperience> teamExperiences,
+
+        // === 작화 스타일·작업 스타일 [피그마: 기본 정보 탭] ===
+        List<DrawingStyle> drawingStyles,
+        WorkPace workPace,
+
+        // === 구직 정보 [피그마: 구직 정보 탭, 기획서 마이페이지_작가-R24] ===
+        AvailableStartPeriod availableStartPeriod,
+        List<DesiredRole> desiredRoles,
+        List<DesiredGenre> desiredGenres,
+        List<DesiredEmploymentType> desiredEmploymentTypes,
+        DesiredWorkLocation desiredWorkLocation,
+        List<FeedbackPreference> feedbackPreferences,
+        DesiredMinimumGuarantee desiredMinimumGuarantee,
+        DesiredAnnualSalary desiredAnnualSalary,
+
+        // === 직접입력 태그 [기획서 업로드-R13] ===
+        List<CustomTagInfo> customTags,
 
         // === 슬롯 [피그마: 전체 슬롯 개수 / 작업 가능 슬롯] ===
         int totalSlotCount,

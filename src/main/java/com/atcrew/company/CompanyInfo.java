@@ -1,7 +1,6 @@
 package com.atcrew.company;
 
 import java.time.Instant;
-import java.util.List;
 
 /**
  * 기업 프로필 공개 응답 DTO.
@@ -19,7 +18,6 @@ public record CompanyInfo(
         CompanyType companyType,            // 회사 형태 (미기입 시 null)
         boolean hasBusinessRegistration,    // 사업자 등록 여부 (자기 신고)
         ActivityField activityField,        // 활동 분야 (단일 선택, 미기입 시 null)
-        List<ActiveRegion> activeRegions,   // 활동 지역
         boolean hasOpenJobPosting,          // 공개 중인 구인글 보유 여부 — 구인글 업로드 카드 진입점 판단용(§6.2)
         boolean isOwner,                    // 조회자가 소유자인지 여부 — 수정/업로드/관리 액션 노출 판단용
         Instant createdAt,                  // 생성 일시
