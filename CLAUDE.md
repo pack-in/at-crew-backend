@@ -30,6 +30,8 @@
 | 문서 | 설명 |
 |------|------|
 | [docs/AT-CREW_서비스기획서_전체_20260728.xlsx](docs/AT-CREW_서비스기획서_전체_20260728.xlsx) | 정식 서비스 기획서 — 요구사항·정책·화면 목록·사용자 플로우·기능/화면 명세·QA 6개 시트. 개별 설계 문서와 상충 시 이 문서가 정본 |
+| [README.md](README.md) | 프로젝트 개요 — 아키텍처·모듈 맵·기술 스택·설계 결정 요약·운영 구성. 공개 저장소의 진입점 |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | 브랜치·커밋·PR·이슈 규약과 병합 방식. 커밋 형식 상세는 docs/conventions/commit.md |
 | [docs/conventions/commit.md](docs/conventions/commit.md) | 커밋 컨벤션 및 워크플로우 |
 | [docs/design/figma.md](docs/design/figma.md) | Figma 파일 링크 및 UI 페이지 목록 (**비공개**) |
 | [docs/design/auth-email-custom-redesign.md](docs/design/auth-email-custom-redesign.md) | 이메일 자체 인증 재설계 (Firebase → Custom) 설계안 |
