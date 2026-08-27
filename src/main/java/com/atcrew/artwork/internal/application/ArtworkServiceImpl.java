@@ -24,9 +24,15 @@ import com.atcrew.common.response.CursorPage;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaService;
 import com.atcrew.media.MediaVariantProfile;
+import com.atcrew.member.Language;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Subquery;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
@@ -38,6 +44,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -51,6 +58,8 @@ class ArtworkServiceImpl implements ArtworkService {
     private static final List<String> ALLOWED_CONTENT_TYPES = List.of("image/jpeg", "image/png", "image/webp");
     /** 스타터 플랜 보유 작품 상한(마이페이지_작가-R20). */
     private static final int STARTER_ARTWORK_LIMIT = 4;
+    // 게시물 언어 칩 4종(로그인-R19) — 프로도 전체 선택이 상한이다
+    private static final int MAX_LANGUAGE_COUNT = 4;
 
     private final ArtworkRepository artworkRepository;
     private final MemberService memberService;
@@ -94,6 +103,7 @@ class ArtworkServiceImpl implements ArtworkService {
     @Transactional
     public ArtworkInfo uploadArtwork(String memberId, UploadArtworkCommand command) {
         assertArtworkQuota(memberId, 1);
+        assertLanguagesAllowed(memberId, command.languages());
         List<Material> materials = toMaterials(command.materials());
         Artwork artwork = Artwork.create(
                 memberId,
@@ -109,6 +119,7 @@ class ArtworkServiceImpl implements ArtworkService {
                 command.genres(),
                 command.tags(),
                 command.ageRating(),
+                command.languages(),
                 visibilityOf(command.publishToFeed()),
                 command.tools(),
                 command.workDuration(),
@@ -159,6 +170,10 @@ class ArtworkServiceImpl implements ArtworkService {
             throw new ArtworkException(ArtworkErrorCode.ARTWORK_NOT_FOUND, artworkId);
         }
 
+        if (command.languages() != null) {
+            assertLanguagesAllowed(memberId, command.languages());
+        }
+
         if (command.imageKeys() != null) {
             replaceImages(artwork, command.imageKeys(), command.representativeImageIndex());
         }
@@ -179,6 +194,7 @@ class ArtworkServiceImpl implements ArtworkService {
                 command.genres(),
                 command.tags(),
                 command.ageRating(),
+                command.languages(),
                 command.tools(),
                 command.workDuration(),
                 command.cutCount(),
@@ -251,9 +267,10 @@ class ArtworkServiceImpl implements ArtworkService {
     @Override
     public CursorPage<ArtworkSummaryInfo> getCommunityArtworks(ArtworkField artworkField,
                                                                 AgeRating ageRating,
+                                                                List<Language> viewerLanguages,
                                                                 String cursor, int size) {
         int limit = size + 1;
-        Specification<Artwork> spec = buildCommunitySpecification(artworkField, ageRating, cursor);
+        Specification<Artwork> spec = buildCommunitySpecification(artworkField, ageRating, viewerLanguages, cursor);
         List<Artwork> artworks = artworkRepository
                 .findAll(spec, PageRequest.of(0, limit, Sort.by(Sort.Direction.DESC, "createdAt")))
                 .getContent();
@@ -262,7 +279,8 @@ class ArtworkServiceImpl implements ArtworkService {
 
     // Mongo Criteria 동적 쿼리 → JPA Specification (docs/design/mariadb-migration-design.md §3.6)
     private Specification<Artwork> buildCommunitySpecification(ArtworkField artworkField,
-                                                                AgeRating ageRating, String cursor) {
+                                                                AgeRating ageRating,
+                                                                List<Language> viewerLanguages, String cursor) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             predicates.add(cb.equal(root.get("status"), ArtworkStatus.READY));
@@ -274,6 +292,9 @@ class ArtworkServiceImpl implements ArtworkService {
             }
             if (ageRating != null) {
                 predicates.add(cb.equal(root.get("ageRating"), ageRating));
+            }
+            if (viewerLanguages != null && !viewerLanguages.isEmpty()) {
+                predicates.add(languageSegmentPredicate(root, query, cb, viewerLanguages));
             }
             if (cursor != null) {
                 predicates.add(cb.lessThan(root.get("createdAt"), parseCursor(cursor)));
@@ -459,6 +480,62 @@ class ArtworkServiceImpl implements ArtworkService {
         if (owned + increment > STARTER_ARTWORK_LIMIT) {
             throw new ArtworkException(ArtworkErrorCode.STARTER_ARTWORK_LIMIT_EXCEEDED,
                     "memberId=" + memberId + ", owned=" + owned + ", increment=" + increment);
+        }
+    }
+
+    /**
+     * 언어 세그먼트 필터(로그인-R16) — 뷰어가 보기로 한 언어 중 하나라도 가진 작품만 남긴다.
+     *
+     * <p>언어를 고른 적 없는 작품(마이그레이션 이전 업로드분)은 항상 노출한다. 필터 도입만으로
+     * 기존 작품이 피드에서 통째로 사라지는 것을 막는 폴백이다.
+     *
+     * <p>{@code languages}는 @ElementCollection이라 join으로 걸면 언어 수만큼 행이 늘어 커서
+     * 페이지네이션이 깨진다. EXISTS 서브쿼리로 행 수를 보존한다.
+     */
+    private Predicate languageSegmentPredicate(Root<Artwork> root, CriteriaQuery<?> query,
+                                               CriteriaBuilder cb, List<Language> viewerLanguages) {
+        Subquery<String> subquery = query.subquery(String.class);
+        Root<Artwork> subRoot = subquery.from(Artwork.class);
+        Join<Artwork, Language> languageJoin = subRoot.join("languages");
+        subquery.select(subRoot.get("id"))
+                .where(cb.and(
+                        cb.equal(subRoot.get("id"), root.get("id")),
+                        languageJoin.in(viewerLanguages)));
+        return cb.or(cb.isEmpty(root.get("languages")), cb.exists(subquery));
+    }
+
+    /**
+     * 게시물 작성·노출 언어 검증(업로드-R30, REQ-020).
+     *
+     * <p>규칙은 둘이다. <b>주 사용 언어는 플랜과 무관하게 반드시 포함</b>되고, 거기에 언어를 더하는 것이
+     * 프로 전용이다. 결과적으로 스타터는 주 사용 언어 1개로 고정되고 프로는 주 언어를 포함한
+     * 최대 4개가 된다.
+     *
+     * <p>주 언어를 빼지 못하게 막는 이유는 세그먼트가 쪼개지는 것을 막기 위해서다. 작가 목록은 계정의
+     * 주 언어로, 작품 피드는 작품의 언어로 거르기 때문에, 주 언어를 뺀 작품은 작성자가 노출되는 세그먼트와
+     * 다른 세그먼트에만 노출된다 — 로그인-R16이 "계정·게시글"을 한 덩어리로 묶어 정의한 전제가 깨진다.
+     * 설정-R14가 같은 성격의 게시물 언어 선택에서 주 언어 해제를 금지한 것과도 같은 결이다.
+     *
+     * <p>주 사용 언어가 없는 마이그레이션 이전 회원은 포함 검사를 걸 수 없으므로 개수 제한만 적용한다 —
+     * 임의의 언어를 강요하면 기존 회원이 업로드 자체를 못 하게 된다.
+     */
+    private void assertLanguagesAllowed(String memberId, List<Language> languages) {
+        // 저장은 Set이라 중복은 어차피 합쳐진다 — 개수·플랜 판정도 중복 제거 후 값으로 해야 일치한다.
+        Set<Language> distinct = languages == null ? Set.of() : new HashSet<>(languages);
+        if (distinct.isEmpty() || distinct.size() > MAX_LANGUAGE_COUNT) {
+            throw new ArtworkException(ArtworkErrorCode.INVALID_LANGUAGE_COUNT,
+                    "languages=" + languages);
+        }
+        // 개수 초과를 먼저 본다 — 스타터가 주 언어를 포함해 2개를 골랐을 때 "주 언어 누락"이 아니라
+        // "다중 선택은 유료"라는 정확한 안내가 나가야 한다.
+        if (distinct.size() > 1 && !billingService.hasProPlan(memberId)) {
+            throw new ArtworkException(ArtworkErrorCode.MULTI_LANGUAGE_REQUIRES_PRO,
+                    "memberId=" + memberId + ", count=" + distinct.size());
+        }
+        Language primaryLanguage = memberService.findById(memberId).primaryLanguage();
+        if (primaryLanguage != null && !distinct.contains(primaryLanguage)) {
+            throw new ArtworkException(ArtworkErrorCode.LANGUAGE_NOT_ALLOWED,
+                    "memberId=" + memberId + ", primary=" + primaryLanguage + ", requested=" + distinct);
         }
     }
 

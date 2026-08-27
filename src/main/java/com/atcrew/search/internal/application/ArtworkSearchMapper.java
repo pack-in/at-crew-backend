@@ -47,6 +47,7 @@ class ArtworkSearchMapper {
                 info.artworkField() != null ? info.artworkField().name() : null,
                 info.creativeType() != null ? info.creativeType().name() : null,
                 info.ageRating() != null ? info.ageRating().name() : null,
+                info.languages() == null ? List.of() : info.languages().stream().map(Enum::name).toList(),
                 info.roles() == null ? List.of() : info.roles().stream().map(Enum::name).toList(),
                 info.genres() == null ? List.of() : info.genres().stream().map(Enum::name).toList(),
                 materialTargets,

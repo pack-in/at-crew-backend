@@ -14,6 +14,7 @@ import com.atcrew.billing.internal.persistence.SubscriptionRepository;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaProcessingStatus;
 import com.atcrew.media.internal.application.MediaCallbackService;
+import com.atcrew.member.Language;
 import com.atcrew.support.BillingTestSupport;
 import com.atcrew.support.RestDocsIntegrationSupport;
 import org.junit.jupiter.api.Test;
@@ -673,7 +674,7 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
                 List.of(imageKey), 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 title, "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
                 List.of(ArtworkRole.LINEART), List.of(Genre.FANTASY), List.of("태그"),
-                AgeRating.ALL, true, List.of(), List.of("clip studio"),
+                AgeRating.ALL, List.of(Language.KO), true, List.of(), List.of("clip studio"),
                 new WorkDuration(1, 1, 1, 1), 1, List.of(), List.of())).id();
     }
 

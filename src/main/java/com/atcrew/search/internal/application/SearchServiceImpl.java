@@ -128,7 +128,7 @@ class SearchServiceImpl implements SearchService {
     private SearchQuery withCursor(SearchQuery query, String cursor) {
         return new SearchQuery(query.q(), query.postTypes(), query.artworkFields(), query.creativeTypes(),
                 query.ageRatings(), query.roles(), query.genres(), query.materialTargets(),
-                query.sort(), cursor, query.size());
+                query.viewerLanguages(), query.sort(), cursor, query.size());
     }
 
     /**
@@ -144,7 +144,7 @@ class SearchServiceImpl implements SearchService {
     private SearchQuery withLatestSort(SearchQuery query) {
         return new SearchQuery(query.q(), query.postTypes(), query.artworkFields(), query.creativeTypes(),
                 query.ageRatings(), query.roles(), query.genres(), query.materialTargets(),
-                SearchSort.LATEST, query.cursor(), query.size());
+                query.viewerLanguages(), SearchSort.LATEST, query.cursor(), query.size());
     }
 
     private String encodeCursor(SearchResultItem item) {

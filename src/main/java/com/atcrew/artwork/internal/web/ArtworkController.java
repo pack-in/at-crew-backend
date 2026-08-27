@@ -58,8 +58,16 @@ class ArtworkController {
                 artworkService.generatePresignedUrls(request.count(), request.contentTypes()));
     }
 
-    @Operation(summary = "작품 업로드", description = "R2 업로드 완료 후 작품 정보를 저장합니다. 이미지 처리(PROCESSING) 상태로 시작됩니다.")
+    @Operation(summary = "작품 업로드", description = "R2 업로드 완료 후 작품 정보를 저장합니다. 이미지 처리(PROCESSING) 상태로 시작됩니다. "
+            + "게시물 작성·노출 언어(languages)는 필수이며 주 사용 언어를 반드시 포함해야 합니다. "
+            + "언어를 2개 이상 고르는 것은 프로 플랜 전용입니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "업로드 성공")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400",
+            description = "게시물 언어 개수 오류(INVALID_LANGUAGE_COUNT)")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403",
+            description = "스타터 작품 개수 초과(STARTER_ARTWORK_LIMIT_EXCEEDED), "
+                    + "스타터의 다중 언어 선택(MULTI_LANGUAGE_REQUIRES_PRO), "
+                    + "주 사용 언어 미포함(LANGUAGE_NOT_ALLOWED)")
     @PostMapping("/artworks")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<ArtworkInfo> uploadArtwork(@RequestBody @Valid UploadArtworkRequest request) {
@@ -84,6 +92,11 @@ class ArtworkController {
 
     @Operation(summary = "작품 수정")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "수정 성공")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400",
+            description = "게시물 언어 개수 오류(INVALID_LANGUAGE_COUNT)")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403",
+            description = "스타터의 다중 언어 선택(MULTI_LANGUAGE_REQUIRES_PRO), "
+                    + "주 사용 언어 미포함(LANGUAGE_NOT_ALLOWED)")
     @PatchMapping("/artworks/{artworkId}")
     public ApiResponse<ArtworkInfo> updateArtwork(@PathVariable String artworkId,
                                                    @RequestBody @Valid UpdateArtworkRequest request) {
@@ -138,7 +151,7 @@ class ArtworkController {
                 req.imageKeys(), req.representativeImageIndex(), req.thumbnailKey(),
                 req.imageLayoutType(), req.title(), req.description(),
                 req.artworkField(), req.creativeType(), req.roles(), req.genres(),
-                req.tags(), req.ageRating(), req.publishToFeed(), req.portfolioIds(), req.tools(),
+                req.tags(), req.ageRating(), req.languages(), req.publishToFeed(), req.portfolioIds(), req.tools(),
                 req.workDuration(), req.cutCount(), req.videoLinks(), materials);
     }
 
@@ -149,7 +162,7 @@ class ArtworkController {
                 req.imageKeys(), req.representativeImageIndex(), req.thumbnailKey(),
                 req.imageLayoutType(), req.title(), req.description(),
                 req.artworkField(), req.creativeType(), req.roles(), req.genres(),
-                req.tags(), req.ageRating(), req.tools(),
+                req.tags(), req.ageRating(), req.languages(), req.tools(),
                 req.workDuration(), req.cutCount(), req.videoLinks(), materials);
     }
 

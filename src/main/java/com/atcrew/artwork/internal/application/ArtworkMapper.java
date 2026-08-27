@@ -41,6 +41,7 @@ class ArtworkMapper {
                 artwork.getCutCount(),
                 artwork.getVideoLinks(),
                 artwork.getAgeRating(),
+                artwork.getLanguages(),
                 artwork.getVisibility(),
                 artwork.isPortfolioIncluded(),
                 artwork.isBlocked(),

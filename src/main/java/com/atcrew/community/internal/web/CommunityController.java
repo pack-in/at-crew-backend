@@ -61,7 +61,7 @@ class CommunityController {
             @Parameter(description = "커서 (마지막 작품 createdAt millis)") @RequestParam(required = false) String cursor,
             @Parameter(description = "페이지 크기 (기본 20, 최대 50)") @RequestParam(required = false) Integer size) {
         return ApiResponse.success(artworkService.getCommunityArtworks(
-                artworkField, ageRating, cursor, resolveSize(size)));
+                artworkField, ageRating, viewerLanguages(), cursor, resolveSize(size)));
     }
 
     @Operation(summary = "작가 프로필 탭 — 작가 찾아보기", description =
