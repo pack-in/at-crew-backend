@@ -8,11 +8,18 @@
 
 ## 0. 공통 — 접속과 첫 3분
 
-`<APP_HOST>`는 EC2 #1의 퍼블릭 IP다(AWS 콘솔 또는 저장소 Secret `APP_HOST`). 매번 치기 번거로우면
-`~/.ssh/config`에 별칭을 만들어 둔다.
+`<APP_HOST>`는 EC2 #1의 퍼블릭 IP다(AWS 콘솔 또는 저장소 Secret `APP_HOST`).
+`~/.ssh/config`에 별칭을 만들어 두면 장애 대응 중에 자리표시자를 치환할 필요가 없다.
+
+```
+Host atcrew-prod
+  HostName <APP_HOST>
+  User ec2-user
+  IdentityFile ~/.ssh/<키페어>.pem
+```
 
 ```bash
-ssh -i ~/.ssh/<키페어>.pem ec2-user@<APP_HOST>
+ssh atcrew-prod
 cd ~/at-crew-backend/deploy
 docker-compose -f docker-compose.app.yml ps          # 컨테이너 상태
 docker-compose -f docker-compose.app.yml logs --tail=100 app
@@ -23,11 +30,11 @@ df -h /                                               # 디스크
 관측 링크
 - 대시보드: `<GRAFANA_URL>/dashboards/f/at-crew`
 - 알람 상태: `<GRAFANA_URL>/alerting/list`
-
-> `<APP_HOST>`·`<키페어>`·`<GRAFANA_URL>`은 실제 값을 적지 않는다(공개 저장소). 각각 저장소 Secrets의
-> `APP_HOST`, 로컬 `~/.ssh/`의 키 파일, Secrets의 `GRAFANA_URL`을 참조한다.
 - 로그 조회: Explore → `grafanacloud-atcrew-logs` → `{service_name="app"} |= "<requestId>"`
 - 에러 상세: Sentry 프로젝트 `at-crew-backend`
+
+> `<APP_HOST>`·`<키페어>`·`<GRAFANA_URL>`은 실제 값을 적지 않는다(공개 저장소). 각각 저장소 Secret
+> `APP_HOST`, 로컬 `~/.ssh/`의 키 파일, Secret `GRAFANA_URL`을 참조한다.
 
 ---
 
