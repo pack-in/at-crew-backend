@@ -1,5 +1,9 @@
 package com.atcrew.portfolio.internal.application;
 
+import com.atcrew.SharedContainersConfig;
+import com.atcrew.support.DatabaseCleanupExtension;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import com.atcrew.artwork.AgeRating;
 import com.atcrew.artwork.ArtworkField;
 import com.atcrew.artwork.ArtworkImageInfo;
@@ -11,11 +15,7 @@ import com.atcrew.portfolio.internal.persistence.PortfolioItemSnapshotRepository
 import com.atcrew.portfolio.internal.persistence.PortfolioRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.modulith.test.ApplicationModuleTest;
-import org.testcontainers.containers.MariaDBContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.time.Instant;
@@ -31,12 +31,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 스냅샷이 쓰는 key를 정확히 골라내야 한다.
  */
 @ApplicationModuleTest(mode = ApplicationModuleTest.BootstrapMode.ALL_DEPENDENCIES)
-@Testcontainers
+@ImportTestcontainers(SharedContainersConfig.class)
+@ExtendWith(DatabaseCleanupExtension.class)
 class SnapshotRetainedMediaKeyProviderTests {
-
-    @Container
-    @ServiceConnection
-    static MariaDBContainer<?> mariadb = new MariaDBContainer<>("mariadb:11.4");
 
     @Autowired
     SnapshotRetainedMediaKeyProvider provider;

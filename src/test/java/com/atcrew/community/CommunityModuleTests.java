@@ -1,13 +1,13 @@
 package com.atcrew.community;
 
+import com.atcrew.SharedContainersConfig;
+import com.atcrew.support.DatabaseCleanupExtension;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import com.atcrew.member.MemberService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.modulith.test.ApplicationModuleTest;
-import org.testcontainers.containers.MariaDBContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.util.List;
 
@@ -16,12 +16,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 // community는 artwork·member 모두에 의존(CommunityController)하므로 DIRECT_DEPENDENCIES로는
 // 그 모듈들의 추이적 의존성(PasswordEncoder 등 common.security 빈)까지 부트스트랩되지 않는다.
 @ApplicationModuleTest(mode = ApplicationModuleTest.BootstrapMode.ALL_DEPENDENCIES)
-@Testcontainers
+@ImportTestcontainers(SharedContainersConfig.class)
+@ExtendWith(DatabaseCleanupExtension.class)
 class CommunityModuleTests {
-
-    @Container
-    @ServiceConnection
-    static MariaDBContainer<?> mariadb = new MariaDBContainer<>("mariadb:11.4");
 
     @Autowired
     BannerService bannerService;

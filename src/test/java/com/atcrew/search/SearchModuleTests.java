@@ -1,5 +1,9 @@
 package com.atcrew.search;
 
+import com.atcrew.SharedContainersConfig;
+import com.atcrew.support.DatabaseCleanupExtension;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import com.atcrew.artwork.AgeRating;
 import com.atcrew.artwork.ArtworkField;
 import com.atcrew.artwork.ArtworkInfo;
@@ -33,12 +37,7 @@ import com.atcrew.search.internal.application.ArtworkReindexService;
 import com.atcrew.search.internal.application.RecruitReindexService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.modulith.test.ApplicationModuleTest;
-import org.testcontainers.containers.MariaDBContainer;
-import org.testcontainers.elasticsearch.ElasticsearchContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -59,22 +58,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 무조건 오토컨피규레이션되어 이 모듈이 MariaDB를 쓰지 않아도 DataSource 빈 생성에 컨테이너가 필요하다.
  */
 @ApplicationModuleTest(mode = ApplicationModuleTest.BootstrapMode.ALL_DEPENDENCIES)
-@Testcontainers
+@ImportTestcontainers(SharedContainersConfig.class)
+@ExtendWith(DatabaseCleanupExtension.class)
 class SearchModuleTests {
 
     @Autowired
     EntitlementBalanceRepository balanceRepository;
-
-    @Container
-    @ServiceConnection
-    static ElasticsearchContainer elasticsearch = new ElasticsearchContainer(
-            "docker.elastic.co/elasticsearch/elasticsearch:9.2.8")
-            .withEnv("xpack.security.enabled", "false")
-            .withStartupTimeout(Duration.ofMinutes(3));
-
-    @Container
-    @ServiceConnection
-    static MariaDBContainer<?> mariadb = new MariaDBContainer<>("mariadb:11.4");
 
     @Autowired
     ArtworkService artworkService;

@@ -1,5 +1,9 @@
 package com.atcrew.artwork;
 
+import com.atcrew.SharedContainersConfig;
+import com.atcrew.support.DatabaseCleanupExtension;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import com.atcrew.billing.internal.persistence.SubscriptionRepository;
 import com.atcrew.common.exception.DomainException;
 import com.atcrew.media.MediaOwnerType;
@@ -12,14 +16,10 @@ import com.atcrew.member.RegisterMemberCommand;
 import com.atcrew.support.BillingTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.modulith.test.ApplicationModuleTest;
 import org.springframework.modulith.test.PublishedEvents;
-import org.testcontainers.containers.MariaDBContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -47,15 +47,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * artwork 리스너 상태 갱신 경로가 이어지는지를 검증한다.
  */
 @ApplicationModuleTest(mode = ApplicationModuleTest.BootstrapMode.ALL_DEPENDENCIES)
-@Testcontainers
+@ImportTestcontainers(SharedContainersConfig.class)
+@ExtendWith(DatabaseCleanupExtension.class)
 class ArtworkModuleTests {
 
     @Autowired
     SubscriptionRepository subscriptionRepository;
-
-    @Container
-    @ServiceConnection
-    static MariaDBContainer<?> mariadb = new MariaDBContainer<>("mariadb:11.4");
 
     @Autowired
     ArtworkService artworkService;
