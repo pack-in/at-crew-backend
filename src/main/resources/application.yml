@@ -66,6 +66,27 @@ management:
       percentiles:
         http.server.requests: 0.95, 0.99
 
+# 에러 추적(docs/design/observability-design.md §5) — DSN이 비어 있으면 SDK가 비활성이라
+# 로컬·테스트에서는 아무것도 전송되지 않는다. prod는 값이 없으면 기동을 막는다(application-prod.yml).
+sentry:
+  dsn: ${SENTRY_DSN:}
+  environment: ${SENTRY_ENVIRONMENT:local}
+  # 요청 헤더·쿠키·IP 등 SDK가 자동으로 붙이는 개인정보를 보내지 않는다. 메시지 본문 마스킹은
+  # SentryConfig의 beforeSend가 따로 처리한다.
+  send-default-pii: false
+  # 분산 추적은 쓰지 않는다 — 단일 서비스라 실익이 없고 무료 한도만 소모한다.
+  traces-sample-rate: 0.0
+  max-breadcrumbs: 20
+  # MDC의 요청 식별자를 태그로 올려 Loki 로그와 상호 참조할 수 있게 한다.
+  context-tags:
+    - requestId
+    - memberId
+  logging:
+    # ERROR만 이슈로 만든다. 인증/인가 실패(WARN)는 Loki에만 남긴다 — 공격 트래픽만으로
+    # 무료 한도 5,000건/월이 소진된다.
+    minimum-event-level: error
+    minimum-breadcrumb-level: warn
+
 cors:
   allowed-origins: http://localhost:3000
 

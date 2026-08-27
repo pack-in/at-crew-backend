@@ -56,6 +56,11 @@ stripe:
   publishable-key: ${STRIPE_PUBLISHABLE_KEY}
   webhook-secret: ${STRIPE_WEBHOOK_SECRET}
 
+# 관측 도구가 조용히 꺼져 있는 상태를 만들지 않는다 — 다른 필수값과 동일하게 기동 시점 fail-fast.
+sentry:
+  dsn: ${SENTRY_DSN}
+  environment: prod
+
 logging:
   level:
     root: WARN          # 프레임워크 노이즈 차단

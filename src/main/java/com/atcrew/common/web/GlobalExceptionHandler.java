@@ -26,8 +26,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         if (e.getStatus().is5xxServerError()) {
             log.error("서버 오류: {}", e.getCode(), e);
         } else if (e.getStatus() == HttpStatus.UNAUTHORIZED || e.getStatus() == HttpStatus.FORBIDDEN) {
-            // 인증·인가 실패 — prod에서 보안 이벤트 추적 필수
-            log.warn("인증/인가 실패: {} {}", e.getCode(), e.getMessage(), e);
+            // 인증·인가 실패 — prod에서 보안 이벤트 추적 필수. 스택트레이스는 남기지 않는다:
+            // 이 예외의 발생 지점은 코드에 뻔히 드러나 있는 반면, 크리덴셜 스터핑처럼 반복 실패가
+            // 쏟아지면 한 건당 약 10KB의 스택트레이스가 Loki 한도를 빠르게 소모한다
+            // (docs/design/observability-design.md §4).
+            log.warn("인증/인가 실패: {} {}", e.getCode(), e.getMessage());
         } else {
             // 400·404·409 등 클라이언트 오류 — 노이즈 방지를 위해 DEBUG
             log.debug("클라이언트 오류: {} {}", e.getCode(), e.getMessage());
