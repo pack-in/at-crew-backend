@@ -17,6 +17,9 @@ concurrency:
   group: observability-provisioning
   cancel-in-progress: false
 
+# Grafana API만 호출하고 저장소에는 아무것도 쓰지 않는다 — GITHUB_TOKEN 권한을 비워 둔다.
+permissions: {}
+
 jobs:
   apply:
     runs-on: ubuntu-latest
