@@ -56,7 +56,18 @@ stripe:
   publishable-key: ${STRIPE_PUBLISHABLE_KEY}
   webhook-secret: ${STRIPE_WEBHOOK_SECRET}
 
+# 관측 도구가 조용히 꺼져 있는 상태를 만들지 않는다 — 다른 필수값과 동일하게 기동 시점 fail-fast.
+sentry:
+  dsn: ${SENTRY_DSN}
+  environment: prod
+
 logging:
   level:
     root: WARN          # 프레임워크 노이즈 차단
     com.atcrew: INFO    # 비즈니스 이벤트(로그인·가입·탈퇴) + WARN·ERROR
+  # 중앙 로그 수집(docs/design/observability-design.md §4) — prod에서만 JSON으로 출력한다.
+  # MDC(requestId/memberId)가 필드로 나가 Loki에서 requestId로 요청 단위 추적이 된다.
+  # 로컬·테스트는 기존 사람이 읽는 포맷을 그대로 둔다.
+  structured:
+    format:
+      console: ecs

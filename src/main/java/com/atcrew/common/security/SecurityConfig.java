@@ -1,8 +1,10 @@
 package com.atcrew.common.security;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.security.autoconfigure.actuate.web.servlet.EndpointRequest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.core.env.Environment;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -36,6 +38,22 @@ class SecurityConfig {
     @Bean
     PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder(); // strength 10 (기본값)
+    }
+
+    // 관리 엔드포인트(actuator) 전용 체인 — 관측 설계(docs/design/observability-design.md §3.1).
+    // actuator는 management.server.port(8081)로 분리돼 서비스 포트(8080)에는 아예 존재하지 않고,
+    // 컨테이너 포트도 호스트 루프백에만 바인딩한다(deploy/docker-compose.app.yml). 즉 접근 통제는
+    // 네트워크 경계가 담당하고, 여기서는 같은 JVM 안의 Alloy 스크레이프가 401로 막히지 않게만 한다.
+    // 외부 공개용 /healthz는 nginx가 이 포트의 liveness 그룹으로 프록시한다.
+    @Bean
+    @Order(0)
+    SecurityFilterChain actuatorFilterChain(HttpSecurity http) throws Exception {
+        return http
+                .securityMatcher(EndpointRequest.toAnyEndpoint())
+                .csrf(AbstractHttpConfigurer::disable)
+                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
+                .build();
     }
 
     @Bean
@@ -96,8 +114,7 @@ class SecurityConfig {
                             // 요금제 페이지는 비로그인도 열람한다(요금제-R03).
                             .requestMatchers(HttpMethod.GET, "/api/billing/catalog").permitAll()
                             // Stripe 웹훅 — 인증 대신 서명 검증으로 보호한다(BillingWebhookController).
-                            .requestMatchers(HttpMethod.POST, "/internal/billing/stripe/webhook").permitAll()
-                            .requestMatchers("/actuator/health", "/actuator/info").permitAll();
+                            .requestMatchers(HttpMethod.POST, "/internal/billing/stripe/webhook").permitAll();
 
                     // recruit 모듈 — 공개 목록/상세 조회는 인증 불필요, 나머지는 인증 필요(기본 anyRequest().authenticated()).
                     // 주의: /job-postings/{jobPostingId} 템플릿보다 /trash, /me 같은 리터럴 하위 경로를 먼저 선언해야

@@ -33,4 +33,8 @@ ssh -i "$SSH_KEY" "$APP_HOST" "cd $REMOTE_DEPLOY_DIR && \
   APP_IMAGE=$APP_IMAGE docker-compose -f docker-compose.app.yml pull app && \
   APP_IMAGE=$APP_IMAGE docker-compose -f docker-compose.app.yml up -d"
 
+# 이전 배포 이미지는 남기지 않는다 — 배포마다 500MB씩 쌓여 루트 볼륨이 찬다(.github/workflows/deploy.yml
+# 동일 단계 참고). 실행 중 컨테이너가 쓰는 이미지는 prune 대상이 아니다.
+ssh -i "$SSH_KEY" "$APP_HOST" "docker image prune -af"
+
 echo "3/3 완료. 로그 확인: ssh -i $SSH_KEY $APP_HOST 'cd $REMOTE_DEPLOY_DIR && docker-compose -f docker-compose.app.yml logs -f app'"

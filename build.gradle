@@ -35,6 +35,13 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-web'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+	// 관측(docs/design/observability-design.md §3) — /actuator/prometheus 노출용 레지스트리.
+	// 애플리케이션 코드는 Micrometer 코어 API만 쓰므로 런타임 의존으로 둔다.
+	runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
+	// 에러 추적(docs/design/observability-design.md §5) — Logback 어펜더로 ERROR만 이슈화한다.
+	// 5xx는 GlobalExceptionHandler가 이미 log.error로 분류하고 있어 그 분류를 그대로 재사용한다.
+	implementation 'io.sentry:sentry-spring-boot-starter-jakarta:8.16.0'
+	implementation 'io.sentry:sentry-logback:8.16.0'
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 	implementation 'com.google.firebase:firebase-admin:9.4.3'
 	implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
