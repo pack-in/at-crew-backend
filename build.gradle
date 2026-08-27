@@ -40,7 +40,9 @@ dependencies {
 	runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
 	// 에러 추적(docs/design/observability-design.md §5) — Logback 어펜더로 ERROR만 이슈화한다.
 	// 5xx는 GlobalExceptionHandler가 이미 log.error로 분류하고 있어 그 분류를 그대로 재사용한다.
-	implementation 'io.sentry:sentry-spring-boot-starter-jakarta:8.16.0'
+	// Sentry는 스타터를 쓰지 않는다 — sentry-spring-boot-starter-jakarta 8.16.0의 오토컨피그가
+	// Spring Boot 3에만 있던 RestClientCustomizer를 참조해 Boot 4에서 컨텍스트 초기화가 실패한다(이슈 #62).
+	// SDK 초기화와 logback 어펜더 연결은 SentryConfig가 직접 한다.
 	implementation 'io.sentry:sentry-logback:8.16.0'
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 	implementation 'com.google.firebase:firebase-admin:9.4.3'
