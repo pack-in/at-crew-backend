@@ -1,0 +1,18 @@
+{
+  "receiver": "discord-p2",
+  "group_by": ["alertname", "instance"],
+  "group_wait": "30s",
+  "group_interval": "5m",
+  "repeat_interval": "4h",
+  "routes": [
+    {
+      "receiver": "discord-p1",
+      "object_matchers": [["severity", "=", "p1"]],
+      "group_by": ["alertname", "instance"],
+      "group_wait": "10s",
+      "group_interval": "2m",
+      "repeat_interval": "30m",
+      "continue": false
+    }
+  ]
+}

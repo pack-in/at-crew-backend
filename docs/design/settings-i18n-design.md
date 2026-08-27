@@ -14,12 +14,12 @@
 |---|---|
 | 메일 발송 | 신규 `com.atcrew.notification` 모듈(common 아님, §1). Resend HTTP API 어댑터 + 로컬/테스트용 로깅 어댑터, 프로파일로 스위칭 |
 | 계정 유형 | `Member.accountType`(CREATOR\|COMPANY) 신설, 가입 시 필수·이후 읽기 전용 |
-| 언어 | `Member.primaryLanguage`(가입 시 필수, 변경 불가) + `postLanguages`(복수, 설정에서 변경 가능, 주 언어는 해제 불가) |
+| 언어 | `Member.primaryLanguage`(가입 시 필수, 변경 불가) + `postLanguages`(복수, 설정에서 변경 가능, 주 언어는 해제 불가) + `Artwork.languages`(작품별, 스타터 1개·프로 다중 — 업로드-R30) |
 | 마케팅 동의 | 신규 컬럼을 만들지 않고 기존 `TermsAgreement.marketingNotification`(컬럼 `terms_marketing`)을 토글 대상으로 재사용 |
 | 로그아웃/세션 | 현재 refresh token이 **회원당 1개**뿐이라는 사실이 설계를 가른다(§4). 로그아웃=전체 삭제, 비밀번호 변경=전체 삭제 후 현재 기기용 재발급 |
 | access token 무효화 | 즉시 무효화 메커니즘이 없음(stateless JWT) → **TTL을 1시간→15분으로 단축**해 노출 창을 줄이는 것으로 이번 마일스톤은 대응(§4.3) |
 | 비밀번호 재설정 토큰 | SHA-256 해시 저장, 원문은 메일에만, 만료 1시간(로그인-R08), 1회성, 계정 열거 방지를 위해 요청 API는 항상 202 |
-| 언어 세그먼트 판정 단위 | **게시물이 아니라 작성자 계정** — `artworks`에 언어 컬럼을 새로 만들지 않고 작성자의 `primary_language`를 비정규화해 조인 없이 필터 |
+| 언어 세그먼트 판정 단위 | **작품은 작품 자신의 언어, 작가 목록은 작성자 계정의 주 사용 언어**(§5.1 교정, 2026-08-26) — 정본 업로드-R30이 작품마다 활동 언어를 고르게 하고 프로는 복수 선택이므로 작성자 언어 비정규화안은 폐기했다 |
 
 ---
 
@@ -77,7 +77,7 @@ private boolean adultContentVisible = true;   // 설정-R10 기본 ON
 ```
 
 - `AccountType`·`Language`는 `com.atcrew.member` 패키지의 공개 enum(기존 `ActivityField`/`ActiveRegion`과 동일 위치).
-- `postLanguages`는 `activeRegions`와 동일한 `@ElementCollection` 패턴(`member_active_regions` 테이블 선례).
+- `postLanguages`는 `teamExperiences`와 동일한 `@ElementCollection` 패턴(`member_team_experiences` 테이블 선례).
 - `Member.updatePostLanguages(Set<Language>)` — 내부에서 `primaryLanguage` 미포함 시 `MemberException(PRIMARY_LANGUAGE_CANNOT_BE_REMOVED)`(설정-R14 "주 사용 언어 칩 해제 불가").
 - `Member.updateMarketingConsent(boolean)` — `TermsAgreement`는 불변 embeddable이라 새 인스턴스로 교체하되 `agreedAt`은 보존.
 - `Member.updateAdultContentVisible(boolean)`.
@@ -111,6 +111,9 @@ CREATE INDEX idx_members_lang_search ON members (is_active, primary_language, em
 
 `POST /api/auth/email/register`, `POST /api/auth/google/register` 요청에 `accountType`(필수), `primaryLanguage`(필수) 추가.
 
+> 구현 현황(2026-08-26): `primaryLanguage`만 반영했다. `accountType`은 언어와 무관한 별건이라 이번 범위 밖이다.
+> 작품 업로드·수정(`POST/PATCH /api/artworks`)에도 `languages`가 필수로 추가돼 같은 시점에 프론트 배포가 필요하다.
+
 ### 3.2 신규 — auth
 
 | 메서드 | 경로 | 인증 | 요청 | 응답 | 에러 |
@@ -128,7 +131,7 @@ CREATE INDEX idx_members_lang_search ON members (is_active, primary_language, em
 | PATCH | `/api/members/me/password` | 필요 | `{currentPassword, newPassword, newPasswordConfirm}` | 200 `{accessToken, refreshToken}` | 설정-R13 |
 | PATCH | `/api/members/me/settings/marketing` | 필요 | `{agreed}` | 204 | 설정-R09 |
 | PATCH | `/api/members/me/settings/adult-content` | 필요 | `{visible}` | 204 | 설정-R10 |
-| PATCH | `/api/members/me/settings/post-languages` | 필요 | `{languages: [KO, JA]}` | 204 | 설정-R14 |
+| PATCH | `/api/members/me/post-languages` | 필요 | `{languages: [KO, JA]}` | 204 | 설정-R14. 기존 `/me/marketing-agreement`·`/me/adult-content` 네이밍에 맞춰 `settings` 세그먼트 없이 구현했다 |
 | GET | `/api/settings/support` | 불필요 | — | `{kakaoOpenChatUrl, operatingHours}` | 설정-R12 |
 
 - `PATCH /me/password`가 200 + 토큰 재발급인 이유는 §4.2. `MemberInfo.loginEmail`은 `@JsonIgnore`라 재사용 불가 → `AccountInfo` 별도 record 신설.
@@ -222,21 +225,46 @@ REST Docs·인계 문서에 "로그아웃 후 최대 15분간 기존 access toke
 
 ### 5.1 언어 필터 — 판정 단위는 "게시물"이 아니라 "계정"
 
-로그인-R16 원문: "주 사용 언어가 다른 사용자 간에는 **계정·게시글**이 기본 노출되지 않는다." 세그먼트의 단위는 게시물이 아니라 **작성자 계정**이다. 그래서 `artworks`에 독립적인 언어 컬럼을 두지 않고 **작성자의 `primary_language`를 비정규화**한다.
+> **2026-08-26 교정.** 이 절은 원래 "세그먼트의 단위는 작성자 계정이므로 `artworks`에 언어 컬럼을 두지 않고
+> 작성자의 `primary_language`를 `artworks.author_language`로 비정규화한다"고 결정했으나, 정본
+> **업로드-R30**("작품 설정 6단계에서 활동 언어를 고른다. 스타터 단일·프로 다중 선택")과 **REQ-020**
+> ("다중 언어 노출은 프로 전용")이 작품마다 독립적인 언어 집합을 요구한다. 작성자 언어 복사본으로는
+> 프로의 다중 선택을 표현할 수 없어 비정규화안을 폐기하고 `artwork_languages` 연결 테이블을 신설했다.
+
+로그인-R16 원문: "주 사용 언어가 다른 사용자 간에는 **계정·게시글**이 기본 노출되지 않는다." 판정 기준은
+대상에 따라 갈린다 — **게시글(작품)은 작품 자신의 언어**, **작가 목록은 작성자 계정의 주 사용 언어**다.
+작가 프로필에는 작품이 없으므로 계정 언어가 유일한 기준이다.
 
 - `GET /api/community/authors` → `MemberServiceImpl` 검색 조건에 `primaryLanguage IN (:viewerPostLanguages)` 추가. `idx_members_lang_search`가 받는다.
-- `GET /api/community/artworks`, `GET /api/search` → 작품 조회는 작가 조인을 피하기 위해 `artworks.author_language`를 비정규화 컬럼으로 둔다. `primary_language`는 가입 후 변경 불가이므로 **작품 생성 시점에 한 번 복사하면 동기화 문제가 원천적으로 없다.**
+- `GET /api/community/artworks` → `artwork_languages`(작품 ↔ 언어 연결 테이블)에 대한 EXISTS 서브쿼리로 거른다.
+  `@ElementCollection`을 join으로 걸면 언어 수만큼 행이 늘어 커서 페이지네이션이 깨지므로 서브쿼리를 쓴다.
   ```sql
-  -- V18 (artwork 계약 변경 작업에 포함)
-  ALTER TABLE artworks ADD COLUMN author_language VARCHAR(10) NULL AFTER author_id;
-  CREATE INDEX idx_aw_feed_lang ON artworks (status, visibility, author_language, created_at DESC, id);
+  -- V32
+  CREATE TABLE artwork_languages (
+      artwork_id VARCHAR(36) ... NOT NULL,
+      value      VARCHAR(10) NOT NULL,
+      PRIMARY KEY (artwork_id, value),
+      KEY idx_al_value (value, artwork_id)
+  );
   ```
-  ES `ArtworkSearchDocument`에도 `authorLanguage` keyword 필드를 추가하고 `terms` 필터로 반영한다.
+- `GET /api/search` → ES `ArtworkSearchDocument.languages`(keyword 배열)에 `terms` 필터. "값 없음"도
+  통과시켜야 하므로 `terms` OR `must_not exists` 형태의 should 절로 만든다.
+- 작품 언어 규칙은 `ArtworkServiceImpl`이 `BillingService.hasProPlan`으로 검증한다(업로드-R30).
+  **주 사용 언어는 플랜과 무관하게 반드시 포함**되고, 거기에 언어를 더하는 것이 프로 전용이다 —
+  스타터는 주 언어 1개로 고정, 프로는 주 언어를 포함한 최대 4개다. 주 언어를 빼지 못하게 막는 이유는
+  작가 목록(계정 언어 기준)과 작품 피드(작품 언어 기준)의 세그먼트가 갈라지는 것을 막기 위해서다.
+  주 언어를 뺀 작품은 작성자가 노출되는 세그먼트에서 사라져, 로그인-R16이 "계정·게시글"을 한 덩어리로
+  묶은 전제가 깨진다. 설정-R14가 게시물 언어에서 주 언어 해제를 금지한 것과 같은 결이다(2026-08-27 확정).
 
 **폴백 규칙**(반드시 인계 문서에 명시):
 - 뷰어가 비로그인이거나 `postLanguages`가 비어 있으면 **필터 미적용**(전체 노출).
-- 작성자 `primary_language`가 NULL(마이그레이션 이전 기존 회원)이면 **항상 노출**.
-- 두 규칙 모두 "필터 도입으로 기존 콘텐츠가 갑자기 사라지는 것"을 막기 위한 안전장치다.
+- 작품에 언어 행이 없으면(마이그레이션 이전 업로드분) **항상 노출**.
+- 작성자 `primary_language`가 NULL(마이그레이션 이전 기존 회원)이면 **항상 노출**. 이 경우 스타터여도
+  "주 사용 언어만 허용" 검사를 걸 수 없어 개수 제한만 적용한다.
+- 세 규칙 모두 "필터 도입으로 기존 콘텐츠가 갑자기 사라지는 것"을 막기 위한 안전장치다.
+
+**미적용 범위**: 구인글·팀원모집글·구직글(`recruit`)에는 아직 언어 필터를 걸지 않는다 — recruit 색인 문서에
+언어 필드가 없다. 로그인-R16이 구인글/팀원 모집글 목록도 대상으로 명시하므로 후속 과제로 남는다.
 
 **딥링크 예외**(로그인-R16 "직접 URL 접근은 허용"): `GET /api/artworks/{id}`, `GET /api/portfolios/shared/{id}`, `GET /api/members/{handle}`에는 언어 필터를 적용하지 않는다.
 

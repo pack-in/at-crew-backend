@@ -53,7 +53,7 @@ community 모듈이 동일한 상황(§1.3, `community-module-design.md`)에서 
 
 ### 1.4 확인 필요 사항 (구현 착수 전 확정 대상)
 
-1. **`ArtworkField` 불일치** — Figma는 `일러스트 / 웹툰 / 애니메이션 / 웹소설 / 기타`인데 현재 enum은 `ILLUSTRATION, WEBTOON, PRINT_COMIC, ANIMATION, ETC`다. Figma의 **웹소설** 자리에 코드는 **PRINT_COMIC(출판만화)**가 있다. artwork 모듈 자체의 기존 enum 문제이므로 search 모듈에서 임의로 값을 바꾸지 않는다 — artwork 모듈 담당 트랙과 별도 확인 필요.
+1. **`ArtworkField` 불일치** — 검색 화면(5752:29315)은 `일러스트 / 웹툰 / 애니메이션 / 웹소설 / 기타`인데 현재 enum은 `ILLUSTRATION, WEBTOON, PRINT_COMIC, ANIMATION, ETC`다. 다만 **홈 화면(6107:24822)은 `전체 / 웹툰 / 일러스트 / 애니메이션 / 출판만화`로 검색 화면과 다르고**, 기획서 홈-R01·업로드-R06도 출판만화 쪽이다(2026-08-23 확인). 즉 코드가 아니라 피그마 두 화면이 서로 어긋난 상태이므로 search 모듈에서 값을 바꾸지 않는다 — 기획 확정이 선행되어야 한다.
 2. ~~**태그 목록 갱신**~~ — **해소됨(2026-08-07)**. Notion 정본 목록을 받아 `com.atcrew.artwork.Genre`(29종)·`com.atcrew.artwork.MaterialTarget`(7종) enum으로 고정했다. 담당 업무·연령대는 기존 `ArtworkRole`·`AgeRating`이 이미 정본과 일치해 변경하지 않았다. `Artwork.genres`·`Material.targets`, recruit 3종의 `roles`/`genres`, `SearchQuery`, 요청 DTO까지 모두 enum 타입이고, ES에는 enum 상수 이름을 keyword로 색인한다(§9-2 참고).
 
 ### 1.5 Figma에서 확정된 동작 규칙
@@ -147,7 +147,11 @@ GET /api/search
 ```
 
 - 인증 불필요(`CommunityController` 피드 API와 동일 정책). `SecurityConfig`에 공개 경로로 등록한다.
-- `q`와 모든 필터가 비어 있으면 `SearchPage.empty()`를 반환한다(§1.5).
+- `q`와 모든 필터가 비어 있으면 `SearchPage.empty()`를 반환한다(§1.5). 언어 세그먼트는 사용자가 고르는
+  필터 축이 아니라 서버가 뷰어 설정에서 채우는 값이라 이 판정에 넣지 않는다.
+- **언어 세그먼트 필터(로그인-R16, 2026-08-26 추가)**: 로그인 뷰어의 `postLanguages`를 `ArtworkSearchDocument.languages`
+  keyword 필드에 `terms`로 건다. 언어 값이 없는 문서(마이그레이션 이전 작품)는 `must_not exists` should 절로
+  함께 통과시킨다. 비로그인은 필터를 걸지 않는다. recruit 문서에는 언어 필드가 없어 아직 미적용이다.
 - 필터 다중선택 의미: 축 내부는 OR(terms 쿼리), 축 간에는 AND(bool filter).
 - `postTypes`에 recruit 소유 유형만 지정되면 `RecruitSearchPort`로 위임 → Phase 1에서는 빈 결과. Swagger 설명에 "recruit 모듈 미구현으로 현재 빈 목록"을 명시한다(`CommunityController` 구인글 탭 서술 선례).
 
@@ -249,6 +253,6 @@ recruit 모듈 완성 후 `NoopRecruitSearchPort`를 실제 구현으로 교체�
 
 Figma가 기획 기준이라는 원칙에 따라 아래 항목은 "확인 필요"가 아니라 "Figma를 따라 후속 반영해야 할 작업"으로 확정한다. 이번 Phase 1 범위에서는 구현하지 않고 코드에 TODO 주석만 남긴다.
 
-1. `ArtworkField`의 `PRINT_COMIC` → Figma의 `웹소설(WEBNOVEL)`로 교체(또는 추가) — artwork 모듈 enum 변경 + 데이터 마이그레이션이 필요해 이번 브랜치 범위 밖. TODO: `ArtworkField.java`
+1. `ArtworkField` 값 집합 확정 — 홈(출판만화)과 검색(웹소설)이 피그마에서 서로 다르다. 웹소설로 확정되면 artwork enum 교체 + 데이터 마이그레이션(artworks·portfolio_item_snapshots·ES 재색인)과 member/company의 `ActivityField.PRINT_COMIC` 동반 교체가 필요하다. TODO: `ArtworkField.java`
 2. ~~Notion 태그 정본 목록(담당 업무/장르/소재 대상)~~ — **완료(2026-08-07)**. `Genre`(29종)·`MaterialTarget`(7종) enum을 신설하고 artwork·recruit·search 전 계층을 enum으로 통일했다. recruit의 `roles`/`genres`가 자유 텍스트라 `ArtworkRole.name()` 필터와 매칭되지 않던 버그도 함께 해소됐다. 마이그레이션 `V14`/`V15`가 정본 밖 값을 제거한다. `SearchQuery.java`의 TODO는 제거됨.
 3. nori 분석기 도입 여부 — Phase 1은 `standard`로 시작, 관련도 품질 개선이 필요해지면 후속 적용 (§3)

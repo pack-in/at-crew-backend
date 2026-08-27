@@ -86,12 +86,12 @@ class SearchServiceImplTest {
     }
 
     private SearchQuery mergedQuery(String cursor, int size) {
-        return new SearchQuery("token", null, null, null, null, null, null, null, null, cursor, size);
+        return new SearchQuery("token", null, null, null, null, null, null, null, null, null, cursor, size);
     }
 
     private ArtworkSearchDocument artworkDoc(String id, long createdAtMillis) {
         return new ArtworkSearchDocument(id, "title", "desc", List.of(), "author-1", "작가", "handle",
-                null, null, null, List.of(), List.of(), List.of(), null, null,
+                null, null, null, java.util.List.of(), List.of(), List.of(), List.of(), null, null,
                 Instant.ofEpochMilli(createdAtMillis), Instant.ofEpochMilli(createdAtMillis));
     }
 

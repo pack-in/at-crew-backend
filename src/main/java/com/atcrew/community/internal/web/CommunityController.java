@@ -7,7 +7,9 @@ import com.atcrew.artwork.ArtworkSummaryInfo;
 import com.atcrew.common.response.ApiResponse;
 import com.atcrew.common.response.CursorPage;
 import com.atcrew.member.ActivityField;
+import com.atcrew.common.security.MemberPrincipal;
 import com.atcrew.member.EmploymentStatus;
+import com.atcrew.member.Language;
 import com.atcrew.member.MemberProfileInfo;
 import com.atcrew.member.MemberService;
 import com.atcrew.member.ProfileSort;
@@ -19,6 +21,8 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -57,21 +61,23 @@ class CommunityController {
             @Parameter(description = "커서 (마지막 작품 createdAt millis)") @RequestParam(required = false) String cursor,
             @Parameter(description = "페이지 크기 (기본 20, 최대 50)") @RequestParam(required = false) Integer size) {
         return ApiResponse.success(artworkService.getCommunityArtworks(
-                artworkField, ageRating, cursor, resolveSize(size)));
+                artworkField, ageRating, viewerLanguages(), cursor, resolveSize(size)));
     }
 
     @Operation(summary = "작가 프로필 탭 — 작가 찾아보기", description =
-            "구인 가능 상태(신규 작업 가능·협의 가능)인 창작자 프로필 목록을 조회합니다. 인증 불필요.")
+            "구인 가능 상태(신규 작업 가능·협의 가능)인 창작자 프로필 목록을 조회합니다. 인증 불필요. "
+            + "노출 대상 항목(사용자 이름·활동 분야·활동 경력·희망 담당 업무·희망 장르·희망 채용 형태·연락처)이 "
+            + "비어 있는 프로필은 제외됩니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공")
     @GetMapping("/authors")
     public ApiResponse<CursorPage<MemberProfileInfo>> getAuthors(
             @Parameter(description = "활동 분야 필터") @RequestParam(required = false) ActivityField activityField,
-            @Parameter(description = "정렬 기준 (기본 RECENTLY_UPDATED)") @RequestParam(required = false) ProfileSort sort,
+            @Parameter(description = "정렬 기준 (RECENTLY_UPDATED·VIEW_COUNT·EXPERIENCE, 기본 RECENTLY_UPDATED)") @RequestParam(required = false) ProfileSort sort,
             @Parameter(description = "커서") @RequestParam(required = false) String cursor,
             @Parameter(description = "페이지 크기 (기본 20, 최대 50)") @RequestParam(required = false) Integer size) {
         return ApiResponse.success(memberService.searchProfiles(new SearchProfilesCommand(
                 List.of(EmploymentStatus.AVAILABLE, EmploymentStatus.NEGOTIABLE),
-                activityField, sort, cursor, resolveSize(size))));
+                activityField, sort, viewerLanguages(), cursor, resolveSize(size))));
     }
 
     @Operation(summary = "구인글 탭", description = "구인글 카드 목록을 PUBLISHED 상태만 커서 페이지네이션으로 조회합니다. 인증 불필요.")
@@ -94,5 +100,14 @@ class CommunityController {
 
     private int resolveSize(Integer size) {
         return size != null ? Math.min(size, MAX_SIZE) : DEFAULT_SIZE;
+    }
+
+    // 언어 세그먼트 필터 기준(로그인-R16). 비로그인은 빈 목록 → 필터 미적용(전체 노출).
+    private List<Language> viewerLanguages() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.isAuthenticated() && auth.getPrincipal() instanceof MemberPrincipal principal) {
+            return memberService.findPostLanguages(principal.memberId());
+        }
+        return List.of();
     }
 }

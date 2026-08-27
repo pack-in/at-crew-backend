@@ -1,7 +1,9 @@
 package com.atcrew.community.docs;
 
 import com.atcrew.member.ActivityField;
-import com.atcrew.member.CreatorRole;
+import com.atcrew.member.DesiredEmploymentType;
+import com.atcrew.member.DesiredGenre;
+import com.atcrew.member.DesiredRole;
 import com.atcrew.member.EmploymentStatus;
 import com.atcrew.member.ExperienceLevel;
 import com.atcrew.member.MemberInfo;
@@ -44,7 +46,7 @@ class CommunityApiDocTest extends RestDocsIntegrationSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new RegisterRequest(
                                 uniqueEmail, "Secure1!", "Secure1!", "배너문서유저",
-                                true, true, true, false, "Asia/Seoul", "KR"))))
+                                true, true, true, false, "Asia/Seoul", "KR", "KO"))))
                 .andExpect(status().isCreated())
                 .andReturn();
         String responseBody = registerResult.getResponse().getContentAsString();
@@ -97,10 +99,15 @@ class CommunityApiDocTest extends RestDocsIntegrationSupport {
         MemberInfo author = memberService.register(
                 "author-doc-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com",
                 "authordoc" + UUID.randomUUID().toString().replace("-", "").substring(0, 8),
-                "찾아보기작가", CreatorRole.WEBTOON);
+                "찾아보기작가");
+        // 노출 대상 7개 항목(사용자 이름·활동 분야·활동 경력·희망 담당 업무·희망 장르·희망 채용 형태·연락처)을
+        // 모두 채워야 작가 찾기에 노출된다 (기획서 마이페이지_작가-R08).
         memberService.updateInfo(author.id(), new UpdateInfoCommand(
-                null, EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), ExperienceLevel.THREE_TO_FOUR,
-                null, null, null, null, null, null, null, null, null));
+                EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), ExperienceLevel.THREE_TO_FOUR,
+                null, null, null, null, null, null,
+                null, List.of(DesiredRole.STORYBOARD), List.of(DesiredGenre.BL),
+                List.of(DesiredEmploymentType.FREELANCE), null, null, null, null, null,
+                "010-1234-5678", null, null, null, null));
 
         mockMvc.perform(get("/api/community/authors").param("activityField", "WEBTOON"))
                 .andExpect(status().isOk())
@@ -145,6 +152,7 @@ class CommunityApiDocTest extends RestDocsIntegrationSupport {
             boolean agreeThirdParty,
             boolean agreeMarketing,
             String timezone,
-            String countryCode
+            String countryCode,
+            String primaryLanguage
     ) {}
 }

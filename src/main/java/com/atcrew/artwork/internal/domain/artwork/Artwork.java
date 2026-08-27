@@ -13,6 +13,7 @@ import com.atcrew.artwork.WorkDuration;
 import com.atcrew.artwork.internal.exception.ArtworkErrorCode;
 import com.atcrew.artwork.internal.exception.ArtworkException;
 import com.atcrew.common.id.UuidV7Generator;
+import com.atcrew.member.Language;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
@@ -120,6 +121,15 @@ public class Artwork implements Persistable<String> {
     @Enumerated(EnumType.STRING)
     private AgeRating ageRating;
 
+    // 작품 설정 6단계의 "게시물 작성·노출 언어"(업로드-R30). 스타터는 주 사용 언어 1개, 프로는 다중 선택이며
+    // 개수 검증은 플랜을 아는 서비스 계층이 한다. 마이그레이션 이전 작품은 비어 있고, 언어 필터에서
+    // "항상 노출"로 폴백한다.
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "artwork_languages", joinColumns = @JoinColumn(name = "artwork_id"))
+    @Column(name = "value")
+    @Enumerated(EnumType.STRING)
+    private Set<Language> languages = new HashSet<>();
+
     @Enumerated(EnumType.STRING)
     private Visibility visibility;
 
@@ -170,7 +180,7 @@ public class Artwork implements Persistable<String> {
                                  ImageLayoutType imageLayoutType, ArtworkField artworkField,
                                  CreativeType creativeType, List<ArtworkRole> roles,
                                  List<Genre> genres, List<String> tags,
-                                 AgeRating ageRating, Visibility visibility,
+                                 AgeRating ageRating, List<Language> languages, Visibility visibility,
                                  List<String> tools, WorkDuration workDuration,
                                  Integer cutCount, List<String> videoLinks,
                                  List<Material> materials) {
@@ -194,6 +204,7 @@ public class Artwork implements Persistable<String> {
         artwork.genres = new HashSet<>(genres != null ? genres : List.of());
         artwork.tags = new HashSet<>(tags != null ? tags : List.of());
         artwork.ageRating = ageRating;
+        artwork.languages = new HashSet<>(languages != null ? languages : List.of());
         artwork.visibility = visibility;
         artwork.tools = new HashSet<>(tools != null ? tools : List.of());
         artwork.setWorkDuration(workDuration);
@@ -222,7 +233,7 @@ public class Artwork implements Persistable<String> {
                               String thumbnailKey,
                               ArtworkField artworkField, CreativeType creativeType,
                               List<ArtworkRole> roles, List<Genre> genres, List<String> tags,
-                              AgeRating ageRating, List<String> tools,
+                              AgeRating ageRating, List<Language> languages, List<String> tools,
                               WorkDuration workDuration, Integer cutCount,
                               List<String> videoLinks) {
         if (title != null) this.title = title;
@@ -241,6 +252,7 @@ public class Artwork implements Persistable<String> {
         if (genres != null) this.genres = new HashSet<>(genres);
         if (tags != null) this.tags = new HashSet<>(tags);
         if (ageRating != null) this.ageRating = ageRating;
+        if (languages != null) this.languages = new HashSet<>(languages);
         if (tools != null) this.tools = new HashSet<>(tools);
         if (workDuration != null) this.setWorkDuration(workDuration);
         if (cutCount != null) this.cutCount = cutCount;
@@ -420,6 +432,7 @@ public class Artwork implements Persistable<String> {
     public Integer getCutCount() { return cutCount; }
     public List<String> getVideoLinks() { return videoLinks != null ? List.copyOf(videoLinks) : List.of(); }
     public AgeRating getAgeRating() { return ageRating; }
+    public List<Language> getLanguages() { return languages.stream().sorted().toList(); }
     public Visibility getVisibility() { return visibility; }
     public boolean isPortfolioIncluded() { return portfolioIncluded; }
     public boolean isBlocked() { return blockedAt != null; }

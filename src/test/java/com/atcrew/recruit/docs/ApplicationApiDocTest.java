@@ -229,7 +229,7 @@ class ApplicationApiDocTest extends RestDocsIntegrationSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new RegisterRequest(
                                 uniqueEmail, "Secure1!", "Secure1!", name,
-                                true, true, true, false, "Asia/Seoul", "KR"))))
+                                true, true, true, false, "Asia/Seoul", "KR", "KO"))))
                 .andExpect(status().isCreated())
                 .andReturn();
         String body = result.getResponse().getContentAsString();
@@ -287,6 +287,7 @@ class ApplicationApiDocTest extends RestDocsIntegrationSupport {
             boolean agreeThirdParty,
             boolean agreeMarketing,
             String timezone,
-            String countryCode
+            String countryCode,
+            String primaryLanguage
     ) {}
 }

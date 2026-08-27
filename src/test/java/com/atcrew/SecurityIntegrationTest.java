@@ -1,7 +1,6 @@
 package com.atcrew;
 
 import com.atcrew.common.security.JwtProvider;
-import com.atcrew.member.CreatorRole;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
 import com.atcrew.support.RestDocsIntegrationSupport;
@@ -183,7 +182,7 @@ class SecurityIntegrationTest extends RestDocsIntegrationSupport {
 
     @Test
     void 유효한_토큰_이름수정_204() throws Exception {
-        MemberInfo member = memberService.register(uniqueEmail(), uniqueHandle(), "테스트유저", CreatorRole.WEBTOON);
+        MemberInfo member = memberService.register(uniqueEmail(), uniqueHandle(), "테스트유저");
         String token = jwtProvider.generateAccessToken(member.id(), member.loginEmail());
 
         mockMvc.perform(patch("/api/members/me/name")
@@ -195,7 +194,7 @@ class SecurityIntegrationTest extends RestDocsIntegrationSupport {
 
     @Test
     void 유효한_토큰_탈퇴_204() throws Exception {
-        MemberInfo member = memberService.register(uniqueEmail(), uniqueHandle(), "탈퇴유저", CreatorRole.OTHER);
+        MemberInfo member = memberService.register(uniqueEmail(), uniqueHandle(), "탈퇴유저");
         String token = jwtProvider.generateAccessToken(member.id(), member.loginEmail());
 
         mockMvc.perform(delete("/api/members/me")

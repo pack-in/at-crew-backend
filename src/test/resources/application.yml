@@ -87,3 +87,24 @@ billing:
       amount: 9999
       list-amount:
       enabled: false
+
+# 이슈 #62 회귀 방지 — Sentry 초기화는 DSN이 있을 때만 도는 코드라, 여기에 DSN이 없으면
+# 그 경로가 한 번도 테스트되지 않는다(실제로 그래서 Spring Boot 4 비호환을 CI가 못 잡았다).
+# 더미 DSN을 두어 모든 통합 테스트가 초기화 경로를 함께 밟게 한다.
+# 형식만 유효한 값이라 전송은 백그라운드에서 조용히 실패하고 테스트 결과에 영향을 주지 않는다.
+#
+# 주의: 이 값을 개별 테스트의 @SpringBootTest(properties=...)로 옮기지 말 것 — 속성이 다르면
+# 컨텍스트가 하나 더 생기고, 그 컨텍스트가 닫힐 때 SharedContainersConfig의 공유 컨테이너가
+# 함께 종료돼 다른 테스트가 연쇄로 깨진다(2026-08-27 실측).
+sentry:
+  dsn: https://publickey@localhost/1
+  environment: test
+  send-default-pii: false
+  traces-sample-rate: 0.0
+  max-breadcrumbs: 20
+  context-tags:
+    - requestId
+    - memberId
+  logging:
+    minimum-event-level: error
+    minimum-breadcrumb-level: warn

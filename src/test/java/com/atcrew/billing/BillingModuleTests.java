@@ -5,7 +5,6 @@ import com.atcrew.billing.internal.domain.BillingCustomer;
 import com.atcrew.billing.internal.persistence.BillingCustomerRepository;
 import com.atcrew.billing.internal.persistence.EntitlementBalanceRepository;
 import com.atcrew.common.exception.DomainException;
-import com.atcrew.member.CreatorRole;
 import com.atcrew.member.MemberService;
 import com.atcrew.support.BillingTestSupport;
 import com.stripe.Stripe;
@@ -311,7 +310,7 @@ class BillingModuleTests {
     private String registerMember(String handlePrefix) {
         String suffix = UUID.randomUUID().toString().substring(0, 8);
         return memberService.register(handlePrefix + "-" + suffix + "@atcrew.com",
-                handlePrefix + suffix, "테스터", CreatorRole.WEBTOON).id();
+                handlePrefix + suffix, "테스터").id();
     }
 
     private String registerMemberWithCustomer(String handlePrefix, String stripeCustomerId) {

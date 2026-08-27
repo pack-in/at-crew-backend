@@ -7,6 +7,7 @@ import com.atcrew.artwork.CreativeType;
 import com.atcrew.artwork.ImageLayoutType;
 import com.atcrew.artwork.ImageProcessingStatus;
 import com.atcrew.artwork.Visibility;
+import com.atcrew.member.Language;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -80,7 +81,7 @@ class ArtworkImageProcessingTest {
     private Artwork artworkWith(String... imageKeys) {
         return Artwork.create("author-1", "제목", "설명", List.of(imageKeys), 0, null,
                 ImageLayoutType.VERTICAL_SCROLL, ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
-                List.of(), List.of(), List.of(), AgeRating.ALL, Visibility.PUBLIC,
+                List.of(), List.of(), List.of(), AgeRating.ALL, List.of(Language.KO), Visibility.PUBLIC,
                 List.of(), null, null, List.of(), List.of());
     }
 }

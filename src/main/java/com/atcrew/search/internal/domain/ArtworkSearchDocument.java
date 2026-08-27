@@ -57,6 +57,10 @@ public class ArtworkSearchDocument {
     @Field(type = FieldType.Keyword)
     private String ageRating;
 
+    // 게시물 작성·노출 언어(업로드-R30). 값이 없는 문서(마이그레이션 이전 작품)는 언어 필터에서 항상 노출한다.
+    @Field(type = FieldType.Keyword)
+    private List<String> languages;
+
     // 정본 태그(ArtworkRole/Genre/MaterialTarget)의 enum 상수 이름을 색인한다 — 필터도 같은 이름으로 매칭한다(§9-2).
     @Field(type = FieldType.Keyword)
     private List<String> roles;
@@ -86,6 +90,7 @@ public class ArtworkSearchDocument {
     public ArtworkSearchDocument(String id, String title, String description, List<String> tags,
                                   String authorId, String authorName, String authorHandle,
                                   String artworkField, String creativeType, String ageRating,
+                                  List<String> languages,
                                   List<String> roles, List<String> genres, List<String> materialTargets,
                                   String thumbnailKey, String thumbnailAdultKey,
                                   Instant createdAt, Instant updatedAt) {
@@ -99,6 +104,7 @@ public class ArtworkSearchDocument {
         this.artworkField = artworkField;
         this.creativeType = creativeType;
         this.ageRating = ageRating;
+        this.languages = languages != null ? new ArrayList<>(languages) : new ArrayList<>();
         this.roles = roles != null ? new ArrayList<>(roles) : new ArrayList<>();
         this.genres = genres != null ? new ArrayList<>(genres) : new ArrayList<>();
         this.materialTargets = materialTargets != null ? new ArrayList<>(materialTargets) : new ArrayList<>();
@@ -118,6 +124,7 @@ public class ArtworkSearchDocument {
     public String getArtworkField() { return artworkField; }
     public String getCreativeType() { return creativeType; }
     public String getAgeRating() { return ageRating; }
+    public List<String> getLanguages() { return languages; }
     public List<String> getRoles() { return roles; }
     public List<String> getGenres() { return genres; }
     public List<String> getMaterialTargets() { return materialTargets; }

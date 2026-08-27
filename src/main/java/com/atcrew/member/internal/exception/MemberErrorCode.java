@@ -18,7 +18,11 @@ public enum MemberErrorCode {
     INVALID_AUTH_PROVIDER(HttpStatus.BAD_REQUEST, "인증 제공자 정보가 유효하지 않습니다"),
     INVALID_CURSOR(HttpStatus.BAD_REQUEST, "유효하지 않은 커서 값입니다"),
     INVALID_TIMEZONE(HttpStatus.BAD_REQUEST, "유효하지 않은 시간대입니다"),
-    INVALID_COUNTRY(HttpStatus.BAD_REQUEST, "유효하지 않은 국가 코드입니다");
+    INVALID_COUNTRY(HttpStatus.BAD_REQUEST, "유효하지 않은 국가 코드입니다"),
+    INVALID_CUSTOM_TAG(HttpStatus.BAD_REQUEST, "직접입력 값은 최대 10자까지 입력할 수 있습니다"),
+    PRIMARY_LANGUAGE_REQUIRED(HttpStatus.BAD_REQUEST, "주 사용 언어를 선택해야 합니다"),
+    // 설정-R14 토스트 문구 그대로 — 프론트가 그대로 노출한다
+    PRIMARY_LANGUAGE_CANNOT_BE_REMOVED(HttpStatus.BAD_REQUEST, "주 사용 언어로 설정된 게시물 언어는 해제할 수 없어요.");
 
     private final HttpStatus status;
     private final String message;

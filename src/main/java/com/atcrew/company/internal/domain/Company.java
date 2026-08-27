@@ -1,22 +1,17 @@
 package com.atcrew.company.internal.domain;
 
 import com.atcrew.common.id.UuidV7Generator;
-import com.atcrew.company.ActiveRegion;
 import com.atcrew.company.ActivityField;
 import com.atcrew.company.CompanyType;
 import com.atcrew.company.RecruitStatus;
 import com.atcrew.company.UpdateCompanyInfoCommand;
 import com.atcrew.company.internal.exception.CompanyErrorCode;
 import com.atcrew.company.internal.exception.CompanyException;
-import jakarta.persistence.CollectionTable;
-import jakarta.persistence.Column;
-import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityListeners;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
 import jakarta.persistence.PostLoad;
 import jakarta.persistence.PostPersist;
 import jakarta.persistence.Table;
@@ -28,8 +23,6 @@ import org.springframework.data.domain.Persistable;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.Instant;
-import java.util.HashSet;
-import java.util.Set;
 
 @Entity
 @Table(name = "companies")
@@ -59,17 +52,9 @@ public class Company implements Persistable<String> {
     // API로 노출하거나 변경할 수 없다 (docs/design/company-profile-module-design.md §6.3).
     private boolean verified;
 
-    @ElementCollection
-    @CollectionTable(name = "company_activity_fields", joinColumns = @JoinColumn(name = "company_id"))
-    @Column(name = "activity_field")
+    // 단일 선택 — 피그마 5779:32101, 기획서 마이페이지_기업-R07("활동 분야(4)는 단일 칩").
     @Enumerated(EnumType.STRING)
-    private Set<ActivityField> activityFields = new HashSet<>();
-
-    @ElementCollection
-    @CollectionTable(name = "company_active_regions", joinColumns = @JoinColumn(name = "company_id"))
-    @Column(name = "value")
-    @Enumerated(EnumType.STRING)
-    private Set<ActiveRegion> activeRegions = new HashSet<>();
+    private ActivityField activityField;
 
     @Version
     private Long version;
@@ -116,14 +101,7 @@ public class Company implements Persistable<String> {
     public void updateInfo(UpdateCompanyInfoCommand command) {
         if (command.recruitStatus() != null) this.recruitStatus = command.recruitStatus();
         if (command.companyType() != null) this.companyType = command.companyType();
-        if (command.activityFields() != null) {
-            this.activityFields.clear();
-            this.activityFields.addAll(command.activityFields());
-        }
-        if (command.activeRegions() != null) {
-            this.activeRegions.clear();
-            this.activeRegions.addAll(command.activeRegions());
-        }
+        if (command.activityField() != null) this.activityField = command.activityField();
         if (command.contact() != null) this.contact = command.contact();
         if (command.sns() != null) this.sns = command.sns();
         if (command.hasBusinessRegistration() != null) {
@@ -141,8 +119,7 @@ public class Company implements Persistable<String> {
     public CompanyType getCompanyType() { return companyType; }
     public boolean hasBusinessRegistration() { return hasBusinessRegistration; }
     public boolean isVerified() { return verified; }
-    public Set<ActivityField> getActivityFields() { return Set.copyOf(activityFields); }
-    public Set<ActiveRegion> getActiveRegions() { return Set.copyOf(activeRegions); }
+    public ActivityField getActivityField() { return activityField; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
 

@@ -5,8 +5,10 @@ import com.atcrew.common.exception.DomainException;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaProcessingStatus;
 import com.atcrew.media.internal.application.MediaCallbackService;
-import com.atcrew.member.CreatorRole;
+import com.atcrew.member.AuthProvider;
+import com.atcrew.member.Language;
 import com.atcrew.member.MemberService;
+import com.atcrew.member.RegisterMemberCommand;
 import com.atcrew.support.BillingTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -77,7 +79,7 @@ class ArtworkModuleTests {
                 List.of("raw/1.png", "raw/2.png"), 1, "raw/thumb.png", ImageLayoutType.VERTICAL_SCROLL,
                 "제목", "설명", ArtworkField.WEBTOON, CreativeType.ORIGINAL,
                 List.of(ArtworkRole.LINEART, ArtworkRole.COLORING), List.of(Genre.FANTASY, Genre.ACTION), List.of("태그1", "태그2"),
-                AgeRating.ALL, true, List.of(), List.of("clip studio"),
+                AgeRating.ALL, List.of(Language.KO), true, List.of(), List.of("clip studio"),
                 new WorkDuration(1, 2, 3, 4), 12, List.of("https://youtube.com/watch?v=1"),
                 List.of(new MaterialData("배경소스", List.of(MaterialTarget.BACKGROUND), List.of("raw/mat.png"), List.of("https://acon3d.com/x")))
         ));
@@ -109,7 +111,7 @@ class ArtworkModuleTests {
 
         ArtworkInfo updated = artworkService.updateArtwork(memberId, uploaded.id(), new UpdateArtworkCommand(
                 List.of("raw/new1.png", "raw/new2.png", "raw/new3.png"), 2, null, null,
-                null, null, null, null, null, null, null, null, null, null, null, null, null));
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null));
 
         assertThat(updated.images()).extracting(ArtworkImageInfo::originalKey)
                 .containsExactly("raw/new1.png", "raw/new2.png", "raw/new3.png");
@@ -124,7 +126,7 @@ class ArtworkModuleTests {
                 List.of(new MaterialData("옛소재", List.of(MaterialTarget.BACKGROUND), List.of(), List.of()))));
 
         ArtworkInfo updated = artworkService.updateArtwork(memberId, uploaded.id(), new UpdateArtworkCommand(
-                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
                 List.of(new MaterialData("새소재1", List.of(MaterialTarget.CHARACTER), List.of(), List.of()),
                         new MaterialData("새소재2", List.of(MaterialTarget.ACCESSORY), List.of(), List.of()))));
 
@@ -140,7 +142,7 @@ class ArtworkModuleTests {
         for (int i = 0; i < 3; i++) {
             uploaded = artworkService.updateArtwork(memberId, uploaded.id(), new UpdateArtworkCommand(
                     List.of("raw/round" + i + "-1.png", "raw/round" + i + "-2.png"), 0, null, null,
-                    null, null, null, null, null, null, null, null, null, null, null, null, null));
+                    null, null, null, null, null, null, null, null, null, null, null, null, null, null));
         }
 
         assertThat(uploaded.images()).hasSize(2);
@@ -235,7 +237,7 @@ class ArtworkModuleTests {
                 List.of("raw/ct.png"), 0, "raw/custom-thumb.png", ImageLayoutType.VERTICAL_SCROLL,
                 "테스트 작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
                 List.of(), List.of(), List.of(),
-                AgeRating.ALL, true, List.of(), List.of(), null, null, List.of(), List.of()));
+                AgeRating.ALL, List.of(Language.KO), true, List.of(), List.of(), null, null, List.of(), List.of()));
         processImage(uploaded.id(), "raw/ct.png", MediaProcessingStatus.DONE);
         awaitReady(memberId, uploaded.id());
         artworkService.deleteArtwork(memberId, uploaded.id());
@@ -365,6 +367,134 @@ class ArtworkModuleTests {
                 .isEqualTo("STARTER_ARTWORK_LIMIT_EXCEEDED");
     }
 
+    @Test
+    void 스타터는_작품_언어를_2개_이상_고를_수_없다() {
+        String memberId = registerAuthor();
+
+        assertThatThrownBy(() -> artworkService.uploadArtwork(memberId,
+                uploadCommandWithLanguages(List.of(Language.KO, Language.JA))))
+                .isInstanceOf(DomainException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("MULTI_LANGUAGE_REQUIRES_PRO");
+    }
+
+    @Test
+    void 프로_플랜은_주_사용_언어에_다른_언어를_더할_수_있다() {
+        String memberId = registerAuthorWithPrimaryLanguage(Language.KO);
+        BillingTestSupport.grantProPlan(subscriptionRepository, memberId);
+
+        ArtworkInfo uploaded = artworkService.uploadArtwork(memberId,
+                uploadCommandWithLanguages(List.of(Language.KO, Language.JA, Language.EN)));
+
+        assertThat(uploaded.languages())
+                .containsExactlyInAnyOrder(Language.KO, Language.JA, Language.EN);
+    }
+
+    @Test
+    void 프로_플랜도_주_사용_언어를_빼면_거부된다() {
+        String memberId = registerAuthorWithPrimaryLanguage(Language.KO);
+        BillingTestSupport.grantProPlan(subscriptionRepository, memberId);
+
+        assertThatThrownBy(() -> artworkService.uploadArtwork(memberId,
+                uploadCommandWithLanguages(List.of(Language.JA, Language.EN))))
+                .isInstanceOf(DomainException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("LANGUAGE_NOT_ALLOWED");
+    }
+
+    @Test
+    void 스타터가_주_사용_언어를_포함해_2개를_고르면_다중_선택_오류가_난다() {
+        String memberId = registerAuthorWithPrimaryLanguage(Language.KO);
+
+        assertThatThrownBy(() -> artworkService.uploadArtwork(memberId,
+                uploadCommandWithLanguages(List.of(Language.KO, Language.JA))))
+                .isInstanceOf(DomainException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("MULTI_LANGUAGE_REQUIRES_PRO");
+    }
+
+    @Test
+    void 스타터는_주_사용_언어가_아닌_언어로_게시할_수_없다() {
+        String memberId = registerAuthorWithPrimaryLanguage(Language.KO);
+
+        assertThatThrownBy(() -> artworkService.uploadArtwork(memberId,
+                uploadCommandWithLanguages(List.of(Language.JA))))
+                .isInstanceOf(DomainException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("LANGUAGE_NOT_ALLOWED");
+    }
+
+    @Test
+    void 작품_이미지_변환_화질은_업로드_시점_플랜으로_갈린다() {
+        String starter = registerAuthor();
+        ArtworkInfo starterArtwork = uploadMinimal(starter, "raw/tier-starter.png");
+
+        String pro = registerAuthor();
+        BillingTestSupport.grantProPlan(subscriptionRepository, pro);
+        ArtworkInfo proArtwork = uploadMinimal(pro, "raw/tier-pro.png");
+
+        assertThat(qualityTierOf(starterArtwork.id())).isEqualTo("WEB");
+        assertThat(qualityTierOf(proArtwork.id())).isEqualTo("ORIGINAL");
+    }
+
+    private String qualityTierOf(String artworkId) {
+        return jdbcTemplate.queryForObject(
+                "SELECT quality_tier FROM media_assets WHERE owner_type = 'ARTWORK' AND owner_id = ?",
+                String.class, artworkId);
+    }
+
+    @Test
+    void 커뮤니티_피드는_뷰어_언어와_겹치는_작품만_노출하고_언어_미지정_작품은_항상_노출한다() {
+        String koAuthor = registerAuthor();
+        String jaAuthor = registerAuthor();
+
+        String koArtworkId = publishReady(koAuthor, "raw/feed-ko.png", List.of(Language.KO));
+        String jaArtworkId = publishReady(jaAuthor, "raw/feed-ja.png", List.of(Language.JA));
+        // 마이그레이션 이전 작품 재현 — 언어 행이 없는 상태로 만든다
+        String legacyArtworkId = publishReady(koAuthor, "raw/feed-legacy.png", List.of(Language.KO));
+        jdbcTemplate.update("DELETE FROM artwork_languages WHERE artwork_id = ?", legacyArtworkId);
+
+        List<String> koViewerFeed = artworkService
+                .getCommunityArtworks(null, null, List.of(Language.KO), null, 50)
+                .items().stream().map(ArtworkSummaryInfo::id).toList();
+
+        assertThat(koViewerFeed).contains(koArtworkId, legacyArtworkId);
+        assertThat(koViewerFeed).doesNotContain(jaArtworkId);
+
+        // 비로그인(빈 목록)은 필터를 적용하지 않는다
+        List<String> anonymousFeed = artworkService
+                .getCommunityArtworks(null, null, List.of(), null, 50)
+                .items().stream().map(ArtworkSummaryInfo::id).toList();
+        assertThat(anonymousFeed).contains(koArtworkId, jaArtworkId, legacyArtworkId);
+    }
+
+    /** 피드는 READY 상태만 노출하므로 이미지 처리 콜백까지 재현해 공개 상태를 만든다. */
+    private String publishReady(String memberId, String imageKey, List<Language> languages) {
+        ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, new UploadArtworkCommand(
+                List.of(imageKey), 0, null, ImageLayoutType.VERTICAL_SCROLL,
+                "피드 작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
+                List.of(), List.of(), List.of(),
+                AgeRating.ALL, languages, true, List.of(), List.of(), null, null, List.of(), List.of()));
+        processImage(uploaded.id(), imageKey, MediaProcessingStatus.DONE);
+        awaitReady(memberId, uploaded.id());
+        return uploaded.id();
+    }
+
+    private UploadArtworkCommand uploadCommandWithLanguages(List<Language> languages) {
+        return new UploadArtworkCommand(
+                List.of("raw/lang.png"), 0, null, ImageLayoutType.VERTICAL_SCROLL,
+                "테스트 작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
+                List.of(), List.of(), List.of(),
+                AgeRating.ALL, languages, true, List.of(), List.of(), null, null, List.of(), List.of());
+    }
+
+    private String registerAuthorWithPrimaryLanguage(Language primaryLanguage) {
+        return memberService.register(new RegisterMemberCommand(
+                "lang-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12) + "@atcrew.com",
+                "언어작가", AuthProvider.EMAIL, "Secure1!",
+                true, true, true, false, "Asia/Seoul", "KR", primaryLanguage)).id();
+    }
+
     private ArtworkInfo uploadMinimal(String memberId, String... imageKeys) {
         return artworkService.uploadArtwork(memberId, baseUploadCommand(List.of(imageKeys), List.of()));
     }
@@ -374,13 +504,13 @@ class ArtworkModuleTests {
                 imageKeys, 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 "테스트 작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
                 List.of(), List.of(), List.of(),
-                AgeRating.ALL, true, List.of(), List.of(), null, null, List.of(), materials);
+                AgeRating.ALL, List.of(Language.KO), true, List.of(), List.of(), null, null, List.of(), materials);
     }
 
     private String registerAuthor() {
         return memberService.register(
                 "artwork-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12) + "@atcrew.com",
                 "aw" + UUID.randomUUID().toString().replace("-", "").substring(0, 10),
-                "작가", CreatorRole.ILLUSTRATOR).id();
+                "작가").id();
     }
 }

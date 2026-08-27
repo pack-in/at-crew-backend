@@ -1,0 +1,154 @@
+// Grafana Alloy 수집 설정 — docs/design/observability-design.md §2~4
+//
+// EC2 #1에서 컨테이너로 돌며 세 가지를 수집해 Grafana Cloud로 밀어 넣는다.
+//   1) 앱 메트릭 — 관리 포트(8081)의 /actuator/prometheus
+//   2) 호스트·컨테이너 메트릭 — CPU·메모리·디스크·컨테이너 상태, 그리고 백업 스크립트가 남기는 textfile 지표
+//   3) 로그 — 앱·mariadb 컨테이너 stdout과 nginx 액세스/에러 로그
+//
+// 자격증명은 deploy/.env에서 환경변수로 주입한다(레포에 값이 들어가지 않게).
+
+logging {
+  level  = "warn"
+  format = "logfmt"
+}
+
+// ─────────────────────────────── 메트릭 ───────────────────────────────
+
+// 호스트 지표. rootfs를 읽기 전용으로 마운트해 컨테이너 밖 디스크·메모리를 본다.
+// textfile 디렉토리는 backup.sh가 마지막 백업 성공 시각을 남기는 곳이다(설계 §10).
+prometheus.exporter.unix "host" {
+  rootfs_path = "/rootfs"
+  procfs_path = "/rootfs/proc"
+  sysfs_path  = "/rootfs/sys"
+
+  textfile {
+    directory = "/var/lib/node_exporter/textfile_collector"
+  }
+
+  filesystem {
+    // 도커 오버레이·가상 파일시스템은 디스크 알람에서 노이즈만 만든다.
+    mount_points_exclude = "^/(dev|proc|sys|run|var/lib/docker/.+)($|/)"
+    fs_types_exclude     = "^(autofs|binfmt_misc|cgroup2?|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|mqueue|nsfs|overlay|proc|pstore|securityfs|selinuxfs|squashfs|sysfs|tracefs|tmpfs)$"
+  }
+}
+
+// 컨테이너 지표 — 크래시 루프(재시작 반복) 판정에 쓰는 container_start_time_seconds가 여기서 나온다.
+prometheus.exporter.cadvisor "docker" {
+  docker_only = true
+}
+
+prometheus.scrape "host" {
+  targets         = prometheus.exporter.unix.host.targets
+  forward_to      = [prometheus.remote_write.grafana_cloud.receiver]
+  scrape_interval = "60s"
+  job_name        = "node"
+}
+
+prometheus.scrape "cadvisor" {
+  targets         = prometheus.exporter.cadvisor.docker.targets
+  forward_to      = [prometheus.remote_write.grafana_cloud.receiver]
+  scrape_interval = "60s"
+  job_name        = "cadvisor"
+}
+
+// 앱 메트릭. 관리 포트는 호스트 루프백에만 바인딩돼 있고(deploy/docker-compose.app.yml),
+// Alloy가 host 네트워크로 돌기 때문에 127.0.0.1로 접근한다.
+prometheus.scrape "app" {
+  targets = [{
+    __address__ = "127.0.0.1:8081",
+    instance    = "app-ec2-1",
+  }]
+  metrics_path    = "/actuator/prometheus"
+  scrape_interval = "60s"
+  job_name        = "at-crew-backend"
+  forward_to      = [prometheus.remote_write.grafana_cloud.receiver]
+}
+
+prometheus.remote_write "grafana_cloud" {
+  endpoint {
+    url = sys.env("GRAFANA_CLOUD_PROM_URL")
+    basic_auth {
+      username = sys.env("GRAFANA_CLOUD_PROM_USER")
+      password = sys.env("GRAFANA_CLOUD_TOKEN")
+    }
+  }
+
+  // 이 스택에 다른 프로젝트가 섞이더라도 구분되게 공통 라벨을 붙인다.
+  external_labels = {
+    env     = "prod",
+    service = "at-crew",
+  }
+}
+
+// ──────────────────────────────── 로그 ────────────────────────────────
+
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "containers" {
+  targets = discovery.docker.containers.targets
+
+  // compose 서비스명(app, mariadb, alloy)을 라벨로 쓴다 — 컨테이너 이름은 디렉토리명에 의존해 불안정하다.
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service_name"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+}
+
+loki.source.docker "containers" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.containers.output
+  labels     = { job = "docker", env = "prod" }
+  forward_to = [loki.process.app_json.receiver]
+}
+
+// prod 앱 로그는 ECS JSON이다(application-prod.yml). 레벨만 라벨로 뽑아 필터링에 쓰고,
+// requestId·memberId는 라벨로 만들지 않는다 — 카디널리티가 폭발한다. 본문에 그대로 남아 검색은 된다.
+loki.process "app_json" {
+  forward_to = [loki.write.grafana_cloud.receiver]
+
+  stage.match {
+    selector = "{service_name=\"app\"}"
+
+    stage.json {
+      expressions = { level = "log.level" }
+    }
+
+    stage.labels {
+      values = { level = "" }
+    }
+  }
+}
+
+local.file_match "nginx" {
+  path_targets = [
+    { __path__ = "/var/log/nginx/access.log", job = "nginx", log_type = "access", env = "prod" },
+    { __path__ = "/var/log/nginx/error.log", job = "nginx", log_type = "error", env = "prod" },
+  ]
+}
+
+loki.source.file "nginx" {
+  targets    = local.file_match.nginx.targets
+  forward_to = [loki.write.grafana_cloud.receiver]
+}
+
+loki.write "grafana_cloud" {
+  endpoint {
+    url = sys.env("GRAFANA_CLOUD_LOKI_URL")
+    basic_auth {
+      username = sys.env("GRAFANA_CLOUD_LOKI_USER")
+      password = sys.env("GRAFANA_CLOUD_TOKEN")
+    }
+  }
+
+  external_labels = {
+    instance = "app-ec2-1",
+    service  = "at-crew",
+  }
+}

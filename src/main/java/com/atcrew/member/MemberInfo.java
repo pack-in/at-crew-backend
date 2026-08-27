@@ -22,8 +22,6 @@ public record MemberInfo(
 
         // === 기본 프로필 ===
         String name,           // 사용자 이름·작가명 (max 16자)
-        @Schema(nullable = true)
-        CreatorRole creatorRole, // 창작자 유형 (웹툰작가·일러스트작가·웹소설작가·기타)
 
         // === 구인구직 상태 [피그마: 구인구직 상태 칩 선택] ===
         EmploymentStatus employmentStatus,
@@ -34,11 +32,28 @@ public record MemberInfo(
         // === 활동 경력 [피그마: 활동 경력 칩 단일 선택] ===
         ExperienceLevel experienceLevel,
 
-        // === 활동 지역 [피그마: 활동 지역 칩 복수 선택] ===
-        List<ActiveRegion> activeRegions,
+        // === 활동 지역 [피그마: 활동 지역 칩 단일 선택] ===
+        ActiveRegion activeRegion,
 
         // === 팀 작업 경험 [피그마: 팀 작업 경험 칩 복수 선택] ===
         List<TeamExperience> teamExperiences,
+
+        // === 작화 스타일·작업 스타일 [피그마: 기본 정보 탭] ===
+        List<DrawingStyle> drawingStyles,
+        WorkPace workPace,
+
+        // === 구직 정보 [피그마: 구직 정보 탭, 기획서 마이페이지_작가-R24] ===
+        AvailableStartPeriod availableStartPeriod,
+        List<DesiredRole> desiredRoles,
+        List<DesiredGenre> desiredGenres,
+        List<DesiredEmploymentType> desiredEmploymentTypes,
+        DesiredWorkLocation desiredWorkLocation,
+        List<FeedbackPreference> feedbackPreferences,
+        DesiredMinimumGuarantee desiredMinimumGuarantee,
+        DesiredAnnualSalary desiredAnnualSalary,
+
+        // === 직접입력 태그 [기획서 업로드-R13] ===
+        List<CustomTagInfo> customTags,
 
         // === 슬롯 [피그마: 전체 슬롯 개수 / 작업 가능 슬롯] ===
         int totalSlotCount,
@@ -62,6 +77,11 @@ public record MemberInfo(
         // === 시간대·국가 ===
         String timezone,   // IANA tz ID, 예: "Asia/Tokyo"
         String countryCode, // ISO 3166-1 alpha-2, 거주 국가. 예: "KR"
+
+        // === 언어 [피그마: 가입 완료 화면 주 사용 언어 / 설정 게시물 언어 칩] ===
+        @Schema(nullable = true)
+        Language primaryLanguage,     // 주 사용 언어. 마이그레이션 이전 기존 회원은 null
+        List<Language> postLanguages, // 노출받을 게시물 언어 (복수, 설정-R14)
 
         // === 설정 [피그마: 설정 화면 토글] ===
         // 본인 계정에만 반환되는 값이라 공개 프로필(MemberProfileInfo)에는 포함하지 않는다.

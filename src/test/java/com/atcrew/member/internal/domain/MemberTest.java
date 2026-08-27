@@ -3,8 +3,8 @@ package com.atcrew.member.internal.domain;
 import com.atcrew.member.ActivityField;
 import com.atcrew.member.AuthProvider;
 import com.atcrew.member.CareerEntryInfo;
-import com.atcrew.member.CreatorRole;
 import com.atcrew.member.EmploymentStatus;
+import com.atcrew.member.Language;
 import com.atcrew.member.UpdateInfoCommand;
 import com.atcrew.member.internal.exception.MemberErrorCode;
 import com.atcrew.member.internal.exception.MemberException;
@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -23,7 +24,7 @@ class MemberTest {
 
     @BeforeEach
     void setUp() {
-        member = Member.register("test@atcrew.com", "testhandle", "홍길동", CreatorRole.WEBTOON);
+        member = Member.register("test@atcrew.com", "testhandle", "홍길동");
     }
 
     // ─── addCareer ────────────────────────────────────────────────────
@@ -108,8 +109,7 @@ class MemberTest {
 
     @Test
     void 작업가능슬롯이_전체슬롯_초과_시_예외() {
-        UpdateInfoCommand command = new UpdateInfoCommand(
-                null, null, null, null, null, 3, 4, null, null, null, null, null, null);
+        UpdateInfoCommand command = new UpdateInfoCommand(null, null, null, null, 3, 4, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
 
         assertThatThrownBy(() -> member.updateInfo(command))
                 .isInstanceOf(MemberException.class)
@@ -120,8 +120,7 @@ class MemberTest {
     @Test
     void 전체슬롯만_줄이면_가능슬롯_자동_조정() {
         // 기본값: totalSlotCount=5, availableSlotCount=5
-        UpdateInfoCommand command = new UpdateInfoCommand(
-                null, null, null, null, null, 2, null, null, null, null, null, null, null);
+        UpdateInfoCommand command = new UpdateInfoCommand(null, null, null, null, 2, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
 
         member.updateInfo(command);
 
@@ -132,8 +131,7 @@ class MemberTest {
     @Test
     void 기존_전체슬롯_기준_가능슬롯_초과_시_예외() {
         // totalSlotCount 기본값 5, availableSlotCount만 6으로 설정하면 초과
-        UpdateInfoCommand command = new UpdateInfoCommand(
-                null, null, null, null, null, null, 6, null, null, null, null, null, null);
+        UpdateInfoCommand command = new UpdateInfoCommand(null, null, null, null, null, 6, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
 
         assertThatThrownBy(() -> member.updateInfo(command))
                 .isInstanceOf(MemberException.class)
@@ -143,9 +141,8 @@ class MemberTest {
 
     @Test
     void 정보_정상_업데이트() {
-        UpdateInfoCommand command = new UpdateInfoCommand(
-                null, EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON, ActivityField.ILLUSTRATION),
-                null, null, 3, 2, null, "010-1234-5678", null, null, null, null);
+        UpdateInfoCommand command = new UpdateInfoCommand(EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON, ActivityField.ILLUSTRATION),
+                null, null, 3, 2, null, null, null, null, null, null, null, null, null, null, null, null, "010-1234-5678", null, null, null, null);
 
         member.updateInfo(command);
 
@@ -193,8 +190,7 @@ class MemberTest {
     @Test
     void 탈퇴_후_정보_수정_시_예외() {
         member.deactivate();
-        UpdateInfoCommand command = new UpdateInfoCommand(
-                null, EmploymentStatus.AVAILABLE, null, null, null, null, null, null, null, null, null, null, null);
+        UpdateInfoCommand command = new UpdateInfoCommand(EmploymentStatus.AVAILABLE, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
 
         assertThatThrownBy(() -> member.updateInfo(command))
                 .isInstanceOf(MemberException.class)
@@ -281,7 +277,7 @@ class MemberTest {
     void 이메일_가입() {
         TermsAgreement terms = TermsAgreement.of(true, true, true, false);
         Member creator = Member.registerWithEmail("creator@test.com", "creatorhandle", "창작자",
-                "$2a$10$dummyhash", terms, "Asia/Seoul", "KR");
+                "$2a$10$dummyhash", terms, "Asia/Seoul", "KR", Language.KO);
 
         assertThat(creator.getAuthProvider()).isEqualTo(AuthProvider.EMAIL);
         assertThat(creator.getName()).isEqualTo("창작자");
@@ -293,7 +289,7 @@ class MemberTest {
     @Test
     void Google_가입() {
         TermsAgreement terms = TermsAgreement.of(true, true, true, false);
-        Member creator = Member.registerWithGoogle("creator@test.com", "creatorhandle", "창작자", terms, "Asia/Seoul", "KR");
+        Member creator = Member.registerWithGoogle("creator@test.com", "creatorhandle", "창작자", terms, "Asia/Seoul", "KR", Language.KO);
 
         assertThat(creator.getAuthProvider()).isEqualTo(AuthProvider.GOOGLE);
         assertThat(creator.hasPassword()).isFalse();
@@ -306,7 +302,7 @@ class MemberTest {
         TermsAgreement terms = TermsAgreement.of(true, true, true, false);
 
         assertThatThrownBy(() ->
-                Member.registerWithEmail("creator@test.com", "handle", "창작자", "hash", terms, "Not/A_Zone", "KR")
+                Member.registerWithEmail("creator@test.com", "handle", "창작자", "hash", terms, "Not/A_Zone", "KR", Language.KO)
         ).isInstanceOf(MemberException.class)
                 .extracting(e -> ((MemberException) e).getCode())
                 .isEqualTo(MemberErrorCode.INVALID_TIMEZONE.name());
@@ -317,7 +313,7 @@ class MemberTest {
         TermsAgreement terms = TermsAgreement.of(true, true, true, false);
 
         assertThatThrownBy(() ->
-                Member.registerWithGoogle("creator@test.com", "handle", "창작자", terms, null, "KR")
+                Member.registerWithGoogle("creator@test.com", "handle", "창작자", terms, null, "KR", Language.KO)
         ).isInstanceOf(MemberException.class)
                 .extracting(e -> ((MemberException) e).getCode())
                 .isEqualTo(MemberErrorCode.INVALID_TIMEZONE.name());
@@ -328,7 +324,7 @@ class MemberTest {
         TermsAgreement terms = TermsAgreement.of(true, true, true, false);
 
         assertThatThrownBy(() ->
-                Member.registerWithGoogle("creator@test.com", "handle", "창작자", terms, "Asia/Seoul", "ZZ")
+                Member.registerWithGoogle("creator@test.com", "handle", "창작자", terms, "Asia/Seoul", "ZZ", Language.KO)
         ).isInstanceOf(MemberException.class)
                 .extracting(e -> ((MemberException) e).getCode())
                 .isEqualTo(MemberErrorCode.INVALID_COUNTRY.name());
@@ -339,7 +335,7 @@ class MemberTest {
         TermsAgreement terms = TermsAgreement.of(true, true, true, false);
 
         assertThatThrownBy(() ->
-                Member.registerWithGoogle("creator@test.com", "handle", "창작자", terms, "Asia/Seoul", null)
+                Member.registerWithGoogle("creator@test.com", "handle", "창작자", terms, "Asia/Seoul", null, Language.KO)
         ).isInstanceOf(MemberException.class)
                 .extracting(e -> ((MemberException) e).getCode())
                 .isEqualTo(MemberErrorCode.INVALID_COUNTRY.name());
@@ -347,8 +343,7 @@ class MemberTest {
 
     @Test
     void updateInfo로_시간대_변경() {
-        UpdateInfoCommand command = new UpdateInfoCommand(
-                null, null, null, null, null, null, null, null, null, null, null, "America/New_York", null);
+        UpdateInfoCommand command = new UpdateInfoCommand(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, "America/New_York", null);
 
         member.updateInfo(command);
 
@@ -357,8 +352,7 @@ class MemberTest {
 
     @Test
     void updateInfo에_유효하지_않은_시간대_시_예외() {
-        UpdateInfoCommand command = new UpdateInfoCommand(
-                null, null, null, null, null, null, null, null, null, null, null, "Not/A_Zone", null);
+        UpdateInfoCommand command = new UpdateInfoCommand(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, "Not/A_Zone", null);
 
         assertThatThrownBy(() -> member.updateInfo(command))
                 .isInstanceOf(MemberException.class)
@@ -368,8 +362,7 @@ class MemberTest {
 
     @Test
     void updateInfo로_국가코드_변경() {
-        UpdateInfoCommand command = new UpdateInfoCommand(
-                null, null, null, null, null, null, null, null, null, null, null, null, "JP");
+        UpdateInfoCommand command = new UpdateInfoCommand(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, "JP");
 
         member.updateInfo(command);
 
@@ -378,8 +371,7 @@ class MemberTest {
 
     @Test
     void updateInfo에_유효하지_않은_국가코드_시_예외() {
-        UpdateInfoCommand command = new UpdateInfoCommand(
-                null, null, null, null, null, null, null, null, null, null, null, null, "ZZ");
+        UpdateInfoCommand command = new UpdateInfoCommand(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, "ZZ");
 
         assertThatThrownBy(() -> member.updateInfo(command))
                 .isInstanceOf(MemberException.class)
@@ -392,7 +384,7 @@ class MemberTest {
         TermsAgreement terms = TermsAgreement.of(false, true, true, false);
 
         assertThatThrownBy(() ->
-                Member.registerWithEmail("creator@test.com", "handle", "창작자", "hash", terms, "Asia/Seoul", "KR")
+                Member.registerWithEmail("creator@test.com", "handle", "창작자", "hash", terms, "Asia/Seoul", "KR", Language.KO)
         ).isInstanceOf(MemberException.class)
                 .extracting(e -> ((MemberException) e).getCode())
                 .isEqualTo(MemberErrorCode.TERMS_NOT_AGREED.name());
@@ -403,7 +395,7 @@ class MemberTest {
         TermsAgreement terms = TermsAgreement.of(true, true, false, false);
 
         assertThatThrownBy(() ->
-                Member.registerWithGoogle("creator@test.com", "handle", "창작자", terms, "Asia/Seoul", "KR")
+                Member.registerWithGoogle("creator@test.com", "handle", "창작자", terms, "Asia/Seoul", "KR", Language.KO)
         ).isInstanceOf(MemberException.class)
                 .extracting(e -> ((MemberException) e).getCode())
                 .isEqualTo(MemberErrorCode.TERMS_NOT_AGREED.name());
@@ -429,7 +421,7 @@ class MemberTest {
     void 가입_시_받은_마케팅_동의를_설정에서_끌_수_있음() {
         TermsAgreement terms = TermsAgreement.of(true, true, true, true);
         Member creator = Member.registerWithEmail("creator@test.com", "creatorhandle", "창작자",
-                "$2a$10$dummyhash", terms, "Asia/Seoul", "KR");
+                "$2a$10$dummyhash", terms, "Asia/Seoul", "KR", Language.KO);
         assertThat(creator.isMarketingAgreed()).isTrue();
 
         creator.updateMarketingAgreement(false);
@@ -465,10 +457,46 @@ class MemberTest {
     }
 
     @Test
+    void 가입_시_게시물_언어는_주_사용_언어_1개로_초기화된다() {
+        TermsAgreement terms = TermsAgreement.of(true, true, true, false);
+        Member creator = Member.registerWithEmail("lang@test.com", "langhandle", "언어",
+                "$2a$10$dummyhash", terms, "Asia/Seoul", "KR", Language.JA);
+
+        assertThat(creator.getPrimaryLanguage()).isEqualTo(Language.JA);
+        assertThat(creator.getPostLanguages()).containsExactly(Language.JA);
+    }
+
+    @Test
+    void 주_사용_언어_미선택_가입은_예외() {
+        TermsAgreement terms = TermsAgreement.of(true, true, true, false);
+
+        assertThatThrownBy(() -> Member.registerWithEmail("nolang@test.com", "nolanghandle", "언어없음",
+                "$2a$10$dummyhash", terms, "Asia/Seoul", "KR", null))
+                .isInstanceOf(MemberException.class)
+                .extracting(e -> ((MemberException) e).getCode())
+                .isEqualTo(MemberErrorCode.PRIMARY_LANGUAGE_REQUIRED.name());
+    }
+
+    @Test
+    void 게시물_언어는_확장_가능하지만_주_사용_언어는_해제할_수_없다() {
+        TermsAgreement terms = TermsAgreement.of(true, true, true, false);
+        Member creator = Member.registerWithEmail("postlang@test.com", "postlanghandle", "언어",
+                "$2a$10$dummyhash", terms, "Asia/Seoul", "KR", Language.KO);
+
+        creator.updatePostLanguages(Set.of(Language.KO, Language.EN));
+        assertThat(creator.getPostLanguages()).containsExactlyInAnyOrder(Language.KO, Language.EN);
+
+        assertThatThrownBy(() -> creator.updatePostLanguages(Set.of(Language.EN)))
+                .isInstanceOf(MemberException.class)
+                .extracting(e -> ((MemberException) e).getCode())
+                .isEqualTo(MemberErrorCode.PRIMARY_LANGUAGE_CANNOT_BE_REMOVED.name());
+    }
+
+    @Test
     void 탈퇴_시_passwordHash_클리어() {
         TermsAgreement terms = TermsAgreement.of(true, true, true, false);
         Member creator = Member.registerWithEmail("creator@test.com", "creatorhandle", "창작자",
-                "$2a$10$dummyhash", terms, "Asia/Seoul", "KR");
+                "$2a$10$dummyhash", terms, "Asia/Seoul", "KR", Language.KO);
 
         creator.deactivate();
 

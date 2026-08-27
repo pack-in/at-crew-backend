@@ -36,20 +36,65 @@ logging:
     # 리전과 무관한 단일 기준으로 상관관계 분석이 가능하다.
     dateformat: "yyyy-MM-dd'T'HH:mm:ss.SSSXXX, UTC"
 
+# 관측·알람(docs/design/observability-design.md §3) — actuator는 서비스 포트(8080)가 아니라 관리
+# 포트(8081)로 분리한다. 컨테이너 안에서는 모든 인터페이스에 바인딩해야 하고(호스트→컨테이너 포트
+# 매핑은 컨테이너 루프백으로 들어오지 않는다), 외부 차단은 docker 포트 매핑(127.0.0.1:8081)과
+# nginx가 담당한다. 외부 공개용 헬스 경로는 nginx가 /healthz로 프록시하는 liveness 그룹뿐이다.
 management:
+  server:
+    port: 8081
   endpoints:
     web:
       exposure:
-        include: health, info
+        include: health, info, prometheus, metrics
   endpoint:
     health:
+      # /healthz로 프록시되는 응답에 내부 컴포넌트 상태가 섞이지 않게 기본은 감춘다.
       show-details: never
+      group:
+        # liveness — 이게 DOWN이면 사용자가 서비스를 쓸 수 없다(P1 판정 기준).
+        liveness:
+          include: ping, db
+        # readiness — 부가 의존성까지 포함한 상세 상태. 관리 포트에서만 보이므로 상세를 노출한다(P2 판정).
+        readiness:
+          include: db, elasticsearch, diskSpace
+          show-details: always
+  metrics:
+    distribution:
+      # p95 알람용. 히스토그램 버킷 방식은 엔드포인트 수 × 버킷 수만큼 시리즈가 늘어 무료 티어
+      # 한도(10k 시리즈)를 위협하므로, 단일 인스턴스 전제로 클라이언트 계산 백분위수를 쓴다.
+      percentiles:
+        http.server.requests: 0.95, 0.99
+
+# 에러 추적(docs/design/observability-design.md §5) — DSN이 비어 있으면 SDK가 비활성이라
+# 로컬·테스트에서는 아무것도 전송되지 않는다. prod는 값이 없으면 기동을 막는다(application-prod.yml).
+sentry:
+  dsn: ${SENTRY_DSN:}
+  environment: ${SENTRY_ENVIRONMENT:local}
+  # 요청 헤더·쿠키·IP 등 SDK가 자동으로 붙이는 개인정보를 보내지 않는다. 메시지 본문 마스킹은
+  # SentryConfig의 beforeSend가 따로 처리한다.
+  send-default-pii: false
+  # 분산 추적은 쓰지 않는다 — 단일 서비스라 실익이 없고 무료 한도만 소모한다.
+  traces-sample-rate: 0.0
+  max-breadcrumbs: 20
+  # MDC의 요청 식별자를 태그로 올려 Loki 로그와 상호 참조할 수 있게 한다.
+  context-tags:
+    - requestId
+    - memberId
+  logging:
+    # ERROR만 이슈로 만든다. 인증/인가 실패(WARN)는 Loki에만 남긴다 — 공격 트래픽만으로
+    # 무료 한도 5,000건/월이 소진된다.
+    minimum-event-level: error
+    minimum-breadcrumb-level: warn
 
 cors:
   allowed-origins: http://localhost:3000
 
+# 레포가 공개되어 있으므로 이 파일에는 "그대로 쓰면 동작하는" 기본 시크릿을 두지 않는다 —
+# 기본값이 있으면 값 주입을 깜빡한 환경이 공개된 키로 조용히 뜨고, 그 키로 누구나 토큰을 위조할 수 있다.
+# 로컬 개발용 값은 application-local.yml에, prod는 application-prod.yml이 환경변수를 강제한다.
 jwt:
-  secret: ${JWT_SECRET:at-crew-default-secret-key-for-dev-only-must-be-at-least-64-chars-long}
+  secret: ${JWT_SECRET}
   access-token-expiration: 3600000       # 1시간 (ms)
   refresh-token-expiration: 2592000000   # 30일 (ms)
 
@@ -64,15 +109,16 @@ cloudflare:
     bucket: ${R2_BUCKET:at-crew-storage}
     presign-expiration-minutes: 10
     worker-trigger-url: ${WORKER_TRIGGER_URL:http://localhost:8080/internal/artwork/images/processed}
-    callback-secret: ${WORKER_CALLBACK_SECRET:dev-internal-secret}
+    # 기본값 없음 — jwt.secret과 같은 이유(application-local.yml 참고)
+    callback-secret: ${WORKER_CALLBACK_SECRET}
 
 artwork:
   internal:
-    secret: ${ARTWORK_INTERNAL_SECRET:dev-internal-secret}
+    secret: ${ARTWORK_INTERNAL_SECRET}
 
 search:
   internal:
-    secret: ${SEARCH_INTERNAL_SECRET:dev-internal-secret}
+    secret: ${SEARCH_INTERNAL_SECRET}
 
 app:
   frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:3000}

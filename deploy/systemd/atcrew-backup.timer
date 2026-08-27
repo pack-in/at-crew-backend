@@ -1,0 +1,12 @@
+# 매일 18:00 UTC = 03:00 KST — 트래픽이 가장 적은 시간대.
+# Persistent=true: 인스턴스가 꺼져 있어 예정 시각을 놓쳤다면 기동 직후 한 번 실행한다.
+[Unit]
+Description=AT-CREW MariaDB 일일 백업 타이머
+
+[Timer]
+OnCalendar=*-*-* 18:00:00 UTC
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

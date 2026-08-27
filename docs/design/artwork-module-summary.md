@@ -80,6 +80,7 @@ com.atcrew.artwork.internal/               ← 모듈 외부에서 직접 접근
 | `cutCount` | Integer | 작품 컷 수 (웹툰·출판만화 분야 전용) |
 | `videoLinks` | `List<String>` | 영상 링크 URL (최대 5개, YouTube 등) |
 | `ageRating` | enum | ALL / R18 / G18 |
+| `languages` | enum 배열 | 게시물 작성·노출 언어 KO / JA / ZH / EN. 필수이며 **주 사용 언어를 반드시 포함**한다. 스타터는 주 언어 1개로 고정, 프로는 주 언어를 포함한 최대 4개(업로드-R30, REQ-020) |
 | `visibility` | enum | PUBLIC(피드 공개 ON) / PRIVATE(피드 공개 OFF), LINK_ONLY는 deprecated |
 | `visibilityBeforeDelete` | enum | 휴지통 이동 전 공개 상태 스냅샷 |
 | `materials` | `List<Material>` | 소재 정보 (이름·대상·R2 첨부키·외부 링크) |

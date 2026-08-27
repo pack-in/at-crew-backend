@@ -51,6 +51,7 @@ public class BillingWebhookService {
     private final EntitlementService entitlementService;
     private final BillingProperties properties;
     private final ApplicationEventPublisher eventPublisher;
+    private final BillingMetrics metrics;
 
     BillingWebhookService(WebhookEventRepository webhookEventRepository,
             SubscriptionRepository subscriptionRepository,
@@ -58,7 +59,8 @@ public class BillingWebhookService {
             EntitlementLedgerRepository ledgerRepository,
             EntitlementService entitlementService,
             BillingProperties properties,
-            ApplicationEventPublisher eventPublisher) {
+            ApplicationEventPublisher eventPublisher,
+            BillingMetrics metrics) {
         this.webhookEventRepository = webhookEventRepository;
         this.subscriptionRepository = subscriptionRepository;
         this.customerRepository = customerRepository;
@@ -66,6 +68,7 @@ public class BillingWebhookService {
         this.entitlementService = entitlementService;
         this.properties = properties;
         this.eventPublisher = eventPublisher;
+        this.metrics = metrics;
     }
 
     @Transactional
@@ -115,6 +118,8 @@ public class BillingWebhookService {
         if (product == BillingProduct.TEAM_POSTING) {
             entitlementService.grant(memberId, BillingProduct.BOOST, event.getId(), paymentIntentId);
         }
+
+        metrics.checkoutCompleted(product);
     }
 
     private void onSubscriptionChanged(Event event, Instant occurredAt) {

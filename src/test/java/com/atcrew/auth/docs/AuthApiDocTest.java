@@ -49,8 +49,7 @@ class AuthApiDocTest extends RestDocsIntegrationSupport {
                                 "Secure1!",
                                 "문서화유저",
                                 true, true, true, false,
-                                "Asia/Seoul", "KR"
-                        ))))
+                                "Asia/Seoul", "KR", "KO"))))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.isNewUser").value(true))
@@ -67,7 +66,9 @@ class AuthApiDocTest extends RestDocsIntegrationSupport {
                                 fieldWithPath("agreeThirdParty").description("제3자 정보제공 동의 (선택)"),
                                 fieldWithPath("agreeMarketing").description("마케팅 정보 수신 동의 (선택)"),
                                 fieldWithPath("timezone").description("IANA 시간대 ID, 클라이언트 자동감지값 (예: Asia/Seoul)"),
-                                fieldWithPath("countryCode").description("거주 국가 (ISO 3166-1 alpha-2, 예: KR)")
+                                fieldWithPath("countryCode").description("거주 국가 (ISO 3166-1 alpha-2, 예: KR)"),
+                                fieldWithPath("primaryLanguage").description(
+                                        "주 사용 언어 (KO·JA·ZH·EN) — 가입 후 변경할 수 없습니다")
                         ),
                         relaxedResponseFields(
                                 fieldWithPath("code").description("응답 코드 (SUCCESS)"),
@@ -102,8 +103,7 @@ class AuthApiDocTest extends RestDocsIntegrationSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new RegisterRequest(
                                 uniqueEmail, "Secure1!", "Secure1!", "로그인문서유저",
-                                true, true, true, false, "Asia/Seoul", "KR"
-                        ))))
+                                true, true, true, false, "Asia/Seoul", "KR", "KO"))))
                 .andExpect(status().isCreated());
 
         // 로그인 API 호출 및 문서화
@@ -142,8 +142,7 @@ class AuthApiDocTest extends RestDocsIntegrationSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new RegisterRequest(
                                 uniqueEmail, "Secure1!", "Secure1!", "갱신문서유저",
-                                true, true, true, false, "Asia/Seoul", "KR"
-                        ))))
+                                true, true, true, false, "Asia/Seoul", "KR", "KO"))))
                 .andExpect(status().isCreated())
                 .andReturn();
 
@@ -235,8 +234,7 @@ class AuthApiDocTest extends RestDocsIntegrationSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new RegisterRequest(
                                 uniqueEmail, "Secure1!", "Secure1!", "로그아웃문서유저",
-                                true, true, true, false, "Asia/Seoul", "KR"
-                        ))))
+                                true, true, true, false, "Asia/Seoul", "KR", "KO"))))
                 .andExpect(status().isCreated())
                 .andReturn();
 
@@ -282,8 +280,7 @@ class AuthApiDocTest extends RestDocsIntegrationSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new RegisterRequest(
                                 uniqueEmail, "Secure1!", "Secure1!", "재설정요청유저",
-                                true, true, true, false, "Asia/Seoul", "KR"
-                        ))))
+                                true, true, true, false, "Asia/Seoul", "KR", "KO"))))
                 .andExpect(status().isCreated());
 
         mockMvc.perform(post("/api/auth/email/password-reset/request")
@@ -322,8 +319,7 @@ class AuthApiDocTest extends RestDocsIntegrationSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new RegisterRequest(
                                 uniqueEmail, "Secure1!", "Secure1!", "재설정확정유저",
-                                true, true, true, false, "Asia/Seoul", "KR"
-                        ))))
+                                true, true, true, false, "Asia/Seoul", "KR", "KO"))))
                 .andExpect(status().isCreated())
                 .andReturn();
         String memberId = objectMapper.readTree(registerResult.getResponse().getContentAsString())
@@ -393,8 +389,7 @@ class AuthApiDocTest extends RestDocsIntegrationSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new RegisterRequest(
                                 email, password, password, name,
-                                true, true, true, false, "Asia/Seoul", "KR"
-                        ))))
+                                true, true, true, false, "Asia/Seoul", "KR", "KO"))))
                 .andExpect(status().isCreated())
                 .andReturn();
         return objectMapper.readTree(result.getResponse().getContentAsString())
@@ -414,7 +409,8 @@ class AuthApiDocTest extends RestDocsIntegrationSupport {
             boolean agreeThirdParty,
             boolean agreeMarketing,
             String timezone,
-            String countryCode
+            String countryCode,
+            String primaryLanguage
     ) {}
 
     /** 이메일 로그인 요청 바디 */

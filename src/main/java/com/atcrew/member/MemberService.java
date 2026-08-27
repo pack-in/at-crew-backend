@@ -4,13 +4,14 @@ import com.atcrew.common.response.CursorPage;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 public interface MemberService {
 
     MemberInfo register(RegisterMemberCommand command);
 
     // 개발·테스트 전용 (Firebase 인증 없이 직접 가입)
-    MemberInfo register(String loginEmail, String handle, String name, CreatorRole creatorRole);
+    MemberInfo register(String loginEmail, String handle, String name);
 
     MemberProfileInfo findProfileByHandle(String handle);
 
@@ -43,6 +44,9 @@ public interface MemberService {
     /**
      * 구인 가능 상태 창작자 프로필 검색. 커뮤니티 "작가 찾아보기" 탭에서 사용.
      * 탈퇴 회원은 결과에서 항상 제외된다.
+     *
+     * <p>구인 가능 상태여도 노출 대상 항목(사용자 이름·활동 분야·활동 경력·희망 담당 업무·희망 장르·
+     * 희망 채용 형태·연락처)이 비어 있으면 결과에 포함되지 않는다 — 기획서 마이페이지_작가-R08.
      */
     CursorPage<MemberProfileInfo> searchProfiles(SearchProfilesCommand command);
 
@@ -69,6 +73,21 @@ public interface MemberService {
      * 본인 인증 여부에 따른 실제 콘텐츠 접근 게이팅은 이 값과 별개다.
      */
     void updateAdultContentVisible(String memberId, boolean visible);
+
+    /**
+     * 노출받을 게시물 언어를 교체한다(설정-R14). 주 사용 언어는 해제할 수 없다.
+     */
+    void updatePostLanguages(String memberId, Set<Language> languages);
+
+    /** 설정 &gt; 계정 정보 화면용 — 로그인 이메일·가입 경로·언어·토글 값(설정-R04·R05). */
+    AccountInfo getAccount(String memberId);
+
+    /**
+     * 언어 세그먼트 필터용 — 뷰어가 노출받기로 한 게시물 언어 목록(로그인-R16).
+     *
+     * @param memberId 비로그인이면 null — 이때는 빈 목록(필터 미적용)을 반환한다
+     */
+    List<Language> findPostLanguages(String memberId);
 
     void updateName(String memberId, String name);
 

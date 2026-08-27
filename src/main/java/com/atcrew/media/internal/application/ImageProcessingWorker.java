@@ -9,7 +9,7 @@ class ImageProcessingWorker {
     private final ArtworkStoragePort storagePort;
     ImageProcessingWorker(ArtworkStoragePort storagePort) { this.storagePort = storagePort; }
     @Async void triggerAsync(MediaOwnerType ownerType, String ownerId, List<String> imageKeys,
-                             MediaVariantProfile variantProfile) {
-        storagePort.triggerWorker(ownerType, ownerId, imageKeys, variantProfile);
+                             MediaVariantProfile variantProfile, MediaQualityTier qualityTier) {
+        storagePort.triggerWorker(ownerType, ownerId, imageKeys, variantProfile, qualityTier);
     }
 }

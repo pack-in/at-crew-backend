@@ -1,0 +1,20 @@
+Copyright (c) 2026 pack-in. All rights reserved.
+
+이 저장소의 소스 코드와 문서는 AT-CREW 서비스 운영을 위해 작성된 것으로,
+저작권자의 사전 서면 허가 없이 복제·수정·배포·2차적 저작물 작성·상업적 이용을 할 수 없습니다.
+
+저장소를 공개하는 목적은 코드와 설계 과정을 열람할 수 있게 하는 것(열람 및 학습 참고)에 한정됩니다.
+공개돼 있다는 사실이 위 권리의 포기를 의미하지 않습니다.
+
+문의: https://github.com/pack-in/at-crew-backend/issues
+
+---
+
+Copyright (c) 2026 pack-in. All rights reserved.
+
+The source code and documentation in this repository are proprietary and were written to operate
+the AT-CREW service. No part of this repository may be copied, modified, distributed, used to create
+derivative works, or used commercially without the prior written permission of the copyright holder.
+
+This repository is made public for viewing and reference only. Public availability does not grant
+any license to the rights reserved above.
