@@ -1,0 +1,30 @@
+name: Release Please
+
+# main에 병합된 Conventional Commits를 읽어 CHANGELOG와 릴리스 태그를 만든다.
+# 설정(한국어 섹션 매핑)은 release-please-config.json, 현재 버전은 .release-please-manifest.json.
+#
+# 동작 방식: main에 커밋이 쌓이면 "chore(main): release x.y.z" PR을 열거나 갱신하고,
+# 그 PR을 병합하는 시점에 태그와 GitHub Release가 만들어진다. 즉 배포(deploy.yml)와는 별개이며,
+# 릴리스를 낼지 말지는 그 PR을 병합할지로 사람이 정한다.
+#
+# 이전에 권한 부족으로 실패한 이력이 있어(이슈 #38) permissions를 명시한다.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

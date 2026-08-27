@@ -1,0 +1,39 @@
+# 관측 에이전트(docs/design/observability-design.md §2) — EC2 #1에서 앱과 별도 compose 파일로 돌린다.
+# 앱 배포(docker-compose.app.yml)와 수명주기를 분리해, 배포가 실패해도 수집은 계속되게 한다.
+#
+# 실행:
+#   cd ~/at-crew-backend/deploy && docker-compose -f docker-compose.observability.yml up -d
+services:
+  alloy:
+    image: grafana/alloy:v1.19.1
+    restart: always
+    # host 네트워크가 필요하다 — 앱 관리 포트가 호스트 루프백(127.0.0.1:8081)에만 열려 있고,
+    # 호스트 지표도 컨테이너 네트워크 네임스페이스 밖의 것을 봐야 한다.
+    network_mode: host
+    pid: host
+    env_file:
+      - .env
+    volumes:
+      - ./observability/config.alloy:/etc/alloy/config.alloy:ro
+      # 컨테이너 목록·로그 수집
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # 호스트 지표(CPU·메모리·디스크)
+      - /:/rootfs:ro
+      # nginx 액세스/에러 로그
+      - /var/log/nginx:/var/log/nginx:ro
+      # backup.sh가 남기는 백업 성공 시각 지표
+      - /var/lib/node_exporter/textfile_collector:/var/lib/node_exporter/textfile_collector:ro
+      - alloy_data:/var/lib/alloy/data
+    command:
+      - run
+      - --server.http.listen-addr=127.0.0.1:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    logging:
+      driver: json-file
+      options:
+        max-size: 20m
+        max-file: "3"
+
+volumes:
+  alloy_data:
