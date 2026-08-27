@@ -153,7 +153,12 @@ R2는 헬스 인디케이터가 없다(자체 구현 대상 아님) — §6의 �
 | `atcrew_billing_subscription_payment_failed_total{plan}` | counter | `billing` — `SubscriptionPaymentFailedEvent` 리스너 | 정기 결제 실패는 서버 오류가 아니라 이벤트다 |
 | `atcrew_media_processing_total{status,owner_type}` | counter | `media` — `MediaAssetProcessedEvent` 리스너 | 콜백은 실패 상태여도 HTTP 204라 성공과 구분되지 않는다 |
 | `atcrew_mail_send_failure_total{provider}` | counter | `common/mail` — `ResendMailAdapter` | 발송 실패를 예외로 올리지 않고 삼키므로 로그 외 흔적이 없다 |
+| `atcrew_media_pending_assets` | gauge | `media` — `MediaPendingMetrics` | 콜백이 **실패로 오는 것**이 아니라 **아예 오지 않는** 경우는 카운터가 움직이지 않는다. 잔량으로만 드러난다(이슈 #59) |
 | `atcrew_modulith_incomplete_events` | gauge | `common/observability` | 이벤트 소비가 막히면 색인·후처리가 조용히 멈춘다. 스크레이프마다 조회하지 않고 60초 주기로 갱신한 값을 읽는다 |
+
+`atcrew_media_processing_total`과 `atcrew_media_pending_assets`는 서로 다른 고장을 본다 — 앞은 "실패로
+돌아온 콜백", 뒤는 "돌아오지 않는 콜백"이다. 2026-08-18~08-27에 Worker의 `SERVER_CALLBACK_URL`이 임시
+터널을 가리켜 콜백이 한 건도 도착하지 않았는데 아무 알람도 울리지 않았던 것이 뒤쪽 공백이었다.
 
 Stripe 웹훅 **처리 실패**는 따로 세지 않는다 — 서명 검증 실패는 4xx, 처리 중 예외는 5xx로 컨트롤러에서
 그대로 나가므로 해당 URI의 HTTP 지표에 이미 잡힌다.
@@ -180,6 +185,7 @@ Stripe 웹훅 **처리 실패**는 따로 세지 않는다 — 서명 검증 실
 | P2 | 5xx 5건 / 5분 |
 | P2 | 외부 의존성(Stripe·Resend·R2·ES) 실패 3건 / 10분 |
 | P2 | p95 레이턴시 2초가 10분 지속 |
+| P2 | 업로드 후 15분 초과 PENDING 이미지가 10분 지속 (콜백 미도착) |
 | P2 | `atcrew_modulith_incomplete_events` 50 초과 |
 | P2 | readiness 개별 항목 DOWN |
 

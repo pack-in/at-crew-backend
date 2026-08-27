@@ -98,6 +98,10 @@ cat /var/lib/node_exporter/textfile_collector/backup.prom
 
 흔한 원인: R2 토큰 만료·권한 변경, 디스크 부족으로 덤프 생성 실패, mariadb 컨테이너 이름 변경.
 
+`.env`에 `R2_BACKUP_BUCKET`·`R2_BACKUP_ACCESS_KEY`·`R2_BACKUP_SECRET_KEY`가 없으면 스크립트가 즉시
+멈춘다(기본값·폴백을 두지 않는다 — 예전에는 없는 버킷이나 권한 없는 키로 떨어져 백업이 조용히
+실패했다).
+
 ---
 
 ## P2
@@ -108,6 +112,7 @@ cat /var/lib/node_exporter/textfile_collector/backup.prom
 | p95 지연 2초 초과 | 대시보드 "요청량/지연" → 어떤 엔드포인트인지 | 검색·이미지 업로드가 흔한 원인. DB 커넥션 pending도 함께 본다 |
 | 메일 발송 실패 | Resend 대시보드, `.env`의 `RESEND_API_KEY` 유효성 | 비밀번호 재설정이 막히므로 사용자 문의로 바로 이어진다 |
 | 이미지 후처리 실패 | Cloudflare Worker 로그, `media_assets` 테이블의 FAILED 행 | 업로드는 됐는데 썸네일이 없는 상태 |
+| 이미지 후처리 결과 미도착 | Worker 시크릿 `SERVER_CALLBACK_URL`이 `https://api.at-crew.com/internal/media/images/processed`인지 → nginx 액세스 로그에 그 경로 요청이 찍히는지 | 콜백이 실패로 오는 게 아니라 아예 안 오는 상태. 2026-08 실제 사고(이슈 #59)와 같은 유형 |
 | 미완료 이벤트 누적 | `SELECT COUNT(*), EVENT_TYPE FROM EVENT_PUBLICATION WHERE COMPLETION_DATE IS NULL GROUP BY EVENT_TYPE` | 특정 타입만 쌓이면 그 리스너가 예외를 던지고 있다 |
 | 구독 결제 실패 | Stripe 대시보드 → 해당 고객 | 여러 건이 몰리면 카드 문제가 아니라 연동 문제 |
 
