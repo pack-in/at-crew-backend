@@ -241,21 +241,30 @@ class BillingModuleTests {
     // === 카탈로그 ===
 
     @Test
-    void MVP_단일_요금제_카탈로그는_Portfolio_Pro_하나만_내려준다() {
-        // PH-08(2026-08-18): pro-monthly만 enabled — 나머지 4종은 판매 중단이라 카탈로그에서 빠진다.
+    void 카탈로그는_프로_월간_연간_두_종만_내려준다() {
+        // PH-09(2026-08-23): 연간 결제 재개 — 단건 상품 3종은 여전히 판매 중단이라 카탈로그에서 빠진다.
         List<CatalogItemInfo> catalog = billingService.getCatalog(null);
 
-        assertThat(catalog).hasSize(1);
-        CatalogItemInfo proMonthly = catalog.get(0);
-        assertThat(proMonthly.product()).isEqualTo(BillingProduct.PRO_MONTHLY);
+        assertThat(catalog).hasSize(2);
+        CatalogItemInfo proMonthly = catalog.stream()
+                .filter(item -> item.product() == BillingProduct.PRO_MONTHLY)
+                .findFirst().orElseThrow();
         assertThat(proMonthly.amount()).isEqualTo(800);
         assertThat(proMonthly.listAmount()).isNull();
         assertThat(proMonthly.cta()).isEqualTo(CatalogItemInfo.CtaState.AVAILABLE);
         assertThat(proMonthly.currency()).isEqualTo("USD");
+
+        CatalogItemInfo proYearly = catalog.stream()
+                .filter(item -> item.product() == BillingProduct.PRO_YEARLY)
+                .findFirst().orElseThrow();
+        assertThat(proYearly.amount()).isEqualTo(8000);
+        assertThat(proYearly.listAmount()).isEqualTo(9600);
+        assertThat(proYearly.cta()).isEqualTo(CatalogItemInfo.CtaState.AVAILABLE);
+        assertThat(proYearly.currency()).isEqualTo("USD");
     }
 
     @Test
-    void 이용중인_플랜은_CURRENT로_내려간다() {
+    void 이용중인_플랜은_CURRENT로_내려가고_다른_주기는_CHANGE로_내려간다() {
         String memberId = registerMemberWithCustomer("catalog-pro", "cus_catalog_pro");
         webhookService.handle(subscriptionEvent("evt_catalog_pro", "customer.subscription.created",
                 "sub_catalog", "cus_catalog_pro", "active", BASE_CREATED));
@@ -263,6 +272,7 @@ class BillingModuleTests {
         List<CatalogItemInfo> catalog = billingService.getCatalog(memberId);
 
         assertThat(ctaOf(catalog, BillingProduct.PRO_MONTHLY)).isEqualTo(CatalogItemInfo.CtaState.CURRENT);
+        assertThat(ctaOf(catalog, BillingProduct.PRO_YEARLY)).isEqualTo(CatalogItemInfo.CtaState.CHANGE);
     }
 
     @Test

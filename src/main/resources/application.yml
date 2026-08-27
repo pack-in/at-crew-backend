@@ -93,10 +93,11 @@ billing:
   frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:3000}
   # 통화는 USD 단일. amount·list-amount는 센트 단위 정수($5.99 = 599)다.
   # 실제 청구액의 정본은 Stripe의 Price이며, 여기 amount는 카탈로그 표시용이다 — Price 변경 시 함께 갱신한다.
-  # MVP 단일 요금제(PH-08, 2026-08-18) — Portfolio Pro(pro-monthly) $8 하나만 판매한다.
-  # 나머지 4개는 enabled=false로 카탈로그·Checkout 양쪽에서 막되, 기존 보유자 게이팅(entitlement 소비)은
-  # 그대로 둔다 — 단건 상품 3종은 판매만 중단하고 구인글·팀원모집글·끌어올리기 게시 자체는 계속 막힌 채로 둔다
-  # (plans/260813-stripe-billing/PLAN-HUMAN.md PH-08 "판매 중단 + 게이팅 유지" 결정).
+  # MVP 단일 요금제(PH-08, 2026-08-18) — Portfolio Pro는 월 $8 단일가로 판매한다.
+  # 연간 결제는 PH-09(2026-08-23)에서 재개 — 월 $8 기준 재산정한 연 $80(정가 $96, "2개월 무료").
+  # 단건 상품 3종은 여전히 enabled=false로 카탈로그·Checkout 양쪽에서 막되, 기존 보유자 게이팅
+  # (entitlement 소비)은 그대로 둔다 — 판매만 중단하고 구인글·팀원모집글·끌어올리기 게시 자체는
+  # 계속 막힌 채로 둔다(plans/260813-stripe-billing/PLAN-HUMAN.md PH-08 "판매 중단 + 게이팅 유지" 결정).
   products:
     pro-monthly:
       price-id: ${STRIPE_PRICE_PRO_MONTHLY:}
@@ -105,9 +106,9 @@ billing:
       enabled: true
     pro-yearly:
       price-id: ${STRIPE_PRICE_PRO_YEARLY:}
-      amount: 5999
-      list-amount: 11999
-      enabled: false
+      amount: 8000
+      list-amount: 9600
+      enabled: true
     team-posting:
       price-id: ${STRIPE_PRICE_TEAM_POSTING:}
       amount: 3999

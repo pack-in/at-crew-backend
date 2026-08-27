@@ -42,9 +42,10 @@ class BillingApiDocTest extends RestDocsIntegrationSupport {
                         relaxedResponseFields(
                                 fieldWithPath("code").description("응답 코드 (SUCCESS)"),
                                 fieldWithPath("data[].product")
-                                        .description("상품 키. MVP는 PRO_MONTHLY(Portfolio Pro)만 노출 — "
-                                                + "PRO_YEARLY·TEAM_POSTING·BOOST·JOB_POSTING은 PH-08 결정으로 판매 중단"),
-                                fieldWithPath("data[].amount").description("청구 금액 (USD 센트 단위 정수, 800 = $8.00)"),
+                                        .description("상품 키. PRO_MONTHLY·PRO_YEARLY(Portfolio Pro 월간·연간) 노출 — "
+                                                + "TEAM_POSTING·BOOST·JOB_POSTING은 PH-08 결정으로 판매 중단"),
+                                fieldWithPath("data[].amount")
+                                        .description("청구 금액 (USD 센트 단위 정수, 800 = $8.00, 8000 = $80.00)"),
                                 fieldWithPath("data[].listAmount").description("취소선 정가 (센트). 할인이 없으면 null").optional(),
                                 fieldWithPath("data[].currency").description("통화 (USD 단일)"),
                                 fieldWithPath("data[].cta")
