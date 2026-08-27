@@ -7,7 +7,7 @@
 
 | EC2 | 구성 | 비고 |
 |---|---|---|
-| #1 앱 서버 | `app`(스프링부트) + `mariadb` 컨테이너, `docker-compose.app.yml` | 퍼블릭 IP 있음, nginx가 443/80 처리 |
+| #1 앱 서버 | `app`(스프링부트) + `mariadb` 컨테이너, `docker-compose.app.yml` | 퍼블릭 IP 있음, nginx가 80만 수신(Cloudflare Flexible이라 origin 구간은 평문) |
 | #2 Elasticsearch | `elasticsearch` 컨테이너, `docker-compose.search.yml` | 퍼블릭 IP 없음(비용·보안), 보안 그룹으로 #1만 9200 접근 허용 |
 
 도메인은 `api.at-crew.com` — Cloudflare DNS에서 #1의 탄력적 IP로 A레코드 연결.
@@ -34,6 +34,10 @@
 >
 > Cloudflare 대역은 바뀐다. 대역이 추가됐는데 두 곳 중 한쪽만 갱신하면 그쪽에서 트래픽이 막히므로
 > **nginx 설정과 보안 그룹을 항상 함께 갱신한다.** 목록: https://www.cloudflare.com/ips/
+>
+> 검증 시 참고: 보안 그룹이 네트워크 레벨에서 먼저 끊으므로, Cloudflare 밖에서 origin IP로 직접
+> 붙으면 **nginx의 444가 아니라 TCP 타임아웃**이 난다(`curl`의 `connect=0.000000s`). nginx 게이트
+> 자체를 확인하려면 서버 안에서 `127.0.0.1`로 Host 헤더를 바꿔 가며 호출한다.
 
 검색 서버는 퍼블릭 IP가 없어 직접 SSH 불가 — 앱 서버를 경유해서 접속한다. 개인키를 서버에 복사해두지
 않고 SSH 에이전트 포워딩을 쓴다:
