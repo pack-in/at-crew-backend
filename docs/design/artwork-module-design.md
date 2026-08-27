@@ -117,6 +117,7 @@ public class Artwork {
 
     // 접근 제어
     private AgeRating ageRating;             // 전체 / 성인(R-18)
+    private Set<Language> languages;         // 게시물 작성·노출 언어 (업로드-R30, 스타터 1개·프로 다중)
     private Visibility visibility;           // PUBLIC / PRIVATE (+ LINK_ONLY deprecated)
     private Visibility visibilityBeforeDelete; // 복구 시 원상 복원용 스냅샷
 

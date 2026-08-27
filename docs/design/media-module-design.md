@@ -73,6 +73,7 @@ presign 발급·Worker 트리거·webhook 수신·재시도·고아파일 정리
 | thumbAdultKey | VARCHAR(500) NULL | `variantProfile=STANDARD_WITH_ADULT_BLUR`일 때만 채워짐 |
 | originalAvifKey | VARCHAR(500) NULL | Worker 처리 후 채워짐 |
 | variantProfile | VARCHAR(30) | `MediaVariantProfile` — STANDARD, STANDARD_WITH_ADULT_BLUR |
+| qualityTier | VARCHAR(20) | `MediaQualityTier` — WEB, ORIGINAL. 컬럼 추가 이전 행은 ORIGINAL(V33 기본값) |
 | processingStatus | VARCHAR(30) | PENDING / DONE / FAILED |
 | createdAt / updatedAt | DATETIME(6) | 재시도 스케줄러가 `updatedAt` 기준으로 스캔(§7) |
 
@@ -97,12 +98,32 @@ public enum MediaOwnerType { ARTWORK, JOB_POSTING, TEAM_POSTING, JOB_SEEKING_POS
 
 public enum MediaVariantProfile { STANDARD, STANDARD_WITH_ADULT_BLUR }
 
+public enum MediaQualityTier { WEB, ORIGINAL }
+
 public enum MediaProcessingStatus { PENDING, DONE, FAILED }
 ```
 
 `MediaVariantProfile`은 Worker에게 "성인물 blur 썸네일까지 만들지"를 알려주는 파라미터다. 현재는
 `ARTWORK`만 `STANDARD_WITH_ADULT_BLUR`를 쓴다 — recruit 콘텐츠는 성인 게이팅 대상이 아니라는 기존 결정
 (`recruit-module-design.md` §7)을 그대로 따라 `STANDARD`만 쓴다.
+
+`MediaQualityTier`(2026-08-27 추가)는 요금제-R03("웹 감상에 적합한 화질")·R04("선명한 원본 화질")의
+플랜 차등을 담는다. 성인 blur 여부와는 직교하는 축이라 `MediaVariantProfile`에 값을 늘리지 않고 별도
+파라미터로 둔다 — 합치면 조합만큼 값이 늘어난다.
+
+| 등급 | 대상 | 원본 변환 파라미터 |
+|---|---|---|
+| `WEB` | 스타터 플랜 작품, recruit 이미지 전부 | 가로 폭 1280px 상한(`fit: scale-down`), AVIF q72 |
+| `ORIGINAL` | 프로 플랜 작품 | 가로 폭 2560px 상한, AVIF q85 |
+
+- 상한은 **긴 변이 아니라 가로 폭** 기준이다. 웹툰 원고는 세로로 길어서 긴 변으로 제한하면 원고가 뭉개진다.
+- `fit: scale-down`이라 상한보다 작은 원본은 확대하지 않는다.
+- 썸네일(294×392)은 플랜과 무관하게 q80으로 동일하다 — 카드 화질은 차등 대상이 아니다.
+- **등급은 업로드 시점 플랜으로 확정되고 변환은 1회뿐이다.** 프로 → 스타터 다운그레이드로 기존 이미지
+  화질이 내려가지 않고(요금제-R01), 스타터 → 프로 전환으로 기존 이미지가 선명해지지도 않는다.
+  재시도(`ImageRetryScheduler`)가 최초와 같은 결과를 내도록 `media_assets.quality_tier`에 함께 보관한다.
+- 업로드 원본 용량 상한은 **5MB**다. Presigned PUT은 서명에 Content-Length 조건을 넣을 수 없어 크기를
+  강제하지 못하므로, Worker가 변환 직전 R2 객체 크기를 검사해 초과분을 FAILED 콜백으로 돌려보낸다.
 
 ---
 
@@ -116,11 +137,13 @@ public interface MediaService {
     // artwork.uploadArtwork()/updateArtwork()가 imageProcessingWorker.triggerAsync를 직접 호출하던 자리를 대체.
     // MediaAsset PENDING 행을 저장하고 Worker를 비동기 트리거한다.
     void registerAndTriggerProcessing(MediaOwnerType ownerType, String ownerId,
-                                       List<String> imageKeys, MediaVariantProfile variantProfile);
+                                       List<String> imageKeys, MediaVariantProfile variantProfile,
+                                       MediaQualityTier qualityTier);
 
     // 소유자가 이미지 목록을 교체할 때(artwork replaceImages와 동일 패턴) 기존 행을 고아 처리하고 새로 등록.
     void replaceAndTriggerProcessing(MediaOwnerType ownerType, String ownerId,
-                                      List<String> newImageKeys, MediaVariantProfile variantProfile);
+                                      List<String> newImageKeys, MediaVariantProfile variantProfile,
+                                      MediaQualityTier qualityTier);
 
     List<MediaAssetInfo> getAssets(MediaOwnerType ownerType, String ownerId);
 
@@ -198,14 +221,15 @@ Body: {
 ```java
 @Async
 void triggerAsync(MediaOwnerType ownerType, String ownerId, List<String> imageKeys,
-                   MediaVariantProfile variantProfile) {
-    storagePort.triggerWorker(ownerType, ownerId, imageKeys, variantProfile);
+                   MediaVariantProfile variantProfile, MediaQualityTier qualityTier) {
+    storagePort.triggerWorker(ownerType, ownerId, imageKeys, variantProfile, qualityTier);
 }
 ```
 
 `R2StorageAdapter.triggerWorker`의 요청 바디가 `{"artworkId":..., "imageKeys":[...]}`에서
-`{"ownerType":..., "ownerId":..., "imageKeys":[...], "variantProfile":...}`로 바뀐다 — **이건 외부
-Cloudflare Worker 스크립트도 같이 바뀌어야 함을 뜻한다(§9)**.
+`{"ownerType":..., "ownerId":..., "imageKeys":[...], "variantProfile":..., "qualityTier":...}`로 바뀐다 —
+**이건 외부 Cloudflare Worker 스크립트도 같이 바뀌어야 함을 뜻한다(§9)**. `qualityTier`가 없거나 모르는
+값이면 Worker는 `ORIGINAL`로 폴백한다 — 서버 배포와 Worker 배포 사이의 시차에 기존 동작을 유지하기 위해서다.
 
 ### 7.2 재시도 — 기존보다 단순해짐
 
