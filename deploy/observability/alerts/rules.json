@@ -6,30 +6,69 @@
     "folderUID": "__FOLDER_UID__",
     "condition": "C",
     "for": "2m",
-    "labels": { "severity": "p1" },
+    "labels": {
+      "severity": "p1"
+    },
     "annotations": {
       "summary": "Synthetics 프로브 두 곳(Seoul·Tokyo)이 모두 https://api.at-crew.com/healthz 응답을 받지 못했다",
       "description": "사용자가 서비스를 전혀 쓸 수 없는 상태일 가능성이 높다. 런북: docs/operations/incident-runbook.md"
     },
     "noDataState": "Alerting",
     "execErrState": "Alerting",
-    "isPaused": true,
-    "_comment": "관리 포트가 포함된 이미지가 배포되기 전에는 /healthz가 502라 즉시 발동한다. 첫 배포 성공 후 isPaused를 false로 바꾸고 워크플로를 다시 돌린다.",
+    "isPaused": false,
     "data": [
       {
         "refId": "A",
-        "relativeTimeRange": { "from": 300, "to": 0 },
+        "relativeTimeRange": {
+          "from": 300,
+          "to": 0
+        },
         "datasourceUid": "__PROM_UID__",
-        "model": { "refId": "A", "instant": true, "editorMode": "code", "expr": "sum(probe_success{job=\"at-crew-api-healthz\"})" }
+        "model": {
+          "refId": "A",
+          "instant": true,
+          "editorMode": "code",
+          "expr": "sum(probe_success{job=\"at-crew-api-healthz\"})"
+        }
       },
       {
         "refId": "C",
-        "relativeTimeRange": { "from": 300, "to": 0 },
+        "relativeTimeRange": {
+          "from": 300,
+          "to": 0
+        },
         "datasourceUid": "__expr__",
         "model": {
-          "refId": "C", "type": "threshold", "expression": "A",
-          "datasource": { "type": "__expr__", "uid": "__expr__" },
-          "conditions": [ { "evaluator": { "type": "lt", "params": [1] }, "operator": { "type": "and" }, "query": { "params": ["C"] }, "reducer": { "type": "last", "params": [] }, "type": "query" } ]
+          "refId": "C",
+          "type": "threshold",
+          "expression": "A",
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "conditions": [
+            {
+              "evaluator": {
+                "type": "lt",
+                "params": [
+                  1
+                ]
+              },
+              "operator": {
+                "type": "and"
+              },
+              "query": {
+                "params": [
+                  "C"
+                ]
+              },
+              "reducer": {
+                "type": "last",
+                "params": []
+              },
+              "type": "query"
+            }
+          ]
         }
       }
     ]
@@ -41,30 +80,69 @@
     "folderUID": "__FOLDER_UID__",
     "condition": "C",
     "for": "5m",
-    "labels": { "severity": "p1" },
+    "labels": {
+      "severity": "p1"
+    },
     "annotations": {
       "summary": "Alloy가 앱 관리 포트(8081)를 5분간 스크레이프하지 못했다",
       "description": "컨테이너가 죽었거나 기동에 실패했을 가능성이 크다. docker-compose logs app 확인."
     },
     "noDataState": "Alerting",
     "execErrState": "Alerting",
-    "isPaused": true,
-    "_comment": "첫 배포 전에는 8081이 없어 항상 발동한다. 배포 성공 후 활성화한다.",
+    "isPaused": false,
     "data": [
       {
         "refId": "A",
-        "relativeTimeRange": { "from": 300, "to": 0 },
+        "relativeTimeRange": {
+          "from": 300,
+          "to": 0
+        },
         "datasourceUid": "__PROM_UID__",
-        "model": { "refId": "A", "instant": true, "editorMode": "code", "expr": "max(up{job=\"at-crew-backend\"})" }
+        "model": {
+          "refId": "A",
+          "instant": true,
+          "editorMode": "code",
+          "expr": "max(up{job=\"at-crew-backend\"})"
+        }
       },
       {
         "refId": "C",
-        "relativeTimeRange": { "from": 300, "to": 0 },
+        "relativeTimeRange": {
+          "from": 300,
+          "to": 0
+        },
         "datasourceUid": "__expr__",
         "model": {
-          "refId": "C", "type": "threshold", "expression": "A",
-          "datasource": { "type": "__expr__", "uid": "__expr__" },
-          "conditions": [ { "evaluator": { "type": "lt", "params": [1] }, "operator": { "type": "and" }, "query": { "params": ["C"] }, "reducer": { "type": "last", "params": [] }, "type": "query" } ]
+          "refId": "C",
+          "type": "threshold",
+          "expression": "A",
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "conditions": [
+            {
+              "evaluator": {
+                "type": "lt",
+                "params": [
+                  1
+                ]
+              },
+              "operator": {
+                "type": "and"
+              },
+              "query": {
+                "params": [
+                  "C"
+                ]
+              },
+              "reducer": {
+                "type": "last",
+                "params": []
+              },
+              "type": "query"
+            }
+          ]
         }
       }
     ]
@@ -76,7 +154,9 @@
     "folderUID": "__FOLDER_UID__",
     "condition": "C",
     "for": "0m",
-    "labels": { "severity": "p1" },
+    "labels": {
+      "severity": "p1"
+    },
     "annotations": {
       "summary": "앱 컨테이너가 10분 안에 3회 이상 재시작했다",
       "description": "restart: always 때문에 죽어도 계속 살아나므로 겉으로는 동작하는 것처럼 보인다. 2026-08-19 Flyway 순서 사고와 같은 형태."
@@ -87,18 +167,56 @@
     "data": [
       {
         "refId": "A",
-        "relativeTimeRange": { "from": 900, "to": 0 },
+        "relativeTimeRange": {
+          "from": 900,
+          "to": 0
+        },
         "datasourceUid": "__PROM_UID__",
-        "model": { "refId": "A", "instant": true, "editorMode": "code", "expr": "max(changes(container_start_time_seconds{name=~\".*app.*\"}[10m]))" }
+        "model": {
+          "refId": "A",
+          "instant": true,
+          "editorMode": "code",
+          "expr": "max(changes(container_start_time_seconds{name=~\".*app.*\"}[10m]))"
+        }
       },
       {
         "refId": "C",
-        "relativeTimeRange": { "from": 900, "to": 0 },
+        "relativeTimeRange": {
+          "from": 900,
+          "to": 0
+        },
         "datasourceUid": "__expr__",
         "model": {
-          "refId": "C", "type": "threshold", "expression": "A",
-          "datasource": { "type": "__expr__", "uid": "__expr__" },
-          "conditions": [ { "evaluator": { "type": "gt", "params": [2] }, "operator": { "type": "and" }, "query": { "params": ["C"] }, "reducer": { "type": "last", "params": [] }, "type": "query" } ]
+          "refId": "C",
+          "type": "threshold",
+          "expression": "A",
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "conditions": [
+            {
+              "evaluator": {
+                "type": "gt",
+                "params": [
+                  2
+                ]
+              },
+              "operator": {
+                "type": "and"
+              },
+              "query": {
+                "params": [
+                  "C"
+                ]
+              },
+              "reducer": {
+                "type": "last",
+                "params": []
+              },
+              "type": "query"
+            }
+          ]
         }
       }
     ]
@@ -110,7 +228,9 @@
     "folderUID": "__FOLDER_UID__",
     "condition": "C",
     "for": "10m",
-    "labels": { "severity": "p1" },
+    "labels": {
+      "severity": "p1"
+    },
     "annotations": {
       "summary": "EC2 #1 루트 볼륨(8GB) 사용률이 85%를 넘었다",
       "description": "가득 차면 MariaDB 쓰기와 배포가 함께 실패한다. docker image prune -af 로 회수 가능한지 먼저 확인."
@@ -121,18 +241,56 @@
     "data": [
       {
         "refId": "A",
-        "relativeTimeRange": { "from": 600, "to": 0 },
+        "relativeTimeRange": {
+          "from": 600,
+          "to": 0
+        },
         "datasourceUid": "__PROM_UID__",
-        "model": { "refId": "A", "instant": true, "editorMode": "code", "expr": "100 - (node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"} * 100)" }
+        "model": {
+          "refId": "A",
+          "instant": true,
+          "editorMode": "code",
+          "expr": "100 - (node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"} * 100)"
+        }
       },
       {
         "refId": "C",
-        "relativeTimeRange": { "from": 600, "to": 0 },
+        "relativeTimeRange": {
+          "from": 600,
+          "to": 0
+        },
         "datasourceUid": "__expr__",
         "model": {
-          "refId": "C", "type": "threshold", "expression": "A",
-          "datasource": { "type": "__expr__", "uid": "__expr__" },
-          "conditions": [ { "evaluator": { "type": "gt", "params": [85] }, "operator": { "type": "and" }, "query": { "params": ["C"] }, "reducer": { "type": "last", "params": [] }, "type": "query" } ]
+          "refId": "C",
+          "type": "threshold",
+          "expression": "A",
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "conditions": [
+            {
+              "evaluator": {
+                "type": "gt",
+                "params": [
+                  85
+                ]
+              },
+              "operator": {
+                "type": "and"
+              },
+              "query": {
+                "params": [
+                  "C"
+                ]
+              },
+              "reducer": {
+                "type": "last",
+                "params": []
+              },
+              "type": "query"
+            }
+          ]
         }
       }
     ]
@@ -144,7 +302,9 @@
     "folderUID": "__FOLDER_UID__",
     "condition": "C",
     "for": "0m",
-    "labels": { "severity": "p1" },
+    "labels": {
+      "severity": "p1"
+    },
     "annotations": {
       "summary": "마지막 백업 성공 시각이 26시간 이상 지났다",
       "description": "백업 스크립트(deploy/backup.sh) 실패 또는 cron 중단. 사용자 데이터가 EC2 볼륨 하나에만 있는 상태가 된다."
@@ -156,18 +316,56 @@
     "data": [
       {
         "refId": "A",
-        "relativeTimeRange": { "from": 600, "to": 0 },
+        "relativeTimeRange": {
+          "from": 600,
+          "to": 0
+        },
         "datasourceUid": "__PROM_UID__",
-        "model": { "refId": "A", "instant": true, "editorMode": "code", "expr": "time() - max(atcrew_backup_last_success_timestamp)" }
+        "model": {
+          "refId": "A",
+          "instant": true,
+          "editorMode": "code",
+          "expr": "time() - max(atcrew_backup_last_success_timestamp)"
+        }
       },
       {
         "refId": "C",
-        "relativeTimeRange": { "from": 600, "to": 0 },
+        "relativeTimeRange": {
+          "from": 600,
+          "to": 0
+        },
         "datasourceUid": "__expr__",
         "model": {
-          "refId": "C", "type": "threshold", "expression": "A",
-          "datasource": { "type": "__expr__", "uid": "__expr__" },
-          "conditions": [ { "evaluator": { "type": "gt", "params": [93600] }, "operator": { "type": "and" }, "query": { "params": ["C"] }, "reducer": { "type": "last", "params": [] }, "type": "query" } ]
+          "refId": "C",
+          "type": "threshold",
+          "expression": "A",
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "conditions": [
+            {
+              "evaluator": {
+                "type": "gt",
+                "params": [
+                  93600
+                ]
+              },
+              "operator": {
+                "type": "and"
+              },
+              "query": {
+                "params": [
+                  "C"
+                ]
+              },
+              "reducer": {
+                "type": "last",
+                "params": []
+              },
+              "type": "query"
+            }
+          ]
         }
       }
     ]
@@ -179,7 +377,9 @@
     "folderUID": "__FOLDER_UID__",
     "condition": "C",
     "for": "0m",
-    "labels": { "severity": "p2" },
+    "labels": {
+      "severity": "p2"
+    },
     "annotations": {
       "summary": "5분간 5xx 응답이 5건을 넘었다",
       "description": "Sentry에서 해당 시간대 이슈를 먼저 확인한다. 초기 트래픽에서는 비율이 아니라 절대 건수 기준이다."
@@ -190,18 +390,56 @@
     "data": [
       {
         "refId": "A",
-        "relativeTimeRange": { "from": 600, "to": 0 },
+        "relativeTimeRange": {
+          "from": 600,
+          "to": 0
+        },
         "datasourceUid": "__PROM_UID__",
-        "model": { "refId": "A", "instant": true, "editorMode": "code", "expr": "sum(increase(http_server_requests_seconds_count{job=\"at-crew-backend\",status=~\"5..\"}[5m]))" }
+        "model": {
+          "refId": "A",
+          "instant": true,
+          "editorMode": "code",
+          "expr": "sum(increase(http_server_requests_seconds_count{job=\"at-crew-backend\",status=~\"5..\"}[5m]))"
+        }
       },
       {
         "refId": "C",
-        "relativeTimeRange": { "from": 600, "to": 0 },
+        "relativeTimeRange": {
+          "from": 600,
+          "to": 0
+        },
         "datasourceUid": "__expr__",
         "model": {
-          "refId": "C", "type": "threshold", "expression": "A",
-          "datasource": { "type": "__expr__", "uid": "__expr__" },
-          "conditions": [ { "evaluator": { "type": "gt", "params": [5] }, "operator": { "type": "and" }, "query": { "params": ["C"] }, "reducer": { "type": "last", "params": [] }, "type": "query" } ]
+          "refId": "C",
+          "type": "threshold",
+          "expression": "A",
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "conditions": [
+            {
+              "evaluator": {
+                "type": "gt",
+                "params": [
+                  5
+                ]
+              },
+              "operator": {
+                "type": "and"
+              },
+              "query": {
+                "params": [
+                  "C"
+                ]
+              },
+              "reducer": {
+                "type": "last",
+                "params": []
+              },
+              "type": "query"
+            }
+          ]
         }
       }
     ]
@@ -213,7 +451,9 @@
     "folderUID": "__FOLDER_UID__",
     "condition": "C",
     "for": "10m",
-    "labels": { "severity": "p2" },
+    "labels": {
+      "severity": "p2"
+    },
     "annotations": {
       "summary": "p95 응답 시간이 10분간 2초를 넘었다",
       "description": "특정 엔드포인트인지 전체인지 대시보드에서 확인한다. 검색·이미지 처리 쪽이 흔한 원인."
@@ -224,18 +464,56 @@
     "data": [
       {
         "refId": "A",
-        "relativeTimeRange": { "from": 900, "to": 0 },
+        "relativeTimeRange": {
+          "from": 900,
+          "to": 0
+        },
         "datasourceUid": "__PROM_UID__",
-        "model": { "refId": "A", "instant": true, "editorMode": "code", "expr": "max(http_server_requests_seconds{job=\"at-crew-backend\",quantile=\"0.95\"})" }
+        "model": {
+          "refId": "A",
+          "instant": true,
+          "editorMode": "code",
+          "expr": "max(http_server_requests_seconds{job=\"at-crew-backend\",quantile=\"0.95\"})"
+        }
       },
       {
         "refId": "C",
-        "relativeTimeRange": { "from": 900, "to": 0 },
+        "relativeTimeRange": {
+          "from": 900,
+          "to": 0
+        },
         "datasourceUid": "__expr__",
         "model": {
-          "refId": "C", "type": "threshold", "expression": "A",
-          "datasource": { "type": "__expr__", "uid": "__expr__" },
-          "conditions": [ { "evaluator": { "type": "gt", "params": [2] }, "operator": { "type": "and" }, "query": { "params": ["C"] }, "reducer": { "type": "last", "params": [] }, "type": "query" } ]
+          "refId": "C",
+          "type": "threshold",
+          "expression": "A",
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "conditions": [
+            {
+              "evaluator": {
+                "type": "gt",
+                "params": [
+                  2
+                ]
+              },
+              "operator": {
+                "type": "and"
+              },
+              "query": {
+                "params": [
+                  "C"
+                ]
+              },
+              "reducer": {
+                "type": "last",
+                "params": []
+              },
+              "type": "query"
+            }
+          ]
         }
       }
     ]
@@ -247,7 +525,9 @@
     "folderUID": "__FOLDER_UID__",
     "condition": "C",
     "for": "0m",
-    "labels": { "severity": "p2" },
+    "labels": {
+      "severity": "p2"
+    },
     "annotations": {
       "summary": "10분간 메일 발송 실패가 3건을 넘었다",
       "description": "비밀번호 재설정·인증 메일이 나가지 않는 상태다. Resend 키 만료나 도메인 문제를 먼저 본다."
@@ -258,18 +538,56 @@
     "data": [
       {
         "refId": "A",
-        "relativeTimeRange": { "from": 900, "to": 0 },
+        "relativeTimeRange": {
+          "from": 900,
+          "to": 0
+        },
         "datasourceUid": "__PROM_UID__",
-        "model": { "refId": "A", "instant": true, "editorMode": "code", "expr": "sum(increase(atcrew_mail_send_failure_total[10m]))" }
+        "model": {
+          "refId": "A",
+          "instant": true,
+          "editorMode": "code",
+          "expr": "sum(increase(atcrew_mail_send_failure_total[10m]))"
+        }
       },
       {
         "refId": "C",
-        "relativeTimeRange": { "from": 900, "to": 0 },
+        "relativeTimeRange": {
+          "from": 900,
+          "to": 0
+        },
         "datasourceUid": "__expr__",
         "model": {
-          "refId": "C", "type": "threshold", "expression": "A",
-          "datasource": { "type": "__expr__", "uid": "__expr__" },
-          "conditions": [ { "evaluator": { "type": "gt", "params": [3] }, "operator": { "type": "and" }, "query": { "params": ["C"] }, "reducer": { "type": "last", "params": [] }, "type": "query" } ]
+          "refId": "C",
+          "type": "threshold",
+          "expression": "A",
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "conditions": [
+            {
+              "evaluator": {
+                "type": "gt",
+                "params": [
+                  3
+                ]
+              },
+              "operator": {
+                "type": "and"
+              },
+              "query": {
+                "params": [
+                  "C"
+                ]
+              },
+              "reducer": {
+                "type": "last",
+                "params": []
+              },
+              "type": "query"
+            }
+          ]
         }
       }
     ]
@@ -281,7 +599,9 @@
     "folderUID": "__FOLDER_UID__",
     "condition": "C",
     "for": "0m",
-    "labels": { "severity": "p2" },
+    "labels": {
+      "severity": "p2"
+    },
     "annotations": {
       "summary": "10분간 이미지 후처리 실패(FAILED)가 3건을 넘었다",
       "description": "사용자에게는 업로드는 됐는데 썸네일이 안 보이는 형태로 나타난다. Cloudflare Worker 로그를 확인한다."
@@ -292,18 +612,130 @@
     "data": [
       {
         "refId": "A",
-        "relativeTimeRange": { "from": 900, "to": 0 },
+        "relativeTimeRange": {
+          "from": 900,
+          "to": 0
+        },
         "datasourceUid": "__PROM_UID__",
-        "model": { "refId": "A", "instant": true, "editorMode": "code", "expr": "sum(increase(atcrew_media_processing_total{status=\"FAILED\"}[10m]))" }
+        "model": {
+          "refId": "A",
+          "instant": true,
+          "editorMode": "code",
+          "expr": "sum(increase(atcrew_media_processing_total{status=\"FAILED\"}[10m]))"
+        }
       },
       {
         "refId": "C",
-        "relativeTimeRange": { "from": 900, "to": 0 },
+        "relativeTimeRange": {
+          "from": 900,
+          "to": 0
+        },
         "datasourceUid": "__expr__",
         "model": {
-          "refId": "C", "type": "threshold", "expression": "A",
-          "datasource": { "type": "__expr__", "uid": "__expr__" },
-          "conditions": [ { "evaluator": { "type": "gt", "params": [3] }, "operator": { "type": "and" }, "query": { "params": ["C"] }, "reducer": { "type": "last", "params": [] }, "type": "query" } ]
+          "refId": "C",
+          "type": "threshold",
+          "expression": "A",
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "conditions": [
+            {
+              "evaluator": {
+                "type": "gt",
+                "params": [
+                  3
+                ]
+              },
+              "operator": {
+                "type": "and"
+              },
+              "query": {
+                "params": [
+                  "C"
+                ]
+              },
+              "reducer": {
+                "type": "last",
+                "params": []
+              },
+              "type": "query"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "uid": "atcrew-media-pending",
+    "title": "[P2] 이미지 후처리 결과가 돌아오지 않음",
+    "ruleGroup": "at-crew-p2",
+    "folderUID": "__FOLDER_UID__",
+    "condition": "C",
+    "for": "10m",
+    "labels": {
+      "severity": "p2"
+    },
+    "annotations": {
+      "summary": "업로드 후 15분이 지나도 PENDING인 이미지가 10분째 남아 있다",
+      "description": "콜백이 실패로 오는 게 아니라 아예 돌아오지 않는 상태다. Worker의 SERVER_CALLBACK_URL, Worker 자체 오류, origin 접근 차단을 순서대로 본다. 이미지 처리 실패 카운터는 콜백이 도착해야 증가하므로 이 유형을 잡지 못한다(이슈 #59)."
+    },
+    "noDataState": "OK",
+    "execErrState": "OK",
+    "isPaused": false,
+    "data": [
+      {
+        "refId": "A",
+        "relativeTimeRange": {
+          "from": 900,
+          "to": 0
+        },
+        "datasourceUid": "__PROM_UID__",
+        "model": {
+          "refId": "A",
+          "instant": true,
+          "editorMode": "code",
+          "expr": "max(atcrew_media_pending_assets)"
+        }
+      },
+      {
+        "refId": "C",
+        "relativeTimeRange": {
+          "from": 900,
+          "to": 0
+        },
+        "datasourceUid": "__expr__",
+        "model": {
+          "refId": "C",
+          "type": "threshold",
+          "expression": "A",
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "conditions": [
+            {
+              "evaluator": {
+                "type": "gt",
+                "params": [
+                  0
+                ]
+              },
+              "operator": {
+                "type": "and"
+              },
+              "query": {
+                "params": [
+                  "C"
+                ]
+              },
+              "reducer": {
+                "type": "last",
+                "params": []
+              },
+              "type": "query"
+            }
+          ]
         }
       }
     ]
@@ -315,7 +747,9 @@
     "folderUID": "__FOLDER_UID__",
     "condition": "C",
     "for": "10m",
-    "labels": { "severity": "p2" },
+    "labels": {
+      "severity": "p2"
+    },
     "annotations": {
       "summary": "미완료 이벤트가 50건을 넘은 채 10분간 유지됐다",
       "description": "검색 색인 갱신·이미지 후처리 같은 후속 작업이 멈춰 있다는 뜻이다. API는 200을 돌려주므로 이 지표로만 드러난다."
@@ -326,18 +760,56 @@
     "data": [
       {
         "refId": "A",
-        "relativeTimeRange": { "from": 900, "to": 0 },
+        "relativeTimeRange": {
+          "from": 900,
+          "to": 0
+        },
         "datasourceUid": "__PROM_UID__",
-        "model": { "refId": "A", "instant": true, "editorMode": "code", "expr": "max(atcrew_modulith_incomplete_events)" }
+        "model": {
+          "refId": "A",
+          "instant": true,
+          "editorMode": "code",
+          "expr": "max(atcrew_modulith_incomplete_events)"
+        }
       },
       {
         "refId": "C",
-        "relativeTimeRange": { "from": 900, "to": 0 },
+        "relativeTimeRange": {
+          "from": 900,
+          "to": 0
+        },
         "datasourceUid": "__expr__",
         "model": {
-          "refId": "C", "type": "threshold", "expression": "A",
-          "datasource": { "type": "__expr__", "uid": "__expr__" },
-          "conditions": [ { "evaluator": { "type": "gt", "params": [50] }, "operator": { "type": "and" }, "query": { "params": ["C"] }, "reducer": { "type": "last", "params": [] }, "type": "query" } ]
+          "refId": "C",
+          "type": "threshold",
+          "expression": "A",
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "conditions": [
+            {
+              "evaluator": {
+                "type": "gt",
+                "params": [
+                  50
+                ]
+              },
+              "operator": {
+                "type": "and"
+              },
+              "query": {
+                "params": [
+                  "C"
+                ]
+              },
+              "reducer": {
+                "type": "last",
+                "params": []
+              },
+              "type": "query"
+            }
+          ]
         }
       }
     ]
@@ -349,7 +821,9 @@
     "folderUID": "__FOLDER_UID__",
     "condition": "C",
     "for": "0m",
-    "labels": { "severity": "p2" },
+    "labels": {
+      "severity": "p2"
+    },
     "annotations": {
       "summary": "최근 1시간 안에 구독 결제 실패가 발생했다",
       "description": "카드 문제일 수도 있고 Stripe 연동 문제일 수도 있다. 여러 건이 몰리면 후자를 의심한다."
@@ -360,18 +834,56 @@
     "data": [
       {
         "refId": "A",
-        "relativeTimeRange": { "from": 3900, "to": 0 },
+        "relativeTimeRange": {
+          "from": 3900,
+          "to": 0
+        },
         "datasourceUid": "__PROM_UID__",
-        "model": { "refId": "A", "instant": true, "editorMode": "code", "expr": "sum(increase(atcrew_billing_subscription_payment_failed_total[1h]))" }
+        "model": {
+          "refId": "A",
+          "instant": true,
+          "editorMode": "code",
+          "expr": "sum(increase(atcrew_billing_subscription_payment_failed_total[1h]))"
+        }
       },
       {
         "refId": "C",
-        "relativeTimeRange": { "from": 3900, "to": 0 },
+        "relativeTimeRange": {
+          "from": 3900,
+          "to": 0
+        },
         "datasourceUid": "__expr__",
         "model": {
-          "refId": "C", "type": "threshold", "expression": "A",
-          "datasource": { "type": "__expr__", "uid": "__expr__" },
-          "conditions": [ { "evaluator": { "type": "gt", "params": [0] }, "operator": { "type": "and" }, "query": { "params": ["C"] }, "reducer": { "type": "last", "params": [] }, "type": "query" } ]
+          "refId": "C",
+          "type": "threshold",
+          "expression": "A",
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "conditions": [
+            {
+              "evaluator": {
+                "type": "gt",
+                "params": [
+                  0
+                ]
+              },
+              "operator": {
+                "type": "and"
+              },
+              "query": {
+                "params": [
+                  "C"
+                ]
+              },
+              "reducer": {
+                "type": "last",
+                "params": []
+              },
+              "type": "query"
+            }
+          ]
         }
       }
     ]
