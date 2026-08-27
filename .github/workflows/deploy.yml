@@ -173,12 +173,21 @@ jobs:
         id: mig
         if: steps.health.outcome == 'failure'
         run: |
-          BEFORE="${{ github.event.before }}"
-          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ] \
+          # 비교 기준은 "직전 main 커밋"이 아니라 "지금 서버에서 돌고 있던 이미지"여야 한다.
+          # github.event.before를 쓰면 배포되지 못한 채 main에 쌓인 마이그레이션을 놓친다 —
+          # 배포가 취소·실패로 건너뛰어진 커밋에 마이그레이션이 있으면, 다음 배포의 diff에는
+          # 안 잡히는데 DB에는 그때 적용된다. 그 상태로 롤백하면 구버전 앱의 Flyway가
+          # 자기 classpath에 없는 버전을 DB에서 보고 validate에서 죽는다(2026-08-27 실제로
+          # V31~V33이 이 상태였다 — main에는 있고 DB에는 없고 diff에는 안 잡히는 상태).
+          # 이미지 태그가 곧 커밋 SHA라 직전 이미지에서 기준 커밋을 얻는다.
+          PREV_IMAGE="${{ steps.prev.outputs.image }}"
+          BEFORE="${PREV_IMAGE##*:}"
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "$PREV_IMAGE" ] || [ "$BEFORE" = "latest" ] \
              || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
-            echo "비교 기준 커밋을 찾을 수 없어 마이그레이션이 있다고 간주한다(안전측)"
+            echo "직전 배포 커밋을 특정할 수 없어 마이그레이션이 있다고 간주한다(안전측): ${PREV_IMAGE:-없음}"
             echo "has=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
+          echo "직전 배포 커밋: $BEFORE"
           CHANGED=$(git diff --name-only --diff-filter=A "$BEFORE" "${{ github.sha }}" \
             -- src/main/resources/db/migration || true)
           if [ -n "$CHANGED" ]; then
