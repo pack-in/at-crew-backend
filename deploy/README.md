@@ -23,14 +23,17 @@
 | EC2 #1(앱 서버) | 퍼블릭(탄력적) IP 있음. 앱 + MariaDB 컨테이너 |
 | EC2 #2(Elasticsearch) | 퍼블릭 IP 없음, 같은 VPC 프라이빗 IP로만 접근 |
 | 키페어 | 로컬 `~/.ssh/`에만 보관(git 추적 안 됨, 최초 생성 시 한 번만 다운로드됨) |
-| 보안 그룹(앱) | 22는 배포용 임시 개방만, **80/443은 Cloudflare 엣지 대역으로 제한** |
+| 보안 그룹(앱) | 22는 관리자 고정 IP + 배포 시 러너 IP 임시 개방, **80은 Cloudflare 엣지 대역만**(443 규칙 없음 — nginx가 80만 수신) |
 | 보안 그룹(검색) | 22·9200 모두 앱 SG에서만 |
 | AMI | Amazon Linux 2023 ARM64 — 패키지 관리자는 `dnf`(Ubuntu `apt` 아님) |
 
-> **80/443을 전체 개방하지 말 것.** 전체 개방이면 origin IP를 알아낸 누구나 Cloudflare의 WAF·
+> **80을 전체 개방으로 되돌리지 말 것.** 전체 개방이면 origin IP를 알아낸 누구나 Cloudflare의 WAF·
 > 레이트리밋·봇 차단을 건너뛰고 평문 HTTP로 직접 붙을 수 있다(Flexible 모드라 origin 구간은 평문이다).
-> `nginx/api.at-crew.com.conf`가 애플리케이션 레벨에서 같은 차단을 하지만, 보안 그룹에서도 함께 막는
-> 이중 방어가 정석이다. 대역 목록은 https://www.cloudflare.com/ips/ 참고.
+> `nginx/api.at-crew.com.conf`가 애플리케이션 레벨에서 같은 차단을 하고 보안 그룹이 네트워크 레벨에서
+> 한 번 더 막는 이중 방어다 — 둘 중 하나만 남기지 않는다.
+>
+> Cloudflare 대역은 바뀐다. 대역이 추가됐는데 두 곳 중 한쪽만 갱신하면 그쪽에서 트래픽이 막히므로
+> **nginx 설정과 보안 그룹을 항상 함께 갱신한다.** 목록: https://www.cloudflare.com/ips/
 
 검색 서버는 퍼블릭 IP가 없어 직접 SSH 불가 — 앱 서버를 경유해서 접속한다. 개인키를 서버에 복사해두지
 않고 SSH 에이전트 포워딩을 쓴다:
