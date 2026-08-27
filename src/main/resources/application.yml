@@ -48,8 +48,11 @@ management:
 cors:
   allowed-origins: http://localhost:3000
 
+# 레포가 공개되어 있으므로 이 파일에는 "그대로 쓰면 동작하는" 기본 시크릿을 두지 않는다 —
+# 기본값이 있으면 값 주입을 깜빡한 환경이 공개된 키로 조용히 뜨고, 그 키로 누구나 토큰을 위조할 수 있다.
+# 로컬 개발용 값은 application-local.yml에, prod는 application-prod.yml이 환경변수를 강제한다.
 jwt:
-  secret: ${JWT_SECRET:at-crew-default-secret-key-for-dev-only-must-be-at-least-64-chars-long}
+  secret: ${JWT_SECRET}
   access-token-expiration: 3600000       # 1시간 (ms)
   refresh-token-expiration: 2592000000   # 30일 (ms)
 
@@ -64,15 +67,16 @@ cloudflare:
     bucket: ${R2_BUCKET:at-crew-storage}
     presign-expiration-minutes: 10
     worker-trigger-url: ${WORKER_TRIGGER_URL:http://localhost:8080/internal/artwork/images/processed}
-    callback-secret: ${WORKER_CALLBACK_SECRET:dev-internal-secret}
+    # 기본값 없음 — jwt.secret과 같은 이유(application-local.yml 참고)
+    callback-secret: ${WORKER_CALLBACK_SECRET}
 
 artwork:
   internal:
-    secret: ${ARTWORK_INTERNAL_SECRET:dev-internal-secret}
+    secret: ${ARTWORK_INTERNAL_SECRET}
 
 search:
   internal:
-    secret: ${SEARCH_INTERNAL_SECRET:dev-internal-secret}
+    secret: ${SEARCH_INTERNAL_SECRET}
 
 app:
   frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:3000}
