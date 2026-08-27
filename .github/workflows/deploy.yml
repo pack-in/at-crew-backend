@@ -6,8 +6,9 @@ name: Deploy
 #
 # 필요한 저장소 Secrets(Settings > Secrets and variables > Actions):
 #   DOCKERHUB_USERNAME, DOCKERHUB_TOKEN — Docker Hub 로그인/푸시
-#   APP_HOST                            — EC2 #1 탄력적 IP (예: 43.201.142.212)
-#   EC2_SSH_KEY                         — at-crew-key.pem 파일 내용 그대로
+#   APP_SECURITY_GROUP_ID               — 앱 서버 보안 그룹 ID (sg-...)
+#   APP_HOST                            — EC2 #1 탄력적 IP
+#   EC2_SSH_KEY                         — EC2 키페어 .pem 파일 내용 그대로
 #   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY — 보안 그룹 22번 임시 개방/회수용
 #
 # 앱 서버 보안 그룹은 22번을 특정 IP에만 허용한다. 러너 IP는 매 실행마다 바뀌므로 배포 직전에
@@ -34,8 +35,9 @@ jobs:
     env:
       TZ: UTC
       AWS_REGION: ap-northeast-2
-      # 앱 서버(EC2 #1) 보안 그룹 — deploy/README.md 참고. 비밀 값이 아니라 식별자다.
-      APP_SECURITY_GROUP_ID: sg-062af5fc0a1f5af5c
+      # 앱 서버(EC2 #1) 보안 그룹 ID. 그 자체로는 자격증명이 아니지만, 레포가 공개라 인프라 식별자를
+      # 평문으로 남기지 않는다(계정 정찰에 그대로 쓰인다) — 저장소 Secrets에 넣어 참조한다.
+      APP_SECURITY_GROUP_ID: ${{ secrets.APP_SECURITY_GROUP_ID }}
     steps:
       - uses: actions/checkout@v6
 
