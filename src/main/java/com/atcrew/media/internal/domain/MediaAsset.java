@@ -2,6 +2,7 @@ package com.atcrew.media.internal.domain;
 
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaProcessingStatus;
+import com.atcrew.media.MediaQualityTier;
 import com.atcrew.media.MediaVariantProfile;
 import jakarta.persistence.*;
 import org.springframework.data.annotation.CreatedDate;
@@ -22,16 +23,18 @@ public class MediaAsset {
     private String thumbAdultKey;
     private String originalAvifKey;
     @Enumerated(EnumType.STRING) private MediaVariantProfile variantProfile;
+    // 업로드 시점 플랜으로 확정된 변환 화질 — 재시도가 최초와 같은 결과를 내도록 함께 보관한다.
+    @Enumerated(EnumType.STRING) private MediaQualityTier qualityTier;
     @Enumerated(EnumType.STRING) private MediaProcessingStatus processingStatus;
     @CreatedDate private Instant createdAt;
     @LastModifiedDate private Instant updatedAt;
 
     protected MediaAsset() { }
     public static MediaAsset pending(MediaOwnerType ownerType, String ownerId, int ordinal, String originalKey,
-                                     MediaVariantProfile variantProfile) {
+                                     MediaVariantProfile variantProfile, MediaQualityTier qualityTier) {
         MediaAsset asset = new MediaAsset();
         asset.ownerType = ownerType; asset.ownerId = ownerId; asset.ordinal = ordinal;
-        asset.originalKey = originalKey; asset.variantProfile = variantProfile;
+        asset.originalKey = originalKey; asset.variantProfile = variantProfile; asset.qualityTier = qualityTier;
         asset.processingStatus = MediaProcessingStatus.PENDING;
         return asset;
     }
@@ -48,5 +51,6 @@ public class MediaAsset {
     public String getThumbAdultKey() { return thumbAdultKey; }
     public String getOriginalAvifKey() { return originalAvifKey; }
     public MediaVariantProfile getVariantProfile() { return variantProfile; }
+    public MediaQualityTier getQualityTier() { return qualityTier; }
     public MediaProcessingStatus getProcessingStatus() { return processingStatus; }
 }

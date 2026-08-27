@@ -1,6 +1,7 @@
 package com.atcrew.recruit.internal.application;
 
 import com.atcrew.media.MediaOwnerType;
+import com.atcrew.media.MediaQualityTier;
 import com.atcrew.media.MediaService;
 import com.atcrew.media.MediaVariantProfile;
 import com.atcrew.recruit.internal.domain.JobPostingImage;
@@ -76,7 +77,9 @@ class RecruitImageService {
             return ImageSyncResult.NO_IMAGES;
         }
         saveSlots(ownerType, postingId, slots);
-        mediaService.registerAndTriggerProcessing(ownerType, postingId, keysOf(slots), MediaVariantProfile.STANDARD);
+        // 구인글·팀원 모집글의 참고 이미지·썸네일은 플랜 차등 대상이 아니다(요금제-R03·R04는 작품 화질만 규정).
+        mediaService.registerAndTriggerProcessing(ownerType, postingId, keysOf(slots),
+                MediaVariantProfile.STANDARD, MediaQualityTier.WEB);
         return ImageSyncResult.PROCESSING;
     }
 
@@ -106,7 +109,8 @@ class RecruitImageService {
         }
         deleteImages(ownerType, postingId);
         saveSlots(ownerType, postingId, slots);
-        mediaService.replaceAndTriggerProcessing(ownerType, postingId, newKeys, MediaVariantProfile.STANDARD);
+        mediaService.replaceAndTriggerProcessing(ownerType, postingId, newKeys,
+                MediaVariantProfile.STANDARD, MediaQualityTier.WEB);
         return ImageSyncResult.PROCESSING;
     }
 

@@ -1,6 +1,7 @@
 package com.atcrew.media.internal.infra.storage;
 
 import com.atcrew.media.MediaOwnerType;
+import com.atcrew.media.MediaQualityTier;
 import com.atcrew.media.MediaVariantProfile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,11 +40,12 @@ class R2StorageAdapter implements ArtworkStoragePort {
         } catch (Exception e) { log.error("R2 presigned URL 생성 실패: key={}", key, e); throw new IllegalStateException("R2 presigned URL 생성 실패", e); }
     }
     @Override public void triggerWorker(MediaOwnerType ownerType, String ownerId, List<String> imageKeys,
-                                        MediaVariantProfile variantProfile) {
+                                        MediaVariantProfile variantProfile, MediaQualityTier qualityTier) {
         try {
             restClient.post().uri(props.workerTriggerUrl()).header("X-Callback-Secret", props.callbackSecret())
                     .body(Map.of("ownerType", ownerType.name(), "ownerId", ownerId, "imageKeys", imageKeys,
-                            "variantProfile", variantProfile.name())).retrieve().toBodilessEntity();
+                            "variantProfile", variantProfile.name(),
+                            "qualityTier", qualityTier.name())).retrieve().toBodilessEntity();
         } catch (Exception e) { log.error("Worker 트리거 실패: ownerType={} ownerId={} keys={}", ownerType, ownerId, imageKeys, e); }
     }
     @Override public void deleteFiles(List<String> keys) {

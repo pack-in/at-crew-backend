@@ -22,6 +22,7 @@ import com.atcrew.artwork.internal.persistence.ArtworkRepository;
 import com.atcrew.billing.BillingService;
 import com.atcrew.common.response.CursorPage;
 import com.atcrew.media.MediaOwnerType;
+import com.atcrew.media.MediaQualityTier;
 import com.atcrew.media.MediaService;
 import com.atcrew.media.MediaVariantProfile;
 import com.atcrew.member.Language;
@@ -133,7 +134,7 @@ class ArtworkServiceImpl implements ArtworkService {
         eventPublisher.publishEvent(new ArtworkPortfolioSelectionRequested(
                 memberId, saved.getId(), command.portfolioIds()));
         mediaService.registerAndTriggerProcessing(MediaOwnerType.ARTWORK, saved.getId(),
-                command.imageKeys(), MediaVariantProfile.STANDARD_WITH_ADULT_BLUR);
+                command.imageKeys(), MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, qualityTierOf(memberId));
         eventPublisher.publishEvent(new ArtworkChangedEvent(saved.getId()));
         MemberInfo author = memberService.findById(memberId);
         log.info("작품 업로드 완료: artworkId={} memberId={}", saved.getId(), memberId);
@@ -204,7 +205,7 @@ class ArtworkServiceImpl implements ArtworkService {
         Artwork saved = artworkRepository.save(artwork);
         if (command.imageKeys() != null) {
             mediaService.replaceAndTriggerProcessing(MediaOwnerType.ARTWORK, saved.getId(),
-                    command.imageKeys(), MediaVariantProfile.STANDARD_WITH_ADULT_BLUR);
+                    command.imageKeys(), MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, qualityTierOf(memberId));
         }
         eventPublisher.publishEvent(new ArtworkChangedEvent(saved.getId()));
         MemberInfo author = memberService.findById(memberId);
@@ -481,6 +482,16 @@ class ArtworkServiceImpl implements ArtworkService {
             throw new ArtworkException(ArtworkErrorCode.STARTER_ARTWORK_LIMIT_EXCEEDED,
                     "memberId=" + memberId + ", owned=" + owned + ", increment=" + increment);
         }
+    }
+
+    /**
+     * 변환 화질 등급(요금제-R03·R04) — 스타터는 웹 감상용으로 축소, 프로는 원본 해상도를 유지한다.
+     *
+     * <p>이미지를 새로 올리는 시점(업로드·이미지 교체)의 플랜으로 확정한다. 변환은 그때 1회뿐이라
+     * 이후 플랜이 바뀌어도 이미 올라간 이미지의 화질은 그대로다(요금제-R01 다운그레이드 정책과 동일한 결).
+     */
+    private MediaQualityTier qualityTierOf(String memberId) {
+        return billingService.hasProPlan(memberId) ? MediaQualityTier.ORIGINAL : MediaQualityTier.WEB;
     }
 
     /**

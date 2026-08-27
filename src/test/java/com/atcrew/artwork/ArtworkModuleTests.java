@@ -425,6 +425,25 @@ class ArtworkModuleTests {
     }
 
     @Test
+    void 작품_이미지_변환_화질은_업로드_시점_플랜으로_갈린다() {
+        String starter = registerAuthor();
+        ArtworkInfo starterArtwork = uploadMinimal(starter, "raw/tier-starter.png");
+
+        String pro = registerAuthor();
+        BillingTestSupport.grantProPlan(subscriptionRepository, pro);
+        ArtworkInfo proArtwork = uploadMinimal(pro, "raw/tier-pro.png");
+
+        assertThat(qualityTierOf(starterArtwork.id())).isEqualTo("WEB");
+        assertThat(qualityTierOf(proArtwork.id())).isEqualTo("ORIGINAL");
+    }
+
+    private String qualityTierOf(String artworkId) {
+        return jdbcTemplate.queryForObject(
+                "SELECT quality_tier FROM media_assets WHERE owner_type = 'ARTWORK' AND owner_id = ?",
+                String.class, artworkId);
+    }
+
+    @Test
     void 커뮤니티_피드는_뷰어_언어와_겹치는_작품만_노출하고_언어_미지정_작품은_항상_노출한다() {
         String koAuthor = registerAuthor();
         String jaAuthor = registerAuthor();
