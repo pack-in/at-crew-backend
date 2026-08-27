@@ -134,7 +134,7 @@ class MemberModuleTests {
     void 정보_수정() {
         MemberInfo member = memberService.register("info-update@atcrew.com", "infoupdate", "정보수정");
         UpdateInfoCommand command = new UpdateInfoCommand(EmploymentStatus.AVAILABLE, List.of(ActivityField.ILLUSTRATION), null, null,
-                3, 2, null, "010-9999-0000", null, null, null, null);
+                3, 2, null, null, null, null, null, null, null, null, null, null, null, null, "010-9999-0000", null, null, null, null);
 
         memberService.updateInfo(member.id(), command);
 
@@ -199,8 +199,7 @@ class MemberModuleTests {
     void 프로필_검색_구인가능_상태만_노출() {
         MemberInfo available = memberService.register(
                 "search-available@atcrew.com", "searchavailable", "구인가능작가");
-        memberService.updateInfo(available.id(), new UpdateInfoCommand(EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), ExperienceLevel.THREE_TO_FOUR,
-                null, null, null, null, "010-1234-5678", null, null, null, null));
+        memberService.updateInfo(available.id(), exposedProfile(EmploymentStatus.AVAILABLE, ActivityField.WEBTOON, ExperienceLevel.THREE_TO_FOUR));
 
         MemberInfo preparing = memberService.register(
                 "search-preparing@atcrew.com", "searchpreparing", "준비중작가");
@@ -217,13 +216,11 @@ class MemberModuleTests {
     void 프로필_검색_활동분야_필터() {
         MemberInfo webtoon = memberService.register(
                 "search-webtoon@atcrew.com", "searchwebtoon", "웹툰작가");
-        memberService.updateInfo(webtoon.id(), new UpdateInfoCommand(EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), ExperienceLevel.THREE_TO_FOUR,
-                null, null, null, null, "010-1234-5678", null, null, null, null));
+        memberService.updateInfo(webtoon.id(), exposedProfile(EmploymentStatus.AVAILABLE, ActivityField.WEBTOON, ExperienceLevel.THREE_TO_FOUR));
 
         MemberInfo illustration = memberService.register(
                 "search-illust@atcrew.com", "searchillust", "일러스트작가");
-        memberService.updateInfo(illustration.id(), new UpdateInfoCommand(EmploymentStatus.AVAILABLE, List.of(ActivityField.ILLUSTRATION), ExperienceLevel.THREE_TO_FOUR,
-                null, null, null, null, "010-1234-5678", null, null, null, null));
+        memberService.updateInfo(illustration.id(), exposedProfile(EmploymentStatus.AVAILABLE, ActivityField.ILLUSTRATION, ExperienceLevel.THREE_TO_FOUR));
 
         CursorPage<MemberProfileInfo> result = memberService.searchProfiles(new SearchProfilesCommand(
                 List.of(EmploymentStatus.AVAILABLE), ActivityField.WEBTOON, null, null, 20));
@@ -236,13 +233,11 @@ class MemberModuleTests {
     void 프로필_검색_경력순_정렬() {
         MemberInfo newcomer = memberService.register(
                 "search-exp-newcomer@atcrew.com", "searchexpnew", "신입작가");
-        memberService.updateInfo(newcomer.id(), new UpdateInfoCommand(EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), ExperienceLevel.NEWCOMER,
-                null, null, null, null, "010-1234-5678", null, null, null, null));
+        memberService.updateInfo(newcomer.id(), exposedProfile(EmploymentStatus.AVAILABLE, ActivityField.WEBTOON, ExperienceLevel.NEWCOMER));
 
         MemberInfo senior = memberService.register(
                 "search-exp-senior@atcrew.com", "searchexpsenior", "시니어작가");
-        memberService.updateInfo(senior.id(), new UpdateInfoCommand(EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), ExperienceLevel.TEN_PLUS,
-                null, null, null, null, "010-1234-5678", null, null, null, null));
+        memberService.updateInfo(senior.id(), exposedProfile(EmploymentStatus.AVAILABLE, ActivityField.WEBTOON, ExperienceLevel.TEN_PLUS));
 
         CursorPage<MemberProfileInfo> result = memberService.searchProfiles(new SearchProfilesCommand(
                 List.of(EmploymentStatus.AVAILABLE), null, ProfileSort.EXPERIENCE, null, 20));
@@ -300,13 +295,9 @@ class MemberModuleTests {
     @Test
     void 프로필_검색_조회순_정렬() {
         MemberInfo popular = memberService.register("sort-popular@atcrew.com", "sortpopular", "인기작가");
-        memberService.updateInfo(popular.id(), new UpdateInfoCommand(
-                EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), ExperienceLevel.ONE_TO_TWO,
-                null, null, null, null, "010-1234-5678", null, null, null, null));
+        memberService.updateInfo(popular.id(), exposedProfile(EmploymentStatus.AVAILABLE, ActivityField.WEBTOON, ExperienceLevel.ONE_TO_TWO));
         MemberInfo quiet = memberService.register("sort-quiet@atcrew.com", "sortquiet", "조용작가");
-        memberService.updateInfo(quiet.id(), new UpdateInfoCommand(
-                EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), ExperienceLevel.ONE_TO_TWO,
-                null, null, null, null, "010-1234-5678", null, null, null, null));
+        memberService.updateInfo(quiet.id(), exposedProfile(EmploymentStatus.AVAILABLE, ActivityField.WEBTOON, ExperienceLevel.ONE_TO_TWO));
 
         MemberInfo v1 = memberService.register("sort-v1@atcrew.com", "sortvone", "조회자1");
         MemberInfo v2 = memberService.register("sort-v2@atcrew.com", "sortvtwo", "조회자2");
@@ -329,32 +320,47 @@ class MemberModuleTests {
      */
     @Test
     void 프로필_검색_노출조건_미충족_회원_제외() {
-        MemberInfo complete = memberService.register(
-                "search-complete@atcrew.com", "searchcomplete", "완성작가");
-        memberService.updateInfo(complete.id(), new UpdateInfoCommand(EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), ExperienceLevel.ONE_TO_TWO,
-                null, null, null, null, "010-1234-5678", null, null, null, null));
+        MemberInfo complete = registerWith("search-complete", "완성작가",
+                exposedProfile(EmploymentStatus.AVAILABLE, ActivityField.WEBTOON, ExperienceLevel.ONE_TO_TWO));
 
-        MemberInfo noActivityField = memberService.register(
-                "search-nofield@atcrew.com", "searchnofield", "분야미입력작가");
-        memberService.updateInfo(noActivityField.id(), new UpdateInfoCommand(EmploymentStatus.AVAILABLE, List.of(), ExperienceLevel.ONE_TO_TWO,
-                null, null, null, null, "010-1234-5678", null, null, null, null));
+        // 각 회원은 노출 조건 중 딱 하나씩만 비운다 — 그 항목 때문에 빠지는지 격리해서 확인한다.
+        // (사용자 이름은 가입·수정 API가 공백을 막아 미입력 상태에 도달할 수 없어 제외한다.)
+        MemberInfo noField = registerWith("search-nofield", "분야미입력",
+                exposure(EmploymentStatus.AVAILABLE, List.of(), ExperienceLevel.ONE_TO_TWO,
+                        List.of(DesiredRole.STORYBOARD), List.of(DesiredGenre.BL),
+                        List.of(DesiredEmploymentType.FREELANCE), "010-1234-5678"));
 
-        MemberInfo noContact = memberService.register(
-                "search-nocontact@atcrew.com", "searchnocontact", "연락처미입력작가");
-        memberService.updateInfo(noContact.id(), new UpdateInfoCommand(EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), ExperienceLevel.ONE_TO_TWO,
-                null, null, null, null, null, null, null, null, null));
+        MemberInfo noLevel = registerWith("search-nolevel", "경력미입력",
+                exposure(EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), null,
+                        List.of(DesiredRole.STORYBOARD), List.of(DesiredGenre.BL),
+                        List.of(DesiredEmploymentType.FREELANCE), "010-1234-5678"));
 
-        MemberInfo noExperience = memberService.register(
-                "search-noexp@atcrew.com", "searchnoexp", "경력미입력작가");
-        memberService.updateInfo(noExperience.id(), new UpdateInfoCommand(EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), null,
-                null, null, null, null, "010-1234-5678", null, null, null, null));
+        MemberInfo noRole = registerWith("search-norole", "담당업무미입력",
+                exposure(EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), ExperienceLevel.ONE_TO_TWO,
+                        List.of(), List.of(DesiredGenre.BL),
+                        List.of(DesiredEmploymentType.FREELANCE), "010-1234-5678"));
+
+        MemberInfo noGenre = registerWith("search-nogenre", "장르미입력",
+                exposure(EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), ExperienceLevel.ONE_TO_TWO,
+                        List.of(DesiredRole.STORYBOARD), List.of(),
+                        List.of(DesiredEmploymentType.FREELANCE), "010-1234-5678"));
+
+        MemberInfo noEmploymentType = registerWith("search-notype", "채용형태미입력",
+                exposure(EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), ExperienceLevel.ONE_TO_TWO,
+                        List.of(DesiredRole.STORYBOARD), List.of(DesiredGenre.BL),
+                        List.of(), "010-1234-5678"));
+
+        MemberInfo noContact = registerWith("search-nocontact", "연락처미입력",
+                exposure(EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), ExperienceLevel.ONE_TO_TWO,
+                        List.of(DesiredRole.STORYBOARD), List.of(DesiredGenre.BL),
+                        List.of(DesiredEmploymentType.FREELANCE), null));
 
         CursorPage<MemberProfileInfo> result = memberService.searchProfiles(new SearchProfilesCommand(
                 List.of(EmploymentStatus.AVAILABLE), null, null, null, 50));
 
         assertThat(result.items()).extracting(MemberProfileInfo::id).contains(complete.id());
-        assertThat(result.items()).extracting(MemberProfileInfo::id)
-                .doesNotContain(noActivityField.id(), noContact.id(), noExperience.id());
+        assertThat(result.items()).extracting(MemberProfileInfo::id).doesNotContain(
+                noField.id(), noLevel.id(), noRole.id(), noGenre.id(), noEmploymentType.id(), noContact.id());
     }
 
     /** 열람수 집계는 AFTER_COMMIT 별도 트랜잭션이라 반영까지 폴링한다(BookmarkModuleTests와 동일 관용구). */
@@ -384,5 +390,103 @@ class MemberModuleTests {
             Thread.currentThread().interrupt();
             throw new IllegalStateException(e);
         }
+    }
+
+    /**
+     * 작가 찾기 노출 조건(마이페이지_작가-R08) 7개 항목을 모두 채운 커맨드.
+     * 조건이 늘어나도 이 헬퍼만 고치면 되도록 한 곳에 모아 둔다.
+     */
+    private UpdateInfoCommand exposedProfile(EmploymentStatus status, ActivityField field, ExperienceLevel level) {
+        return exposure(status, List.of(field), level, List.of(DesiredRole.STORYBOARD),
+                List.of(DesiredGenre.BL), List.of(DesiredEmploymentType.FREELANCE), "010-1234-5678");
+    }
+
+    // ─── 구직 정보 탭·직접입력 (마이페이지_작가-R24, 업로드-R13) ─────────
+
+    @Test
+    void 구직_정보_저장_후_조회() {
+        MemberInfo member = memberService.register("js-save@atcrew.com", "jssave", "구직정보");
+        memberService.updateInfo(member.id(), new UpdateInfoCommand(
+                null, null, null, null, null, null, null,
+                List.of(DrawingStyle.FEMALE_ORIENTED, DrawingStyle.CLEAN_LINE), WorkPace.QUALITY_FIRST,
+                AvailableStartPeriod.WITHIN_TWO_WEEKS,
+                List.of(DesiredRole.STORYBOARD, DesiredRole.LETTERING),
+                List.of(DesiredGenre.BL, DesiredGenre.FANTASY),
+                List.of(DesiredEmploymentType.FREELANCE, DesiredEmploymentType.NEGOTIABLE),
+                DesiredWorkLocation.REMOTE,
+                List.of(FeedbackPreference.SPECIFIC, FeedbackPreference.GENTLE),
+                DesiredMinimumGuarantee.FROM_30_TO_40, DesiredAnnualSalary.FROM_3000_TO_3500,
+                null, null, null, null, null, null));
+
+        MemberInfo updated = memberService.findById(member.id());
+        assertThat(updated.drawingStyles()).containsExactly(DrawingStyle.FEMALE_ORIENTED, DrawingStyle.CLEAN_LINE);
+        assertThat(updated.workPace()).isEqualTo(WorkPace.QUALITY_FIRST);
+        assertThat(updated.availableStartPeriod()).isEqualTo(AvailableStartPeriod.WITHIN_TWO_WEEKS);
+        assertThat(updated.desiredRoles()).containsExactly(DesiredRole.STORYBOARD, DesiredRole.LETTERING);
+        assertThat(updated.desiredGenres()).containsExactly(DesiredGenre.BL, DesiredGenre.FANTASY);
+        assertThat(updated.desiredEmploymentTypes())
+                .containsExactly(DesiredEmploymentType.FREELANCE, DesiredEmploymentType.NEGOTIABLE);
+        assertThat(updated.desiredWorkLocation()).isEqualTo(DesiredWorkLocation.REMOTE);
+        assertThat(updated.feedbackPreferences())
+                .containsExactly(FeedbackPreference.SPECIFIC, FeedbackPreference.GENTLE);
+        assertThat(updated.desiredMinimumGuarantee()).isEqualTo(DesiredMinimumGuarantee.FROM_30_TO_40);
+        assertThat(updated.desiredAnnualSalary()).isEqualTo(DesiredAnnualSalary.FROM_3000_TO_3500);
+    }
+
+    @Test
+    void 직접입력_앞뒤공백_제거하고_공백만이면_저장하지_않는다() {
+        MemberInfo member = memberService.register("tag-trim@atcrew.com", "tagtrim", "태그정리");
+        memberService.updateInfo(member.id(), customTags(List.of(
+                new CustomTagInfo(CustomTagType.DESIRED_ROLE, "  배경작업  "),
+                new CustomTagInfo(CustomTagType.DESIRED_ROLE, "   "),
+                new CustomTagInfo(CustomTagType.DRAWING_STYLE, "수채화풍"))));
+
+        assertThat(memberService.findById(member.id()).customTags())
+                .containsExactly(
+                        new CustomTagInfo(CustomTagType.DRAWING_STYLE, "수채화풍"),
+                        new CustomTagInfo(CustomTagType.DESIRED_ROLE, "배경작업"));
+    }
+
+    @Test
+    void 직접입력_같은_항목_중복은_한_번만_저장된다() {
+        MemberInfo member = memberService.register("tag-dup@atcrew.com", "tagdup", "태그중복");
+        memberService.updateInfo(member.id(), customTags(List.of(
+                new CustomTagInfo(CustomTagType.DESIRED_GENRE, "느와르풍"),
+                new CustomTagInfo(CustomTagType.DESIRED_GENRE, "느와르풍"))));
+
+        assertThat(memberService.findById(member.id()).customTags()).hasSize(1);
+    }
+
+    @Test
+    void 직접입력_10자_초과는_거부된다() {
+        MemberInfo member = memberService.register("tag-long@atcrew.com", "taglong", "태그길이");
+
+        assertThatThrownBy(() -> memberService.updateInfo(member.id(),
+                customTags(List.of(new CustomTagInfo(CustomTagType.DRAWING_STYLE, "가".repeat(11))))))
+                .isInstanceOf(MemberException.class)
+                .extracting(e -> ((MemberException) e).getCode())
+                .isEqualTo(MemberErrorCode.INVALID_CUSTOM_TAG.name());
+    }
+
+    private UpdateInfoCommand customTags(List<CustomTagInfo> tags) {
+        return new UpdateInfoCommand(null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, tags, null, null, null, null, null);
+    }
+
+    private MemberInfo registerWith(String slug, String name, UpdateInfoCommand command) {
+        MemberInfo member = memberService.register(slug + "@atcrew.com", slug.replace("-", ""), name);
+        memberService.updateInfo(member.id(), command);
+        return member;
+    }
+
+    /** 노출 조건 7개 항목을 개별로 지정한다 — 한 항목만 비워 그 항목 때문에 빠지는지 확인할 때 쓴다. */
+    private UpdateInfoCommand exposure(EmploymentStatus status, List<ActivityField> fields, ExperienceLevel level,
+                                       List<DesiredRole> roles, List<DesiredGenre> genres,
+                                       List<DesiredEmploymentType> types, String contact) {
+        return new UpdateInfoCommand(
+                status, fields, level, null, null, null, null,
+                null, null,
+                null, roles, genres, types, null, null, null, null, null,
+                contact, null, null, null, null);
     }
 }

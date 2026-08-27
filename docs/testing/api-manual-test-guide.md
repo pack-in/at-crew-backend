@@ -105,6 +105,15 @@
 
 - **EmploymentStatus**: `PREPARING`, `AVAILABLE`, `NEGOTIABLE`
 - **ActivityField**: `ILLUSTRATION`, `WEBTOON`, `PRINT_COMIC`, `ANIMATION` (작가는 복수 선택, 기업은 단일 선택)
+- **DrawingStyle** (작화 스타일, 복수+직접입력): `FEMALE_ORIENTED`, `MALE_ORIENTED`, `REALISTIC`, `SEMI_REALISTIC`, `THIN_LINE`, `THICK_LINE`, `ROUGH_LINE`, `CLEAN_LINE`, `SHOJO`, `SHONEN`, `MINIMAL`, `DARK_TONE`, `BRIGHT_TONE`, `INK_HEAVY`
+- **WorkPace** (작업 스타일, 단일): `QUALITY_FIRST`, `SPEED_FIRST`, `PER_PROJECT`
+- **AvailableStartPeriod** (투입 가능 시기, 단일): `WITHIN_ONE_WEEK`, `WITHIN_TWO_WEEKS`, `WITHIN_ONE_MONTH`, `WITHIN_TWO_MONTHS`, `AFTER_TWO_MONTHS`
+- **DesiredRole** (희망 담당 업무, 복수 23종+직접입력) / **DesiredGenre** (희망 장르, 복수 29종+직접입력)
+- **DesiredEmploymentType** (희망 채용 형태, 복수): `FULL_TIME`, `CONTRACT`, `FREELANCE`, `OUTSOURCING`, `NEGOTIABLE`
+- **DesiredWorkLocation** (희망 근무 방식, 단일): `OFFICE`, `REMOTE`, `HYBRID`, `NEGOTIABLE`
+- **FeedbackPreference** (선호 피드백 방식, 복수): `SPECIFIC`, `AUTONOMOUS`, `DIRECT`, `GENTLE`, `AT_ONCE`, `FREQUENT`, `NO_PREFERENCE`
+- **DesiredMinimumGuarantee** (희망 MG, 단일 10구간) / **DesiredAnnualSalary** (희망 연봉, 단일 5구간)
+- **CustomTagType** (직접입력 항목): `DRAWING_STYLE`, `DESIRED_ROLE`, `DESIRED_GENRE` — 값은 최대 10자, 항목당 10개, 앞뒤 공백 제거, 중복 무시
 - **ExperienceLevel**: `NEWCOMER`, `ONE_TO_TWO`, `THREE_TO_FOUR`, `FIVE_TO_NINE`, `TEN_PLUS`
 - **ActiveRegion**: `SEOUL`, `GYEONGGI`, `DAEJEON`, `DAEGU`, `GWANGJU`, `BUSAN`, `OTHER`
 - **TeamExperience**: `NONE`, `SHORT_TERM`, `DIVISION`, `REGULAR_DEADLINE`

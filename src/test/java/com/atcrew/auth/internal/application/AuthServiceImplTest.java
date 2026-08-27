@@ -497,6 +497,7 @@ class AuthServiceImplTest {
         return new MemberInfo(MEMBER_ID, "handle", EMAIL,
                 provider,
                 "테스트", null, List.of(), null, null, List.of(),
+                List.of(), null, null, List.of(), List.of(), List.of(), null, List.of(), null, null, List.of(),
                 5, 5, null, null, null, List.of(),
                 true, null, null, Instant.now(), Instant.now(), "Asia/Seoul", "KR", false, false);
     }

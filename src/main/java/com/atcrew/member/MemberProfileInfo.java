@@ -27,6 +27,23 @@ public record MemberProfileInfo(
         // === 팀 작업 경험 ===
         List<TeamExperience> teamExperiences, // 없음·단기 협업 팀·분업형 팀·정기 마감 팀
 
+        // === 작화 스타일·작업 스타일 [피그마: 기본 정보 탭] ===
+        List<DrawingStyle> drawingStyles,
+        WorkPace workPace,
+
+        // === 구직 정보 [피그마: 구직 정보 탭, 기획서 마이페이지_작가-R24] ===
+        AvailableStartPeriod availableStartPeriod,
+        List<DesiredRole> desiredRoles,
+        List<DesiredGenre> desiredGenres,
+        List<DesiredEmploymentType> desiredEmploymentTypes,
+        DesiredWorkLocation desiredWorkLocation,
+        List<FeedbackPreference> feedbackPreferences,
+        DesiredMinimumGuarantee desiredMinimumGuarantee,
+        DesiredAnnualSalary desiredAnnualSalary,
+
+        // === 직접입력 태그 [기획서 업로드-R13] ===
+        List<CustomTagInfo> customTags,
+
         // === 프로필 열람수 ===
         int profileViewCount, // 작가 찾기 조회순 정렬 기준 (마이페이지_작가-R03)
 

@@ -80,6 +80,11 @@ class MemberController {
                 request.employmentStatus(),
                 request.activityFields(), request.experienceLevel(), request.activeRegion(),
                 request.totalSlotCount(), request.availableSlotCount(), request.teamExperiences(),
+                request.drawingStyles(), request.workPace(),
+                request.availableStartPeriod(), request.desiredRoles(), request.desiredGenres(),
+                request.desiredEmploymentTypes(), request.desiredWorkLocation(),
+                request.feedbackPreferences(), request.desiredMinimumGuarantee(),
+                request.desiredAnnualSalary(), request.customTags(),
                 request.contact(), request.sns(), request.tools(), request.timezone(), request.countryCode()));
     }
 

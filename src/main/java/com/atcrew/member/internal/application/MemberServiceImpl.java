@@ -250,18 +250,19 @@ class MemberServiceImpl implements MemberService {
     /**
      * 작가 찾기 노출 조건 (기획서 마이페이지_작가-R08).
      *
-     * <p>구인 가능 상태여도 노출 대상 항목이 비어 있으면 목록에 나오지 않는다. 정본이 정한 항목은
-     * 사용자 이름·활동 분야·활동 경력·희망 담당 업무·희망 장르·희망 채용 형태·연락처 7개지만,
-     * 뒤의 세 항목(희망 담당 업무·희망 장르·희망 채용 형태)은 "구직 정보" 탭(마이페이지_작가-R24)이
-     * 아직 미구현이라 도메인에 필드 자체가 없다 — 해당 필드가 생기면 여기에 함께 추가해야 한다.
+     * <p>구인 가능 상태여도 노출 대상 항목이 비어 있으면 목록에 나오지 않는다. 정본이 정한 7개 항목
+     * 전체를 검사한다 — 사용자 이름·활동 분야·활동 경력·희망 담당 업무·희망 장르·희망 채용 형태·연락처.
      *
-     * <p>활동 분야는 복수 선택이므로 null이 아니라 <b>빈 컬렉션</b>인지로 판정한다.
+     * <p>복수 선택 항목은 null이 아니라 <b>빈 컬렉션</b>인지로 판정한다.
      */
     private List<Predicate> buildExposurePredicates(Root<Member> root, CriteriaBuilder cb) {
         return List.of(
                 notBlank(cb, root.get("name")),
                 cb.isNotEmpty(root.get("activityFields")),
                 cb.isNotNull(root.get("experienceLevel")),
+                cb.isNotEmpty(root.get("desiredRoles")),
+                cb.isNotEmpty(root.get("desiredGenres")),
+                cb.isNotEmpty(root.get("desiredEmploymentTypes")),
                 notBlank(cb, root.get("contact"))
         );
     }
