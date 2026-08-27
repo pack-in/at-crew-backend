@@ -3,6 +3,10 @@
 `docs/design/mariadb-migration-design.md` §10-1에서 확정한 구성. AWS 계정은 laiteu와 동일(`sehandev`
 소유). 상세 배경·비용 판단은 `docs/NEXT_STEPS.md` 2026-08-07 항목 참고.
 
+> **표기 규칙**: 이 문서의 `<APP_HOST>`·`<APP_SG_ID>` 같은 대괄호 값은 실제 식별자를 가린 것이다.
+> 저장소가 공개돼 있어 계정 리소스 식별자를 남기지 않는다 — 실제 값은 AWS 콘솔(ap-northeast-2)과
+> 저장소 Secrets/Variables에 있다.
+
 ## 인프라 레이아웃
 
 | EC2 | 구성 | 비고 |
@@ -12,23 +16,23 @@
 
 도메인은 `api.at-crew.com` — Cloudflare DNS에서 #1의 탄력적 IP로 A레코드 연결.
 
-## 프로비저닝된 리소스 (2026-08-07, ap-northeast-2, VPC `vpc-9f11ccf4` — laiteu와 동일 기본 VPC)
+## 프로비저닝된 리소스 (2026-08-07, ap-northeast-2, VPC `<VPC_ID>` — laiteu와 동일 기본 VPC)
 
 | 항목 | 값 |
 |---|---|
-| EC2 #1(앱 서버) | `i-0987d8df61c4b84d3`, 탄력적 IP `43.201.142.212` |
-| EC2 #2(Elasticsearch) | `i-07b421fdc2d3f5aff`, 프라이빗 IP `172.31.25.215`(퍼블릭 IP 없음) |
+| EC2 #1(앱 서버) | `<APP_INSTANCE_ID>`, 탄력적 IP `<APP_HOST>` |
+| EC2 #2(Elasticsearch) | `<SEARCH_INSTANCE_ID>`, 프라이빗 IP `<SEARCH_PRIVATE_IP>`(퍼블릭 IP 없음) |
 | 키페어 | `at-crew-key` — 로컬 `~/.ssh/at-crew-key.pem`(git 추적 안 됨, 최초 생성 시 한 번만 다운로드됨) |
-| 보안 그룹 | 앱 `sg-062af5fc0a1f5af5c`(22 본인IP/80·443 전체), 검색 `sg-017f063fc146bdaf6`(22는 앱 SG에서만, 9200도 앱 SG에서만) |
-| AMI | Amazon Linux 2023 ARM64(`ami-0ab38814a224c51c1`) — 패키지 관리자는 `dnf`(Ubuntu `apt` 아님) |
+| 보안 그룹 | 앱 `<APP_SG_ID>`(22는 지정 IP만, **80은 Cloudflare 대역만**), 검색 `<SEARCH_SG_ID>`(22·9200 모두 앱 SG에서만) |
+| AMI | Amazon Linux 2023 ARM64(`<AMI_ID>`) — 패키지 관리자는 `dnf`(Ubuntu `apt` 아님) |
 
 검색 서버는 퍼블릭 IP가 없어 직접 SSH 불가 — 앱 서버를 경유해서 접속한다. 개인키를 서버에 복사해두지
 않고 SSH 에이전트 포워딩을 쓴다:
 ```bash
 ssh-add ~/.ssh/at-crew-key.pem
-ssh -A ec2-user@43.201.142.212
+ssh -A ec2-user@<APP_HOST>
 # 접속 후 서버 안에서
-ssh ec2-user@172.31.25.215
+ssh ec2-user@<SEARCH_PRIVATE_IP>
 ```
 
 ## 이 디렉토리 파일
@@ -47,7 +51,18 @@ main push(=PR 머지) 시 빌드·테스트 → Docker Hub 푸시 → EC2 재기
 러너 IP만 임시로 열고 끝나면 회수한다(회수 단계는 `if: always()`라 앞 단계가 실패해도 규칙이 남지 않는다).
 
 필요한 저장소 Secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`, `APP_HOST`, `EC2_SSH_KEY`,
-`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`.
+`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `DISCORD_WEBHOOK_P1`, `DISCORD_WEBHOOK_P2`,
+`GRAFANA_URL`, `GRAFANA_API_KEY`.
+필요한 저장소 Variables: `APP_SECURITY_GROUP_ID`.
+
+## origin 접근 통제 (2026-08-27)
+
+앱 서버의 80번은 **Cloudflare IPv4·IPv6 대역(총 22개)에서만** 열려 있다. 이전에는 `0.0.0.0/0`이라
+origin IP를 아는 사람은 Cloudflare의 WAF·캐시·DDoS 보호를 건너뛰고 서버를 직접 때릴 수 있었다.
+443은 nginx가 듣지 않으므로(Cloudflare Flexible 모드는 origin에 평문 HTTP로 전달) 규칙 자체를 없앴다.
+
+Cloudflare 대역은 바뀔 수 있다. 갱신은 https://www.cloudflare.com/ips-v4 · ips-v6 를 받아 다시 적용한다.
+나중에 SSL/TLS를 Full로 올려 origin에도 인증서를 붙이면 443을 같은 대역으로 열어야 한다.
 
 **TODO(인프라): SSM Session Manager 전환.** 위 방식은 22번을 잠깐이라도 열고 CI에 SSH 키·AWS 키를
 함께 두는 구성이다. 정석은 22번을 아예 닫고 SSM으로 접속해 IAM으로 통제하고 접속 이력을 CloudTrail에
@@ -81,5 +96,5 @@ main push(=PR 머지) 시 빌드·테스트 → Docker Hub 푸시 → EC2 재기
 ## 이후 배포
 
 ```bash
-DOCKERHUB_USER=<본인 계정> SSH_KEY=~/.ssh/at-crew-key.pem APP_HOST=ec2-user@43.201.142.212 ./deploy/deploy.sh
+DOCKERHUB_USER=<본인 계정> SSH_KEY=~/.ssh/at-crew-key.pem APP_HOST=ec2-user@<APP_HOST> ./deploy/deploy.sh
 ```

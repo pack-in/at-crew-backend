@@ -91,9 +91,9 @@
 
 **AWS IAM 인증 완료·EC2 2대 실제 생성 완료**: root(sehandev)로부터 전용 IAM 사용자(`at-crew-be`,
 Account `820010786587`) Access Key 발급받아 `aws configure` 완료(리전 `ap-northeast-2` — laiteu
-인스턴스로 실제 확인함, 추정 아니었음). laiteu와 같은 기본 VPC(`vpc-9f11ccf4`) 재사용해 EC2 #1(앱+MariaDB,
-`i-0987d8df61c4b84d3`, 탄력적 IP `43.201.142.212`)·EC2 #2(Elasticsearch, `i-07b421fdc2d3f5aff`,
-프라이빗 IP `172.31.25.215`만) 생성. 보안 그룹·키페어(`at-crew-key`)까지 다 만들고 SSH 왕복(앱 서버 직접,
+인스턴스로 실제 확인함, 추정 아니었음). laiteu와 같은 기본 VPC(`<VPC_ID>`) 재사용해 EC2 #1(앱+MariaDB,
+`<APP_INSTANCE_ID>`, 탄력적 IP `<APP_HOST>`)·EC2 #2(Elasticsearch, `<SEARCH_INSTANCE_ID>`,
+프라이빗 IP `<SEARCH_PRIVATE_IP>`만) 생성. 보안 그룹·키페어(`at-crew-key`)까지 다 만들고 SSH 왕복(앱 서버 직접,
 검색 서버는 앱 서버 경유) 검증 완료. 상세는 `deploy/README.md` "프로비저닝된 리소스" 표.
 
 - **중간에 뚫린 구멍 하나 있었음**: 검색 서버 보안 그룹에 SSH를 "내 홈 IP"로만 열었는데, 그 서버는
@@ -108,7 +108,7 @@ Account `820010786587`) Access Key 발급받아 `aws configure` 완료(리전 `a
   `nginx/api.at-crew.com.conf` 적용해 기동 확인(`/etc/nginx/conf.d/`). `~/at-crew-backend/deploy/`에
   `docker-compose.app.yml`·`.env.example` 업로드해둠 — 아직 `.env`로 채우지 않음.
 - EC2 #2: Docker+docker-compose 설치, `docker.elastic.co/elasticsearch/elasticsearch:9.2.8` 이미지까지
-  받아서 실제로 띄우고 앱 서버에서 `172.31.25.215:9200` 접근되는 것까지 검증 완료.
+  받아서 실제로 띄우고 앱 서버에서 `<SEARCH_PRIVATE_IP>:9200` 접근되는 것까지 검증 완료.
 - **⚠️ 설계에서 놓쳤던 것 — 프라이빗 서브넷은 아웃바운드도 막힌다**: EC2 #2가 처음부터 퍼블릭 IP가
   없다 보니 dnf 저장소도 GitHub도 전혀 못 닿아서(NAT Gateway 없음) `dnf install docker`부터 실패했다.
   "퍼블릭 IP 없음 = 인바운드만 차단"이라고 생각했는데 아웃바운드(인터넷 나가는 것) 자체가 막히는 거였음 —

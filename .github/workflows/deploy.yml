@@ -6,7 +6,7 @@ name: Deploy
 #
 # 필요한 저장소 Secrets(Settings > Secrets and variables > Actions):
 #   DOCKERHUB_USERNAME, DOCKERHUB_TOKEN — Docker Hub 로그인/푸시
-#   APP_HOST                            — EC2 #1 탄력적 IP (예: 43.201.142.212)
+#   APP_HOST                            — EC2 #1 탄력적 IP (예: <APP_HOST>)
 #   EC2_SSH_KEY                         — at-crew-key.pem 파일 내용 그대로
 #   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY — 보안 그룹 22번 임시 개방/회수용
 #
@@ -34,8 +34,9 @@ jobs:
     env:
       TZ: UTC
       AWS_REGION: ap-northeast-2
-      # 앱 서버(EC2 #1) 보안 그룹 — deploy/README.md 참고. 비밀 값이 아니라 식별자다.
-      APP_SECURITY_GROUP_ID: sg-062af5fc0a1f5af5c
+      # 앱 서버(EC2 #1) 보안 그룹. 비밀은 아니지만 공개 저장소에 계정 리소스 식별자를 굳이 남기지
+      # 않는다 — 저장소 Variables(Settings > Secrets and variables > Actions > Variables)에 둔다.
+      APP_SECURITY_GROUP_ID: ${{ vars.APP_SECURITY_GROUP_ID }}
       # 알람 억제용. 아직 미등록이면 빈 값이고, 관련 단계는 조용히 건너뛴다(PA-09 전까지 억제할 알람이 없다).
       GRAFANA_URL: ${{ secrets.GRAFANA_URL }}
       GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}

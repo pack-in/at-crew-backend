@@ -8,8 +8,11 @@
 
 ## 0. 공통 — 접속과 첫 3분
 
+`<APP_HOST>`는 EC2 #1의 퍼블릭 IP다(AWS 콘솔 또는 저장소 Secret `APP_HOST`). 매번 치기 번거로우면
+`~/.ssh/config`에 별칭을 만들어 둔다.
+
 ```bash
-ssh -i ~/.ssh/at-crew-key.pem ec2-user@43.201.142.212
+ssh -i ~/.ssh/at-crew-key.pem ec2-user@<APP_HOST>
 cd ~/at-crew-backend/deploy
 docker-compose -f docker-compose.app.yml ps          # 컨테이너 상태
 docker-compose -f docker-compose.app.yml logs --tail=100 app
