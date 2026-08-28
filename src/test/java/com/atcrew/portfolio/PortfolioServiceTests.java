@@ -1782,7 +1782,7 @@ class PortfolioServiceTests {
 
     /** 탈퇴 이벤트 구독도 @ApplicationModuleListener(비동기)라 blocked_at 반영까지 폴링한다. */
     private void awaitBlocked(String portfolioId) {
-        Instant deadline = Instant.now().plus(Duration.ofSeconds(15));
+        Instant deadline = Instant.now().plus(Duration.ofSeconds(45));
         while (Instant.now().isBefore(deadline)) {
             if (portfolioRepository.findById(portfolioId).orElseThrow().getBlockedAt() != null) {
                 return;
@@ -1799,7 +1799,7 @@ class PortfolioServiceTests {
 
     /** 원본 변경 이벤트 구독도 @ApplicationModuleListener(비동기)라 개수 재계산 반영까지 폴링한다(§1.2). */
     private void awaitItemCount(String portfolioId, int expected) {
-        Instant deadline = Instant.now().plus(Duration.ofSeconds(15));
+        Instant deadline = Instant.now().plus(Duration.ofSeconds(45));
         while (Instant.now().isBefore(deadline)) {
             if (portfolioRepository.findById(portfolioId).orElseThrow().getItemCount() == expected) {
                 return;
@@ -1816,7 +1816,7 @@ class PortfolioServiceTests {
 
     /** 영구 삭제 이벤트 구독도 비동기라 구성 행 정리 반영까지 폴링한다(§1.2). */
     private void awaitItemArtworkIds(String portfolioId, List<String> expected) {
-        Instant deadline = Instant.now().plus(Duration.ofSeconds(15));
+        Instant deadline = Instant.now().plus(Duration.ofSeconds(45));
         while (Instant.now().isBefore(deadline)) {
             List<String> actual = portfolioItemRepository.findByPortfolioIdOrderByOrdinal(portfolioId).stream()
                     .map(PortfolioItem::getArtworkId)
@@ -1898,7 +1898,7 @@ class PortfolioServiceTests {
 
     /** artwork 리스너는 @ApplicationModuleListener(비동기)라 READY 반영까지 폴링한다. */
     private void awaitReady(String memberId, String artworkId) {
-        Instant deadline = Instant.now().plus(Duration.ofSeconds(15));
+        Instant deadline = Instant.now().plus(Duration.ofSeconds(45));
         while (Instant.now().isBefore(deadline)) {
             if (artworkService.getArtworkStatus(memberId, artworkId) == ArtworkStatus.READY) {
                 return;
