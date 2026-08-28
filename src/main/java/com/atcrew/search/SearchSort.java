@@ -6,5 +6,6 @@ package com.atcrew.search;
  */
 public enum SearchSort {
     RELEVANCE, // 관련도순 — 검색어(q)가 있을 때 기본값
-    LATEST     // 최신순 — 검색어 없이 필터만 있을 때 기본값
+    LATEST,    // 최신순 — 검색어 없이 필터만 있을 때 기본값
+    OLDEST     // 오래된순 — 명시적으로 요청했을 때만 적용(기본값 아님). 통합검색 병합(searchMerged)에서는 지원하지 않는다
 }

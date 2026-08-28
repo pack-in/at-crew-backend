@@ -246,6 +246,60 @@ class SearchModuleTests {
     }
 
     @Test
+    void OLDEST_정렬은_생성순으로_커서_페이지네이션되고_누락_중복이_없다() throws InterruptedException {
+        String token = uniqueToken();
+        String authorId = registerMember();
+        String firstId = publishedJobPosting(authorId, token + " 공고 1");
+        Thread.sleep(5); // createdAt(epoch_millis) 충돌 방지 — 생성 순서를 명확히 분리한다
+        String secondId = publishedJobPosting(authorId, token + " 공고 2");
+        Thread.sleep(5);
+        String thirdId = publishedJobPosting(authorId, token + " 공고 3");
+
+        awaitCondition(() -> searchService.search(recruitQueryOldest(token, 20)).items().size() == 3);
+
+        SearchPage<SearchResultItem> firstPage = searchService.search(recruitQueryOldest(token, 1));
+        assertThat(firstPage.items()).extracting(SearchResultItem::id).containsExactly(firstId);
+        assertThat(firstPage.hasNext()).isTrue();
+
+        SearchPage<SearchResultItem> secondPage = searchService.search(new SearchQuery(
+                token, List.of(PostType.JOB_POSTING, PostType.JOB_SEEKING, PostType.TEAM_RECRUIT),
+                null, null, null, null, null, null, null, SearchSort.OLDEST, firstPage.nextCursor(), 1));
+        assertThat(secondPage.items()).extracting(SearchResultItem::id).containsExactly(secondId);
+        assertThat(secondPage.hasNext()).isTrue();
+
+        SearchPage<SearchResultItem> thirdPage = searchService.search(new SearchQuery(
+                token, List.of(PostType.JOB_POSTING, PostType.JOB_SEEKING, PostType.TEAM_RECRUIT),
+                null, null, null, null, null, null, null, SearchSort.OLDEST, secondPage.nextCursor(), 1));
+        assertThat(thirdPage.items()).extracting(SearchResultItem::id).containsExactly(thirdId);
+        assertThat(thirdPage.hasNext()).isFalse();
+    }
+
+    @Test
+    void 작품_검색에서도_OLDEST_정렬이_생성순으로_반환된다() {
+        String field = "OLDEST_TEST_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+        ArtworkInfo older = uploadReadyArtwork(ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
+                List.of(ArtworkRole.LINEART), List.of(Genre.BL), AgeRating.ALL, field + " 오래된 작품");
+        ArtworkInfo newer = uploadReadyArtwork(ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
+                List.of(ArtworkRole.LINEART), List.of(Genre.BL), AgeRating.ALL, field + " 최신 작품");
+
+        awaitCondition(() -> searchService.search(oldestQuery(field, 20)).items().size() == 2);
+
+        SearchPage<SearchResultItem> page = searchService.search(oldestQuery(field, 20));
+        assertThat(page.items()).extracting(SearchResultItem::id)
+                .containsExactly(older.id(), newer.id());
+    }
+
+    private SearchQuery oldestQuery(String q, int size) {
+        return new SearchQuery(q, List.of(PostType.PORTFOLIO), null, null, null, null, null, null, null,
+                SearchSort.OLDEST, null, size);
+    }
+
+    private SearchQuery recruitQueryOldest(String q, int size) {
+        return new SearchQuery(q, List.of(PostType.JOB_POSTING, PostType.JOB_SEEKING, PostType.TEAM_RECRUIT),
+                null, null, null, null, null, null, null, SearchSort.OLDEST, null, size);
+    }
+
+    @Test
     void recruit_전체_재색인_후에도_기존_구인글이_검색된다() {
         String token = uniqueToken();
         String authorId = registerMember();

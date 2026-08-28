@@ -69,7 +69,8 @@ class SearchController {
             @Parameter(description = "담당 업무 필터 (다중선택)") @RequestParam(required = false) List<ArtworkRole> roles,
             @Parameter(description = "장르 필터 (다중선택)") @RequestParam(required = false) List<Genre> genres,
             @Parameter(description = "소재 대상 필터 (다중선택)") @RequestParam(required = false) List<MaterialTarget> materialTargets,
-            @Parameter(description = "정렬 기준 (기본: 검색어 있으면 RELEVANCE, 없으면 LATEST)")
+            @Parameter(description = "정렬 기준 (RELEVANCE·LATEST·OLDEST, 기본: 검색어 있으면 RELEVANCE, 없으면 LATEST). " +
+                    "OLDEST는 포트폴리오와 구인글/구직글/팀원모집글을 함께 조회하는 통합검색에서는 지원하지 않고 최신순으로 병합됩니다.")
             @RequestParam(required = false) SearchSort sort,
             @Parameter(description = "커서") @RequestParam(required = false) String cursor,
             @Parameter(description = "페이지 크기 (기본 20, 최대 50)") @RequestParam(required = false) Integer size) {
