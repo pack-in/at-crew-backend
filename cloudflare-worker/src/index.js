@@ -95,16 +95,24 @@ async function processOne(env, ownerType, ownerId, imageKey, variantProfile, qua
   }
 }
 
+// Images 바인딩의 input()은 ReadableStream을 받는다. ArrayBuffer를 그대로 넘기면 output() 시점에
+// 소스 직렬화가 텍스트 경로로 잘못 들어가 "Cannot read properties of undefined (reading 'font')"로 죽는다
+// (2026-08-28 실측 — 변환 옵션과 무관하게 전부 실패, 스트림으로 바꾸면 전부 성공).
+// 스트림은 한 번만 읽히므로 변환마다 새로 만든다 — 그래야 세 변환을 병렬로 돌릴 수 있다.
+function toStream(bytes) {
+  return new Response(bytes).body;
+}
+
 async function encodeOriginal(env, bytes, qualityTier) {
   const tier = QUALITY_TIERS[qualityTier] ?? QUALITY_TIERS[DEFAULT_TIER];
-  const result = await env.IMAGES.input(bytes)
+  const result = await env.IMAGES.input(toStream(bytes))
     .transform({ width: tier.maxWidth, fit: "scale-down" })
     .output({ format: "image/avif", quality: tier.quality });
   return result.response();
 }
 
 async function encodeThumb(env, bytes, { blur }) {
-  let pipeline = env.IMAGES.input(bytes).transform({
+  let pipeline = env.IMAGES.input(toStream(bytes)).transform({
     width: THUMB_WIDTH,
     height: THUMB_HEIGHT,
     fit: "cover",
