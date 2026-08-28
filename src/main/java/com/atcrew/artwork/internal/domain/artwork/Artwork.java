@@ -32,6 +32,7 @@ import jakarta.persistence.PostPersist;
 import jakarta.persistence.Table;
 import jakarta.persistence.Transient;
 import jakarta.persistence.Version;
+import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 import org.springframework.data.annotation.CreatedDate;
@@ -48,6 +49,10 @@ import java.util.Set;
 @Entity
 @Table(name = "artworks")
 @EntityListeners(AuditingEntityListener.class)
+// viewCount/bookmarkCount는 ArtworkRepository의 벌크 UPDATE로만 갱신된다(이슈 #78). 이 엔티티가 여느
+// 저장 경로(수정·복구·Worker 콜백 등)에서 전체 컬럼 UPDATE를 내면 로드 시점의 예전 카운터 값으로
+// 그 벌크 UPDATE 결과를 덮어써 되돌린다 — dirty 필드만 SET하도록 강제해 이를 막는다.
+@DynamicUpdate
 public class Artwork implements Persistable<String> {
 
     @Id

@@ -23,3 +23,9 @@ CREATE INDEX idx_aw_feed_view_count
 
 CREATE INDEX idx_aw_feed_bookmark_count
     ON artworks (status, visibility, bookmark_count DESC, id DESC);
+
+-- 조회수는 이력 테이블이 없어 0부터 시작할 수밖에 없지만, 북마크는 V1부터 있던 bookmark_entries로
+-- 정확히 복원 가능하다. 백필하지 않으면 기존 북마크를 가진 작품이 배포 직후 북마크순 최하위로
+-- 밀리고, 이후 해제 시 decrementBookmarkCount의 0-하한 가드에 걸려 어긋남이 영구화된다.
+UPDATE artworks a
+    SET bookmark_count = (SELECT COUNT(*) FROM bookmark_entries b WHERE b.artwork_id = a.id);
