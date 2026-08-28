@@ -106,5 +106,8 @@ sentry:
     - requestId
     - memberId
   logging:
-    minimum-event-level: error
-    minimum-breadcrumb-level: warn
+    # 테스트에서는 이벤트를 만들지 않는다(off). 초기화 경로는 dsn이 있으면 그대로 도므로
+    # 이슈 #62 회귀 방지 목적은 유지되고, ERROR 로그마다 localhost로 전송을 시도하며
+    # 전송 스레드와 실패한 연결을 쌓는 낭비만 사라진다 — 테스트가 외부로 나가서도 안 된다.
+    minimum-event-level: off
+    minimum-breadcrumb-level: off
