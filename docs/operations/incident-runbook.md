@@ -164,7 +164,36 @@ docker-compose -f docker-compose.app.yml start app
 curl -s http://127.0.0.1:8081/actuator/health/liveness
 ```
 
-**소요 시간: (PH-09 리허설에서 실측 후 기입)**
+**소요 시간: 약 25초** (2026-08-27 리허설 실측, 덤프 10KB 기준)
+
+| 단계 | 시간 |
+|---|---|
+| R2에서 다운로드 | 1초 |
+| MariaDB 기동(리허설은 임시 컨테이너) | 20초 |
+| 복원 | 1초 |
+| 검증 쿼리 | 1초 미만 |
+
+실제 장애 시에는 MariaDB가 이미 떠 있으므로 **앱 정지 → 복원 → 앱 기동까지 1분 내외**로 보면 된다.
+다만 이 수치는 데이터가 거의 없는 초기 상태의 것이다 — 데이터가 늘면 복원 시간은 덤프 크기에 비례해
+늘어난다. 백업 파일 크기는 `atcrew_backup_size_bytes` 지표로 추적되므로 대시보드에서 추세를 볼 수 있다.
+
+### 리허설 절차 (분기마다 한 번)
+
+복원은 해본 적 없으면 신뢰할 수 없다. **prod DB를 건드리지 않고** 임시 컨테이너에 복원해 확인한다.
+
+```bash
+docker run -d --name restore-drill -e MARIADB_ROOT_PASSWORD=drill -e MARIADB_DATABASE=atcrew mariadb:11.4
+until docker exec restore-drill healthcheck.sh --connect --innodb_initialized; do sleep 2; done
+gunzip -c /tmp/restore.sql.gz | docker exec -i -e MYSQL_PWD=drill restore-drill mariadb -u root atcrew
+
+# 스키마가 prod와 같은 지점까지 복원됐는지 확인 — version은 문자열이라 정렬이 아니라 적용 순서로 본다
+docker exec -e MYSQL_PWD=drill restore-drill mariadb -u root -N -B atcrew \
+  -e "SELECT version, description FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 3;"
+
+docker rm -f restore-drill
+```
+
+2026-08-27 리허설에서는 복원본과 prod가 모두 V33까지 일치했고 테이블 57개가 복구됐다.
 
 주의: 복원은 해당 시점 이후 데이터를 잃는다. 실행 전에 현재 DB를 먼저 덤프해 둔다
 (`deploy/backup.sh` 수동 실행).
