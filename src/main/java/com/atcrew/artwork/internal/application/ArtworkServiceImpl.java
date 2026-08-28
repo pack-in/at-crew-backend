@@ -87,7 +87,7 @@ class ArtworkServiceImpl implements ArtworkService {
     public List<PresignedUrlInfo> generatePresignedUrls(int count, List<String> contentTypes) {
         // 발급 자체는 media에 위임하지만(docs/design/media-module-design.md §9.1-3), 입력 검증은 여기 남긴다 —
         // media는 IllegalArgumentException을 던지므로 그대로 흘리면 기존 400 ARTWORK 에러코드가 500으로 바뀐다.
-        if (count < 1 || count > 20) {
+        if (count < 1 || count > 30) {
             throw new ArtworkException(ArtworkErrorCode.INVALID_IMAGE_COUNT);
         }
         if (count != contentTypes.size()) {

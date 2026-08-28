@@ -441,6 +441,43 @@ class ArtworkModuleTests {
     }
 
     @Test
+    void 이미지는_30장까지_업로드할_수_있고_31장이면_거부된다() {
+        String memberId = registerAuthor();
+        List<String> thirtyImages = java.util.stream.IntStream.range(0, 30)
+                .mapToObj(i -> "raw/bulk-" + i + ".png")
+                .toList();
+
+        ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, baseUploadCommand(thirtyImages, List.of()));
+
+        assertThat(uploaded.images()).hasSize(30);
+
+        List<String> thirtyOneImages = new ArrayList<>(thirtyImages);
+        thirtyOneImages.add("raw/bulk-30.png");
+        assertThatThrownBy(() -> artworkService.uploadArtwork(memberId, baseUploadCommand(thirtyOneImages, List.of())))
+                .isInstanceOf(DomainException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("INVALID_IMAGE_COUNT");
+    }
+
+    @Test
+    void presign은_30개까지_발급되고_31개면_거부된다() {
+        List<String> contentTypes30 = java.util.stream.IntStream.range(0, 30)
+                .mapToObj(i -> "image/png")
+                .toList();
+
+        List<PresignedUrlInfo> urls = artworkService.generatePresignedUrls(30, contentTypes30);
+
+        assertThat(urls).hasSize(30);
+
+        List<String> contentTypes31 = new ArrayList<>(contentTypes30);
+        contentTypes31.add("image/png");
+        assertThatThrownBy(() -> artworkService.generatePresignedUrls(31, contentTypes31))
+                .isInstanceOf(DomainException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("INVALID_IMAGE_COUNT");
+    }
+
+    @Test
     void 커뮤니티_피드는_뷰어_언어와_겹치는_작품만_노출하고_언어_미지정_작품은_항상_노출한다() {
         String koAuthor = registerAuthor();
         String jaAuthor = registerAuthor();

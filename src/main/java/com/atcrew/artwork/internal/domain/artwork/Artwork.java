@@ -200,7 +200,7 @@ public class Artwork implements Persistable<String> {
                                  List<String> tools, WorkDuration workDuration,
                                  Integer cutCount, List<String> videoLinks,
                                  List<Material> materials) {
-        if (imageKeys == null || imageKeys.isEmpty() || imageKeys.size() > 20) {
+        if (imageKeys == null || imageKeys.isEmpty() || imageKeys.size() > 30) {
             throw new ArtworkException(ArtworkErrorCode.INVALID_IMAGE_COUNT);
         }
         if (representativeImageIndex < 0 || representativeImageIndex >= imageKeys.size()) {
@@ -287,7 +287,7 @@ public class Artwork implements Persistable<String> {
 
     // 이미지 교체 2단계 — 신규 이미지를 ordinal 0부터 채우고 PROCESSING 상태로 전환한다.
     public void attachImages(List<String> newImageKeys, int newRepresentativeIndex) {
-        if (newImageKeys == null || newImageKeys.isEmpty() || newImageKeys.size() > 20) {
+        if (newImageKeys == null || newImageKeys.isEmpty() || newImageKeys.size() > 30) {
             throw new ArtworkException(ArtworkErrorCode.INVALID_IMAGE_COUNT);
         }
         if (newRepresentativeIndex < 0 || newRepresentativeIndex >= newImageKeys.size()) {
