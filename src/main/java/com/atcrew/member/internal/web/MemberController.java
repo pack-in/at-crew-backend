@@ -5,6 +5,7 @@ import com.atcrew.common.security.SecurityUtils;
 import com.atcrew.member.AccountInfo;
 import com.atcrew.member.AddCareerCommand;
 import com.atcrew.member.CareerEntryInfo;
+import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberProfileInfo;
 import com.atcrew.member.MemberService;
 import com.atcrew.member.UpdateInfoCommand;
@@ -138,6 +139,18 @@ class MemberController {
     public com.atcrew.common.response.ApiResponse<AccountInfo> getAccount() {
         return com.atcrew.common.response.ApiResponse.success(
                 memberService.getAccount(securityUtils.getCurrentMemberId()));
+    }
+
+    @Operation(summary = "내 전체 프로필 조회",
+            description = "로그인 회원 본인의 전체 프로필을 조회합니다. 로그인/refresh 응답에 담기는 정보와 동일한 전체 필드를 반환합니다.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "조회 성공"),
+            @ApiResponse(responseCode = "401", description = "인증 필요")
+    })
+    @GetMapping("/me")
+    public com.atcrew.common.response.ApiResponse<MemberInfo> getMe() {
+        return com.atcrew.common.response.ApiResponse.success(
+                memberService.findById(securityUtils.getCurrentMemberId()));
     }
 
     @Operation(summary = "경력 추가", description = "참여작 정보를 경력으로 추가합니다.")

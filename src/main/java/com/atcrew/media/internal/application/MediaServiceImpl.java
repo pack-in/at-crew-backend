@@ -20,7 +20,7 @@ class MediaServiceImpl implements MediaService {
     MediaServiceImpl(MediaAssetRepository assets, OrphanedMediaKeyRepository orphans, ArtworkStoragePort storagePort,
                      ImageProcessingWorker worker) { this.assets = assets; this.orphans = orphans; this.storagePort = storagePort; this.worker = worker; }
     @Override public List<PresignedUrlInfo> generatePresignedUrls(int count, List<String> contentTypes) {
-        if (count < 1 || count > 20) throw new IllegalArgumentException("이미지 개수는 1~20개여야 합니다.");
+        if (count < 1 || count > 30) throw new IllegalArgumentException("이미지 개수는 1~30개여야 합니다.");
         if (contentTypes == null || contentTypes.size() != count || contentTypes.stream().anyMatch(t -> !ALLOWED_CONTENT_TYPES.contains(t)))
             throw new IllegalArgumentException("지원하지 않는 이미지 content type입니다.");
         return contentTypes.stream().map(type -> { String key = "raw/" + UuidV7Generator.generate() + extensionFor(type); return new PresignedUrlInfo(key, storagePort.generatePresignedPutUrl(key, type)); }).toList();

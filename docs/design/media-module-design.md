@@ -165,7 +165,7 @@ public record MediaAssetProcessedEvent(MediaOwnerType ownerType, String ownerId,
                                         MediaProcessingStatus status);
 ```
 
-`generatePresignedUrls`의 count(1~20)/contentType 화이트리스트(jpeg/png/webp) 검증은 `ArtworkServiceImpl`에서
+`generatePresignedUrls`의 count(1~30)/contentType 화이트리스트(jpeg/png/webp) 검증은 `ArtworkServiceImpl`에서
 그대로 옮겨온다 — 도메인과 무관한 범용 검증이라 변경 없음.
 
 ---

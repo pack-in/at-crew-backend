@@ -252,6 +252,52 @@ class MemberApiDocTest extends RestDocsIntegrationSupport {
                 ));
     }
 
+    /**
+     * 내 전체 프로필 조회 성공 시나리오 문서화(이슈 #94 — 로그인/refresh 응답에만 있던 전체 프로필의 단독 조회 경로).
+     */
+    @Test
+    void 내_전체_프로필_조회_성공_문서화() throws Exception {
+        String uniqueEmail = "doc-me-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com";
+        String accessToken = registerAndGetAccessToken(uniqueEmail, "전체프로필문서유저");
+
+        mockMvc.perform(get("/api/members/me")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andDo(document("member/get-me",
+                        preprocessRequest(prettyPrint()),
+                        preprocessResponse(prettyPrint()),
+                        relaxedResponseFields(
+                                fieldWithPath("code").description("응답 코드 (SUCCESS)"),
+                                fieldWithPath("data.id").description("회원 고유 식별자"),
+                                fieldWithPath("data.handle").description("회원 핸들 (@아이디)"),
+                                fieldWithPath("data.name").description("이름·작가명"),
+                                fieldWithPath("data.employmentStatus").description("구직 상태"),
+                                fieldWithPath("data.totalSlotCount").description("총 슬롯 수"),
+                                fieldWithPath("data.availableSlotCount").description("가용 슬롯 수"),
+                                fieldWithPath("data.active").description("계정 활성 여부"),
+                                fieldWithPath("data.timezone").description("IANA 시간대 ID"),
+                                fieldWithPath("data.countryCode").description("거주 국가 코드 (ISO 3166-1 alpha-2)"),
+                                fieldWithPath("data.primaryLanguage").description("주 사용 언어"),
+                                fieldWithPath("data.postLanguages").description("노출받을 게시물 언어 목록"),
+                                fieldWithPath("data.marketingAgreed").description("마케팅 정보 수신 동의 여부"),
+                                fieldWithPath("data.adultContentVisible").description("성인 콘텐츠 표시 여부"),
+                                fieldWithPath("data.createdAt").description("가입 일시 (ISO 8601)"),
+                                fieldWithPath("data.updatedAt").description("최종 수정 일시 (ISO 8601)")
+                        )
+                ));
+    }
+
+    /**
+     * 내 전체 프로필 조회는 인증되지 않은 요청에 401을 반환한다.
+     */
+    @Test
+    void 내_전체_프로필_조회_토큰_없음_401() throws Exception {
+        mockMvc.perform(get("/api/members/me"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+    }
+
     // ─── 헬퍼 ────────────────────────────────────────────────────────────
 
     private String registerAndGetAccessToken(String email, String name) throws Exception {

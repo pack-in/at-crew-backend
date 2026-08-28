@@ -85,6 +85,7 @@ public class ArtworkSearchQueryRepository {
         addTerms(bool, "genres", names(query.genres()));
         addTerms(bool, "materialTargets", names(query.materialTargets()));
         addLanguageSegment(bool, names(query.viewerLanguages()));
+        addAdultContentFilter(bool, query.viewerAdultContentVisible(), query.viewerMemberId());
         return Query.of(q -> q.bool(bool.build()));
     }
 
@@ -100,6 +101,24 @@ public class ArtworkSearchQueryRepository {
                         .terms(ts -> ts.value(viewerLanguages.stream().map(FieldValue::of).toList()))))
                 .should(s -> s.bool(nb -> nb.mustNot(mn -> mn.exists(e -> e.field("languages")))))
                 .minimumShouldMatch("1")));
+    }
+
+    /**
+     * 성인 콘텐츠 표시 필터(설정-R10) — 표시 OFF일 때 R18/G18 중 본인 업로드가 아닌 작품을 제외한다.
+     * 본인 업로드분은 표시 설정과 무관하게 항상 노출된다(마이페이지_작가-R21).
+     */
+    private void addAdultContentFilter(BoolQuery.Builder bool, boolean viewerAdultContentVisible,
+                                        String viewerMemberId) {
+        if (viewerAdultContentVisible) return;
+        bool.filter(f -> f.bool(b -> {
+            b.should(s -> s.bool(nb -> nb.mustNot(mn -> mn.terms(t -> t
+                    .field("ageRating")
+                    .terms(ts -> ts.value(List.of(FieldValue.of("R18"), FieldValue.of("G18"))))))));
+            if (viewerMemberId != null) {
+                b.should(s -> s.term(t -> t.field("authorId").value(viewerMemberId)));
+            }
+            return b.minimumShouldMatch("1");
+        }));
     }
 
     private void addTerms(BoolQuery.Builder bool, String field, List<String> values) {

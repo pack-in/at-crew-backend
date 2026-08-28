@@ -25,7 +25,7 @@ class MediaServiceImplTest {
         verify(assets).deleteAll(existing);
     }
 
-    @Test void presignAcceptsOneToTwentySupportedImageTypes() {
+    @Test void presignAcceptsOneToThirtySupportedImageTypes() {
         when(storage.generatePresignedPutUrl(anyString(), eq("image/jpeg"))).thenReturn("https://upload.example");
         var urls = service.generatePresignedUrls(1, List.of("image/jpeg"));
         assertThat(urls).hasSize(1);
@@ -50,9 +50,9 @@ class MediaServiceImplTest {
                         MediaVariantProfile.STANDARD, null));
     }
 
-    @Test void presignRejectsCountsOutsideOneToTwentyAndUnsupportedContentTypes() {
+    @Test void presignRejectsCountsOutsideOneToThirtyAndUnsupportedContentTypes() {
         assertThatIllegalArgumentException().isThrownBy(() -> service.generatePresignedUrls(0, List.of()));
-        assertThatIllegalArgumentException().isThrownBy(() -> service.generatePresignedUrls(21, java.util.Collections.nCopies(21, "image/jpeg")));
+        assertThatIllegalArgumentException().isThrownBy(() -> service.generatePresignedUrls(31, java.util.Collections.nCopies(31, "image/jpeg")));
         assertThatIllegalArgumentException().isThrownBy(() -> service.generatePresignedUrls(1, List.of("image/gif")));
     }
 }

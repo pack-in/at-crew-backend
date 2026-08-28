@@ -114,7 +114,7 @@ CLAUDE.md에는 "라이트 → 앳크루 무중단 마이그레이션을 위해 
 
 | Mongo 필드 | RDB 설계 | 분류 근거 |
 |------|------|------|
-| `images` (List\<ArtworkImage\>, 순서 있음) | 자식 테이블 `artwork_images` — artwork_id FK, **ordinal INT**, original_key, thumb_key, thumb_adult_key, original_avif_key, processing_status. UNIQUE(artwork_id, ordinal). `@OrderColumn(name = "ordinal")` | 순서가 의미를 가짐(representativeImageIndex가 ordinal 참조), 이미지별 processing_status 갱신이 있음. 최대 20개 제한은 도메인 로직 유지 |
+| `images` (List\<ArtworkImage\>, 순서 있음) | 자식 테이블 `artwork_images` — artwork_id FK, **ordinal INT**, original_key, thumb_key, thumb_adult_key, original_avif_key, processing_status. UNIQUE(artwork_id, ordinal). `@OrderColumn(name = "ordinal")` | 순서가 의미를 가짐(representativeImageIndex가 ordinal 참조), 이미지별 processing_status 갱신이 있음. 최대 30개 제한은 도메인 로직 유지 |
 | `materials` (List\<Material\>, 내부에 List\<String\> 3개) | 자식 테이블 `artwork_materials`(artwork_id FK, ordinal, name) + 내부 3개 리스트(targets, attachment_keys, links)는 **JSON 컬럼** | 손자 테이블 3개를 만들면 material 하나에 테이블 4개가 붙는데, 이 리스트들은 검색·개별 수정이 전혀 없는 순수 표시 데이터다. material 단위 name은 컬럼으로 빼고(향후 조회 가능성), 내부 리스트는 JSON — 정규화 원리주의보다 실용을 택한다. MariaDB JSON은 LONGTEXT + `JSON_VALID` CHECK 제약이므로 저장·조회 모두 단순하다 |
 | `roles`, `genres`, `tags`, `tools` (List\<String\>/enum) | 자식 테이블 4개 — `artwork_roles`, `artwork_genres`, `artwork_tags`, `artwork_tools`, 각 (artwork_id, value) 복합 PK + 역방향 인덱스 | 태그·장르·역할·툴은 탐색/필터 기능이 로드맵상 유력하다(커뮤니티 피드·검색). JSON에 넣으면 나중에 검색이 필요해진 시점에 다시 테이블을 파야 하므로 처음부터 정규화 |
 | `videoLinks` (List\<String\>) | `artworks.video_links` **JSON 컬럼** | 순수 나열, 검색 가능성 없음 |

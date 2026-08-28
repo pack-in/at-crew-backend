@@ -89,6 +89,13 @@ public interface MemberService {
      */
     List<Language> findPostLanguages(String memberId);
 
+    /**
+     * 성인 콘텐츠 표시 필터용 — 뷰어의 표시 설정(설정-R10).
+     *
+     * @param memberId 비로그인이면 null — 이때는 기본값 ON(true, 필터 미적용)을 반환한다
+     */
+    boolean isAdultContentVisible(String memberId);
+
     void updateName(String memberId, String name);
 
     void updateInfo(String memberId, UpdateInfoCommand command);

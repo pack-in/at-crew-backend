@@ -249,9 +249,9 @@ portfolio는 현재 다른 모듈이 동기 호출할 필요가 없는 리프(le
 |---|---|---|---|---|---|
 | GET | `/api/portfolios/me` | 필요 | `kind?`, `reflectionType?`, `sort=OLDEST\|LATEST\|UPDATED`(기본 LATEST), `cursor`, `size` | `CursorPage<PortfolioSummaryInfo>` | 401 |
 | GET | `/api/portfolios/selectable` | 필요 | — | `List<PortfolioSelectableInfo>`(작가 페이지 + LIVE만, 고정형 제외) | 401 |
-| POST | `/api/portfolios` | 필요(프로) | `{title, reflectionType, artworkIds[]}` | 201 `PortfolioInfo` | 403 `PRO_PLAN_REQUIRED`, 404 `ARTWORK_NOT_FOUND` |
+| POST | `/api/portfolios` | 필요(프로) | `{title, reflectionType, artworkIds[]}` | 201 `PortfolioInfo` | 403 `PRO_PLAN_REQUIRED`, 404 `ARTWORK_NOT_FOUND`, 400 `PORTFOLIO_ARTWORK_MINIMUM`(작품 2개 미만) |
 | GET | `/api/portfolios/{portfolioId}` | 필요(소유자) | — | `PortfolioInfo` | 403 `PORTFOLIO_ACCESS_DENIED`, 404 |
-| PATCH | `/api/portfolios/{portfolioId}` | 필요(프로) | `{title?, artworkIds?}` | 200 | 403 `PRO_PLAN_REQUIRED`, 409 `SNAPSHOT_PORTFOLIO_IMMUTABLE`, 400 `ARTIST_PAGE_TITLE_IMMUTABLE`, 400 `INVALID_PORTFOLIO_TITLE` |
+| PATCH | `/api/portfolios/{portfolioId}` | 필요(프로) | `{title?, artworkIds?}` | 200 | 403 `PRO_PLAN_REQUIRED`, 409 `SNAPSHOT_PORTFOLIO_IMMUTABLE`, 400 `ARTIST_PAGE_TITLE_IMMUTABLE`, 400 `INVALID_PORTFOLIO_TITLE`, 400 `PORTFOLIO_ARTWORK_MINIMUM`(공유 포트폴리오를 2개 미만으로 줄이는 경우, 작가 페이지는 제외) |
 | DELETE | `/api/portfolios/{portfolioId}` | 필요 | — | 204 | 409 `ARTIST_PAGE_NOT_DELETABLE` |
 | GET | `/api/portfolios/{portfolioId}/duplication-source` | 필요 | — | `{defaultTitle, selectedArtworkIds[], excludedCount}` | 403, 404 |
 | POST | `/api/portfolios/{portfolioId}/artworks` | 필요(프로) | `{artworkIds[]}` | 204 | 403 `PRO_PLAN_REQUIRED`, 409 `SNAPSHOT_PORTFOLIO_IMMUTABLE` |
@@ -319,7 +319,7 @@ GET /api/portfolios/{id}/duplication-source:
 5. 응답 = { defaultTitle: "{원본 제목 또는 사용자 이름} 복사본", selectedArtworkIds: 남은 ID들, excludedCount }
 ```
 
-자동 선택 0개여도 진행 가능(R41 명시). 원본이 ARTIST_PAGE여도 복제 결과는 항상 SHARED다(작가 페이지는 회원당 1개로 강제됨). 원본 유형은 복제본에 상속되지 않고 매번 새로 선택한다.
+이 조회 자체는 자동 선택 0개여도 진행 가능하다(R41 명시) — `duplication-source`는 원본 상태를 그대로 보여줄 뿐 생성을 실행하지 않기 때문이다. 다만 이 값을 그대로 실제 생성 API(`POST /api/portfolios`)에 넘기면 공유 포트폴리오 최소 2개 규칙(제품 결정, 2026-08-28)이 그대로 적용돼 선택된 작품이 2개 미만이면 생성이 거부된다. 원본이 ARTIST_PAGE여도 복제 결과는 항상 SHARED다(작가 페이지는 회원당 1개로 강제됨). 원본 유형은 복제본에 상속되지 않고 매번 새로 선택한다.
 
 ### 5.4 완전 비공개 판정과의 연동
 
@@ -350,7 +350,7 @@ GET /api/portfolios/{id}/duplication-source:
 고정형 스냅샷(`portfolio_item_snapshots`)은 R2 키를 복사하지 않고 **원본 키를 그대로 참조**한다. 초기 설계는 이를 "알려진 제약"으로 수용했으나, (1) 원본 영구 삭제 시 `ArtworkPermanentlyDeletedEvent` 리스너가 그 키를 즉시 지우고 (2) 원본 이미지 교체 시 버려진 키를 `OrphanImageCleanupScheduler`가 1시간 주기로 지워, 활성 고정형 포트폴리오의 이미지가 조용히 사라지는 실사용 데이터 유실이었다(마이페이지_작가-R39·휴지통-R04는 "활성 고정형 포트폴리오가 참조하는 자산 버전 보존"을 명시한다). PA-15에서 **삭제 직전 보존 판정**으로 해소했다.
 
 검토한 해결책 중 채택하지 않은 것:
-1. R2 server-side copy로 스냅샷 전용 경로에 복제 — 정책은 완벽히 지켜지나 작품 20장 × 4 variant까지 복사 비용이 크고 생성 API가 느려짐.
+1. R2 server-side copy로 스냅샷 전용 경로에 복제 — 정책은 완벽히 지켜지나 작품 30장 × 4 variant까지 복사 비용이 크고 생성 API가 느려짐.
 2. `media`에 참조 카운트(retention) 테이블 추가 — `retain/release` 쌍이 어긋나면(포트폴리오 삭제 누락 등) 유실이나 영구 누수가 생기고, 스키마·마이그레이션이 늘어난다.
 
 **채택: 삭제 시점 조회형 보존 판정.** 상태를 따로 저장하지 않고 지우려는 순간 스냅샷 테이블에 물어본다 — 어긋날 상태가 없다.

@@ -1,5 +1,6 @@
 package com.atcrew.portfolio.internal.application;
 
+import com.atcrew.artwork.AgeRating;
 import com.atcrew.artwork.ArtworkInfo;
 import com.atcrew.artwork.ArtworkService;
 import com.atcrew.artwork.ArtworkStatus;
@@ -73,6 +74,9 @@ public class PortfolioServiceImpl {
     // 상한도 요청 크기에 비례한다(기본 size=20이면 210행). 비인증 요청이 대량의 휴지통·차단 구성 행을
     // 무제한으로 훑지 않게 하는 안전장치다.
     private static final int MAX_SCAN_CHUNKS = 10;
+
+    // 공유 포트폴리오는 최소 2개의 작품이 있어야 한다(제품 결정, 2026-08-28) — 작가 페이지는 대상이 아니다.
+    private static final int SHARED_MIN_ARTWORK_COUNT = 2;
 
     private final PortfolioRepository portfolioRepository;
     private final PortfolioItemRepository portfolioItemRepository;
@@ -207,25 +211,82 @@ public class PortfolioServiceImpl {
      */
     @Transactional
     public CursorPage<PortfolioArtworkCardInfo> getSharedPortfolioArtworks(String identifier, String cursor, int size) {
+        return getSharedPortfolioArtworks(identifier, cursor, size, null);
+    }
+
+    /**
+     * @param viewerMemberId 뷰어 회원 ID. 비로그인이면 null — 성인 콘텐츠 표시 설정(설정-R10)이
+     *                        OFF인 뷰어에게는 R18/G18 항목을 걸러내되, 포트폴리오 소유자 본인 조회는
+     *                        예외로 항상 노출한다(마이페이지_작가-R21)
+     */
+    @Transactional
+    public CursorPage<PortfolioArtworkCardInfo> getSharedPortfolioArtworks(String identifier, String cursor, int size,
+                                                                            String viewerMemberId) {
         Portfolio portfolio = resolveSharedPortfolio(identifier);
         assertNotBlocked(portfolio);
+        boolean hideAdultContent = !memberService.isAdultContentVisible(viewerMemberId)
+                && !portfolio.getOwnerMemberId().equals(viewerMemberId);
 
         if (portfolio.getReflectionType() == ReflectionType.SNAPSHOT) {
-            // 스냅샷 행은 조회 시점 필터가 없으므로 한 건 더 읽어 다음 페이지 존재 여부를 바로 판정한다.
-            Pageable pageable = PageRequest.of(0, size + 1);
-            List<PortfolioItemSnapshot> rows = cursor == null
-                    ? portfolioItemSnapshotRepository.findByPortfolioIdAndBlockedAtIsNullOrderByOrdinal(
-                            portfolio.getId(), pageable)
-                    : portfolioItemSnapshotRepository
-                            .findByPortfolioIdAndBlockedAtIsNullAndOrdinalGreaterThanOrderByOrdinal(
-                                    portfolio.getId(), parseOrdinalCursor(cursor), pageable);
-            boolean hasNext = rows.size() > size;
-            List<PortfolioItemSnapshot> page = hasNext ? rows.subList(0, size) : rows;
-            return CursorPage.of(page.stream().map(PortfolioMapper::toCardInfo).toList(),
-                    hasNext ? String.valueOf(page.getLast().getOrdinal()) : null);
+            return snapshotArtworkPage(portfolio.getId(), cursor, size, hideAdultContent);
         }
 
-        return liveArtworkPage(portfolio.getId(), cursor, size);
+        return liveArtworkPage(portfolio.getId(), cursor, size, hideAdultContent);
+    }
+
+    /**
+     * 고정형 스냅샷 공유 목록 한 페이지. {@code hideAdultContent}가 걸리면 필터 통과 건수가 기준이라
+     * liveArtworkPage와 같은 방식(청크 단위로 이어 읽어 size+1건을 채움)으로 hasNext를 판정한다 —
+     * 스냅샷은 전부 같은 소유자 소속이라 본인 예외는 호출자가 이미 hideAdultContent 여부로 반영해뒀다.
+     */
+    private CursorPage<PortfolioArtworkCardInfo> snapshotArtworkPage(String portfolioId, String cursor, int size,
+                                                                       boolean hideAdultContent) {
+        int target = size + 1;
+        List<PortfolioItemSnapshot> viewableRows = new ArrayList<>();
+        Integer scanFrom = cursor != null ? parseOrdinalCursor(cursor) : null;
+        Integer lastScannedOrdinal = null;
+        int scannedChunks = 0;
+        boolean exhausted = false;
+
+        while (viewableRows.size() < target && scannedChunks < MAX_SCAN_CHUNKS) {
+            Pageable pageable = PageRequest.of(0, target);
+            List<PortfolioItemSnapshot> rows = scanFrom == null
+                    ? portfolioItemSnapshotRepository.findByPortfolioIdAndBlockedAtIsNullOrderByOrdinal(
+                            portfolioId, pageable)
+                    : portfolioItemSnapshotRepository
+                            .findByPortfolioIdAndBlockedAtIsNullAndOrdinalGreaterThanOrderByOrdinal(
+                                    portfolioId, scanFrom, pageable);
+            if (rows.isEmpty()) {
+                exhausted = true;
+                break;
+            }
+            scannedChunks++;
+            for (PortfolioItemSnapshot row : rows) {
+                if (viewableRows.size() == target) {
+                    break;
+                }
+                lastScannedOrdinal = row.getOrdinal();
+                if (!hideAdultContent || !isAdultRating(row.getAgeRating())) {
+                    viewableRows.add(row);
+                }
+            }
+            scanFrom = rows.getLast().getOrdinal();
+        }
+
+        if (viewableRows.size() > size) {
+            return CursorPage.of(
+                    viewableRows.subList(0, size).stream().map(PortfolioMapper::toCardInfo).toList(),
+                    String.valueOf(viewableRows.get(size - 1).getOrdinal()));
+        }
+        if (exhausted || lastScannedOrdinal == null) {
+            return CursorPage.of(viewableRows.stream().map(PortfolioMapper::toCardInfo).toList(), null);
+        }
+        return CursorPage.of(viewableRows.stream().map(PortfolioMapper::toCardInfo).toList(),
+                String.valueOf(lastScannedOrdinal));
+    }
+
+    private boolean isAdultRating(AgeRating ageRating) {
+        return ageRating == AgeRating.R18 || ageRating == AgeRating.G18;
     }
 
     /**
@@ -272,7 +333,8 @@ public class PortfolioServiceImpl {
      * 감추지 않고(hasNext=false로 끊으면 뒤의 작품이 통째로 사라진다) 다음 요청이 이어서 읽게 한다.
      * 이 경우에만 size보다 적은(0건일 수도 있는) 페이지가 나올 수 있다.
      */
-    private CursorPage<PortfolioArtworkCardInfo> liveArtworkPage(String portfolioId, String cursor, int size) {
+    private CursorPage<PortfolioArtworkCardInfo> liveArtworkPage(String portfolioId, String cursor, int size,
+                                                                    boolean hideAdultContent) {
         // 한 건은 다음 페이지 존재 여부 판정에만 쓰고 응답에서는 잘라낸다.
         int target = size + 1;
         List<PortfolioItem> viewableItems = new ArrayList<>();
@@ -300,7 +362,8 @@ public class PortfolioServiceImpl {
                 }
                 lastScannedOrdinal = row.getOrdinal();
                 Optional<ArtworkInfo> artwork = artworkService.getArtworkForIndexing(row.getArtworkId())
-                        .filter(PortfolioServiceImpl::sharedViewable);
+                        .filter(PortfolioServiceImpl::sharedViewable)
+                        .filter(a -> !hideAdultContent || !isAdultRating(a.ageRating()));
                 if (artwork.isPresent()) {
                     viewableItems.add(row);
                     cards.add(PortfolioMapper.toCardInfo(artwork.get()));
@@ -416,6 +479,7 @@ public class PortfolioServiceImpl {
         assertPro(memberId);
         String validatedTitle = validateTitle(title);
         List<ArtworkInfo> artworks = orderByUploadedAt(resolveOwnedArtworks(memberId, artworkIds));
+        assertMinimumArtworkCount(artworks.size());
 
         if (reflectionType == ReflectionType.SNAPSHOT) {
             return createSnapshot(memberId, validatedTitle, artworks);
@@ -492,6 +556,10 @@ public class PortfolioServiceImpl {
         String validatedTitle = title != null ? validateTitle(title) : null;
         if (artworkIds != null) {
             List<ArtworkInfo> artworks = orderByUploadedAt(resolveOwnedArtworks(memberId, artworkIds));
+            // 작가 페이지는 최소 개수 제약이 없다 — 이 규칙은 공유 포트폴리오 전용이다(제품 결정, 2026-08-28).
+            if (portfolio.getKind() == PortfolioKind.SHARED) {
+                assertMinimumArtworkCount(artworks.size());
+            }
             replaceItems(portfolio, artworks.stream().map(ArtworkInfo::id).toList());
         }
         // portfolios를 건드리는 것은 구성 교체 뒤다 — 앞에서 엔티티를 dirty로 만들면 replaceItems의 벌크
@@ -639,6 +707,13 @@ public class PortfolioServiceImpl {
         }
         if (portfolio.getKind() == PortfolioKind.SHARED) {
             assertPro(memberId);
+        }
+    }
+
+    // 공유 포트폴리오 생성·구성 교체 양쪽에서 재사용한다 — 작가 페이지는 호출하지 않는다.
+    private void assertMinimumArtworkCount(int count) {
+        if (count < SHARED_MIN_ARTWORK_COUNT) {
+            throw new PortfolioException(PortfolioErrorCode.PORTFOLIO_ARTWORK_MINIMUM, "artworkCount=" + count);
         }
     }
 

@@ -21,9 +21,10 @@ public interface AuthService {
 
     /**
      * 비밀번호 변경 — EMAIL 가입 계정 전용. 현재 비밀번호를 확인한 뒤 새 비밀번호로 교체하고,
-     * 해당 회원의 Refresh Token을 모두 폐기한다.
+     * currentRefreshToken(현재 기기 세션)을 제외한 해당 회원의 나머지 Refresh Token을 모두 폐기한다
+     * (설정-R13 — 현재 기기는 유지, 다른 기기만 로그아웃).
      */
-    void changePassword(String memberId, String currentPassword, String newPassword);
+    void changePassword(String memberId, String currentPassword, String newPassword, String currentRefreshToken);
 
     /**
      * 비밀번호 재설정 요청(§7) — 가입 여부·계정 상태와 무관하게 항상 성공적으로 끝난다(예외를 던지지

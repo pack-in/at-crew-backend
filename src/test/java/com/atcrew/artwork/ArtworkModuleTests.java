@@ -441,6 +441,43 @@ class ArtworkModuleTests {
     }
 
     @Test
+    void 이미지는_30장까지_업로드할_수_있고_31장이면_거부된다() {
+        String memberId = registerAuthor();
+        List<String> thirtyImages = java.util.stream.IntStream.range(0, 30)
+                .mapToObj(i -> "raw/bulk-" + i + ".png")
+                .toList();
+
+        ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, baseUploadCommand(thirtyImages, List.of()));
+
+        assertThat(uploaded.images()).hasSize(30);
+
+        List<String> thirtyOneImages = new ArrayList<>(thirtyImages);
+        thirtyOneImages.add("raw/bulk-30.png");
+        assertThatThrownBy(() -> artworkService.uploadArtwork(memberId, baseUploadCommand(thirtyOneImages, List.of())))
+                .isInstanceOf(DomainException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("INVALID_IMAGE_COUNT");
+    }
+
+    @Test
+    void presign은_30개까지_발급되고_31개면_거부된다() {
+        List<String> contentTypes30 = java.util.stream.IntStream.range(0, 30)
+                .mapToObj(i -> "image/png")
+                .toList();
+
+        List<PresignedUrlInfo> urls = artworkService.generatePresignedUrls(30, contentTypes30);
+
+        assertThat(urls).hasSize(30);
+
+        List<String> contentTypes31 = new ArrayList<>(contentTypes30);
+        contentTypes31.add("image/png");
+        assertThatThrownBy(() -> artworkService.generatePresignedUrls(31, contentTypes31))
+                .isInstanceOf(DomainException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("INVALID_IMAGE_COUNT");
+    }
+
+    @Test
     void 커뮤니티_피드는_뷰어_언어와_겹치는_작품만_노출하고_언어_미지정_작품은_항상_노출한다() {
         String koAuthor = registerAuthor();
         String jaAuthor = registerAuthor();
@@ -452,7 +489,7 @@ class ArtworkModuleTests {
         jdbcTemplate.update("DELETE FROM artwork_languages WHERE artwork_id = ?", legacyArtworkId);
 
         List<String> koViewerFeed = artworkService
-                .getCommunityArtworks(null, null, List.of(Language.KO), null, null, 50)
+                .getCommunityArtworks(null, null, List.of(Language.KO), null, null, 50, null, true)
                 .items().stream().map(ArtworkSummaryInfo::id).toList();
 
         assertThat(koViewerFeed).contains(koArtworkId, legacyArtworkId);
@@ -460,18 +497,50 @@ class ArtworkModuleTests {
 
         // 비로그인(빈 목록)은 필터를 적용하지 않는다
         List<String> anonymousFeed = artworkService
-                .getCommunityArtworks(null, null, List.of(), null, null, 50)
+                .getCommunityArtworks(null, null, List.of(), null, null, 50, null, true)
                 .items().stream().map(ArtworkSummaryInfo::id).toList();
         assertThat(anonymousFeed).contains(koArtworkId, jaArtworkId, legacyArtworkId);
     }
 
+    @Test
+    void 커뮤니티_피드는_표시_OFF_뷰어에게_R18_G18을_숨기되_본인_업로드는_항상_노출한다() {
+        String author = registerAuthor();
+        String viewer = registerAuthor();
+        memberService.updateAdultContentVisible(viewer, false);
+
+        String allArtworkId = publishReady(author, "raw/adult-all.png", AgeRating.ALL);
+        String r18ArtworkId = publishReady(author, "raw/adult-r18.png", AgeRating.R18);
+        String g18ArtworkId = publishReady(author, "raw/adult-g18.png", AgeRating.G18);
+        String ownR18ArtworkId = publishReady(viewer, "raw/adult-own-r18.png", AgeRating.R18);
+
+        List<String> hiddenFeed = artworkService
+                .getCommunityArtworks(null, null, List.of(), null, null, 50, viewer, false)
+                .items().stream().map(ArtworkSummaryInfo::id).toList();
+        assertThat(hiddenFeed).contains(allArtworkId, ownR18ArtworkId);
+        assertThat(hiddenFeed).doesNotContain(r18ArtworkId, g18ArtworkId);
+
+        // 표시 ON이면 필터가 걸리지 않는다
+        List<String> visibleFeed = artworkService
+                .getCommunityArtworks(null, null, List.of(), null, null, 50, viewer, true)
+                .items().stream().map(ArtworkSummaryInfo::id).toList();
+        assertThat(visibleFeed).contains(allArtworkId, r18ArtworkId, g18ArtworkId, ownR18ArtworkId);
+    }
+
     /** 피드는 READY 상태만 노출하므로 이미지 처리 콜백까지 재현해 공개 상태를 만든다. */
     private String publishReady(String memberId, String imageKey, List<Language> languages) {
+        return publishReady(memberId, imageKey, AgeRating.ALL, languages);
+    }
+
+    private String publishReady(String memberId, String imageKey, AgeRating ageRating) {
+        return publishReady(memberId, imageKey, ageRating, List.of(Language.KO));
+    }
+
+    private String publishReady(String memberId, String imageKey, AgeRating ageRating, List<Language> languages) {
         ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, new UploadArtworkCommand(
                 List.of(imageKey), 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 "피드 작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
                 List.of(), List.of(), List.of(),
-                AgeRating.ALL, languages, true, List.of(), List.of(), null, null, List.of(), List.of()));
+                ageRating, languages, true, List.of(), List.of(), null, null, List.of(), List.of()));
         processImage(uploaded.id(), imageKey, MediaProcessingStatus.DONE);
         awaitReady(memberId, uploaded.id());
         return uploaded.id();

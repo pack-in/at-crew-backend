@@ -69,8 +69,10 @@ class CommunityController {
             @RequestParam(required = false, defaultValue = "LATEST") ArtworkSort sort,
             @Parameter(description = "커서 (직전 응답의 nextCursor를 그대로 전달)") @RequestParam(required = false) String cursor,
             @Parameter(description = "페이지 크기 (기본 20, 최대 50). 0은 빈 목록, 음수는 400 INVALID_SIZE") @RequestParam(required = false) Integer size) {
+        String viewerMemberId = getOptionalMemberId();
         return ApiResponse.success(artworkService.getCommunityArtworks(
-                artworkField, ageRating, viewerLanguages(), sort, cursor, resolveSize(size)));
+                artworkField, ageRating, viewerLanguages(viewerMemberId), sort, cursor, resolveSize(size),
+                viewerMemberId, memberService.isAdultContentVisible(viewerMemberId)));
     }
 
     @Operation(summary = "작가 프로필 탭 — 작가 찾아보기", description =
@@ -86,7 +88,7 @@ class CommunityController {
             @Parameter(description = "페이지 크기 (기본 20, 최대 50). 0은 빈 목록, 음수는 400 INVALID_SIZE") @RequestParam(required = false) Integer size) {
         return ApiResponse.success(memberService.searchProfiles(new SearchProfilesCommand(
                 List.of(EmploymentStatus.AVAILABLE, EmploymentStatus.NEGOTIABLE),
-                activityField, sort, viewerLanguages(), cursor, resolveSize(size))));
+                activityField, sort, viewerLanguages(getOptionalMemberId()), cursor, resolveSize(size))));
     }
 
     @Operation(summary = "구인글 탭", description = "구인글 카드 목록을 PUBLISHED 상태만 커서 페이지네이션으로 조회합니다. 인증 불필요.")
@@ -120,11 +122,16 @@ class CommunityController {
     }
 
     // 언어 세그먼트 필터 기준(로그인-R16). 비로그인은 빈 목록 → 필터 미적용(전체 노출).
-    private List<Language> viewerLanguages() {
+    private List<Language> viewerLanguages(String viewerMemberId) {
+        return viewerMemberId != null ? memberService.findPostLanguages(viewerMemberId) : List.of();
+    }
+
+    // 공개 GET에서 로그인 여부를 판별한다 — 비로그인이면 null (member/company 모듈과 동일 패턴).
+    private String getOptionalMemberId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth != null && auth.isAuthenticated() && auth.getPrincipal() instanceof MemberPrincipal principal) {
-            return memberService.findPostLanguages(principal.memberId());
+            return principal.memberId();
         }
-        return List.of();
+        return null;
     }
 }

@@ -19,7 +19,7 @@ public enum ArtworkErrorCode {
     // (요금제-R04 "여러 활동 언어로 노출 확대", 설정-R14의 주 언어 해제 금지와 같은 결)
     LANGUAGE_NOT_ALLOWED(HttpStatus.FORBIDDEN, "작품 언어에는 주 사용 언어를 반드시 포함해야 합니다"),
     INVALID_LANGUAGE_COUNT(HttpStatus.BAD_REQUEST, "게시물 언어는 1개 이상 4개 이하로 선택해야 합니다"),
-    INVALID_IMAGE_COUNT(HttpStatus.BAD_REQUEST, "이미지 수는 1개 이상 20개 이하여야 합니다"),
+    INVALID_IMAGE_COUNT(HttpStatus.BAD_REQUEST, "이미지 수는 1개 이상 30개 이하여야 합니다"),
     INVALID_CONTENT_TYPE(HttpStatus.BAD_REQUEST, "허용되지 않는 이미지 형식입니다. jpeg, png, webp만 가능합니다"),
     INVALID_REPRESENTATIVE_INDEX(HttpStatus.BAD_REQUEST, "대표 이미지 인덱스가 유효하지 않습니다"),
     BOOKMARK_FOLDER_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 북마크 폴더입니다"),

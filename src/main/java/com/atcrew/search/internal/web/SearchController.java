@@ -78,18 +78,25 @@ class SearchController {
             @RequestParam(required = false) SearchSort sort,
             @Parameter(description = "커서") @RequestParam(required = false) String cursor,
             @Parameter(description = "페이지 크기 (기본 20, 최대 50)") @RequestParam(required = false) Integer size) {
+        String viewerMemberId = getOptionalMemberId();
         return ApiResponse.success(searchService.search(new SearchQuery(
                 q, postTypes, artworkFields, creativeTypes, ageRatings, roles, genres, materialTargets,
-                viewerLanguages(), sort, cursor, resolveSize(size))));
+                viewerLanguages(viewerMemberId), viewerMemberId, memberService.isAdultContentVisible(viewerMemberId),
+                sort, cursor, resolveSize(size))));
     }
 
     // 언어 세그먼트 필터 기준(로그인-R16). 비로그인은 빈 목록 → 필터 미적용(전체 노출).
-    private List<Language> viewerLanguages() {
+    private List<Language> viewerLanguages(String viewerMemberId) {
+        return viewerMemberId != null ? memberService.findPostLanguages(viewerMemberId) : List.of();
+    }
+
+    // 공개 GET에서 로그인 여부를 판별한다 — 비로그인이면 null (member/company 모듈과 동일 패턴).
+    private String getOptionalMemberId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth != null && auth.isAuthenticated() && auth.getPrincipal() instanceof MemberPrincipal principal) {
-            return memberService.findPostLanguages(principal.memberId());
+            return principal.memberId();
         }
-        return List.of();
+        return null;
     }
 
     private int resolveSize(Integer size) {

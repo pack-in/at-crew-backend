@@ -8,7 +8,7 @@ import jakarta.validation.constraints.Size;
 import java.util.List;
 
 public record PresignRequest(
-        @Min(1) @Max(20) int count,
-        @NotEmpty @Size(max = 20) List<String> contentTypes
+        @Min(1) @Max(30) int count,
+        @NotEmpty @Size(max = 30) List<String> contentTypes
 ) {
 }

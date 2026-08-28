@@ -93,7 +93,10 @@ class SecurityConfig {
                     if (!isProd()) {
                         auth.requestMatchers(HttpMethod.POST, "/api/members").permitAll();
                     }
-                    auth.requestMatchers(HttpMethod.GET, "/api/members/{handle}").permitAll()
+                    // GET /api/members/me는 본인 전용이므로, {handle} 템플릿이 "me"를 핸들로 오인해
+                    // 인증을 우회하지 않도록 리터럴 경로를 먼저 선언한다(위 companies/recruit/portfolio와 동일 패턴).
+                    auth.requestMatchers(HttpMethod.GET, "/api/members/me").authenticated()
+                            .requestMatchers(HttpMethod.GET, "/api/members/{handle}").permitAll()
                             .requestMatchers(HttpMethod.GET, "/api/artworks/{artworkId}").permitAll()
                             .requestMatchers(HttpMethod.GET, "/api/community/artworks").permitAll()
                             .requestMatchers(HttpMethod.GET, "/api/community/authors").permitAll()
