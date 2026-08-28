@@ -2,6 +2,8 @@ package com.atcrew.common.observability;
 
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.LoggerContext;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.Appender;
 import com.atcrew.common.logging.LogMask;
 import io.sentry.Sentry;
 import io.sentry.SentryEvent;
@@ -37,6 +39,8 @@ import java.util.regex.Pattern;
 class SentryConfig {
 
     private static final Logger log = LoggerFactory.getLogger(SentryConfig.class);
+
+    static final String APPENDER_NAME = "SENTRY";
 
     private static final Pattern EMAIL =
             Pattern.compile("[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}");
@@ -104,15 +108,25 @@ class SentryConfig {
             return;
         }
 
+        ch.qos.logback.classic.Logger root = context.getLogger(Logger.ROOT_LOGGER_NAME);
+        // logback의 LoggerContext는 JVM 전역이지만 이 메서드는 Spring 컨텍스트마다 실행된다.
+        // 테스트 JVM처럼 컨텍스트가 여럿 뜨는 환경에서는 어펜더가 계속 쌓여, ERROR 로그 하나가
+        // 컨텍스트 수만큼 중복 전송되고 전송 큐·스레드도 그만큼 늘어난다. 붙이기 전에 먼저 걷어낸다.
+        Appender<ILoggingEvent> existing = root.getAppender(APPENDER_NAME);
+        if (existing != null) {
+            root.detachAppender(existing);
+            existing.stop();
+        }
+
         SentryAppender appender = new SentryAppender();
-        appender.setName("SENTRY");
+        appender.setName(APPENDER_NAME);
         appender.setContext(context);
         appender.setOptions(options);
         SentryProperties.Logging logging = properties.loggingOrDefault();
         appender.setMinimumEventLevel(level(logging.minimumEventLevel(), Level.ERROR));
         appender.setMinimumBreadcrumbLevel(level(logging.minimumBreadcrumbLevel(), Level.WARN));
         appender.start();
-        context.getLogger(Logger.ROOT_LOGGER_NAME).addAppender(appender);
+        root.addAppender(appender);
     }
 
     private static Level level(String configured, Level fallback) {

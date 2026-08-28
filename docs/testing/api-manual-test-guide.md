@@ -176,8 +176,11 @@
   "name": "사용자1",
   "agreeService": true,
   "agreePrivacy": true,
-  "agreeThirdParty": false,
-  "agreeMarketing": false
+  "agreeThirdParty": true,
+  "agreeMarketing": false,
+  "timezone": "Asia/Seoul",
+  "countryCode": "KR",
+  "primaryLanguage": "KO"
 }
 ```
 **필드 제약**:
@@ -185,7 +188,12 @@
 - `password`: `@NotBlank`, 정규식 `^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z\d\s]).{8,64}$` (영문·숫자·특수문자 포함 8~64자)
 - `passwordConfirm`: `password`와 일치해야 함 (`@AssertTrue isPasswordConfirmed`)
 - `name`: `@NotBlank @Size(max=16)`
-- `agreeService`/`agreePrivacy`/`agreeThirdParty`/`agreeMarketing`: boolean (필수 약관 미동의 시 서비스단에서 거부)
+- `timezone`: `@NotBlank @Size(max=64)` — IANA 시간대 ID, 클라이언트 자동감지값 (예: `Asia/Seoul`)
+- `countryCode`: `@NotBlank`, ISO 3166-1 alpha-2 대문자 2자 (예: `KR`)
+- `primaryLanguage`: `@NotNull`, `KO`/`JA`/`ZH`/`EN` — **가입 후 변경할 수 없다**(로그인-R19)
+- `agreeService`/`agreePrivacy`/`agreeThirdParty`: **셋 다 `true`여야 한다.**
+  하나라도 빠지면 `TERMS_NOT_AGREED`로 거부된다(`Member.validateTerms`)
+- `agreeMarketing`: 선택
 
 **정상 응답 (201)**:
 ```json
@@ -208,6 +216,10 @@
 | 이메일 형식 오류 | email: "notEmail" | COMMON_INVALID_INPUT | 400 |
 | 비밀번호 규칙 위반 | password: "12345678" (특수문자·영문 없음) | COMMON_INVALID_INPUT | 400 |
 | 비밀번호 불일치 | passwordConfirm을 다르게 | COMMON_INVALID_INPUT | 400 |
+| 거주 국가 누락 | countryCode 생략 | COMMON_INVALID_INPUT | 400 |
+| 시간대 누락 | timezone 생략 | COMMON_INVALID_INPUT | 400 |
+| 주 사용 언어 누락 | primaryLanguage 생략 | COMMON_INVALID_INPUT | 400 |
+| 필수 약관 미동의 | agreeThirdParty: false | TERMS_NOT_AGREED | 400 |
 | 이름 길이 초과 | name: 17자 이상 | COMMON_INVALID_INPUT | 400 |
 | 필수 약관 미동의 | agreeService: false 등 | TERMS_NOT_AGREED | 400 |
 | 이미 가입된 이메일 | 기존 email 재사용 | DUPLICATE_EMAIL | 409 |

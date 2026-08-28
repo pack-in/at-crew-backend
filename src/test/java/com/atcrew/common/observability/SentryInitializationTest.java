@@ -10,6 +10,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 
+import java.util.Spliterators;
+import java.util.stream.StreamSupport;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -39,9 +42,20 @@ class SentryInitializationTest {
     }
 
     @Test
-    @DisplayName("루트 로거에 Sentry 어펜더가 붙는다")
-    void appenderIsAttachedToRootLogger() {
+    @DisplayName("루트 로거에 Sentry 어펜더가 정확히 하나만 붙는다")
+    void appenderIsAttachedExactlyOnce() {
         LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
-        assertThat(context.getLogger(Logger.ROOT_LOGGER_NAME).getAppender("SENTRY")).isNotNull();
+        ch.qos.logback.classic.Logger root = context.getLogger(Logger.ROOT_LOGGER_NAME);
+
+        assertThat(root.getAppender(SentryConfig.APPENDER_NAME)).isNotNull();
+
+        // logback의 LoggerContext는 JVM 전역인데 초기화는 Spring 컨텍스트마다 돈다.
+        // 컨텍스트가 여럿 뜨는 테스트 JVM에서 어펜더가 쌓이면 ERROR 로그가 중복 전송되고
+        // 전송 큐·스레드가 컨텍스트 수만큼 늘어난다(2026-08-27 실제로 그렇게 만들었다).
+        long sentryAppenders = StreamSupport
+                .stream(Spliterators.spliteratorUnknownSize(root.iteratorForAppenders(), 0), false)
+                .filter(a -> SentryConfig.APPENDER_NAME.equals(a.getName()))
+                .count();
+        assertThat(sentryAppenders).isEqualTo(1);
     }
 }

@@ -20,7 +20,7 @@ npx wrangler r2 bucket create at-crew-storage   # 버킷이 이미 있으면 생
 ```bash
 npx wrangler secret put CALLBACK_SECRET
 npx wrangler secret put INTERNAL_SECRET
-npx wrangler secret put SERVER_CALLBACK_URL   # 예: https://api.atcrew.com/internal/media/images/processed
+npx wrangler secret put SERVER_CALLBACK_URL   # 예: https://api.at-crew.com/internal/media/images/processed
 ```
 
 로컬 개발용 시크릿은 `.dev.vars.example`을 `.dev.vars`로 복사해서 채운다(git 추적 안 됨).
