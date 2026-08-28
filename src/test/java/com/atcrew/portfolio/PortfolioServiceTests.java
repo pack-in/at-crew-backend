@@ -143,16 +143,55 @@ class PortfolioServiceTests {
     void 프로_계정은_공유_포트폴리오를_생성하고_공유_슬러그를_받는다() {
         String memberId = registerProMember();
         String artworkId = uploadArtwork(memberId);
+        String secondArtworkId = uploadArtwork(memberId);
 
         PortfolioInfo created = portfolioService.createShared(
-                memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of(artworkId));
+                memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of(artworkId, secondArtworkId));
 
         assertThat(created.kind()).isEqualTo(PortfolioKind.SHARED);
         assertThat(created.reflectionType()).isEqualTo(ReflectionType.LIVE);
         assertThat(created.shareSlug()).isNotBlank().hasSize(22);
-        assertThat(created.itemCount()).isEqualTo(1);
-        assertThat(created.artworks()).extracting(PortfolioArtworkCardInfo::artworkId).containsExactly(artworkId);
+        assertThat(created.itemCount()).isEqualTo(2);
+        assertThat(created.artworks()).extracting(PortfolioArtworkCardInfo::artworkId)
+                .containsExactly(artworkId, secondArtworkId);
         assertThat(artworkRepository.findById(artworkId).orElseThrow().isPortfolioIncluded()).isTrue();
+    }
+
+    // 공유 포트폴리오는 최소 2개의 작품이 있어야 한다(제품 결정, 2026-08-28) — 작가 페이지는 대상이 아니다.
+    @Test
+    void 공유_포트폴리오는_작품이_0개면_생성이_거부된다() {
+        String memberId = registerProMember();
+
+        assertThatThrownBy(() -> portfolioService.createShared(
+                memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of()))
+                .isInstanceOf(PortfolioException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("PORTFOLIO_ARTWORK_MINIMUM");
+    }
+
+    @Test
+    void 공유_포트폴리오는_작품이_1개면_생성이_거부된다() {
+        String memberId = registerProMember();
+        String artworkId = uploadArtwork(memberId);
+
+        assertThatThrownBy(() -> portfolioService.createShared(
+                memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of(artworkId)))
+                .isInstanceOf(PortfolioException.class)
+                .extracting(e -> ((DomainException) e).getStatus())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    // 고정형도 공유 포트폴리오이므로 동일한 최소 개수 규칙이 적용된다.
+    @Test
+    void 고정형_포트폴리오도_작품이_1개면_생성이_거부된다() {
+        String memberId = registerProMember();
+        String artworkId = uploadArtwork(memberId);
+
+        assertThatThrownBy(() -> portfolioService.createShared(
+                memberId, "고정형", ReflectionType.SNAPSHOT, List.of(artworkId)))
+                .isInstanceOf(PortfolioException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("PORTFOLIO_ARTWORK_MINIMUM");
     }
 
     @Test
@@ -170,21 +209,22 @@ class PortfolioServiceTests {
     void 프로_계정은_고정형_포트폴리오를_생성하고_생성_시점_구성을_돌려받는다() {
         String memberId = registerProMember();
         String artworkId = uploadArtwork(memberId);
+        String secondArtworkId = uploadArtwork(memberId);
 
         PortfolioInfo created = portfolioService.createShared(
-                memberId, "고정형", ReflectionType.SNAPSHOT, List.of(artworkId));
+                memberId, "고정형", ReflectionType.SNAPSHOT, List.of(artworkId, secondArtworkId));
 
         assertThat(created.reflectionType()).isEqualTo(ReflectionType.SNAPSHOT);
         assertThat(created.shareSlug()).isNotBlank().hasSize(22);
-        assertThat(created.itemCount()).isEqualTo(1);
+        assertThat(created.itemCount()).isEqualTo(2);
         // 고정형 카드는 원본 작품 ID 대신 스냅샷 ID를 노출한다(마이페이지_작가-R39, PH-01).
         assertThat(created.artworks())
                 .extracting(PortfolioArtworkCardInfo::artworkId, PortfolioArtworkCardInfo::title)
-                .containsExactly(tuple(null, "작품"));
+                .containsExactly(tuple(null, "작품"), tuple(null, "작품"));
         assertThat(created.artworks().getFirst().snapshotId()).isNotBlank();
         assertThat(portfolioService.getPortfolio(memberId, created.id()).artworks())
                 .extracting(PortfolioArtworkCardInfo::snapshotId)
-                .containsExactly(created.artworks().getFirst().snapshotId());
+                .containsExactly(created.artworks().get(0).snapshotId(), created.artworks().get(1).snapshotId());
 
         // 상세 본문은 payload_json 1컬럼에 담긴다(§2.3) — JSON 컬럼은 저장 시 정규화되므로 원문 비교가 아니라
         // JsonMapper로 역직렬화해서 확인한다.
@@ -235,8 +275,9 @@ class PortfolioServiceTests {
     void 고정형_생성은_작품의_편입_여부를_바꾸지_않는다() {
         String memberId = registerProMember();
         String artworkId = uploadArtwork(memberId);
+        String secondArtworkId = uploadArtwork(memberId);
 
-        portfolioService.createShared(memberId, "고정형", ReflectionType.SNAPSHOT, List.of(artworkId));
+        portfolioService.createShared(memberId, "고정형", ReflectionType.SNAPSHOT, List.of(artworkId, secondArtworkId));
 
         assertThat(artworkRepository.findById(artworkId).orElseThrow().isPortfolioIncluded()).isFalse();
     }
@@ -245,9 +286,10 @@ class PortfolioServiceTests {
     void 고정형_포트폴리오는_수정할_수_없다() {
         String memberId = registerProMember();
         String artworkId = uploadArtwork(memberId);
+        String fillerArtworkId = uploadArtwork(memberId);
         String otherArtworkId = uploadArtwork(memberId);
         PortfolioInfo created = portfolioService.createShared(
-                memberId, "고정형", ReflectionType.SNAPSHOT, List.of(artworkId));
+                memberId, "고정형", ReflectionType.SNAPSHOT, List.of(artworkId, fillerArtworkId));
 
         assertThatThrownBy(() -> portfolioService.updatePortfolio(memberId, created.id(), "새 제목", null))
                 .isInstanceOf(PortfolioException.class)
@@ -293,6 +335,58 @@ class PortfolioServiceTests {
 
         assertThat(artworkRepository.findById(keptArtworkId).orElseThrow().isPortfolioIncluded()).isTrue();
         assertThat(artworkRepository.findById(droppedArtworkId).orElseThrow().isPortfolioIncluded()).isFalse();
+        assertThat(portfolioService.getPortfolio(memberId, artistPageId).artworks())
+                .extracting(PortfolioArtworkCardInfo::artworkId)
+                .containsExactly(keptArtworkId);
+    }
+
+    // 공유 포트폴리오를 수정으로 2개 미만으로 줄이는 것도 생성 시와 동일하게 막아야 한다 —
+    // 그렇지 않으면 생성만 막고 수정으로 우회하는 구멍이 생긴다.
+    @Test
+    void 공유_포트폴리오는_수정으로_1개로_줄이는_것이_거부된다() {
+        String memberId = registerProMember();
+        String keptArtworkId = uploadArtwork(memberId);
+        String droppedArtworkId = uploadArtwork(memberId);
+        PortfolioInfo created = portfolioService.createShared(
+                memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of(keptArtworkId, droppedArtworkId));
+
+        assertThatThrownBy(() -> portfolioService.updatePortfolio(
+                memberId, created.id(), null, List.of(keptArtworkId)))
+                .isInstanceOf(PortfolioException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("PORTFOLIO_ARTWORK_MINIMUM");
+        // 거부된 수정은 기존 구성을 그대로 남긴다.
+        assertThat(portfolioService.getPortfolio(memberId, created.id()).artworks())
+                .extracting(PortfolioArtworkCardInfo::artworkId)
+                .containsExactly(keptArtworkId, droppedArtworkId);
+    }
+
+    // 공유 포트폴리오를 수정으로 0개로 비우는 것도 같은 이유로 거부된다.
+    @Test
+    void 공유_포트폴리오는_수정으로_0개로_비우는_것이_거부된다() {
+        String memberId = registerProMember();
+        String keptArtworkId = uploadArtwork(memberId);
+        String droppedArtworkId = uploadArtwork(memberId);
+        PortfolioInfo created = portfolioService.createShared(
+                memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of(keptArtworkId, droppedArtworkId));
+
+        assertThatThrownBy(() -> portfolioService.updatePortfolio(memberId, created.id(), null, List.of()))
+                .isInstanceOf(PortfolioException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("PORTFOLIO_ARTWORK_MINIMUM");
+    }
+
+    // 작가 페이지는 이 규칙과 무관하다 — 1개로 줄이는 것도, 0개로 비우는 것도 허용된다.
+    @Test
+    void 작가_페이지는_수정으로_1개로_줄여도_허용된다() {
+        String memberId = registerMember();
+        String keptArtworkId = uploadArtwork(memberId);
+        String droppedArtworkId = uploadArtwork(memberId);
+        String artistPageId = portfolioService.getSelectablePortfolios(memberId).getFirst().id();
+        portfolioService.addArtworks(memberId, artistPageId, List.of(keptArtworkId, droppedArtworkId));
+
+        portfolioService.updatePortfolio(memberId, artistPageId, null, List.of(keptArtworkId));
+
         assertThat(portfolioService.getPortfolio(memberId, artistPageId).artworks())
                 .extracting(PortfolioArtworkCardInfo::artworkId)
                 .containsExactly(keptArtworkId);
@@ -368,8 +462,9 @@ class PortfolioServiceTests {
     void 공유_포트폴리오_삭제는_플랜과_무관하게_허용된다() {
         String memberId = registerProMember();
         String artworkId = uploadArtwork(memberId);
+        String secondArtworkId = uploadArtwork(memberId);
         PortfolioInfo created = portfolioService.createShared(
-                memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of(artworkId));
+                memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of(artworkId, secondArtworkId));
         downgradeToStarter(memberId);
 
         portfolioService.deletePortfolio(memberId, created.id());
@@ -426,17 +521,18 @@ class PortfolioServiceTests {
     @Test
     void 다른_라이브_포트폴리오에_담긴_비공개_작품은_복제_자동_선택에_남는다() {
         String memberId = registerProMember();
+        String keptArtworkId = uploadArtwork(memberId);
         String privateArtworkId = uploadReadyArtwork(memberId);
         String artistPageId = portfolioService.getSelectablePortfolios(memberId).getFirst().id();
         portfolioService.addArtworks(memberId, artistPageId, List.of(privateArtworkId));
         PortfolioInfo created = portfolioService.createShared(memberId, "고정형", ReflectionType.SNAPSHOT,
-                List.of(privateArtworkId));
+                List.of(keptArtworkId, privateArtworkId));
 
         artworkService.updatePublication(memberId, privateArtworkId, false, List.of(artistPageId));
 
         assertThat(artworkRepository.findById(privateArtworkId).orElseThrow().isPortfolioIncluded()).isTrue();
         PortfolioDuplicationSourceInfo source = portfolioService.getDuplicationSource(memberId, created.id());
-        assertThat(source.selectedArtworkIds()).containsExactly(privateArtworkId);
+        assertThat(source.selectedArtworkIds()).containsExactly(keptArtworkId, privateArtworkId);
         assertThat(source.excludedCount()).isZero();
     }
 
@@ -458,7 +554,7 @@ class PortfolioServiceTests {
         assertThat(source.excludedCount()).isEqualTo(1);
         // 자동 선택에서만 빠질 뿐 사용자가 직접 골라 담는 것은 막지 않는다.
         assertThat(portfolioService.createShared(memberId, "수동 선택", ReflectionType.LIVE,
-                List.of(linkOnlyArtworkId)).itemCount()).isEqualTo(1);
+                List.of(linkOnlyArtworkId, keptArtworkId)).itemCount()).isEqualTo(2);
     }
 
     // 고정형은 스냅샷이 아니라 원본의 현재 상태로 판정한다 — 복제본은 원본을 다시 담기 때문이다(§5.3).
@@ -556,8 +652,9 @@ class PortfolioServiceTests {
     @Test
     void 스타터가_업로드에서_공유_포트폴리오를_지정하면_작품까지_롤백된다() {
         String memberId = registerProMember();
+        List<String> fillerArtworkIds = List.of(uploadArtwork(memberId), uploadArtwork(memberId));
         PortfolioInfo shared = portfolioService.createShared(
-                memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of());
+                memberId, "공유 포트폴리오", ReflectionType.LIVE, fillerArtworkIds);
         // 프로에서 스타터로 다운그레이드 — 기존 공유 포트폴리오는 남지만 편입은 프로 전용이다(요금제-R01).
         downgradeToStarter(memberId);
         int before = artworkService.getMyArtworks(memberId, null, 50).items().size();
@@ -568,7 +665,8 @@ class PortfolioServiceTests {
                 .isEqualTo(HttpStatus.FORBIDDEN);
 
         assertThat(artworkService.getMyArtworks(memberId, null, 50).items()).hasSize(before);
-        assertThat(portfolioService.getPortfolio(memberId, shared.id()).itemCount()).isZero();
+        // 실패한 업로드의 편입은 반영되지 않았지만 생성 시점의 필러 구성은 그대로 남는다.
+        assertThat(portfolioService.getPortfolio(memberId, shared.id()).itemCount()).isEqualTo(2);
     }
 
     // 타인 포트폴리오 지정도 같은 경로에서 막힌다 — 존재 여부를 흘리지 않도록 접근 거부로 응답한다.
@@ -589,7 +687,7 @@ class PortfolioServiceTests {
     void 고정형_포트폴리오를_지정한_업로드는_거부된다() {
         String memberId = registerProMember();
         PortfolioInfo snapshot = portfolioService.createShared(
-                memberId, "고정형", ReflectionType.SNAPSHOT, List.of());
+                memberId, "고정형", ReflectionType.SNAPSHOT, List.of(uploadArtwork(memberId), uploadArtwork(memberId)));
 
         assertThatThrownBy(() -> uploadWithSelection(memberId, true, List.of(snapshot.id())))
                 .isInstanceOf(PortfolioException.class)
@@ -602,8 +700,10 @@ class PortfolioServiceTests {
     void 노출_위치_재선언은_목록에_없는_포트폴리오에서_작품을_뺀다() {
         String memberId = registerProMember();
         String artistPageId = portfolioService.getSelectablePortfolios(memberId).getFirst().id();
+        String fillerArtworkId1 = uploadArtwork(memberId);
+        String fillerArtworkId2 = uploadArtwork(memberId);
         PortfolioInfo shared = portfolioService.createShared(
-                memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of());
+                memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of(fillerArtworkId1, fillerArtworkId2));
         String artworkId = uploadReadyWithSelection(memberId, true, List.of(artistPageId, shared.id()));
 
         artworkService.updatePublication(memberId, artworkId, false, List.of(shared.id()));
@@ -611,7 +711,7 @@ class PortfolioServiceTests {
         assertThat(portfolioService.getPortfolio(memberId, artistPageId).artworks()).isEmpty();
         assertThat(portfolioService.getPortfolio(memberId, shared.id()).artworks())
                 .extracting(PortfolioArtworkCardInfo::artworkId)
-                .containsExactly(artworkId);
+                .containsExactly(fillerArtworkId1, fillerArtworkId2, artworkId);
         Artwork artwork = artworkRepository.findById(artworkId).orElseThrow();
         assertThat(artwork.getVisibility()).isEqualTo(Visibility.PRIVATE);
         assertThat(artwork.isPortfolioIncluded()).isTrue();
@@ -623,8 +723,10 @@ class PortfolioServiceTests {
     void 이미지_처리_중에도_노출_위치를_재선언할_수_있다() {
         String memberId = registerProMember();
         String artistPageId = portfolioService.getSelectablePortfolios(memberId).getFirst().id();
+        String fillerArtworkId1 = uploadArtwork(memberId);
+        String fillerArtworkId2 = uploadArtwork(memberId);
         PortfolioInfo shared = portfolioService.createShared(
-                memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of());
+                memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of(fillerArtworkId1, fillerArtworkId2));
         String artworkId = uploadWithSelection(memberId, true, List.of(artistPageId));
 
         artworkService.updatePublication(memberId, artworkId, false, List.of(shared.id()));
@@ -632,7 +734,7 @@ class PortfolioServiceTests {
         assertThat(portfolioItemRepository.findByPortfolioIdOrderByOrdinal(artistPageId)).isEmpty();
         assertThat(portfolioItemRepository.findByPortfolioIdOrderByOrdinal(shared.id()))
                 .extracting(PortfolioItem::getArtworkId)
-                .containsExactly(artworkId);
+                .containsExactly(fillerArtworkId1, fillerArtworkId2, artworkId);
         Artwork artwork = artworkRepository.findById(artworkId).orElseThrow();
         assertThat(artwork.getStatus()).isEqualTo(ArtworkStatus.PROCESSING);
         assertThat(artwork.getVisibility()).isEqualTo(Visibility.PRIVATE);
@@ -829,9 +931,10 @@ class PortfolioServiceTests {
     @Test
     void 공유_슬러그로_최신_반영형_포트폴리오를_열람한다() {
         String memberId = registerProMember();
+        String fillerArtworkId = uploadReadyArtwork(memberId);
         String artworkId = uploadReadyArtwork(memberId);
         PortfolioInfo created = portfolioService.createShared(
-                memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of(artworkId));
+                memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of(fillerArtworkId, artworkId));
 
         PortfolioSharedInfo shared = portfolioService.getSharedPortfolio(created.shareSlug());
 
@@ -840,10 +943,10 @@ class PortfolioServiceTests {
         assertThat(shared.reflectionType()).isEqualTo(ReflectionType.LIVE);
         assertThat(shared.title()).isEqualTo("공유 포트폴리오");
         assertThat(shared.ownerName()).isEqualTo("작가");
-        assertThat(shared.itemCount()).isEqualTo(1);
+        assertThat(shared.itemCount()).isEqualTo(2);
         assertThat(portfolioService.getSharedPortfolioArtworks(created.shareSlug(), null, 20).items())
                 .extracting(PortfolioArtworkCardInfo::artworkId)
-                .containsExactly(artworkId);
+                .containsExactly(fillerArtworkId, artworkId);
     }
 
     // 슬러그로 찾지 못하면 작가 페이지 handle로 해석한다(§2.6).
@@ -905,10 +1008,11 @@ class PortfolioServiceTests {
     void 고정형_공유_열람은_생성_시점_작성자_이름을_유지한다() {
         String memberId = registerProMember();
         String artworkId = uploadArtwork(memberId);
+        String secondArtworkId = uploadArtwork(memberId);
         PortfolioInfo snapshot = portfolioService.createShared(
-                memberId, "고정형", ReflectionType.SNAPSHOT, List.of(artworkId));
+                memberId, "고정형", ReflectionType.SNAPSHOT, List.of(artworkId, secondArtworkId));
         PortfolioInfo live = portfolioService.createShared(
-                memberId, "최신 반영형", ReflectionType.LIVE, List.of(artworkId));
+                memberId, "최신 반영형", ReflectionType.LIVE, List.of(artworkId, secondArtworkId));
 
         memberService.updateName(memberId, "바뀐 이름");
 
@@ -929,8 +1033,9 @@ class PortfolioServiceTests {
     void 탈퇴한_회원의_공유_포트폴리오는_열람할_수_없다() {
         String memberId = registerProMember();
         String artworkId = uploadArtwork(memberId);
+        String secondArtworkId = uploadArtwork(memberId);
         PortfolioInfo created = portfolioService.createShared(
-                memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of(artworkId));
+                memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of(artworkId, secondArtworkId));
 
         memberService.deactivate(memberId);
         awaitBlocked(created.id());
@@ -985,8 +1090,9 @@ class PortfolioServiceTests {
     void 스냅샷_상세는_생성_시점_값을_그대로_돌려준다() {
         String memberId = registerProMember();
         String artworkId = uploadArtwork(memberId);
+        String fillerArtworkId = uploadArtwork(memberId);
         PortfolioInfo created = portfolioService.createShared(
-                memberId, "고정형", ReflectionType.SNAPSHOT, List.of(artworkId));
+                memberId, "고정형", ReflectionType.SNAPSHOT, List.of(artworkId, fillerArtworkId));
         String snapshotId = created.artworks().getFirst().snapshotId();
 
         // 원본을 바꿔도 스냅샷 상세는 생성 시점 값을 유지해야 한다(§5.1).
@@ -1017,10 +1123,11 @@ class PortfolioServiceTests {
     void 최신_반영형_포트폴리오에는_스냅샷_상세가_없다() {
         String memberId = registerProMember();
         String artworkId = uploadArtwork(memberId);
+        String fillerArtworkId = uploadArtwork(memberId);
         PortfolioInfo snapshot = portfolioService.createShared(
-                memberId, "고정형", ReflectionType.SNAPSHOT, List.of(artworkId));
+                memberId, "고정형", ReflectionType.SNAPSHOT, List.of(artworkId, fillerArtworkId));
         PortfolioInfo live = portfolioService.createShared(
-                memberId, "최신 반영형", ReflectionType.LIVE, List.of(artworkId));
+                memberId, "최신 반영형", ReflectionType.LIVE, List.of(artworkId, fillerArtworkId));
         String snapshotId = snapshot.artworks().getFirst().snapshotId();
 
         assertThatThrownBy(() -> portfolioService.getSharedSnapshotDetail(live.shareSlug(), snapshotId))
@@ -1034,10 +1141,11 @@ class PortfolioServiceTests {
     void 다른_포트폴리오의_스냅샷_식별자로는_열람할_수_없다() {
         String memberId = registerProMember();
         String artworkId = uploadArtwork(memberId);
+        String fillerArtworkId = uploadArtwork(memberId);
         PortfolioInfo first = portfolioService.createShared(
-                memberId, "고정형 A", ReflectionType.SNAPSHOT, List.of(artworkId));
+                memberId, "고정형 A", ReflectionType.SNAPSHOT, List.of(artworkId, fillerArtworkId));
         PortfolioInfo second = portfolioService.createShared(
-                memberId, "고정형 B", ReflectionType.SNAPSHOT, List.of(artworkId));
+                memberId, "고정형 B", ReflectionType.SNAPSHOT, List.of(artworkId, fillerArtworkId));
 
         String firstSnapshotId = first.artworks().getFirst().snapshotId();
         assertThat(second.artworks().getFirst().snapshotId()).isNotEqualTo(firstSnapshotId);
@@ -1052,8 +1160,9 @@ class PortfolioServiceTests {
     void 운영_차단된_스냅샷_상세는_열람할_수_없다() {
         String memberId = registerProMember();
         String artworkId = uploadArtwork(memberId);
+        String fillerArtworkId = uploadArtwork(memberId);
         PortfolioInfo created = portfolioService.createShared(
-                memberId, "고정형", ReflectionType.SNAPSHOT, List.of(artworkId));
+                memberId, "고정형", ReflectionType.SNAPSHOT, List.of(artworkId, fillerArtworkId));
         String snapshotId = created.artworks().getFirst().snapshotId();
 
         blockSnapshotsOf(artworkId);
@@ -1069,8 +1178,9 @@ class PortfolioServiceTests {
     void 삭제된_포트폴리오의_스냅샷_상세는_열람할_수_없다() {
         String memberId = registerProMember();
         String artworkId = uploadArtwork(memberId);
+        String fillerArtworkId = uploadArtwork(memberId);
         PortfolioInfo created = portfolioService.createShared(
-                memberId, "고정형", ReflectionType.SNAPSHOT, List.of(artworkId));
+                memberId, "고정형", ReflectionType.SNAPSHOT, List.of(artworkId, fillerArtworkId));
         String snapshotId = created.artworks().getFirst().snapshotId();
 
         portfolioService.deletePortfolio(memberId, created.id());
@@ -1086,8 +1196,9 @@ class PortfolioServiceTests {
     void 탈퇴한_회원의_스냅샷_상세는_열람할_수_없다() {
         String memberId = registerProMember();
         String artworkId = uploadArtwork(memberId);
+        String fillerArtworkId = uploadArtwork(memberId);
         PortfolioInfo created = portfolioService.createShared(
-                memberId, "고정형", ReflectionType.SNAPSHOT, List.of(artworkId));
+                memberId, "고정형", ReflectionType.SNAPSHOT, List.of(artworkId, fillerArtworkId));
         String snapshotId = created.artworks().getFirst().snapshotId();
 
         memberService.deactivate(memberId);
@@ -1104,8 +1215,9 @@ class PortfolioServiceTests {
     void 구버전_payload로_저장된_스냅샷도_상세를_돌려준다() {
         String memberId = registerProMember();
         String artworkId = uploadArtwork(memberId);
+        String fillerArtworkId = uploadArtwork(memberId);
         PortfolioInfo created = portfolioService.createShared(
-                memberId, "고정형", ReflectionType.SNAPSHOT, List.of(artworkId));
+                memberId, "고정형", ReflectionType.SNAPSHOT, List.of(artworkId, fillerArtworkId));
         String snapshotId = created.artworks().getFirst().snapshotId();
 
         // description·images만 있던 시절의 payload로 되돌린다.
@@ -1207,16 +1319,20 @@ class PortfolioServiceTests {
     @Test
     void 처리_중인_작품은_공유_목록에서_빠지고_본인_화면에는_남는다() {
         String memberId = registerProMember();
+        String fillerArtworkId1 = uploadReadyArtwork(memberId);
+        String fillerArtworkId2 = uploadReadyArtwork(memberId);
         PortfolioInfo created = portfolioService.createShared(
-                memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of());
+                memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of(fillerArtworkId1, fillerArtworkId2));
         String imageKey = "raw/" + UUID.randomUUID() + ".png";
         String artworkId = uploadWithSelection(memberId, true, List.of(created.id()), imageKey);
 
-        assertThat(portfolioService.getSharedPortfolioArtworks(created.shareSlug(), null, 20).items()).isEmpty();
+        assertThat(portfolioService.getSharedPortfolioArtworks(created.shareSlug(), null, 20).items())
+                .extracting(PortfolioArtworkCardInfo::artworkId)
+                .containsExactly(fillerArtworkId1, fillerArtworkId2);
         // 본인 화면에서는 처리 중에도 구성에 담긴 것으로 보인다.
         assertThat(portfolioService.getPortfolio(memberId, created.id()).artworks())
                 .extracting(PortfolioArtworkCardInfo::artworkId)
-                .containsExactly(artworkId);
+                .containsExactly(fillerArtworkId1, fillerArtworkId2, artworkId);
 
         mediaCallbackService.process(MediaOwnerType.ARTWORK, artworkId, imageKey,
                 "thumb", null, "avif", MediaProcessingStatus.DONE);
@@ -1224,7 +1340,7 @@ class PortfolioServiceTests {
 
         assertThat(portfolioService.getSharedPortfolioArtworks(created.shareSlug(), null, 20).items())
                 .extracting(PortfolioArtworkCardInfo::artworkId)
-                .containsExactly(artworkId);
+                .containsExactly(fillerArtworkId1, fillerArtworkId2, artworkId);
     }
 
     // 휴지통 작품이 대량으로 쌓이면 비인증 요청 한 번이 구성 전체를 훑게 된다 — 스캔 상한에서 끊되
@@ -1269,11 +1385,12 @@ class PortfolioServiceTests {
     void 업데이트순은_수정하기로만_바뀐다() {
         String memberId = registerProMember();
         String artworkId = uploadArtwork(memberId);
+        String fillerArtworkId = uploadArtwork(memberId);
         String anotherArtworkId = uploadArtwork(memberId);
         PortfolioInfo older = portfolioService.createShared(
-                memberId, "먼저 만든 포트폴리오", ReflectionType.LIVE, List.of(artworkId));
+                memberId, "먼저 만든 포트폴리오", ReflectionType.LIVE, List.of(artworkId, fillerArtworkId));
         PortfolioInfo newer = portfolioService.createShared(
-                memberId, "나중에 만든 포트폴리오", ReflectionType.LIVE, List.of(artworkId));
+                memberId, "나중에 만든 포트폴리오", ReflectionType.LIVE, List.of(artworkId, fillerArtworkId));
 
         // 작품 추가·제거는 시스템 변경이므로 순서에 영향이 없다.
         portfolioService.addArtworks(memberId, older.id(), List.of(anotherArtworkId));
@@ -1293,10 +1410,11 @@ class PortfolioServiceTests {
     @Test
     void 같은_밀리초에_만들어진_포트폴리오도_모든_정렬에서_빠짐없이_조회된다() {
         String memberId = registerProMember();
+        List<String> fillerArtworkIds = List.of(uploadArtwork(memberId), uploadArtwork(memberId));
         List<String> ids = List.of(
-                portfolioService.createShared(memberId, "포트폴리오1", ReflectionType.LIVE, List.of()).id(),
-                portfolioService.createShared(memberId, "포트폴리오2", ReflectionType.LIVE, List.of()).id(),
-                portfolioService.createShared(memberId, "포트폴리오3", ReflectionType.LIVE, List.of()).id());
+                portfolioService.createShared(memberId, "포트폴리오1", ReflectionType.LIVE, fillerArtworkIds).id(),
+                portfolioService.createShared(memberId, "포트폴리오2", ReflectionType.LIVE, fillerArtworkIds).id(),
+                portfolioService.createShared(memberId, "포트폴리오3", ReflectionType.LIVE, fillerArtworkIds).id());
         // 밀리초는 같고 마이크로초만 다른 세 행.
         setSortTimes(ids.get(0), "2026-08-01 00:00:00.123001");
         setSortTimes(ids.get(1), "2026-08-01 00:00:00.123002");
@@ -1314,10 +1432,11 @@ class PortfolioServiceTests {
     @Test
     void 정렬_기준_시각이_완전히_같은_포트폴리오도_모두_조회된다() {
         String memberId = registerProMember();
+        List<String> fillerArtworkIds = List.of(uploadArtwork(memberId), uploadArtwork(memberId));
         List<String> ids = List.of(
-                portfolioService.createShared(memberId, "포트폴리오1", ReflectionType.LIVE, List.of()).id(),
-                portfolioService.createShared(memberId, "포트폴리오2", ReflectionType.LIVE, List.of()).id(),
-                portfolioService.createShared(memberId, "포트폴리오3", ReflectionType.LIVE, List.of()).id());
+                portfolioService.createShared(memberId, "포트폴리오1", ReflectionType.LIVE, fillerArtworkIds).id(),
+                portfolioService.createShared(memberId, "포트폴리오2", ReflectionType.LIVE, fillerArtworkIds).id(),
+                portfolioService.createShared(memberId, "포트폴리오3", ReflectionType.LIVE, fillerArtworkIds).id());
         ids.forEach(id -> setSortTimes(id, "2026-08-02 00:00:00.500000"));
 
         for (PortfolioSort sort : PortfolioSort.values()) {
@@ -1536,8 +1655,9 @@ class PortfolioServiceTests {
         String memberId = registerProMember();
         String keptArtworkId = uploadArtwork(memberId);
         String addedArtworkId = uploadArtwork(memberId);
+        String fillerArtworkId = uploadArtwork(memberId);
         PortfolioInfo created = portfolioService.createShared(
-                memberId, "원래 제목", ReflectionType.LIVE, List.of(keptArtworkId));
+                memberId, "원래 제목", ReflectionType.LIVE, List.of(keptArtworkId, fillerArtworkId));
         Instant lastEditedAt = portfolioRepository.findById(created.id()).orElseThrow().getLastEditedAt();
 
         PortfolioInfo updated = portfolioService.updatePortfolio(
@@ -1597,8 +1717,9 @@ class PortfolioServiceTests {
     void 구성_교체는_결과가_같아도_포트폴리오_버전을_올린다() {
         String memberId = registerProMember();
         String artworkId = uploadArtwork(memberId);
+        String fillerArtworkId = uploadArtwork(memberId);
         PortfolioInfo created = portfolioService.createShared(
-                memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of(artworkId));
+                memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of(artworkId, fillerArtworkId));
         long before = versionOf(created.id());
 
         // 이미 담긴 작품을 다시 추가 — 병합 결과도 개수도 그대로다.
@@ -1612,9 +1733,10 @@ class PortfolioServiceTests {
     void 저장된_버전이_먼저_바뀌면_뒤늦은_구성_교체는_거부된다() {
         String memberId = registerProMember();
         String baseArtworkId = uploadArtwork(memberId);
+        String fillerArtworkId = uploadArtwork(memberId);
         String lateArtworkId = uploadArtwork(memberId);
         PortfolioInfo created = portfolioService.createShared(
-                memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of(baseArtworkId));
+                memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of(baseArtworkId, fillerArtworkId));
 
         assertThatThrownBy(() -> inSingleTransaction(() -> {
             holdStaleReference(created.id());
@@ -1628,7 +1750,7 @@ class PortfolioServiceTests {
         // 뒤늦은 교체는 통째로 롤백된다 — 먼저 반영된 쪽의 구성이 그대로 남는다.
         assertThat(portfolioItemRepository.findByPortfolioIdOrderByOrdinal(created.id()))
                 .extracting(PortfolioItem::getArtworkId)
-                .containsExactly(baseArtworkId);
+                .containsExactly(baseArtworkId, fillerArtworkId);
     }
 
     // 업로드 트랜잭션 안에서 포트폴리오 낙관적 락이 충돌하면 업로드까지 통째로 롤백된다 —
@@ -1637,8 +1759,9 @@ class PortfolioServiceTests {
     void 업로드_도중_포트폴리오_낙관적_락이_충돌하면_업로드_전체가_롤백된다() {
         String memberId = registerProMember();
         String baseArtworkId = uploadArtwork(memberId);
+        String fillerArtworkId = uploadArtwork(memberId);
         PortfolioInfo created = portfolioService.createShared(
-                memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of(baseArtworkId));
+                memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of(baseArtworkId, fillerArtworkId));
         long artworkCountBefore = artworkCountOf(memberId);
 
         assertThatThrownBy(() -> inSingleTransaction(() -> {
@@ -1654,7 +1777,7 @@ class PortfolioServiceTests {
         assertThat(artworkCountOf(memberId)).isEqualTo(artworkCountBefore);
         assertThat(portfolioItemRepository.findByPortfolioIdOrderByOrdinal(created.id()))
                 .extracting(PortfolioItem::getArtworkId)
-                .containsExactly(baseArtworkId);
+                .containsExactly(baseArtworkId, fillerArtworkId);
     }
 
     private String registerMember() {

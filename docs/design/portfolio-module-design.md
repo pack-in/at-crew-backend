@@ -249,9 +249,9 @@ portfolio는 현재 다른 모듈이 동기 호출할 필요가 없는 리프(le
 |---|---|---|---|---|---|
 | GET | `/api/portfolios/me` | 필요 | `kind?`, `reflectionType?`, `sort=OLDEST\|LATEST\|UPDATED`(기본 LATEST), `cursor`, `size` | `CursorPage<PortfolioSummaryInfo>` | 401 |
 | GET | `/api/portfolios/selectable` | 필요 | — | `List<PortfolioSelectableInfo>`(작가 페이지 + LIVE만, 고정형 제외) | 401 |
-| POST | `/api/portfolios` | 필요(프로) | `{title, reflectionType, artworkIds[]}` | 201 `PortfolioInfo` | 403 `PRO_PLAN_REQUIRED`, 404 `ARTWORK_NOT_FOUND` |
+| POST | `/api/portfolios` | 필요(프로) | `{title, reflectionType, artworkIds[]}` | 201 `PortfolioInfo` | 403 `PRO_PLAN_REQUIRED`, 404 `ARTWORK_NOT_FOUND`, 400 `PORTFOLIO_ARTWORK_MINIMUM`(작품 2개 미만) |
 | GET | `/api/portfolios/{portfolioId}` | 필요(소유자) | — | `PortfolioInfo` | 403 `PORTFOLIO_ACCESS_DENIED`, 404 |
-| PATCH | `/api/portfolios/{portfolioId}` | 필요(프로) | `{title?, artworkIds?}` | 200 | 403 `PRO_PLAN_REQUIRED`, 409 `SNAPSHOT_PORTFOLIO_IMMUTABLE`, 400 `ARTIST_PAGE_TITLE_IMMUTABLE`, 400 `INVALID_PORTFOLIO_TITLE` |
+| PATCH | `/api/portfolios/{portfolioId}` | 필요(프로) | `{title?, artworkIds?}` | 200 | 403 `PRO_PLAN_REQUIRED`, 409 `SNAPSHOT_PORTFOLIO_IMMUTABLE`, 400 `ARTIST_PAGE_TITLE_IMMUTABLE`, 400 `INVALID_PORTFOLIO_TITLE`, 400 `PORTFOLIO_ARTWORK_MINIMUM`(공유 포트폴리오를 2개 미만으로 줄이는 경우, 작가 페이지는 제외) |
 | DELETE | `/api/portfolios/{portfolioId}` | 필요 | — | 204 | 409 `ARTIST_PAGE_NOT_DELETABLE` |
 | GET | `/api/portfolios/{portfolioId}/duplication-source` | 필요 | — | `{defaultTitle, selectedArtworkIds[], excludedCount}` | 403, 404 |
 | POST | `/api/portfolios/{portfolioId}/artworks` | 필요(프로) | `{artworkIds[]}` | 204 | 403 `PRO_PLAN_REQUIRED`, 409 `SNAPSHOT_PORTFOLIO_IMMUTABLE` |
@@ -319,7 +319,7 @@ GET /api/portfolios/{id}/duplication-source:
 5. 응답 = { defaultTitle: "{원본 제목 또는 사용자 이름} 복사본", selectedArtworkIds: 남은 ID들, excludedCount }
 ```
 
-자동 선택 0개여도 진행 가능(R41 명시). 원본이 ARTIST_PAGE여도 복제 결과는 항상 SHARED다(작가 페이지는 회원당 1개로 강제됨). 원본 유형은 복제본에 상속되지 않고 매번 새로 선택한다.
+이 조회 자체는 자동 선택 0개여도 진행 가능하다(R41 명시) — `duplication-source`는 원본 상태를 그대로 보여줄 뿐 생성을 실행하지 않기 때문이다. 다만 이 값을 그대로 실제 생성 API(`POST /api/portfolios`)에 넘기면 공유 포트폴리오 최소 2개 규칙(제품 결정, 2026-08-28)이 그대로 적용돼 선택된 작품이 2개 미만이면 생성이 거부된다. 원본이 ARTIST_PAGE여도 복제 결과는 항상 SHARED다(작가 페이지는 회원당 1개로 강제됨). 원본 유형은 복제본에 상속되지 않고 매번 새로 선택한다.
 
 ### 5.4 완전 비공개 판정과의 연동
 
