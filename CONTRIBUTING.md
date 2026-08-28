@@ -53,6 +53,24 @@ docs/zzz ─┘   (통합)   (배포)
 | 작업 브랜치 → `dev` | **Squash merge** | PR 제목이 그대로 커밋이 되어 히스토리가 한 줄로 정리된다. 작업 중의 중간 커밋은 남길 가치가 없다 |
 | `dev` → `main` | **Merge commit** | squash하면 개별 `feat`·`fix` 커밋이 하나로 뭉개져 릴리스 노트가 "배포"라는 한 줄이 된다. release-please는 main의 개별 커밋을 읽어 CHANGELOG를 만든다 |
 
+### 예외 — Dependabot 보안 PR
+
+Dependabot의 보안 업데이트는 **기본 브랜치(`main`)에만** PR을 연다. `.github/dependabot.yml`에
+`target-branch`를 지정하면 대상은 바뀌지만 **보안 업데이트 자체가 동작하지 않게 되므로** 그 설정은 쓰지 않는다.
+
+그래서 Dependabot 보안 PR은 위 흐름의 유일한 예외다. 받았을 때는 둘 중 하나를 고른다.
+
+- 내용을 확인하고 그대로 `main`에 넣는다 — 곧 배포되므로 CI 통과를 반드시 확인한다
+- 같은 변경을 `dev` 기준으로 다시 올리고 Dependabot PR은 닫는다 — 다른 변경과 함께 배포하고 싶을 때
+
+**`dev`가 `main`보다 뒤처진 상태에서 `main`에만 넣으면 다음 `dev → main`에서 되돌아갈 수 있다.**
+`main`에 직접 넣었다면 곧바로 `main`을 `dev`로 병합해 맞춘다.
+
+### 브랜치 흐름은 설정으로 강제되지 않는다
+
+GitHub 브랜치 보호에는 "PR의 base를 제한"하는 규칙이 없다. 작업 브랜치에서 `main`으로 바로 PR을
+여는 것을 막을 방법이 없으므로 **규율로 지킨다.** `main`에는 상태 검사·force push 금지만 걸려 있다.
+
 ## 커밋
 
 [Conventional Commits](https://www.conventionalcommits.org/)를 따른다. 상세는
