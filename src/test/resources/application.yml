@@ -111,3 +111,15 @@ sentry:
     # 전송 스레드와 실패한 연결을 쌓는 낭비만 사라진다 — 테스트가 외부로 나가서도 안 된다.
     minimum-event-level: off
     minimum-breadcrumb-level: off
+
+# 비동기 이벤트(@ApplicationModuleListener) 처리용 풀. 기본값(core 8)은 리스너 16개가 공유하는데,
+# 그중 Elasticsearch 색인 두 개가 느려서 뒤에 오는 이벤트가 밀린다 — 포트폴리오 구성 정리처럼
+# 테스트가 폴링으로 기다리는 이벤트가 그 뒤에 서면 대기 시간을 넘긴다(2026-08-28 CI 실패 분석).
+# 러너가 2코어라 스레드를 늘려도 CPU는 그대로지만, 색인의 네트워크 대기 동안 다른 이벤트가
+# 진행되므로 큐 대기가 줄어든다.
+spring.task.execution:
+  pool:
+    core-size: 16
+    max-size: 32
+    queue-capacity: 200
+  thread-name-prefix: test-async-
