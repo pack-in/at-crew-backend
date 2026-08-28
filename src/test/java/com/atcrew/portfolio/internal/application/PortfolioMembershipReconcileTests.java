@@ -245,8 +245,10 @@ class PortfolioMembershipReconcileTests {
     /** artwork 리스너는 @ApplicationModuleListener(비동기)라 READY 반영까지 폴링한다. */
     private void awaitReady(String memberId, String artworkId) {
         Instant deadline = Instant.now().plus(Duration.ofSeconds(45));
+        ArtworkStatus lastSeen = null;
         while (Instant.now().isBefore(deadline)) {
-            if (artworkService.getArtworkStatus(memberId, artworkId) == ArtworkStatus.READY) {
+            lastSeen = artworkService.getArtworkStatus(memberId, artworkId);
+            if (lastSeen == ArtworkStatus.READY) {
                 return;
             }
             try {
@@ -256,6 +258,7 @@ class PortfolioMembershipReconcileTests {
                 throw new IllegalStateException(e);
             }
         }
-        throw new AssertionError("READY 전환 대기 시간 초과");
+        // 실패 시 마지막 관측 상태를 남긴다 — 상태 이름만 알아도 어느 단계에서 멈췄는지 좁혀진다(#72).
+        throw new AssertionError("READY 전환 대기 시간 초과: artworkId=" + artworkId + " actual=" + lastSeen);
     }
 }

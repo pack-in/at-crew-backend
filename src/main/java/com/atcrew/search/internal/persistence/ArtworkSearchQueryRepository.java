@@ -36,14 +36,14 @@ public class ArtworkSearchQueryRepository {
     }
 
     public ArtworkSearchResult search(SearchQuery query) {
-        boolean relevance = resolveSort(query) == SearchSort.RELEVANCE;
+        SearchSort sort = resolveSort(query);
 
         NativeQuery nativeQuery = NativeQuery.builder()
                 .withQuery(buildQuery(query))
                 .withTrackTotalHits(true)
                 .withPageable(PageRequest.ofSize(query.size() + 1))
-                .withSort(buildSort(relevance))
-                .withSearchAfter(query.cursor() != null ? decodeCursor(query.cursor(), relevance) : null)
+                .withSort(buildSort(sort))
+                .withSearchAfter(query.cursor() != null ? decodeCursor(query.cursor(), sort) : null)
                 .build();
 
         SearchHits<ArtworkSearchDocument> hits = operations.search(nativeQuery, ArtworkSearchDocument.class);
@@ -113,22 +113,23 @@ public class ArtworkSearchQueryRepository {
         return values == null ? List.of() : values.stream().map(Enum::name).toList();
     }
 
-    private List<SortOptions> buildSort(boolean relevance) {
+    private List<SortOptions> buildSort(SearchSort sort) {
         List<SortOptions> sorts = new ArrayList<>();
-        if (relevance) {
+        if (sort == SearchSort.RELEVANCE) {
             sorts.add(SortOptions.of(so -> so.score(sc -> sc.order(SortOrder.Desc))));
         }
-        sorts.add(SortOptions.of(so -> so.field(f -> f.field("createdAt").order(SortOrder.Desc))));
+        SortOrder createdAtOrder = sort == SearchSort.OLDEST ? SortOrder.Asc : SortOrder.Desc;
+        sorts.add(SortOptions.of(so -> so.field(f -> f.field("createdAt").order(createdAtOrder))));
         sorts.add(SortOptions.of(so -> so.field(f -> f.field("id").order(SortOrder.Asc))));
         return sorts;
     }
 
-    private List<Object> decodeCursor(String cursor, boolean relevance) {
+    private List<Object> decodeCursor(String cursor, SearchSort sort) {
         List<String> parts = SearchCursor.decode(cursor);
         try {
             List<Object> values = new ArrayList<>();
             int idx = 0;
-            if (relevance) {
+            if (sort == SearchSort.RELEVANCE) {
                 values.add(Double.valueOf(parts.get(idx++)));
             }
             values.add(Long.valueOf(parts.get(idx++)));

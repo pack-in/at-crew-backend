@@ -4,8 +4,11 @@ import com.atcrew.search.PostType;
 import com.atcrew.search.SearchPage;
 import com.atcrew.search.SearchQuery;
 import com.atcrew.search.SearchResultItem;
+import com.atcrew.search.SearchSort;
 import com.atcrew.search.internal.domain.ArtworkSearchDocument;
 import com.atcrew.search.internal.domain.RecruitSearchDocument;
+import com.atcrew.search.internal.exception.SearchErrorCode;
+import com.atcrew.search.internal.exception.SearchException;
 import com.atcrew.search.internal.persistence.ArtworkSearchQueryRepository;
 import com.atcrew.search.internal.persistence.ArtworkSearchResult;
 import com.atcrew.search.internal.persistence.MergedSearchCursor;
@@ -18,8 +21,10 @@ import java.time.Instant;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -33,6 +38,18 @@ class SearchServiceImplTest {
     private final ArtworkSearchQueryRepository artworkRepo = mock(ArtworkSearchQueryRepository.class);
     private final RecruitSearchQueryRepository recruitRepo = mock(RecruitSearchQueryRepository.class);
     private final SearchServiceImpl service = new SearchServiceImpl(artworkRepo, recruitRepo);
+
+    @Test
+    void postTypes_미지정_통합검색에서_OLDEST_요청은_최신순으로_바뀌지_않고_400으로_거절된다() {
+        SearchQuery query = new SearchQuery("고양이", null, null, null, null, null, null, null, null,
+                SearchSort.OLDEST, null, 20);
+
+        assertThatThrownBy(() -> service.search(query))
+                .isInstanceOf(SearchException.class)
+                .extracting(e -> ((SearchException) e).getCode())
+                .isEqualTo(SearchErrorCode.UNSUPPORTED_SORT_FOR_MERGED_SEARCH.name());
+        verifyNoInteractions(artworkRepo, recruitRepo);
+    }
 
     @Test
     void 밀리초_타임스탬프가_겹치는_두_소스_항목이_경계에서_누락되지_않는다() {
