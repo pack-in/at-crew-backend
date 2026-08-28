@@ -55,6 +55,31 @@ class BookmarkServiceImpl implements BookmarkService {
     @Override
     @Transactional
     public BookmarkFolderInfo createFolder(String memberId, String name) {
+        String trimmed = validateFolderName(name);
+        if (folderRepository.existsByMemberIdAndName(memberId, trimmed)) {
+            throw new ArtworkException(ArtworkErrorCode.BOOKMARK_FOLDER_DUPLICATE_NAME, trimmed);
+        }
+        int sortOrder = folderRepository.countByMemberId(memberId);
+        BookmarkFolder folder = BookmarkFolder.create(memberId, trimmed, sortOrder);
+        return ArtworkMapper.toFolderInfo(folderRepository.save(folder));
+    }
+
+    @Override
+    @Transactional
+    public BookmarkFolderInfo renameFolder(String memberId, String folderId, String name) {
+        BookmarkFolder folder = folderRepository.findByIdAndMemberId(folderId, memberId)
+                .orElseThrow(() -> new ArtworkException(ArtworkErrorCode.BOOKMARK_FOLDER_NOT_FOUND, folderId));
+        folder.assertOwner(memberId);
+        String trimmed = validateFolderName(name);
+        if (folderRepository.existsByMemberIdAndNameAndIdNot(memberId, trimmed, folderId)) {
+            throw new ArtworkException(ArtworkErrorCode.BOOKMARK_FOLDER_DUPLICATE_NAME, trimmed);
+        }
+        folder.rename(trimmed);
+        return ArtworkMapper.toFolderInfo(folder);
+    }
+
+    // 공백 불가·최대 20자 제한은 생성·이름 변경에 공통이다.
+    private String validateFolderName(String name) {
         String trimmed = name == null ? "" : name.strip();
         if (trimmed.isBlank()) {
             throw new ArtworkException(ArtworkErrorCode.BOOKMARK_FOLDER_NAME_BLANK);
@@ -62,12 +87,7 @@ class BookmarkServiceImpl implements BookmarkService {
         if (trimmed.length() > 20) {
             throw new ArtworkException(ArtworkErrorCode.BOOKMARK_FOLDER_NAME_BLANK, "폴더명은 최대 20자입니다");
         }
-        if (folderRepository.existsByMemberIdAndName(memberId, trimmed)) {
-            throw new ArtworkException(ArtworkErrorCode.BOOKMARK_FOLDER_DUPLICATE_NAME, trimmed);
-        }
-        int sortOrder = folderRepository.countByMemberId(memberId);
-        BookmarkFolder folder = BookmarkFolder.create(memberId, trimmed, sortOrder);
-        return ArtworkMapper.toFolderInfo(folderRepository.save(folder));
+        return trimmed;
     }
 
     @Override
@@ -167,6 +187,8 @@ class BookmarkServiceImpl implements BookmarkService {
         }
         BookmarkEntry entry = BookmarkEntry.create(memberId, artworkId, folderId, artwork.getVisibility());
         BookmarkEntry saved = entryRepository.save(entry);
+        // 북마크순 정렬용 집계(이슈 #78) — 중복 저장은 위에서 이미 막았으므로 여기서는 항상 1 증가한다.
+        artworkRepository.incrementBookmarkCount(artworkId);
         MemberInfo author = memberService.findById(artwork.getAuthorId());
         return ArtworkMapper.toEntryInfo(saved, ArtworkMapper.toSummaryInfo(artwork, author));
     }
@@ -177,6 +199,8 @@ class BookmarkServiceImpl implements BookmarkService {
         BookmarkEntry entry = entryRepository.findByMemberIdAndArtworkId(memberId, artworkId)
                 .orElseThrow(() -> new ArtworkException(ArtworkErrorCode.BOOKMARK_NOT_FOUND, artworkId));
         entryRepository.delete(entry);
+        // 작품이 이미 영구 삭제됐으면 갱신 대상이 없어 0행이 바뀐다 — 북마크 해제 자체는 성공시킨다.
+        artworkRepository.decrementBookmarkCount(artworkId);
     }
 
     @Override

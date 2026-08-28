@@ -32,6 +32,7 @@ import jakarta.persistence.PostPersist;
 import jakarta.persistence.Table;
 import jakarta.persistence.Transient;
 import jakarta.persistence.Version;
+import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 import org.springframework.data.annotation.CreatedDate;
@@ -48,6 +49,10 @@ import java.util.Set;
 @Entity
 @Table(name = "artworks")
 @EntityListeners(AuditingEntityListener.class)
+// viewCount/bookmarkCount는 ArtworkRepository의 벌크 UPDATE로만 갱신된다(이슈 #78). 이 엔티티가 여느
+// 저장 경로(수정·복구·Worker 콜백 등)에서 전체 컬럼 UPDATE를 내면 로드 시점의 예전 카운터 값으로
+// 그 벌크 UPDATE 결과를 덮어써 되돌린다 — dirty 필드만 SET하도록 강제해 이를 막는다.
+@DynamicUpdate
 public class Artwork implements Persistable<String> {
 
     @Id
@@ -120,6 +125,17 @@ public class Artwork implements Persistable<String> {
 
     @Enumerated(EnumType.STRING)
     private AgeRating ageRating;
+
+    // 커뮤니티 피드 조회순 정렬용 누적 조회수(이슈 #78). 본인 조회는 제외하고 상세 조회마다 단순 증가하며,
+    // 증가는 엔티티가 아니라 ArtworkRepository의 원자적 UPDATE가 담당한다 — 동시 조회가 서로의 증가를
+    // 덮어쓰지 않게 하기 위함이다(recruit JobPosting.viewCount와 동일 방식).
+    @Column(name = "view_count", nullable = false)
+    private long viewCount;
+
+    // 커뮤니티 피드 북마크순 정렬용 북마크 수(이슈 #78). bookmark_entries의 COUNT를 비정규화한 값이며
+    // 저장/삭제 시 원자적 UPDATE로 증감한다.
+    @Column(name = "bookmark_count", nullable = false)
+    private long bookmarkCount;
 
     // 작품 설정 6단계의 "게시물 작성·노출 언어"(업로드-R30). 스타터는 주 사용 언어 1개, 프로는 다중 선택이며
     // 개수 검증은 플랜을 아는 서비스 계층이 한다. 마이그레이션 이전 작품은 비어 있고, 언어 필터에서
@@ -432,6 +448,8 @@ public class Artwork implements Persistable<String> {
     public Integer getCutCount() { return cutCount; }
     public List<String> getVideoLinks() { return videoLinks != null ? List.copyOf(videoLinks) : List.of(); }
     public AgeRating getAgeRating() { return ageRating; }
+    public long getViewCount() { return viewCount; }
+    public long getBookmarkCount() { return bookmarkCount; }
     public List<Language> getLanguages() { return languages.stream().sorted().toList(); }
     public Visibility getVisibility() { return visibility; }
     public boolean isPortfolioIncluded() { return portfolioIncluded; }

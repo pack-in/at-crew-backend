@@ -5,6 +5,7 @@ import com.atcrew.artwork.BookmarkFolderInfo;
 import com.atcrew.artwork.BookmarkService;
 import com.atcrew.artwork.internal.web.dto.CreateBookmarkFolderRequest;
 import com.atcrew.artwork.internal.web.dto.MoveBookmarkRequest;
+import com.atcrew.artwork.internal.web.dto.RenameBookmarkFolderRequest;
 import com.atcrew.artwork.internal.web.dto.SaveBookmarkRequest;
 import com.atcrew.common.response.ApiResponse;
 import com.atcrew.common.response.CursorPage;
@@ -55,6 +56,16 @@ class BookmarkController {
             @RequestBody @Valid CreateBookmarkFolderRequest request) {
         return ApiResponse.success(
                 bookmarkService.createFolder(securityUtils.getCurrentMemberId(), request.name()));
+    }
+
+    @Operation(summary = "북마크 폴더 이름 변경")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "변경 성공")
+    @PatchMapping("/folders/{folderId}")
+    public ApiResponse<BookmarkFolderInfo> renameFolder(
+            @Parameter(description = "폴더 ID") @PathVariable String folderId,
+            @RequestBody @Valid RenameBookmarkFolderRequest request) {
+        return ApiResponse.success(
+                bookmarkService.renameFolder(securityUtils.getCurrentMemberId(), folderId, request.name()));
     }
 
     @Operation(summary = "북마크 폴더 삭제", description = "폴더 내 북마크는 기본 폴더로 이동됩니다.")

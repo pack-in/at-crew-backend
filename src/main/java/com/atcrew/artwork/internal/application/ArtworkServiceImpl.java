@@ -4,6 +4,7 @@ import com.atcrew.artwork.AgeRating;
 import com.atcrew.artwork.ArtworkField;
 import com.atcrew.artwork.ArtworkInfo;
 import com.atcrew.artwork.ArtworkService;
+import com.atcrew.artwork.ArtworkSort;
 import com.atcrew.artwork.ArtworkStatus;
 import com.atcrew.artwork.ArtworkSummaryInfo;
 import com.atcrew.artwork.MaterialData;
@@ -31,6 +32,7 @@ import com.atcrew.member.MemberService;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Join;
+import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
@@ -49,6 +51,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -142,6 +145,7 @@ class ArtworkServiceImpl implements ArtworkService {
     }
 
     @Override
+    @Transactional
     public ArtworkInfo getArtwork(String artworkId, String viewerMemberId) {
         Artwork artwork = findArtworkById(artworkId);
         switch (artwork.accessFor(viewerMemberId)) {
@@ -150,6 +154,11 @@ class ArtworkServiceImpl implements ArtworkService {
             case PRIVATE -> throw new ArtworkException(ArtworkErrorCode.ARTWORK_PRIVATE, artworkId);
             case BLOCKED -> throw new ArtworkException(ArtworkErrorCode.ARTWORK_BLOCKED, artworkId);
             case ALLOWED -> { }
+        }
+        // 조회순 정렬용 집계(이슈 #78) — 접근이 허용된 뒤에만, 본인 조회는 빼고 센다. dedup은 두지 않는다
+        // (recruit 구인글과 동일 정책). 비로그인 조회도 남의 조회이므로 함께 센다.
+        if (!artwork.getAuthorId().equals(viewerMemberId)) {
+            artworkRepository.incrementViewCount(artworkId);
         }
         MemberInfo author = memberService.findById(artwork.getAuthorId());
         return ArtworkMapper.toInfo(artwork, author);
@@ -266,22 +275,27 @@ class ArtworkServiceImpl implements ArtworkService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public CursorPage<ArtworkSummaryInfo> getCommunityArtworks(ArtworkField artworkField,
                                                                 AgeRating ageRating,
                                                                 List<Language> viewerLanguages,
+                                                                ArtworkSort sort,
                                                                 String cursor, int size) {
+        ArtworkSort resolvedSort = sort != null ? sort : ArtworkSort.LATEST;
         int limit = size + 1;
-        Specification<Artwork> spec = buildCommunitySpecification(artworkField, ageRating, viewerLanguages, cursor);
+        Specification<Artwork> spec =
+                buildCommunitySpecification(artworkField, ageRating, viewerLanguages, resolvedSort, cursor);
         List<Artwork> artworks = artworkRepository
-                .findAll(spec, PageRequest.of(0, limit, Sort.by(Sort.Direction.DESC, "createdAt")))
+                .findAll(spec, PageRequest.of(0, limit, sortOf(resolvedSort)))
                 .getContent();
-        return toSummaryPage(artworks, size);
+        return toSummaryPage(artworks, size, last -> communityCursorOf(last, resolvedSort));
     }
 
     // Mongo Criteria 동적 쿼리 → JPA Specification (docs/design/mariadb-migration-design.md §3.6)
     private Specification<Artwork> buildCommunitySpecification(ArtworkField artworkField,
                                                                 AgeRating ageRating,
-                                                                List<Language> viewerLanguages, String cursor) {
+                                                                List<Language> viewerLanguages,
+                                                                ArtworkSort sort, String cursor) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             predicates.add(cb.equal(root.get("status"), ArtworkStatus.READY));
@@ -298,10 +312,106 @@ class ArtworkServiceImpl implements ArtworkService {
                 predicates.add(languageSegmentPredicate(root, query, cb, viewerLanguages));
             }
             if (cursor != null) {
-                predicates.add(cb.lessThan(root.get("createdAt"), parseCursor(cursor)));
+                predicates.add(communityCursorPredicate(root, cb, sort, cursor));
             }
             return cb.and(predicates.toArray(new Predicate[0]));
         };
+    }
+
+    /**
+     * 커뮤니티 피드 정렬(이슈 #78) — 어떤 기준이든 <b>(정렬 키, id)</b> 2단으로 정렬한다.
+     *
+     * <p>정렬 키 하나만으로 정렬하면 값이 같은 행들의 순서를 DB가 보장하지 않아, 페이지를 넘길 때마다
+     * 같은 값 묶음의 순서가 달라져 커서 페이지네이션에서 레코드가 빠지거나 중복된다. 조회수·북마크 수는
+     * 신규 작품이 전부 0이라 이 상황이 기본값이다. id는 UUIDv7이라 고유하면서 생성 시각순이라
+     * tiebreaker로 적합하다.
+     */
+    private Sort sortOf(ArtworkSort sort) {
+        return switch (sort) {
+            case LATEST -> Sort.by(Sort.Direction.DESC, "createdAt", "id");
+            case OLDEST -> Sort.by(Sort.Direction.ASC, "createdAt", "id");
+            case VIEW_COUNT -> Sort.by(Sort.Direction.DESC, "viewCount", "id");
+            case BOOKMARK_COUNT -> Sort.by(Sort.Direction.DESC, "bookmarkCount", "id");
+        };
+    }
+
+    /**
+     * 다음 페이지 커서 — {@code "정렬값_작품ID"}. 정렬 키와 tiebreaker를 함께 실어야 정렬값이 같은
+     * 구간의 중간에서도 이어받을 지점을 정확히 지목할 수 있다(member 프로필 검색의 rank 커서와 같은 형태).
+     *
+     * <p>등록일은 밀리초가 아니라 <b>마이크로초</b>로 싣는다. DB 컬럼이 DATETIME(6)이라 밀리초로 자르면
+     * 같은 밀리초 안의 작품이 커서와 정확히 같은 값이 되지 못해 다음 페이지에서 통째로 누락된다.
+     */
+    private String communityCursorOf(Artwork last, ArtworkSort sort) {
+        long sortValue = switch (sort) {
+            case LATEST, OLDEST -> toEpochMicros(last.getCreatedAt());
+            case VIEW_COUNT -> last.getViewCount();
+            case BOOKMARK_COUNT -> last.getBookmarkCount();
+        };
+        return sortValue + "_" + last.getId();
+    }
+
+    /** 커서 이후 구간 조건 — 정렬 방향에 따라 부등호가 뒤집힌다. */
+    private Predicate communityCursorPredicate(Root<Artwork> root, CriteriaBuilder cb,
+                                               ArtworkSort sort, String cursor) {
+        CommunityCursor c = parseCommunityCursor(cursor);
+        return switch (sort) {
+            case LATEST -> keysetPredicate(cb, root.get("createdAt"), fromEpochMicros(c.sortValue()),
+                    root.get("id"), c.artworkId(), false);
+            case OLDEST -> keysetPredicate(cb, root.get("createdAt"), fromEpochMicros(c.sortValue()),
+                    root.get("id"), c.artworkId(), true);
+            case VIEW_COUNT -> keysetPredicate(cb, root.get("viewCount"), c.sortValue(),
+                    root.get("id"), c.artworkId(), false);
+            case BOOKMARK_COUNT -> keysetPredicate(cb, root.get("bookmarkCount"), c.sortValue(),
+                    root.get("id"), c.artworkId(), false);
+        };
+    }
+
+    /**
+     * 튜플 비교 {@code (정렬키, id) < (커서정렬키, 커서id)}를 표준 SQL 형태로 편다(오름차순이면 부등호를 뒤집는다).
+     * 단순 AND로 묶으면(정렬키 &lt; 커서 AND id &lt; 커서id) 정렬값이 커서와 같은 나머지 행이 통째로 사라진다.
+     */
+    private <Y extends Comparable<? super Y>> Predicate keysetPredicate(
+            CriteriaBuilder cb, Path<Y> sortPath, Y sortValue,
+            Path<String> idPath, String artworkId, boolean ascending) {
+        if (ascending) {
+            return cb.or(
+                    cb.greaterThan(sortPath, sortValue),
+                    cb.and(cb.equal(sortPath, sortValue), cb.greaterThan(idPath, artworkId)));
+        }
+        return cb.or(
+                cb.lessThan(sortPath, sortValue),
+                cb.and(cb.equal(sortPath, sortValue), cb.lessThan(idPath, artworkId)));
+    }
+
+    private record CommunityCursor(
+            long sortValue,   // 정렬 키 값 (등록일은 epoch 마이크로초, 조회수·북마크 수는 그 값 그대로)
+            String artworkId  // tiebreaker로 쓰는 마지막 작품 ID
+    ) {
+    }
+
+    // 작품 ID(UUID)에는 '_'가 없으므로 첫 구분자 하나로 정확히 둘로 나뉜다.
+    private CommunityCursor parseCommunityCursor(String cursor) {
+        int separator = cursor.indexOf('_');
+        if (separator < 0 || separator == cursor.length() - 1) {
+            throw new ArtworkException(ArtworkErrorCode.INVALID_CURSOR);
+        }
+        try {
+            return new CommunityCursor(
+                    Long.parseLong(cursor.substring(0, separator)),
+                    cursor.substring(separator + 1));
+        } catch (NumberFormatException e) {
+            throw new ArtworkException(ArtworkErrorCode.INVALID_CURSOR);
+        }
+    }
+
+    private long toEpochMicros(Instant instant) {
+        return instant.getEpochSecond() * 1_000_000L + instant.getNano() / 1_000L;
+    }
+
+    private Instant fromEpochMicros(long micros) {
+        return Instant.ofEpochSecond(Math.floorDiv(micros, 1_000_000L),
+                Math.floorMod(micros, 1_000_000L) * 1_000L);
     }
 
     @Override
@@ -436,7 +546,13 @@ class ArtworkServiceImpl implements ArtworkService {
         return CursorPage.of(items, nextCursor);
     }
 
+    // 내 작품·휴지통 목록은 등록일 내림차순 단일 커서를 그대로 쓴다(커뮤니티 피드만 정렬 기준이 여러 개다).
     private CursorPage<ArtworkSummaryInfo> toSummaryPage(List<Artwork> artworks, int size) {
+        return toSummaryPage(artworks, size, last -> String.valueOf(last.getCreatedAt().toEpochMilli()));
+    }
+
+    private CursorPage<ArtworkSummaryInfo> toSummaryPage(List<Artwork> artworks, int size,
+                                                         Function<Artwork, String> nextCursorOf) {
         if (artworks.isEmpty()) return CursorPage.empty();
 
         boolean hasNext = artworks.size() > size;
@@ -456,9 +572,7 @@ class ArtworkServiceImpl implements ArtworkService {
                 .map(a -> ArtworkMapper.toSummaryInfo(a, authorMap.get(a.getAuthorId())))
                 .toList();
 
-        String nextCursor = hasNext
-                ? String.valueOf(page.get(page.size() - 1).getCreatedAt().toEpochMilli())
-                : null;
+        String nextCursor = hasNext ? nextCursorOf.apply(page.get(page.size() - 1)) : null;
         return CursorPage.of(items, nextCursor);
     }
 

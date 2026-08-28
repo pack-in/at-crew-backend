@@ -7,6 +7,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -54,6 +55,29 @@ public interface ArtworkRepository extends JpaRepository<Artwork, String>, JpaSp
     @Query("SELECT a FROM Artwork a WHERE a.authorId = :authorId AND a.status <> :excludedStatus")
     List<Artwork> findByAuthorIdAndStatusNotForUpdate(
             @Param("authorId") String authorId, @Param("excludedStatus") ArtworkStatus excludedStatus);
+
+    // 조회수 원자적 증가(이슈 #78) — 읽고-더하고-쓰는 방식은 동시 조회가 서로의 증가를 덮어쓴다.
+    // 낙관적 락(@Version)을 쓰면 인기 작품일수록 충돌로 조회 자체가 실패하므로 벌크 UPDATE로 처리한다
+    // (recruit JobPostingRepository.incrementViewCount와 동일 패턴).
+    @Modifying
+    @Query("UPDATE Artwork a SET a.viewCount = a.viewCount + 1 WHERE a.id = :id")
+    void incrementViewCount(@Param("id") String id);
+
+    // 북마크 수 원자적 증가 — BookmarkService.saveBookmark 전용
+    @Modifying
+    @Query("UPDATE Artwork a SET a.bookmarkCount = a.bookmarkCount + 1 WHERE a.id = :id")
+    void incrementBookmarkCount(@Param("id") String id);
+
+    /**
+     * 북마크 수 원자적 감소 — BookmarkService.removeBookmark 전용.
+     *
+     * <p>0에서 멈추는 CASE 가드를 둔다. 증감이 벌크 UPDATE라 저장 이력과 카운터가 어긋날 수 있고
+     * (마이그레이션 유입분, 동시 삭제), 한 번이라도 음수가 되면 정렬이 영구히 뒤틀린다.
+     * JPA 표준에 GREATEST가 없어 CASE 식으로 같은 동작을 표현한다.
+     */
+    @Modifying
+    @Query("UPDATE Artwork a SET a.bookmarkCount = CASE WHEN a.bookmarkCount > 0 THEN a.bookmarkCount - 1 ELSE 0 END WHERE a.id = :id")
+    void decrementBookmarkCount(@Param("id") String id);
 
     // getArtworksForReindex — 생성순 오름차순, 커서 있음/없음
     List<Artwork> findByCreatedAtAfterOrderByCreatedAtAsc(Instant cursor, Pageable pageable);

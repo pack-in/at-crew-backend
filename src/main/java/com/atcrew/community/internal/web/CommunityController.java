@@ -3,6 +3,7 @@ package com.atcrew.community.internal.web;
 import com.atcrew.artwork.AgeRating;
 import com.atcrew.artwork.ArtworkField;
 import com.atcrew.artwork.ArtworkService;
+import com.atcrew.artwork.ArtworkSort;
 import com.atcrew.artwork.ArtworkSummaryInfo;
 import com.atcrew.common.response.ApiResponse;
 import com.atcrew.common.response.CursorPage;
@@ -52,16 +53,22 @@ class CommunityController {
         this.recruitService = recruitService;
     }
 
-    @Operation(summary = "포트폴리오 탭 — 커뮤니티 작품 목록", description = "공개 작품을 최신순으로 조회합니다. 인증 불필요.")
+    @Operation(summary = "포트폴리오 탭 — 커뮤니티 작품 목록", description =
+            "공개 작품을 정렬 기준에 따라 조회합니다. 인증 불필요. "
+            + "정렬 기준을 바꾸면 커서의 의미도 달라지므로 cursor 없이 첫 페이지부터 다시 요청해야 합니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400",
+            description = "커서가 \"정렬값_작품ID\" 형식이 아님(INVALID_CURSOR)")
     @GetMapping("/artworks")
     public ApiResponse<CursorPage<ArtworkSummaryInfo>> getArtworks(
             @Parameter(description = "작품 분야 필터") @RequestParam(required = false) ArtworkField artworkField,
             @Parameter(description = "연령 등급 필터 (기본 ALL)") @RequestParam(required = false) AgeRating ageRating,
-            @Parameter(description = "커서 (마지막 작품 createdAt millis)") @RequestParam(required = false) String cursor,
+            @Parameter(description = "정렬 기준 (LATEST·OLDEST·VIEW_COUNT·BOOKMARK_COUNT, 기본 LATEST)")
+            @RequestParam(required = false, defaultValue = "LATEST") ArtworkSort sort,
+            @Parameter(description = "커서 (직전 응답의 nextCursor를 그대로 전달)") @RequestParam(required = false) String cursor,
             @Parameter(description = "페이지 크기 (기본 20, 최대 50)") @RequestParam(required = false) Integer size) {
         return ApiResponse.success(artworkService.getCommunityArtworks(
-                artworkField, ageRating, viewerLanguages(), cursor, resolveSize(size)));
+                artworkField, ageRating, viewerLanguages(), sort, cursor, resolveSize(size)));
     }
 
     @Operation(summary = "작가 프로필 탭 — 작가 찾아보기", description =
