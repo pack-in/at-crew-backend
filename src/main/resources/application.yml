@@ -88,7 +88,7 @@ sentry:
     minimum-breadcrumb-level: warn
 
 cors:
-  allowed-origins: http://localhost:3000
+  allowed-origins: http://localhost:3000,http://localhost:56000
 
 # 레포가 공개되어 있으므로 이 파일에는 "그대로 쓰면 동작하는" 기본 시크릿을 두지 않는다 —
 # 기본값이 있으면 값 주입을 깜빡한 환경이 공개된 키로 조용히 뜨고, 그 키로 누구나 토큰을 위조할 수 있다.
