@@ -388,6 +388,16 @@ class MemberServiceImpl implements MemberService {
     }
 
     @Override
+    public boolean isAdultContentVisible(String memberId) {
+        if (memberId == null) {
+            return true;
+        }
+        return memberRepository.findById(memberId)
+                .map(Member::isAdultContentVisible)
+                .orElse(true);
+    }
+
+    @Override
     @Transactional
     public void updateName(String memberId, String name) {
         Member member = findMemberById(memberId);

@@ -36,10 +36,15 @@ public interface ArtworkService {
      * @param sort            정렬 기준(이슈 #78). null이면 {@link ArtworkSort#LATEST}
      * @param cursor          {@code "정렬값_작품ID"} 형태의 복합 커서. 정렬 기준이 바뀌면 커서 의미도
      *                        달라지므로 정렬을 바꿀 때는 커서 없이 첫 페이지부터 다시 요청해야 한다
+     * @param viewerMemberId  뷰어 회원 ID. 비로그인이면 null. 성인 콘텐츠 표시 OFF일 때 본인 업로드분
+     *                        예외(마이페이지_작가-R21) 판정에 쓰인다
+     * @param viewerAdultContentVisible 뷰어의 성인 콘텐츠 표시 설정(설정-R10). false면 R18/G18 중
+     *                                  본인 업로드가 아닌 작품을 제외한다
      */
     CursorPage<ArtworkSummaryInfo> getCommunityArtworks(ArtworkField artworkField, AgeRating ageRating,
                                                         List<Language> viewerLanguages, ArtworkSort sort,
-                                                        String cursor, int size);
+                                                        String cursor, int size,
+                                                        String viewerMemberId, boolean viewerAdultContentVisible);
 
     CursorPage<ArtworkSummaryInfo> getMyArtworks(String memberId, String cursor, int size);
 

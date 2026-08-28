@@ -847,6 +847,54 @@ class PortfolioServiceTests {
                 .containsExactly(keptSnapshotId);
     }
 
+    // 성인 콘텐츠 표시 설정(설정-R10) — 최신 반영형·작가 페이지는 원본 authorId를 뷰어와 비교한다.
+    @Test
+    void 공유_목록은_표시_OFF_뷰어에게_최신_반영형의_R18_G18을_숨기되_소유자_본인은_항상_노출한다() {
+        String owner = registerProMember();
+        String viewer = registerMember();
+        memberService.updateAdultContentVisible(viewer, false);
+
+        String allArtworkId = uploadReadyArtwork(owner, AgeRating.ALL);
+        String r18ArtworkId = uploadReadyArtwork(owner, AgeRating.R18);
+        PortfolioInfo created = portfolioService.createShared(owner, "공유 포트폴리오", ReflectionType.LIVE,
+                List.of(allArtworkId, r18ArtworkId));
+
+        assertThat(portfolioService.getSharedPortfolioArtworks(created.shareSlug(), null, 20, viewer).items())
+                .extracting(PortfolioArtworkCardInfo::artworkId)
+                .containsExactly(allArtworkId);
+
+        // 소유자 본인 조회는 표시 설정과 무관하게 항상 노출된다(마이페이지_작가-R21).
+        assertThat(portfolioService.getSharedPortfolioArtworks(created.shareSlug(), null, 20, owner).items())
+                .extracting(PortfolioArtworkCardInfo::artworkId)
+                .containsExactlyInAnyOrder(allArtworkId, r18ArtworkId);
+
+        // 표시 ON이면 필터가 걸리지 않는다.
+        memberService.updateAdultContentVisible(viewer, true);
+        assertThat(portfolioService.getSharedPortfolioArtworks(created.shareSlug(), null, 20, viewer).items())
+                .extracting(PortfolioArtworkCardInfo::artworkId)
+                .containsExactlyInAnyOrder(allArtworkId, r18ArtworkId);
+    }
+
+    @Test
+    void 공유_목록은_표시_OFF_뷰어에게_고정형_스냅샷의_R18_G18을_숨기되_소유자_본인은_항상_노출한다() {
+        String owner = registerProMember();
+        String viewer = registerMember();
+        memberService.updateAdultContentVisible(viewer, false);
+
+        String allArtworkId = uploadReadyArtwork(owner, AgeRating.ALL);
+        String g18ArtworkId = uploadReadyArtwork(owner, AgeRating.G18);
+        PortfolioInfo created = portfolioService.createShared(owner, "고정형", ReflectionType.SNAPSHOT,
+                List.of(allArtworkId, g18ArtworkId));
+
+        assertThat(portfolioService.getSharedPortfolioArtworks(created.shareSlug(), null, 20, viewer).items())
+                .hasSize(1)
+                .extracting(PortfolioArtworkCardInfo::snapshotId)
+                .containsExactly(created.artworks().getFirst().snapshotId());
+
+        assertThat(portfolioService.getSharedPortfolioArtworks(created.shareSlug(), null, 20, owner).items())
+                .hasSize(2);
+    }
+
     // === 카드 커버 썸네일 (마이페이지_작가-R39) ===
 
     @Test
@@ -1897,6 +1945,20 @@ class PortfolioServiceTests {
     private String uploadReadyArtwork(String memberId) {
         String imageKey = "raw/" + UUID.randomUUID() + ".png";
         String artworkId = uploadArtwork(memberId, imageKey);
+        mediaCallbackService.process(MediaOwnerType.ARTWORK, artworkId, imageKey,
+                "thumb", null, "avif", MediaProcessingStatus.DONE);
+        awaitReady(memberId, artworkId);
+        return artworkId;
+    }
+
+    private String uploadReadyArtwork(String memberId, AgeRating ageRating) {
+        String imageKey = "raw/" + UUID.randomUUID() + ".png";
+        String artworkId = artworkService.uploadArtwork(memberId, new UploadArtworkCommand(
+                List.of(imageKey), 0, null, ImageLayoutType.VERTICAL_SCROLL,
+                "작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
+                List.of(ArtworkRole.LINEART), List.of(Genre.FANTASY), List.of("태그"),
+                ageRating, List.of(Language.KO), true, List.of(), List.of("clip studio"),
+                new WorkDuration(1, 1, 1, 1), 1, List.of(), List.of())).id();
         mediaCallbackService.process(MediaOwnerType.ARTWORK, artworkId, imageKey,
                 "thumb", null, "avif", MediaProcessingStatus.DONE);
         awaitReady(memberId, artworkId);

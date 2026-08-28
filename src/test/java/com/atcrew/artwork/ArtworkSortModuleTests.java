@@ -169,7 +169,7 @@ class ArtworkSortModuleTests {
         // 커서가 진전되지 않아 같은 페이지를 무한히 도는 회귀를 테스트가 매달리지 않고 잡도록 상한을 둔다.
         for (int page = 0; page < 50; page++) {
             CursorPage<ArtworkSummaryInfo> result = artworkService.getCommunityArtworks(
-                    field, null, List.of(), sort, cursor, pageSize);
+                    field, null, List.of(), sort, cursor, pageSize, null, true);
             ids.addAll(result.items().stream().map(ArtworkSummaryInfo::id).toList());
             cursor = result.nextCursor();
             if (cursor == null) {

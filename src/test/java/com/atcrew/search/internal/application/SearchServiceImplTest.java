@@ -41,8 +41,7 @@ class SearchServiceImplTest {
 
     @Test
     void postTypes_미지정_통합검색에서_OLDEST_요청은_최신순으로_바뀌지_않고_400으로_거절된다() {
-        SearchQuery query = new SearchQuery("고양이", null, null, null, null, null, null, null, null,
-                SearchSort.OLDEST, null, 20);
+        SearchQuery query = new SearchQuery("고양이", null, null, null, null, null, null, null, null, null, true, SearchSort.OLDEST, null, 20);
 
         assertThatThrownBy(() -> service.search(query))
                 .isInstanceOf(SearchException.class)
@@ -103,7 +102,7 @@ class SearchServiceImplTest {
     }
 
     private SearchQuery mergedQuery(String cursor, int size) {
-        return new SearchQuery("token", null, null, null, null, null, null, null, null, null, cursor, size);
+        return new SearchQuery("token", null, null, null, null, null, null, null, null, null, true, null, cursor, size);
     }
 
     private ArtworkSearchDocument artworkDoc(String id, long createdAtMillis) {

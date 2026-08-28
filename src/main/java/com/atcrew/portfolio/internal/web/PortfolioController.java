@@ -2,6 +2,7 @@ package com.atcrew.portfolio.internal.web;
 
 import com.atcrew.common.response.ApiResponse;
 import com.atcrew.common.response.CursorPage;
+import com.atcrew.common.security.MemberPrincipal;
 import com.atcrew.common.security.SecurityUtils;
 import com.atcrew.portfolio.PortfolioArtworkCardInfo;
 import com.atcrew.portfolio.PortfolioDuplicationSourceInfo;
@@ -24,6 +25,8 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Pattern;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -186,7 +189,8 @@ class PortfolioController {
             @Parameter(description = "커서 (직전 페이지 마지막 항목의 순번)") @RequestParam(required = false) String cursor,
             @Parameter(description = "페이지 크기 (기본 20, 최대 50)") @RequestParam(required = false) Integer size) {
         return noIndex(ApiResponse.success(
-                portfolioService.getSharedPortfolioArtworks(identifier, cursor, resolveSize(size))));
+                portfolioService.getSharedPortfolioArtworks(identifier, cursor, resolveSize(size),
+                        getOptionalMemberId())));
     }
 
     @Operation(summary = "고정형 스냅샷 상세 열람",
@@ -210,5 +214,14 @@ class PortfolioController {
             return DEFAULT_SIZE;
         }
         return Math.min(size, MAX_SIZE);
+    }
+
+    // 공개 GET에서 로그인 여부를 판별한다 — 비로그인이면 null (member/company 모듈과 동일 패턴).
+    private String getOptionalMemberId() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.isAuthenticated() && auth.getPrincipal() instanceof MemberPrincipal principal) {
+            return principal.memberId();
+        }
+        return null;
     }
 }
