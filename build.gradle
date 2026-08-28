@@ -84,6 +84,15 @@ tasks.named('test') {
 	useJUnitPlatform {
 		excludeTags 'stripe-sandbox'
 	}
+	// 실패 원인을 워크플로 로그만으로 판별할 수 있게 한다. 기본 출력은 단언 메시지를 잘라내
+	// "AssertionError at X.java:1834"까지만 남기는데, 폴링 대기가 실패했을 때 정작 필요한
+	// "기대값 vs 실제값"이 그 메시지 안에 있다(2026-08-28 CI 실패 분석에서 막힌 지점).
+	testLogging {
+		events 'failed'
+		exceptionFormat = 'full'
+		showStackTraces = true
+		showCauses = true
+	}
 	// 글로벌 시간대 전략(docs/design/global-timezone-strategy.md §3.1) — 테스트 JVM은 AtCrewBackendApplication.main()을
 	// 거치지 않아 TimeZone.setDefault(UTC)가 적용되지 않으므로 개발 환경의 로컬 시간대에 결과가 좌우되지 않도록 별도 고정.
 	jvmArgs '-Duser.timezone=UTC'

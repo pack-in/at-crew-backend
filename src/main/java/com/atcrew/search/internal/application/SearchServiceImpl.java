@@ -9,6 +9,8 @@ import com.atcrew.search.SearchService;
 import com.atcrew.search.SearchSort;
 import com.atcrew.search.internal.domain.ArtworkSearchDocument;
 import com.atcrew.search.internal.domain.RecruitSearchDocument;
+import com.atcrew.search.internal.exception.SearchErrorCode;
+import com.atcrew.search.internal.exception.SearchException;
 import com.atcrew.search.internal.persistence.ArtworkSearchQueryRepository;
 import com.atcrew.search.internal.persistence.ArtworkSearchResult;
 import com.atcrew.search.internal.persistence.MergedSearchCursor;
@@ -53,7 +55,16 @@ class SearchServiceImpl implements SearchService {
             // postTypes가 recruit 소유 유형만 지정된 경우 — 전량 위임
             return searchesRecruit ? searchRecruit(query) : SearchPage.empty();
         }
-        return searchesRecruit ? searchMerged(query) : searchPortfolio(query);
+        if (searchesRecruit) {
+            // 통합검색(searchMerged)은 관련도 비교 불가로 항상 최신순 병합한다(withLatestSort) — OLDEST를
+            // 조용히 최신순으로 바꿔치기하지 않고 명시적으로 거절한다(이슈 #79 팔로업). postTypes 미지정
+            // 검색(가장 흔한 형태)도 이 분기를 탄다는 점이 처음엔 눈에 안 띄어서 별도로 남긴다.
+            if (query.sort() == SearchSort.OLDEST) {
+                throw new SearchException(SearchErrorCode.UNSUPPORTED_SORT_FOR_MERGED_SEARCH);
+            }
+            return searchMerged(query);
+        }
+        return searchPortfolio(query);
     }
 
     private SearchPage<SearchResultItem> searchPortfolio(SearchQuery query) {
