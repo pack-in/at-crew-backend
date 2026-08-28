@@ -23,6 +23,8 @@ import java.util.UUID;
 import static org.springframework.restdocs.mockmvc.MockMvcRestDocumentation.document;
 import static org.springframework.restdocs.operation.preprocess.Preprocessors.*;
 import static org.springframework.restdocs.payload.PayloadDocumentation.*;
+import static org.springframework.restdocs.request.RequestDocumentation.parameterWithName;
+import static org.springframework.restdocs.request.RequestDocumentation.queryParameters;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -119,6 +121,36 @@ class CommunityApiDocTest extends RestDocsIntegrationSupport {
                                 fieldWithPath("data.items[].id").description("회원 ID"),
                                 fieldWithPath("data.items[].handle").description("회원 핸들"),
                                 fieldWithPath("data.items[].employmentStatus").description("구인구직 상태"),
+                                fieldWithPath("data.hasNext").description("다음 페이지 존재 여부")
+                        )
+                ));
+    }
+
+    @Test
+    void 포트폴리오_탭_정렬_조회_문서화() throws Exception {
+        // 정렬 기준별 커서 정확성은 ArtworkSortModuleTests가 검증한다 — 여기서는 파라미터 계약과
+        // 응답 구조(nextCursor 형식 포함)를 문서로 남긴다.
+        mockMvc.perform(get("/api/community/artworks")
+                        .param("sort", "VIEW_COUNT")
+                        .param("size", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andDo(document("community/list-artworks",
+                        preprocessResponse(prettyPrint()),
+                        queryParameters(
+                                parameterWithName("artworkField").description("작품 분야 필터 (선택)").optional(),
+                                parameterWithName("ageRating").description("연령 등급 필터 (선택)").optional(),
+                                parameterWithName("sort").description(
+                                        "정렬 기준 — LATEST(최신순, 기본)·OLDEST(오래된순)·VIEW_COUNT(조회순)·BOOKMARK_COUNT(북마크순)"),
+                                parameterWithName("cursor").description(
+                                        "직전 응답의 nextCursor를 그대로 전달. 정렬 기준을 바꾸면 커서 의미가 달라지므로 생략해야 한다").optional(),
+                                parameterWithName("size").description("페이지 크기 (기본 20, 최대 50)").optional()
+                        ),
+                        relaxedResponseFields(
+                                fieldWithPath("code").description("응답 코드 (SUCCESS)"),
+                                fieldWithPath("data.items").description("작품 카드 목록 (공개·이미지 처리 완료 작품만 노출)"),
+                                fieldWithPath("data.nextCursor").description(
+                                        "다음 페이지 커서 \"정렬값_작품ID\" (마지막 페이지면 null)").optional(),
                                 fieldWithPath("data.hasNext").description("다음 페이지 존재 여부")
                         )
                 ));

@@ -452,7 +452,7 @@ class ArtworkModuleTests {
         jdbcTemplate.update("DELETE FROM artwork_languages WHERE artwork_id = ?", legacyArtworkId);
 
         List<String> koViewerFeed = artworkService
-                .getCommunityArtworks(null, null, List.of(Language.KO), null, 50)
+                .getCommunityArtworks(null, null, List.of(Language.KO), null, null, 50)
                 .items().stream().map(ArtworkSummaryInfo::id).toList();
 
         assertThat(koViewerFeed).contains(koArtworkId, legacyArtworkId);
@@ -460,7 +460,7 @@ class ArtworkModuleTests {
 
         // 비로그인(빈 목록)은 필터를 적용하지 않는다
         List<String> anonymousFeed = artworkService
-                .getCommunityArtworks(null, null, List.of(), null, 50)
+                .getCommunityArtworks(null, null, List.of(), null, null, 50)
                 .items().stream().map(ArtworkSummaryInfo::id).toList();
         assertThat(anonymousFeed).contains(koArtworkId, jaArtworkId, legacyArtworkId);
     }
