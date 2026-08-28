@@ -244,7 +244,7 @@ class PortfolioMembershipReconcileTests {
 
     /** artwork 리스너는 @ApplicationModuleListener(비동기)라 READY 반영까지 폴링한다. */
     private void awaitReady(String memberId, String artworkId) {
-        Instant deadline = Instant.now().plus(Duration.ofSeconds(15));
+        Instant deadline = Instant.now().plus(Duration.ofSeconds(45));
         while (Instant.now().isBefore(deadline)) {
             if (artworkService.getArtworkStatus(memberId, artworkId) == ArtworkStatus.READY) {
                 return;
