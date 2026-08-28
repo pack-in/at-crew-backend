@@ -55,6 +55,31 @@ class BookmarkServiceImpl implements BookmarkService {
     @Override
     @Transactional
     public BookmarkFolderInfo createFolder(String memberId, String name) {
+        String trimmed = validateFolderName(name);
+        if (folderRepository.existsByMemberIdAndName(memberId, trimmed)) {
+            throw new ArtworkException(ArtworkErrorCode.BOOKMARK_FOLDER_DUPLICATE_NAME, trimmed);
+        }
+        int sortOrder = folderRepository.countByMemberId(memberId);
+        BookmarkFolder folder = BookmarkFolder.create(memberId, trimmed, sortOrder);
+        return ArtworkMapper.toFolderInfo(folderRepository.save(folder));
+    }
+
+    @Override
+    @Transactional
+    public BookmarkFolderInfo renameFolder(String memberId, String folderId, String name) {
+        BookmarkFolder folder = folderRepository.findByIdAndMemberId(folderId, memberId)
+                .orElseThrow(() -> new ArtworkException(ArtworkErrorCode.BOOKMARK_FOLDER_NOT_FOUND, folderId));
+        folder.assertOwner(memberId);
+        String trimmed = validateFolderName(name);
+        if (folderRepository.existsByMemberIdAndNameAndIdNot(memberId, trimmed, folderId)) {
+            throw new ArtworkException(ArtworkErrorCode.BOOKMARK_FOLDER_DUPLICATE_NAME, trimmed);
+        }
+        folder.rename(trimmed);
+        return ArtworkMapper.toFolderInfo(folder);
+    }
+
+    // 공백 불가·최대 20자 제한은 생성·이름 변경에 공통이다.
+    private String validateFolderName(String name) {
         String trimmed = name == null ? "" : name.strip();
         if (trimmed.isBlank()) {
             throw new ArtworkException(ArtworkErrorCode.BOOKMARK_FOLDER_NAME_BLANK);
@@ -62,12 +87,7 @@ class BookmarkServiceImpl implements BookmarkService {
         if (trimmed.length() > 20) {
             throw new ArtworkException(ArtworkErrorCode.BOOKMARK_FOLDER_NAME_BLANK, "폴더명은 최대 20자입니다");
         }
-        if (folderRepository.existsByMemberIdAndName(memberId, trimmed)) {
-            throw new ArtworkException(ArtworkErrorCode.BOOKMARK_FOLDER_DUPLICATE_NAME, trimmed);
-        }
-        int sortOrder = folderRepository.countByMemberId(memberId);
-        BookmarkFolder folder = BookmarkFolder.create(memberId, trimmed, sortOrder);
-        return ArtworkMapper.toFolderInfo(folderRepository.save(folder));
+        return trimmed;
     }
 
     @Override
