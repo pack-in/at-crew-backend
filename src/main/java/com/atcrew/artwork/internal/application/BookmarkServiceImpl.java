@@ -167,6 +167,8 @@ class BookmarkServiceImpl implements BookmarkService {
         }
         BookmarkEntry entry = BookmarkEntry.create(memberId, artworkId, folderId, artwork.getVisibility());
         BookmarkEntry saved = entryRepository.save(entry);
+        // 북마크순 정렬용 집계(이슈 #78) — 중복 저장은 위에서 이미 막았으므로 여기서는 항상 1 증가한다.
+        artworkRepository.incrementBookmarkCount(artworkId);
         MemberInfo author = memberService.findById(artwork.getAuthorId());
         return ArtworkMapper.toEntryInfo(saved, ArtworkMapper.toSummaryInfo(artwork, author));
     }
@@ -177,6 +179,8 @@ class BookmarkServiceImpl implements BookmarkService {
         BookmarkEntry entry = entryRepository.findByMemberIdAndArtworkId(memberId, artworkId)
                 .orElseThrow(() -> new ArtworkException(ArtworkErrorCode.BOOKMARK_NOT_FOUND, artworkId));
         entryRepository.delete(entry);
+        // 작품이 이미 영구 삭제됐으면 갱신 대상이 없어 0행이 바뀐다 — 북마크 해제 자체는 성공시킨다.
+        artworkRepository.decrementBookmarkCount(artworkId);
     }
 
     @Override
