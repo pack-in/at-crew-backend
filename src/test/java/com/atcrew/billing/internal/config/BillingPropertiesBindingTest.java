@@ -42,7 +42,7 @@ class BillingPropertiesBindingTest {
     }
 
     @Test
-    void MVP_단일_요금제_외_4종은_비활성이다() throws IOException {
+    void 단건_게시_상품_3종은_비활성이다() throws IOException {
         StandardEnvironment environment = new StandardEnvironment();
         List<PropertySource<?>> sources =
                 new YamlPropertySourceLoader().load("application", new ClassPathResource("application.yml"));
@@ -52,10 +52,26 @@ class BillingPropertiesBindingTest {
                 .bind("billing", BillingProperties.class)
                 .orElseThrow(() -> new AssertionError("billing 설정이 바인딩되지 않았습니다"));
 
-        // PH-08: Portfolio Pro(pro-monthly) 하나만 판매. 나머지는 카탈로그·Checkout에서 막힌다.
-        assertThat(properties.product(BillingProduct.PRO_YEARLY).enabled()).isFalse();
+        // PH-08: 단건 상품 3종은 판매 중단 — 카탈로그·Checkout에서 막힌다.
         assertThat(properties.product(BillingProduct.TEAM_POSTING).enabled()).isFalse();
         assertThat(properties.product(BillingProduct.BOOST).enabled()).isFalse();
         assertThat(properties.product(BillingProduct.JOB_POSTING).enabled()).isFalse();
+    }
+
+    @Test
+    void 연간_결제는_PH_09에서_재개됐다() throws IOException {
+        StandardEnvironment environment = new StandardEnvironment();
+        List<PropertySource<?>> sources =
+                new YamlPropertySourceLoader().load("application", new ClassPathResource("application.yml"));
+        sources.forEach(source -> environment.getPropertySources().addFirst(source));
+
+        BillingProperties properties = Binder.get(environment)
+                .bind("billing", BillingProperties.class)
+                .orElseThrow(() -> new AssertionError("billing 설정이 바인딩되지 않았습니다"));
+
+        // PH-09(2026-08-23): 월 $8 기준 재산정한 연 $80(정가 $96, "2개월 무료").
+        assertThat(properties.product(BillingProduct.PRO_YEARLY).enabled()).isTrue();
+        assertThat(properties.product(BillingProduct.PRO_YEARLY).amount()).isEqualTo(8000);
+        assertThat(properties.product(BillingProduct.PRO_YEARLY).listAmount()).isEqualTo(9600);
     }
 }

@@ -93,8 +93,11 @@ main push(=PR 머지) 시 빌드·테스트 → Docker Hub 푸시 → EC2 재기
    `docker compose -f docker-compose.search.yml up -d`.
 3. **Cloudflare**: `api.at-crew.com` A레코드를 EC2 #1 탄력적 IP로, 프록시(오렌지 클라우드) 켜고
    SSL/TLS 모드는 "Flexible"로 설정(`nginx/api.at-crew.com.conf` 상단 주석 참고). 배포된 Worker의
-   `SERVER_CALLBACK_URL` 시크릿도 `https://api.at-crew.com/internal/media/images/processed`로
-   재등록(`cloudflare-worker/README.md` 참고, 지금은 임시 tunnel 주소를 가리키고 있음).
+   `SERVER_CALLBACK_URL` 시크릿도 `https://api.at-crew.com/internal/media/images/processed`를
+   가리켜야 한다(`cloudflare-worker/README.md` 참고). 이 값이 틀리면 콜백이 서버에 도착하지 않아
+   업로드는 되는데 썸네일이 영영 생기지 않는다 — 2026-08-18~08-27에 임시 tunnel 주소를 가리킨 채로
+   방치돼 콜백이 한 건도 도착하지 않았다(이슈 #59). 도메인 오타도 같은 결과를 낳으므로 하이픈까지
+   확인할 것.
 4. **Docker Hub**: 로컬에서 `docker login`.
 
 ## 이후 배포

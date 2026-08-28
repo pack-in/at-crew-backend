@@ -108,6 +108,10 @@ cat /var/lib/node_exporter/textfile_collector/backup.prom
 
 흔한 원인: R2 토큰 만료·권한 변경, 디스크 부족으로 덤프 생성 실패, mariadb 컨테이너 이름 변경.
 
+`.env`에 `R2_BACKUP_BUCKET`·`R2_BACKUP_ACCESS_KEY`·`R2_BACKUP_SECRET_KEY`가 없으면 스크립트가 즉시
+멈춘다(기본값·폴백을 두지 않는다 — 예전에는 없는 버킷이나 권한 없는 키로 떨어져 백업이 조용히
+실패했다).
+
 ---
 
 ## P2
@@ -118,6 +122,7 @@ cat /var/lib/node_exporter/textfile_collector/backup.prom
 | p95 지연 2초 초과 | 대시보드 "요청량/지연" → 어떤 엔드포인트인지 | 검색·이미지 업로드가 흔한 원인. DB 커넥션 pending도 함께 본다 |
 | 메일 발송 실패 | Resend 대시보드, `.env`의 `RESEND_API_KEY` 유효성 | 비밀번호 재설정이 막히므로 사용자 문의로 바로 이어진다 |
 | 이미지 후처리 실패 | Cloudflare Worker 로그, `media_assets` 테이블의 FAILED 행 | 업로드는 됐는데 썸네일이 없는 상태 |
+| 이미지 후처리 결과 미도착 | Worker 시크릿 `SERVER_CALLBACK_URL`이 `https://api.at-crew.com/internal/media/images/processed`인지 → nginx 액세스 로그에 그 경로 요청이 찍히는지 | 콜백이 실패로 오는 게 아니라 아예 안 오는 상태. 2026-08 실제 사고(이슈 #59)와 같은 유형 |
 | 미완료 이벤트 누적 | `SELECT COUNT(*), EVENT_TYPE FROM EVENT_PUBLICATION WHERE COMPLETION_DATE IS NULL GROUP BY EVENT_TYPE` | 특정 타입만 쌓이면 그 리스너가 예외를 던지고 있다 |
 | 구독 결제 실패 | Stripe 대시보드 → 해당 고객 | 여러 건이 몰리면 카드 문제가 아니라 연동 문제 |
 
@@ -169,7 +174,36 @@ docker-compose -f docker-compose.app.yml start app
 curl -s http://127.0.0.1:8081/actuator/health/liveness
 ```
 
-**소요 시간: (PH-09 리허설에서 실측 후 기입)**
+**소요 시간: 약 25초** (2026-08-27 리허설 실측, 덤프 10KB 기준)
+
+| 단계 | 시간 |
+|---|---|
+| R2에서 다운로드 | 1초 |
+| MariaDB 기동(리허설은 임시 컨테이너) | 20초 |
+| 복원 | 1초 |
+| 검증 쿼리 | 1초 미만 |
+
+실제 장애 시에는 MariaDB가 이미 떠 있으므로 **앱 정지 → 복원 → 앱 기동까지 1분 내외**로 보면 된다.
+다만 이 수치는 데이터가 거의 없는 초기 상태의 것이다 — 데이터가 늘면 복원 시간은 덤프 크기에 비례해
+늘어난다. 백업 파일 크기는 `atcrew_backup_size_bytes` 지표로 추적되므로 대시보드에서 추세를 볼 수 있다.
+
+### 리허설 절차 (분기마다 한 번)
+
+복원은 해본 적 없으면 신뢰할 수 없다. **prod DB를 건드리지 않고** 임시 컨테이너에 복원해 확인한다.
+
+```bash
+docker run -d --name restore-drill -e MARIADB_ROOT_PASSWORD=drill -e MARIADB_DATABASE=atcrew mariadb:11.4
+until docker exec restore-drill healthcheck.sh --connect --innodb_initialized; do sleep 2; done
+gunzip -c /tmp/restore.sql.gz | docker exec -i -e MYSQL_PWD=drill restore-drill mariadb -u root atcrew
+
+# 스키마가 prod와 같은 지점까지 복원됐는지 확인 — version은 문자열이라 정렬이 아니라 적용 순서로 본다
+docker exec -e MYSQL_PWD=drill restore-drill mariadb -u root -N -B atcrew \
+  -e "SELECT version, description FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 3;"
+
+docker rm -f restore-drill
+```
+
+2026-08-27 리허설에서는 복원본과 prod가 모두 V33까지 일치했고 테이블 57개가 복구됐다.
 
 주의: 복원은 해당 시점 이후 데이터를 잃는다. 실행 전에 현재 DB를 먼저 덤프해 둔다
 (`deploy/backup.sh` 수동 실행).

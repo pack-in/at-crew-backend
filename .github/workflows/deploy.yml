@@ -54,7 +54,12 @@ jobs:
         with:
           java-version: "21"
           distribution: "temurin"
-          cache: "gradle"
+
+      # setup-java의 gradle 캐시는 빌드 파일 해시로만 키를 잡아 build.gradle을 한 줄만 고쳐도
+      # 200MB를 통째로 다시 받는다. setup-gradle은 restore-keys로 부분 복원하고 Gradle 빌드 캐시
+      # (~/.gradle/caches/build-cache-1)까지 함께 보관해, 입력이 안 바뀐 태스크는 아예 건너뛴다.
+      # 캐시 쓰기는 기본 브랜치 잡에서만 일어나고 나머지는 읽기 전용이라 서로 오염되지 않는다.
+      - uses: gradle/actions/setup-gradle@v4
 
       - name: 빌드 및 테스트
         run: ./gradlew build

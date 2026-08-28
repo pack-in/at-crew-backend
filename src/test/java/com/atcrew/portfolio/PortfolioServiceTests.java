@@ -1,5 +1,9 @@
 package com.atcrew.portfolio;
 
+import com.atcrew.SharedContainersConfig;
+import com.atcrew.support.DatabaseCleanupExtension;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import com.atcrew.artwork.AgeRating;
 import com.atcrew.artwork.ArtworkField;
 import com.atcrew.artwork.ArtworkRole;
@@ -34,15 +38,11 @@ import com.atcrew.portfolio.internal.persistence.PortfolioItemSnapshotRepository
 import com.atcrew.portfolio.internal.persistence.PortfolioRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.modulith.test.ApplicationModuleTest;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.MariaDBContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -63,12 +63,9 @@ import static org.assertj.core.api.Assertions.tuple;
  * <p>플랜 승급은 billing 웹훅이 아직 없으므로 구독 행을 직접 만들어 시뮬레이션한다(BillingModuleTests와 동일).
  */
 @ApplicationModuleTest(mode = ApplicationModuleTest.BootstrapMode.ALL_DEPENDENCIES)
-@Testcontainers
+@ImportTestcontainers(SharedContainersConfig.class)
+@ExtendWith(DatabaseCleanupExtension.class)
 class PortfolioServiceTests {
-
-    @Container
-    @ServiceConnection
-    static MariaDBContainer<?> mariadb = new MariaDBContainer<>("mariadb:11.4");
 
     @Autowired
     PortfolioServiceImpl portfolioService;

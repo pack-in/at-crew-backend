@@ -1,5 +1,9 @@
 package com.atcrew.portfolio;
 
+import com.atcrew.SharedContainersConfig;
+import com.atcrew.support.DatabaseCleanupExtension;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import com.atcrew.artwork.AgeRating;
 import com.atcrew.artwork.ArtworkField;
 import com.atcrew.portfolio.internal.domain.Portfolio;
@@ -11,13 +15,9 @@ import com.atcrew.portfolio.internal.persistence.PortfolioItemSnapshotRepository
 import com.atcrew.portfolio.internal.persistence.PortfolioRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.modulith.test.ApplicationModuleTest;
 import org.springframework.transaction.annotation.Transactional;
-import org.testcontainers.containers.MariaDBContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.Instant;
 import java.util.List;
@@ -36,12 +36,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * 뜨지 않는다 — 의존 모듈을 함께 올린다.
  */
 @ApplicationModuleTest(mode = ApplicationModuleTest.BootstrapMode.ALL_DEPENDENCIES)
-@Testcontainers
+@ImportTestcontainers(SharedContainersConfig.class)
+@ExtendWith(DatabaseCleanupExtension.class)
 class PortfolioModuleTests {
-
-    @Container
-    @ServiceConnection
-    static MariaDBContainer<?> mariadb = new MariaDBContainer<>("mariadb:11.4");
 
     @Autowired
     PortfolioRepository portfolioRepository;

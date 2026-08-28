@@ -24,7 +24,7 @@ ENV_FILE="$DEPLOY_DIR/.env"
 RETENTION_DAYS="${RETENTION_DAYS:-30}"
 # 백업 버킷은 이미지용 버킷(cloudflare.r2.bucket = at-crew-storage)과 분리한다 — 같은 버킷에 두면
 # 그 버킷에 공개 접근 설정이 한 번 잘못 걸리는 것만으로 회원·결제 데이터 전체가 노출된다.
-# 값은 아래에서 .env(R2_BACKUP_BUCKET) 또는 기본값 at-crew-backups로 정해진다.
+# 값은 아래에서 .env(R2_BACKUP_BUCKET)로만 정해진다 — 기본값을 두지 않는다.
 PREFIX="db-backups"
 METRIC_DIR="${METRIC_DIR:-/var/lib/node_exporter/textfile_collector}"
 METRIC_FILE="$METRIC_DIR/backup.prom"
@@ -38,21 +38,19 @@ read_env() { sed -n "s/^$1=//p" "$ENV_FILE" | tail -1 | sed -e 's/^"//' -e 's/"$
 
 MARIADB_ROOT_PASSWORD="$(read_env MARIADB_ROOT_PASSWORD)"
 R2_ENDPOINT="$(read_env R2_ENDPOINT)"
+# 버킷과 자격증명에 기본값·폴백을 두지 않는다. 예전에는 버킷이 비면 `at-crew-backups`로,
+# 키가 비면 이미지용 키로 떨어뜨렸는데 둘 다 실패로 가는 길이었다 — 운영 버킷 이름은 그 기본값과
+# 다르고, 이미지용 키에는 백업 버킷 권한이 없다. 설정 실수가 "백업이 조용히 안 되는" 형태로
+# 드러나는 게 가장 나쁘므로, 값이 없으면 여기서 즉시 멈춘다.
 BACKUP_BUCKET="${R2_BACKUP_BUCKET:-$(read_env R2_BACKUP_BUCKET)}"
-BACKUP_BUCKET="${BACKUP_BUCKET:-at-crew-backups}"
-
-# 백업 버킷에만 권한이 있는 전용 키를 쓴다. 이미지용 키(R2_ACCESS_KEY)는 백업 버킷 권한이 없고,
-# 그 토큰을 건드리면 돌아가고 있는 이미지 업로드가 깨진다. 전용 키가 없으면 기존 키로 떨어뜨리되
-# 그 경우 업로드 단계에서 권한 오류로 실패한다(조용히 성공한 척하지 않는다).
 ACCESS_KEY="$(read_env R2_BACKUP_ACCESS_KEY)"
 SECRET_KEY="$(read_env R2_BACKUP_SECRET_KEY)"
-[ -n "$ACCESS_KEY" ] || ACCESS_KEY="$(read_env R2_ACCESS_KEY)"
-[ -n "$SECRET_KEY" ] || SECRET_KEY="$(read_env R2_SECRET_KEY)"
 
 : "${MARIADB_ROOT_PASSWORD:?[backup] MARIADB_ROOT_PASSWORD 없음}"
 : "${R2_ENDPOINT:?[backup] R2_ENDPOINT 없음}"
-: "${ACCESS_KEY:?[backup] R2_BACKUP_ACCESS_KEY(또는 R2_ACCESS_KEY) 없음}"
-: "${SECRET_KEY:?[backup] R2_BACKUP_SECRET_KEY(또는 R2_SECRET_KEY) 없음}"
+: "${BACKUP_BUCKET:?[backup] R2_BACKUP_BUCKET 없음 — .env에 실제 버킷 이름을 채울 것}"
+: "${ACCESS_KEY:?[backup] R2_BACKUP_ACCESS_KEY 없음 — 백업 버킷 전용 키를 발급해 채울 것}"
+: "${SECRET_KEY:?[backup] R2_BACKUP_SECRET_KEY 없음 — 백업 버킷 전용 키를 발급해 채울 것}"
 
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 WORK="$(mktemp -d)"
