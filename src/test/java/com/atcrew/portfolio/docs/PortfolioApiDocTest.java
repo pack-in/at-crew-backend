@@ -80,11 +80,12 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
         String firstArtworkId = uploadArtwork(member.memberId(), "첫 번째 작품");
         String secondArtworkId = uploadArtwork(member.memberId(), "두 번째 작품");
         String thirdArtworkId = uploadArtwork(member.memberId(), "세 번째 작품");
+        String fourthArtworkId = uploadArtwork(member.memberId(), "네 번째 작품");
 
         Map<String, Object> createBody = new LinkedHashMap<>();
         createBody.put("title", "일러스트 모음");
         createBody.put("reflectionType", "LIVE");
-        createBody.put("artworkIds", List.of(firstArtworkId));
+        createBody.put("artworkIds", List.of(firstArtworkId, secondArtworkId));
 
         MvcResult createResult = mockMvc.perform(post("/api/portfolios")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + member.accessToken())
@@ -94,7 +95,7 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.kind").value("SHARED"))
                 .andExpect(jsonPath("$.data.reflectionType").value("LIVE"))
-                .andExpect(jsonPath("$.data.itemCount").value(1))
+                .andExpect(jsonPath("$.data.itemCount").value(2))
                 .andDo(document("portfolio/create-shared-live",
                         preprocessRequest(prettyPrint()),
                         preprocessResponse(prettyPrint()),
@@ -103,7 +104,7 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
                                 fieldWithPath("reflectionType")
                                         .description("반영 유형 — LIVE(최신 반영형) / SNAPSHOT(고정형). 생성 후 전환 불가"),
                                 fieldWithPath("artworkIds")
-                                        .description("담을 작품 ID 목록 (개수 제한 없음, 빈 배열 허용). 본인 소유 작품만 담을 수 있다").optional()
+                                        .description("담을 작품 ID 목록 (최소 2개, 상한 없음). 본인 소유 작품만 담을 수 있다")
                         ),
                         relaxedResponseFields(
                                 fieldWithPath("code").description("응답 코드 (SUCCESS)"),
@@ -168,7 +169,7 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
 
         Map<String, Object> updateBody = new LinkedHashMap<>();
         updateBody.put("title", "일러스트 모음 (수정)");
-        updateBody.put("artworkIds", List.of(secondArtworkId));
+        updateBody.put("artworkIds", List.of(secondArtworkId, fourthArtworkId));
 
         mockMvc.perform(patch("/api/portfolios/{portfolioId}", portfolioId)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + member.accessToken())
@@ -176,7 +177,7 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
                         .content(objectMapper.writeValueAsString(updateBody)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.title").value("일러스트 모음 (수정)"))
-                .andExpect(jsonPath("$.data.itemCount").value(1))
+                .andExpect(jsonPath("$.data.itemCount").value(2))
                 .andExpect(jsonPath("$.data.artworks[0].artworkId").value(secondArtworkId))
                 .andDo(document("portfolio/update-portfolio",
                         preprocessRequest(prettyPrint()),
@@ -188,7 +189,8 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
                                 fieldWithPath("title")
                                         .description("변경할 제목 (최대 100자). null이면 유지, 작가 페이지에 값을 보내면 400").optional(),
                                 fieldWithPath("artworkIds")
-                                        .description("구성 작품 ID 목록 (개수 제한 없음). null이면 유지, 빈 배열이면 전부 비운다").optional()
+                                        .description("구성 작품 ID 목록 (상한 없음). null이면 유지, 빈 배열이면 전부 비운다(작가 페이지만). "
+                                                + "공유 포트폴리오는 2개 미만으로 줄이면 400").optional()
                         ),
                         relaxedResponseFields(
                                 fieldWithPath("code").description("응답 코드 (SUCCESS)"),
@@ -245,11 +247,12 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
     void 고정형_포트폴리오_생성과_수정_거부_문서화() throws Exception {
         RegisteredMember member = registerProMember("고정형생성유저");
         String artworkId = uploadArtwork(member.memberId(), "고정형 작품");
+        String secondArtworkId = uploadArtwork(member.memberId(), "고정형 작품 2");
 
         Map<String, Object> createBody = new LinkedHashMap<>();
         createBody.put("title", "2026 상반기 아카이브");
         createBody.put("reflectionType", "SNAPSHOT");
-        createBody.put("artworkIds", List.of(artworkId));
+        createBody.put("artworkIds", List.of(artworkId, secondArtworkId));
 
         MvcResult createResult = mockMvc.perform(post("/api/portfolios")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + member.accessToken())
@@ -257,7 +260,7 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
                         .content(objectMapper.writeValueAsString(createBody)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.reflectionType").value("SNAPSHOT"))
-                .andExpect(jsonPath("$.data.itemCount").value(1))
+                .andExpect(jsonPath("$.data.itemCount").value(2))
                 .andDo(document("portfolio/create-shared-snapshot",
                         preprocessRequest(prettyPrint()),
                         preprocessResponse(prettyPrint()),
@@ -265,7 +268,7 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
                                 fieldWithPath("title").description("공유 포트폴리오 제목 (필수, 최대 100자)"),
                                 fieldWithPath("reflectionType")
                                         .description("SNAPSHOT — 생성 시점 작품 표시 정보와 작성자 이름을 함께 얼린다"),
-                                fieldWithPath("artworkIds").description("담을 작품 ID 목록 (개수 제한 없음)").optional()
+                                fieldWithPath("artworkIds").description("담을 작품 ID 목록 (최소 2개, 상한 없음)")
                         ),
                         relaxedResponseFields(
                                 fieldWithPath("code").description("응답 코드 (SUCCESS)"),
@@ -349,8 +352,10 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
     @Test
     void 내_포트폴리오_목록_문서화() throws Exception {
         RegisteredMember member = registerProMember("포트폴리오목록유저");
-        createSharedPortfolio(member.accessToken(), "최신 반영형 포트폴리오", "LIVE", List.of());
-        createSharedPortfolio(member.accessToken(), "고정형 포트폴리오", "SNAPSHOT", List.of());
+        List<String> fillerArtworkIds = List.of(
+                uploadArtwork(member.memberId(), "채움 작품 1"), uploadArtwork(member.memberId(), "채움 작품 2"));
+        createSharedPortfolio(member.accessToken(), "최신 반영형 포트폴리오", "LIVE", fillerArtworkIds);
+        createSharedPortfolio(member.accessToken(), "고정형 포트폴리오", "SNAPSHOT", fillerArtworkIds);
 
         // 작가 페이지는 이 조회 시점에 lazy 생성되므로 공유 2건과 함께 3건이 나온다(§2.5).
         mockMvc.perform(get("/api/portfolios/me")
@@ -412,8 +417,10 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
     @Test
     void 선택_가능한_포트폴리오_목록_문서화() throws Exception {
         RegisteredMember member = registerProMember("선택목록유저");
-        createSharedPortfolio(member.accessToken(), "최신 반영형 포트폴리오", "LIVE", List.of());
-        createSharedPortfolio(member.accessToken(), "고정형 포트폴리오", "SNAPSHOT", List.of());
+        List<String> fillerArtworkIds = List.of(
+                uploadArtwork(member.memberId(), "채움 작품 1"), uploadArtwork(member.memberId(), "채움 작품 2"));
+        createSharedPortfolio(member.accessToken(), "최신 반영형 포트폴리오", "LIVE", fillerArtworkIds);
+        createSharedPortfolio(member.accessToken(), "고정형 포트폴리오", "SNAPSHOT", fillerArtworkIds);
 
         // 작가 페이지 + 최신 반영형만 나오고 고정형은 제외된다(§4).
         mockMvc.perform(get("/api/portfolios/selectable")
@@ -475,12 +482,13 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
     void 공유_링크_열람_문서화() throws Exception {
         RegisteredMember member = registerProMember("공유열람유저");
         String artworkId = uploadArtwork(member.memberId(), "공유 링크 작품");
+        String secondArtworkId = uploadArtwork(member.memberId(), "공유 링크 작품 2");
 
         MvcResult createResult = mockMvc.perform(post("/api/portfolios")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + member.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(createRequestBody(
-                                "공유용 포트폴리오", "LIVE", List.of(artworkId)))))
+                                "공유용 포트폴리오", "LIVE", List.of(artworkId, secondArtworkId)))))
                 .andExpect(status().isCreated())
                 .andReturn();
         String shareSlug = objectMapper.readTree(createResult.getResponse().getContentAsString())

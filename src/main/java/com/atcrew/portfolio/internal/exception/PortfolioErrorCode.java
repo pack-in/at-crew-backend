@@ -18,6 +18,8 @@ public enum PortfolioErrorCode {
     INVALID_CURSOR(HttpStatus.BAD_REQUEST, "유효하지 않은 커서 값입니다"),
     // 포트폴리오가 자체 판단해 던지는 코드 — 작품이 없거나, 삭제됐거나, 요청자 소유가 아닌 경우를 구분하지 않는다(§4).
     ARTWORK_NOT_FOUND(HttpStatus.NOT_FOUND, "포트폴리오에 담을 작품을 찾을 수 없습니다"),
+    // 공유 포트폴리오는 최소 2개의 작품이 있어야 한다 — 작가 페이지에는 적용하지 않는다(제품 결정, 2026-08-28).
+    PORTFOLIO_ARTWORK_MINIMUM(HttpStatus.BAD_REQUEST, "포트폴리오에는 최소 2개의 작품이 필요해요"),
     // 운영 차단된 작품은 본인 소유라도 선택 대상이 아니다(마이페이지_작가-R38·R46).
     ARTWORK_BLOCKED(HttpStatus.BAD_REQUEST, "운영 정책에 따라 포트폴리오에 담을 수 없는 작품입니다"),
     // 같은 포트폴리오를 다른 요청이 먼저 바꿨다 — 구성 교체는 낙관적 락 검사를 거치므로 재시도해야 한다(§8.9).

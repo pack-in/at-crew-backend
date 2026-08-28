@@ -74,6 +74,9 @@ public class PortfolioServiceImpl {
     // 무제한으로 훑지 않게 하는 안전장치다.
     private static final int MAX_SCAN_CHUNKS = 10;
 
+    // 공유 포트폴리오는 최소 2개의 작품이 있어야 한다(제품 결정, 2026-08-28) — 작가 페이지는 대상이 아니다.
+    private static final int SHARED_MIN_ARTWORK_COUNT = 2;
+
     private final PortfolioRepository portfolioRepository;
     private final PortfolioItemRepository portfolioItemRepository;
     private final PortfolioItemSnapshotRepository portfolioItemSnapshotRepository;
@@ -416,6 +419,7 @@ public class PortfolioServiceImpl {
         assertPro(memberId);
         String validatedTitle = validateTitle(title);
         List<ArtworkInfo> artworks = orderByUploadedAt(resolveOwnedArtworks(memberId, artworkIds));
+        assertMinimumArtworkCount(artworks.size());
 
         if (reflectionType == ReflectionType.SNAPSHOT) {
             return createSnapshot(memberId, validatedTitle, artworks);
@@ -492,6 +496,10 @@ public class PortfolioServiceImpl {
         String validatedTitle = title != null ? validateTitle(title) : null;
         if (artworkIds != null) {
             List<ArtworkInfo> artworks = orderByUploadedAt(resolveOwnedArtworks(memberId, artworkIds));
+            // 작가 페이지는 최소 개수 제약이 없다 — 이 규칙은 공유 포트폴리오 전용이다(제품 결정, 2026-08-28).
+            if (portfolio.getKind() == PortfolioKind.SHARED) {
+                assertMinimumArtworkCount(artworks.size());
+            }
             replaceItems(portfolio, artworks.stream().map(ArtworkInfo::id).toList());
         }
         // portfolios를 건드리는 것은 구성 교체 뒤다 — 앞에서 엔티티를 dirty로 만들면 replaceItems의 벌크
@@ -639,6 +647,13 @@ public class PortfolioServiceImpl {
         }
         if (portfolio.getKind() == PortfolioKind.SHARED) {
             assertPro(memberId);
+        }
+    }
+
+    // 공유 포트폴리오 생성·구성 교체 양쪽에서 재사용한다 — 작가 페이지는 호출하지 않는다.
+    private void assertMinimumArtworkCount(int count) {
+        if (count < SHARED_MIN_ARTWORK_COUNT) {
+            throw new PortfolioException(PortfolioErrorCode.PORTFOLIO_ARTWORK_MINIMUM, "artworkCount=" + count);
         }
     }
 
