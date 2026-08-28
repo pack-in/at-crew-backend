@@ -1800,8 +1800,10 @@ class PortfolioServiceTests {
     /** 원본 변경 이벤트 구독도 @ApplicationModuleListener(비동기)라 개수 재계산 반영까지 폴링한다(§1.2). */
     private void awaitItemCount(String portfolioId, int expected) {
         Instant deadline = Instant.now().plus(Duration.ofSeconds(45));
+        int actual = -1;
         while (Instant.now().isBefore(deadline)) {
-            if (portfolioRepository.findById(portfolioId).orElseThrow().getItemCount() == expected) {
+            actual = portfolioRepository.findById(portfolioId).orElseThrow().getItemCount();
+            if (actual == expected) {
                 return;
             }
             try {
@@ -1811,16 +1813,21 @@ class PortfolioServiceTests {
                 throw new IllegalStateException(e);
             }
         }
-        throw new AssertionError("구성 개수 재계산 대기 시간 초과: portfolioId=" + portfolioId + " expected=" + expected);
+        // 실패 시 마지막 관측값을 함께 남긴다 — 기대값만으로는 "이벤트가 안 왔는지"와
+        // "다른 값으로 왔는지"를 구분할 수 없어 CI 간헐 실패 원인 파악이 막혔다(#72).
+        throw new AssertionError("구성 개수 재계산 대기 시간 초과: portfolioId=" + portfolioId
+                + " expected=" + expected + " actual=" + actual);
     }
 
     /** 영구 삭제 이벤트 구독도 비동기라 구성 행 정리 반영까지 폴링한다(§1.2). */
     private void awaitItemArtworkIds(String portfolioId, List<String> expected) {
         Instant deadline = Instant.now().plus(Duration.ofSeconds(45));
+        List<String> lastSeen = List.of();
         while (Instant.now().isBefore(deadline)) {
             List<String> actual = portfolioItemRepository.findByPortfolioIdOrderByOrdinal(portfolioId).stream()
                     .map(PortfolioItem::getArtworkId)
                     .toList();
+            lastSeen = actual;
             if (actual.equals(expected)) {
                 return;
             }
@@ -1831,7 +1838,10 @@ class PortfolioServiceTests {
                 throw new IllegalStateException(e);
             }
         }
-        throw new AssertionError("구성 행 정리 대기 시간 초과: portfolioId=" + portfolioId + " expected=" + expected);
+        // 실패 시 마지막 관측값을 함께 남긴다(#72). 삭제 대상이 그대로 남아 있으면 이벤트 미처리,
+        // 목록이 비어 있으면 과다 삭제 — 기대값만으로는 두 경우가 구분되지 않는다.
+        throw new AssertionError("구성 행 정리 대기 시간 초과: portfolioId=" + portfolioId
+                + " expected=" + expected + " actual=" + lastSeen);
     }
 
     /**
