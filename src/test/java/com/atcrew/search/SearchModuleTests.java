@@ -112,6 +112,38 @@ class SearchModuleTests {
     }
 
     @Test
+    void 검색은_표시_OFF_뷰어에게_R18_G18을_숨기되_본인_업로드는_항상_노출한다() {
+        String owner = registerMember();
+        String viewer = registerMember();
+        memberService.updateAdultContentVisible(viewer, false);
+        String token = uniqueToken();
+
+        ArtworkInfo allArtwork = uploadReadyArtwork(owner, ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
+                List.of(ArtworkRole.LINEART), List.of(Genre.FANTASY), AgeRating.ALL, token + " all");
+        ArtworkInfo r18Artwork = uploadReadyArtwork(owner, ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
+                List.of(ArtworkRole.LINEART), List.of(Genre.FANTASY), AgeRating.R18, token + " r18");
+        ArtworkInfo ownR18Artwork = uploadReadyArtwork(viewer, ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
+                List.of(ArtworkRole.LINEART), List.of(Genre.FANTASY), AgeRating.R18, token + " own-r18");
+
+        // 색인이 세 건 모두 반영될 때까지 기다린다(필터 없는 질의 기준) — 그래야 뒤의 필터 검증이
+        // "아직 색인 안 됨"과 "필터로 제외됨"을 혼동하지 않는다.
+        awaitCondition(() -> searchService.search(adultQuery(token, viewer, true)).totalCount() == 3);
+
+        List<SearchResultItem> hidden = searchService.search(adultQuery(token, viewer, false)).items();
+        assertThat(hidden).extracting(SearchResultItem::id).contains(allArtwork.id(), ownR18Artwork.id());
+        assertThat(hidden).extracting(SearchResultItem::id).doesNotContain(r18Artwork.id());
+
+        List<SearchResultItem> visible = searchService.search(adultQuery(token, viewer, true)).items();
+        assertThat(visible).extracting(SearchResultItem::id)
+                .contains(allArtwork.id(), r18Artwork.id(), ownR18Artwork.id());
+    }
+
+    private SearchQuery adultQuery(String q, String viewerMemberId, boolean viewerAdultContentVisible) {
+        return new SearchQuery(q, null, null, null, null, null, null, null, null,
+                viewerMemberId, viewerAdultContentVisible, null, null, 20);
+    }
+
+    @Test
     void 필터가_일치하지_않으면_결과에서_제외된다() {
         uploadReadyArtwork(ArtworkField.WEBTOON, CreativeType.ORIGINAL,
                 List.of(ArtworkRole.LINEART), List.of(Genre.FANTASY), AgeRating.ALL);
@@ -119,9 +151,7 @@ class SearchModuleTests {
         // 색인 반영을 기다린 뒤(존재 확인) 다른 필터로는 조회되지 않는지 검증
         awaitSearchResult(() -> searchService.search(queryWithArtworkField(ArtworkField.WEBTOON)));
 
-        SearchPage<SearchResultItem> mismatched = searchService.search(new SearchQuery(
-                null, null, List.of(ArtworkField.ANIMATION), null, null, null, null, null, null,
-                null, null, 20));
+        SearchPage<SearchResultItem> mismatched = searchService.search(new SearchQuery(null, null, List.of(ArtworkField.ANIMATION), null, null, null, null, null, null, null, true, null, null, 20));
 
         assertThat(mismatched.items()).isEmpty();
     }
@@ -133,13 +163,11 @@ class SearchModuleTests {
         String jobPostingId = publishedJobPosting(authorId, token + " 구인 공고");
 
         // RecruitSearchIndexer도 ArtworkSearchIndexer와 동일하게 @ApplicationModuleListener(비동기)라 폴링한다.
-        List<SearchResultItem> found = awaitSearchResult(() -> searchService.search(new SearchQuery(
-                token, List.of(PostType.JOB_POSTING), null, null, null, null, null, null, null, null, null, 20)));
+        List<SearchResultItem> found = awaitSearchResult(() -> searchService.search(new SearchQuery(token, List.of(PostType.JOB_POSTING), null, null, null, null, null, null, null, null, true, null, null, 20)));
 
         assertThat(found).extracting(SearchResultItem::id).containsExactly(jobPostingId);
         assertThat(found).extracting(SearchResultItem::postType).containsOnly(PostType.JOB_POSTING);
-        SearchPage<SearchResultItem> page = searchService.search(new SearchQuery(
-                token, List.of(PostType.JOB_POSTING), null, null, null, null, null, null, null, null, null, 20));
+        SearchPage<SearchResultItem> page = searchService.search(new SearchQuery(token, List.of(PostType.JOB_POSTING), null, null, null, null, null, null, null, null, true, null, null, 20));
         assertThat(page.totalCount()).isEqualTo(1);
     }
 
@@ -165,8 +193,7 @@ class SearchModuleTests {
         assertThat(firstPage.items()).hasSize(1);
         assertThat(firstPage.hasNext()).isTrue();
 
-        SearchPage<SearchResultItem> secondPage = searchService.search(new SearchQuery(
-                token, null, null, null, null, null, null, null, null, null, firstPage.nextCursor(), 1));
+        SearchPage<SearchResultItem> secondPage = searchService.search(new SearchQuery(token, null, null, null, null, null, null, null, null, null, true, null, firstPage.nextCursor(), 1));
         assertThat(secondPage.items()).hasSize(1);
         assertThat(secondPage.items().get(0).id()).isNotEqualTo(firstPage.items().get(0).id());
     }
@@ -178,9 +205,7 @@ class SearchModuleTests {
         publishedJobPosting(authorId, token + " 구인 공고");
 
         // 작품 분야는 recruit 게시글에 없는 속성이라 축 간 AND 결합상 결과가 없다
-        SearchPage<SearchResultItem> page = searchService.search(new SearchQuery(
-                token, List.of(PostType.JOB_POSTING), List.of(ArtworkField.WEBTOON), null, null, null, null, null, null,
-                null, null, 20));
+        SearchPage<SearchResultItem> page = searchService.search(new SearchQuery(token, List.of(PostType.JOB_POSTING), List.of(ArtworkField.WEBTOON), null, null, null, null, null, null, null, true, null, null, 20));
 
         assertThat(page.items()).isEmpty();
         assertThat(page.totalCount()).isZero();
@@ -212,8 +237,7 @@ class SearchModuleTests {
                 .createTeamPosting(authorId, teamPostingCommand(token + " 팀원 모집", Genre.ACTION)).id();
         publishedJobPosting(authorId, token + " 구인 공고"); // 장르가 다른(ROMANCE_FANTASY) 구인글 — 걸리지 않아야 한다
 
-        List<SearchResultItem> byGenre = awaitSearchResult(() -> searchService.search(new SearchQuery(
-                token, null, null, null, null, null, List.of(Genre.ACTION), null, null, null, null, 20)));
+        List<SearchResultItem> byGenre = awaitSearchResult(() -> searchService.search(new SearchQuery(token, null, null, null, null, null, List.of(Genre.ACTION), null, null, null, true, null, null, 20)));
 
         assertThat(byGenre).extracting(SearchResultItem::id).containsExactly(teamPostingId);
     }
@@ -236,9 +260,7 @@ class SearchModuleTests {
         assertThat(firstPage.hasNext()).isTrue();
         assertThat(firstPage.totalCount()).isEqualTo(2);
 
-        SearchPage<SearchResultItem> secondPage = searchService.search(new SearchQuery(
-                token, List.of(PostType.JOB_POSTING, PostType.JOB_SEEKING, PostType.TEAM_RECRUIT),
-                null, null, null, null, null, null, null, null, firstPage.nextCursor(), 1));
+        SearchPage<SearchResultItem> secondPage = searchService.search(new SearchQuery(token, List.of(PostType.JOB_POSTING, PostType.JOB_SEEKING, PostType.TEAM_RECRUIT), null, null, null, null, null, null, null, null, true, null, firstPage.nextCursor(), 1));
         assertThat(secondPage.items()).hasSize(1);
         assertThat(secondPage.hasNext()).isFalse();
         assertThat(List.of(firstPage.items().get(0).id(), secondPage.items().get(0).id()))
@@ -261,15 +283,11 @@ class SearchModuleTests {
         assertThat(firstPage.items()).extracting(SearchResultItem::id).containsExactly(firstId);
         assertThat(firstPage.hasNext()).isTrue();
 
-        SearchPage<SearchResultItem> secondPage = searchService.search(new SearchQuery(
-                token, List.of(PostType.JOB_POSTING, PostType.JOB_SEEKING, PostType.TEAM_RECRUIT),
-                null, null, null, null, null, null, null, SearchSort.OLDEST, firstPage.nextCursor(), 1));
+        SearchPage<SearchResultItem> secondPage = searchService.search(new SearchQuery(token, List.of(PostType.JOB_POSTING, PostType.JOB_SEEKING, PostType.TEAM_RECRUIT), null, null, null, null, null, null, null, null, true, SearchSort.OLDEST, firstPage.nextCursor(), 1));
         assertThat(secondPage.items()).extracting(SearchResultItem::id).containsExactly(secondId);
         assertThat(secondPage.hasNext()).isTrue();
 
-        SearchPage<SearchResultItem> thirdPage = searchService.search(new SearchQuery(
-                token, List.of(PostType.JOB_POSTING, PostType.JOB_SEEKING, PostType.TEAM_RECRUIT),
-                null, null, null, null, null, null, null, SearchSort.OLDEST, secondPage.nextCursor(), 1));
+        SearchPage<SearchResultItem> thirdPage = searchService.search(new SearchQuery(token, List.of(PostType.JOB_POSTING, PostType.JOB_SEEKING, PostType.TEAM_RECRUIT), null, null, null, null, null, null, null, null, true, SearchSort.OLDEST, secondPage.nextCursor(), 1));
         assertThat(thirdPage.items()).extracting(SearchResultItem::id).containsExactly(thirdId);
         assertThat(thirdPage.hasNext()).isFalse();
     }
@@ -290,13 +308,11 @@ class SearchModuleTests {
     }
 
     private SearchQuery oldestQuery(String q, int size) {
-        return new SearchQuery(q, List.of(PostType.PORTFOLIO), null, null, null, null, null, null, null,
-                SearchSort.OLDEST, null, size);
+        return new SearchQuery(q, List.of(PostType.PORTFOLIO), null, null, null, null, null, null, null, null, true, SearchSort.OLDEST, null, size);
     }
 
     private SearchQuery recruitQueryOldest(String q, int size) {
-        return new SearchQuery(q, List.of(PostType.JOB_POSTING, PostType.JOB_SEEKING, PostType.TEAM_RECRUIT),
-                null, null, null, null, null, null, null, SearchSort.OLDEST, null, size);
+        return new SearchQuery(q, List.of(PostType.JOB_POSTING, PostType.JOB_SEEKING, PostType.TEAM_RECRUIT), null, null, null, null, null, null, null, null, true, SearchSort.OLDEST, null, size);
     }
 
     @Test
@@ -314,8 +330,7 @@ class SearchModuleTests {
     }
 
     private SearchQuery recruitQuery(String q, int size) {
-        return new SearchQuery(q, List.of(PostType.JOB_POSTING, PostType.JOB_SEEKING, PostType.TEAM_RECRUIT),
-                null, null, null, null, null, null, null, null, null, size);
+        return new SearchQuery(q, List.of(PostType.JOB_POSTING, PostType.JOB_SEEKING, PostType.TEAM_RECRUIT), null, null, null, null, null, null, null, null, true, null, null, size);
     }
 
     private CreateTeamPostingCommand teamPostingCommand(String title, Genre genre) {
@@ -329,8 +344,7 @@ class SearchModuleTests {
 
     @Test
     void 검색어와_필터가_모두_없으면_빈_결과를_반환한다() {
-        SearchPage<SearchResultItem> result = searchService.search(new SearchQuery(
-                null, null, null, null, null, null, null, null, null, null, null, 20));
+        SearchPage<SearchResultItem> result = searchService.search(new SearchQuery(null, null, null, null, null, null, null, null, null, null, true, null, null, 20));
 
         assertThat(result.items()).isEmpty();
         assertThat(result.totalCount()).isZero();
@@ -352,12 +366,12 @@ class SearchModuleTests {
     }
 
     private SearchQuery queryWithArtworkField(ArtworkField field) {
-        return new SearchQuery(null, null, List.of(field), null, null, null, null, null, null, null, null, 20);
+        return new SearchQuery(null, null, List.of(field), null, null, null, null, null, null, null, true, null, null, 20);
     }
 
     // 포트폴리오와 recruit 소유 유형을 함께 요청하는 질의(유형 필터 미지정 = 전체 유형)
     private SearchQuery mergedQuery(String q, int size) {
-        return new SearchQuery(q, null, null, null, null, null, null, null, null, null, null, size);
+        return new SearchQuery(q, null, null, null, null, null, null, null, null, null, true, null, null, size);
     }
 
     // 같은 DB/색인을 공유하는 다른 테스트와 겹치지 않는 검색 토큰
@@ -401,8 +415,12 @@ class SearchModuleTests {
     private ArtworkInfo uploadReadyArtwork(ArtworkField field, CreativeType creativeType,
                                             List<ArtworkRole> roles, List<Genre> genres, AgeRating ageRating,
                                             String title) {
-        String memberId = registerMember();
+        return uploadReadyArtwork(registerMember(), field, creativeType, roles, genres, ageRating, title);
+    }
 
+    private ArtworkInfo uploadReadyArtwork(String memberId, ArtworkField field, CreativeType creativeType,
+                                            List<ArtworkRole> roles, List<Genre> genres, AgeRating ageRating,
+                                            String title) {
         List<String> imageKeys = List.of("raw/" + UUID.randomUUID() + ".png");
         ArtworkInfo artwork = artworkService.uploadArtwork(memberId, new UploadArtworkCommand(
                 imageKeys, 0, null, ImageLayoutType.VERTICAL_SCROLL,

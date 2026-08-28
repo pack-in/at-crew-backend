@@ -489,7 +489,7 @@ class ArtworkModuleTests {
         jdbcTemplate.update("DELETE FROM artwork_languages WHERE artwork_id = ?", legacyArtworkId);
 
         List<String> koViewerFeed = artworkService
-                .getCommunityArtworks(null, null, List.of(Language.KO), null, null, 50)
+                .getCommunityArtworks(null, null, List.of(Language.KO), null, null, 50, null, true)
                 .items().stream().map(ArtworkSummaryInfo::id).toList();
 
         assertThat(koViewerFeed).contains(koArtworkId, legacyArtworkId);
@@ -497,18 +497,50 @@ class ArtworkModuleTests {
 
         // 비로그인(빈 목록)은 필터를 적용하지 않는다
         List<String> anonymousFeed = artworkService
-                .getCommunityArtworks(null, null, List.of(), null, null, 50)
+                .getCommunityArtworks(null, null, List.of(), null, null, 50, null, true)
                 .items().stream().map(ArtworkSummaryInfo::id).toList();
         assertThat(anonymousFeed).contains(koArtworkId, jaArtworkId, legacyArtworkId);
     }
 
+    @Test
+    void 커뮤니티_피드는_표시_OFF_뷰어에게_R18_G18을_숨기되_본인_업로드는_항상_노출한다() {
+        String author = registerAuthor();
+        String viewer = registerAuthor();
+        memberService.updateAdultContentVisible(viewer, false);
+
+        String allArtworkId = publishReady(author, "raw/adult-all.png", AgeRating.ALL);
+        String r18ArtworkId = publishReady(author, "raw/adult-r18.png", AgeRating.R18);
+        String g18ArtworkId = publishReady(author, "raw/adult-g18.png", AgeRating.G18);
+        String ownR18ArtworkId = publishReady(viewer, "raw/adult-own-r18.png", AgeRating.R18);
+
+        List<String> hiddenFeed = artworkService
+                .getCommunityArtworks(null, null, List.of(), null, null, 50, viewer, false)
+                .items().stream().map(ArtworkSummaryInfo::id).toList();
+        assertThat(hiddenFeed).contains(allArtworkId, ownR18ArtworkId);
+        assertThat(hiddenFeed).doesNotContain(r18ArtworkId, g18ArtworkId);
+
+        // 표시 ON이면 필터가 걸리지 않는다
+        List<String> visibleFeed = artworkService
+                .getCommunityArtworks(null, null, List.of(), null, null, 50, viewer, true)
+                .items().stream().map(ArtworkSummaryInfo::id).toList();
+        assertThat(visibleFeed).contains(allArtworkId, r18ArtworkId, g18ArtworkId, ownR18ArtworkId);
+    }
+
     /** 피드는 READY 상태만 노출하므로 이미지 처리 콜백까지 재현해 공개 상태를 만든다. */
     private String publishReady(String memberId, String imageKey, List<Language> languages) {
+        return publishReady(memberId, imageKey, AgeRating.ALL, languages);
+    }
+
+    private String publishReady(String memberId, String imageKey, AgeRating ageRating) {
+        return publishReady(memberId, imageKey, ageRating, List.of(Language.KO));
+    }
+
+    private String publishReady(String memberId, String imageKey, AgeRating ageRating, List<Language> languages) {
         ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, new UploadArtworkCommand(
                 List.of(imageKey), 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 "피드 작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
                 List.of(), List.of(), List.of(),
-                AgeRating.ALL, languages, true, List.of(), List.of(), null, null, List.of(), List.of()));
+                ageRating, languages, true, List.of(), List.of(), null, null, List.of(), List.of()));
         processImage(uploaded.id(), imageKey, MediaProcessingStatus.DONE);
         awaitReady(memberId, uploaded.id());
         return uploaded.id();

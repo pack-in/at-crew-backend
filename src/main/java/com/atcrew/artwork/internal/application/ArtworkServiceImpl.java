@@ -280,11 +280,14 @@ class ArtworkServiceImpl implements ArtworkService {
                                                                 AgeRating ageRating,
                                                                 List<Language> viewerLanguages,
                                                                 ArtworkSort sort,
-                                                                String cursor, int size) {
+                                                                String cursor, int size,
+                                                                String viewerMemberId,
+                                                                boolean viewerAdultContentVisible) {
         ArtworkSort resolvedSort = sort != null ? sort : ArtworkSort.LATEST;
         int limit = size + 1;
         Specification<Artwork> spec =
-                buildCommunitySpecification(artworkField, ageRating, viewerLanguages, resolvedSort, cursor);
+                buildCommunitySpecification(artworkField, ageRating, viewerLanguages, resolvedSort, cursor,
+                        viewerMemberId, viewerAdultContentVisible);
         List<Artwork> artworks = artworkRepository
                 .findAll(spec, PageRequest.of(0, limit, sortOf(resolvedSort)))
                 .getContent();
@@ -295,7 +298,9 @@ class ArtworkServiceImpl implements ArtworkService {
     private Specification<Artwork> buildCommunitySpecification(ArtworkField artworkField,
                                                                 AgeRating ageRating,
                                                                 List<Language> viewerLanguages,
-                                                                ArtworkSort sort, String cursor) {
+                                                                ArtworkSort sort, String cursor,
+                                                                String viewerMemberId,
+                                                                boolean viewerAdultContentVisible) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             predicates.add(cb.equal(root.get("status"), ArtworkStatus.READY));
@@ -310,6 +315,9 @@ class ArtworkServiceImpl implements ArtworkService {
             }
             if (viewerLanguages != null && !viewerLanguages.isEmpty()) {
                 predicates.add(languageSegmentPredicate(root, query, cb, viewerLanguages));
+            }
+            if (!viewerAdultContentVisible) {
+                predicates.add(adultContentPredicate(root, cb, viewerMemberId));
             }
             if (cursor != null) {
                 predicates.add(communityCursorPredicate(root, cb, sort, cursor));
@@ -627,6 +635,18 @@ class ArtworkServiceImpl implements ArtworkService {
                         cb.equal(subRoot.get("id"), root.get("id")),
                         languageJoin.in(viewerLanguages)));
         return cb.or(cb.isEmpty(root.get("languages")), cb.exists(subquery));
+    }
+
+    /**
+     * 성인 콘텐츠 표시 필터(설정-R10) — 표시 OFF일 때 R18/G18 중 본인 업로드가 아닌 작품을 제외한다.
+     * 본인 업로드분은 표시 설정과 무관하게 항상 노출된다(마이페이지_작가-R21).
+     */
+    private Predicate adultContentPredicate(Root<Artwork> root, CriteriaBuilder cb, String viewerMemberId) {
+        Predicate notAdult = cb.not(root.get("ageRating").in(AgeRating.R18, AgeRating.G18));
+        Predicate ownUpload = viewerMemberId != null
+                ? cb.equal(root.get("authorId"), viewerMemberId)
+                : cb.disjunction();
+        return cb.or(notAdult, ownUpload);
     }
 
     /**
