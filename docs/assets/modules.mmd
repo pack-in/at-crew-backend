@@ -1,0 +1,27 @@
+graph TD
+  subgraph entry["사용자 접점"]
+    auth[auth<br/>인증/토큰]
+    member[member<br/>회원/작가 프로필]
+    company[company<br/>기업 프로필]
+  end
+  subgraph content["콘텐츠"]
+    artwork[artwork<br/>작품, 북마크, 휴지통]
+    portfolio[portfolio<br/>포트폴리오, 공유링크]
+    media[media<br/>이미지 업로드 파이프라인]
+  end
+  subgraph discovery["탐색/거래"]
+    community[community<br/>피드, 배너]
+    search[search<br/>Elasticsearch 검색]
+    recruit[recruit<br/>구인, 구직, 모집, 지원]
+    billing[billing<br/>Stripe 결제/구독]
+  end
+  common[common<br/>보안, 예외, 응답, 로깅, 관측]
+
+  artwork -->|이벤트| search
+  artwork --> media
+  recruit --> media
+  recruit -->|이벤트| search
+  portfolio --> artwork
+  community --> artwork
+  billing -->|권한 게이팅| recruit
+  member --> common
