@@ -338,14 +338,15 @@ class AuthServiceImplTest {
     // ─── 비밀번호 변경 ────────────────────────────────────────────────
 
     @Test
-    void 비밀번호_변경_성공_시_refresh_토큰_전체_폐기() {
+    void 비밀번호_변경_성공_시_현재_세션_제외_나머지_refresh_토큰_폐기() {
         when(memberService.findById(MEMBER_ID)).thenReturn(memberInfo(AuthProvider.EMAIL));
         when(memberService.verifyPassword(EMAIL, PASSWORD)).thenReturn(PasswordVerification.matched(MEMBER_ID));
 
-        authService.changePassword(MEMBER_ID, PASSWORD, "NewPass1!");
+        authService.changePassword(MEMBER_ID, PASSWORD, "NewPass1!", REFRESH_TOKEN);
 
         verify(memberService).changePassword(MEMBER_ID, "NewPass1!");
-        verify(refreshTokenRepository).deleteAllByMemberId(MEMBER_ID);
+        verify(refreshTokenRepository).deleteAllByMemberIdExceptTokenValue(MEMBER_ID, REFRESH_TOKEN);
+        verify(refreshTokenRepository, never()).deleteAllByMemberId(MEMBER_ID);
     }
 
     @Test
@@ -353,7 +354,7 @@ class AuthServiceImplTest {
         when(memberService.findById(MEMBER_ID)).thenReturn(memberInfo(AuthProvider.EMAIL));
         when(memberService.verifyPassword(EMAIL, PASSWORD)).thenReturn(PasswordVerification.mismatched());
 
-        assertThatThrownBy(() -> authService.changePassword(MEMBER_ID, PASSWORD, "NewPass1!"))
+        assertThatThrownBy(() -> authService.changePassword(MEMBER_ID, PASSWORD, "NewPass1!", REFRESH_TOKEN))
                 .isInstanceOf(AuthException.class)
                 .satisfies(e -> assertThat(((AuthException) e).getCode())
                         .isEqualTo(AuthErrorCode.CURRENT_PASSWORD_MISMATCH.name()));
@@ -365,7 +366,7 @@ class AuthServiceImplTest {
     void GOOGLE_계정은_비밀번호_변경_불가() {
         when(memberService.findById(MEMBER_ID)).thenReturn(memberInfo(AuthProvider.GOOGLE));
 
-        assertThatThrownBy(() -> authService.changePassword(MEMBER_ID, PASSWORD, "NewPass1!"))
+        assertThatThrownBy(() -> authService.changePassword(MEMBER_ID, PASSWORD, "NewPass1!", REFRESH_TOKEN))
                 .isInstanceOf(AuthException.class)
                 .satisfies(e -> assertThat(((AuthException) e).getCode())
                         .isEqualTo(AuthErrorCode.PASSWORD_CHANGE_NOT_SUPPORTED.name()));
@@ -379,7 +380,7 @@ class AuthServiceImplTest {
         when(memberService.findById(MEMBER_ID)).thenReturn(memberInfo(AuthProvider.EMAIL));
         when(memberService.verifyPassword(EMAIL, PASSWORD)).thenReturn(PasswordVerification.notSet());
 
-        assertThatThrownBy(() -> authService.changePassword(MEMBER_ID, PASSWORD, "NewPass1!"))
+        assertThatThrownBy(() -> authService.changePassword(MEMBER_ID, PASSWORD, "NewPass1!", REFRESH_TOKEN))
                 .isInstanceOf(AuthException.class)
                 .satisfies(e -> assertThat(((AuthException) e).getCode())
                         .isEqualTo(AuthErrorCode.PASSWORD_RESET_REQUIRED.name()));

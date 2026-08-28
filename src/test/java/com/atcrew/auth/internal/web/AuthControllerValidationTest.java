@@ -233,6 +233,20 @@ class AuthControllerValidationTest {
     }
 
     @Test
+    void 비밀번호_변경_refreshToken_blank_400() throws Exception {
+        mockMvc.perform(post("/api/auth/email/password-change")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "currentPassword", "OldPass1!",
+                                "newPassword", "NewPass1!",
+                                "newPasswordConfirm", "NewPass1!",
+                                "refreshToken", ""))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("auth/validation/password-change-blank-refresh-token"));
+    }
+
+    @Test
     void 비밀번호_재설정_요청_email_형식_오류_400() throws Exception {
         mockMvc.perform(post("/api/auth/email/password-reset/request")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -278,7 +292,8 @@ class AuthControllerValidationTest {
         return objectMapper.writeValueAsString(Map.of(
                 "currentPassword", current,
                 "newPassword", next,
-                "newPasswordConfirm", confirm
+                "newPasswordConfirm", confirm,
+                "refreshToken", "refresh.jwt"
         ));
     }
 

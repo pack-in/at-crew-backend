@@ -1,7 +1,9 @@
 package com.atcrew.auth.docs;
 
 import com.atcrew.auth.internal.domain.PasswordResetToken;
+import com.atcrew.auth.internal.domain.RefreshToken;
 import com.atcrew.auth.internal.persistence.PasswordResetTokenRepository;
+import com.atcrew.auth.internal.persistence.RefreshTokenRepository;
 import com.atcrew.support.RestDocsIntegrationSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,6 +34,9 @@ class AuthApiDocTest extends RestDocsIntegrationSupport {
 
     @Autowired
     private PasswordResetTokenRepository passwordResetTokenRepository;
+
+    @Autowired
+    private RefreshTokenRepository refreshTokenRepository;
 
     /**
      * 이메일 회원가입 성공 시나리오 문서화.
@@ -173,17 +178,32 @@ class AuthApiDocTest extends RestDocsIntegrationSupport {
     /**
      * 비밀번호 변경 성공 시나리오 문서화.
      * 회원가입으로 토큰을 얻은 뒤 현재 비밀번호를 확인받고 새 비밀번호로 교체한다.
+     * 요청에 실은 Refresh Token(현재 기기 세션)은 유지되고, 다른 기기의 Refresh Token은 폐기됨을 함께 검증한다(설정-R13).
      */
     @Test
     void 비밀번호_변경_성공_문서화() throws Exception {
         String uniqueEmail = "doc-pwchange-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com";
-        String accessToken = registerAndGetAccessToken(uniqueEmail, "Secure1!", "비번변경유저");
+        MvcResult registerResult = mockMvc.perform(post("/api/auth/email/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new RegisterRequest(
+                                uniqueEmail, "Secure1!", "Secure1!", "비번변경유저",
+                                true, true, true, false, "Asia/Seoul", "KR", "KO"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String registerBody = registerResult.getResponse().getContentAsString();
+        String accessToken = objectMapper.readTree(registerBody).at("/data/accessToken").asText();
+        String currentRefreshToken = objectMapper.readTree(registerBody).at("/data/refreshToken").asText();
+        String memberId = objectMapper.readTree(registerBody).at("/data/member/id").asText();
+
+        // 다른 기기 세션을 흉내내기 위해 별도 Refresh Token을 직접 저장한다.
+        String otherDeviceRefreshToken = "other-device-" + UUID.randomUUID();
+        refreshTokenRepository.save(RefreshToken.of(memberId, otherDeviceRefreshToken, Instant.now().plusSeconds(3600)));
 
         mockMvc.perform(post("/api/auth/email/password-change")
                         .contentType(MediaType.APPLICATION_JSON)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                         .content(objectMapper.writeValueAsString(
-                                new ChangePasswordRequest("Secure1!", "Changed1!", "Changed1!"))))
+                                new ChangePasswordRequest("Secure1!", "Changed1!", "Changed1!", currentRefreshToken))))
                 .andExpect(status().isNoContent())
                 .andDo(document("auth/password-change",
                         preprocessRequest(prettyPrint()),
@@ -191,9 +211,24 @@ class AuthApiDocTest extends RestDocsIntegrationSupport {
                         requestFields(
                                 fieldWithPath("currentPassword").description("현재 비밀번호"),
                                 fieldWithPath("newPassword").description("새 비밀번호 (영문·숫자·특수문자 포함 8자 이상)"),
-                                fieldWithPath("newPasswordConfirm").description("새 비밀번호 확인")
+                                fieldWithPath("newPasswordConfirm").description("새 비밀번호 확인"),
+                                fieldWithPath("refreshToken").description(
+                                        "현재 세션의 Refresh Token (유지되며, 같은 회원의 다른 Refresh Token은 모두 폐기됩니다)")
                         )
                 ));
+
+        // 다른 기기의 Refresh Token은 폐기되어 갱신할 수 없다
+        mockMvc.perform(post("/api/auth/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new RefreshRequest(otherDeviceRefreshToken))))
+                .andExpect(status().isUnauthorized());
+
+        // 요청에 실은 현재 세션의 Refresh Token은 살아있다 — 로그인(재발급)보다 먼저 확인해야 한다.
+        // 로그인은 재로그인 시 회원의 모든 Refresh Token을 새로 발급하므로 이 검증 이후에 수행한다.
+        mockMvc.perform(post("/api/auth/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new RefreshRequest(currentRefreshToken))))
+                .andExpect(status().isOk());
 
         // 새 비밀번호로 로그인되는지 확인 (기존 비밀번호는 더 이상 통하지 않음)
         mockMvc.perform(post("/api/auth/email/login")
@@ -218,7 +253,7 @@ class AuthApiDocTest extends RestDocsIntegrationSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                         .content(objectMapper.writeValueAsString(
-                                new ChangePasswordRequest("WrongPass1!", "Changed1!", "Changed1!"))))
+                                new ChangePasswordRequest("WrongPass1!", "Changed1!", "Changed1!", "dummy-refresh-token"))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("CURRENT_PASSWORD_MISMATCH"));
     }
@@ -423,7 +458,7 @@ class AuthApiDocTest extends RestDocsIntegrationSupport {
     record LogoutRequest(String refreshToken) {}
 
     /** 비밀번호 변경 요청 바디 */
-    record ChangePasswordRequest(String currentPassword, String newPassword, String newPasswordConfirm) {}
+    record ChangePasswordRequest(String currentPassword, String newPassword, String newPasswordConfirm, String refreshToken) {}
 
     /** 비밀번호 재설정 요청 바디 */
     record PasswordResetRequestRequest(String email) {}
