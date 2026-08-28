@@ -58,6 +58,10 @@ public class BookmarkFolder implements Persistable<String> {
         }
     }
 
+    public void rename(String name) {
+        this.name = name.strip();
+    }
+
     @Override
     public String getId() { return id; }
     public String getMemberId() { return memberId; }

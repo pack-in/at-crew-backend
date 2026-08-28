@@ -10,6 +10,8 @@ public interface BookmarkService {
 
     BookmarkFolderInfo createFolder(String memberId, String name);
 
+    BookmarkFolderInfo renameFolder(String memberId, String folderId, String name);
+
     void deleteFolder(String memberId, String folderId);
 
     CursorPage<BookmarkEntryInfo> getBookmarks(String memberId, String folderId, String cursor, int size);
