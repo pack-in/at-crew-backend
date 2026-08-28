@@ -53,3 +53,16 @@ jobs:
 
       - name: 빌드 및 테스트
         run: ./gradlew build
+
+      # 실패한 실행의 원인을 나중에 다시 볼 수 있게 남긴다. 콘솔 출력은 잘리는 데다
+      # 워크플로 로그는 보존 기간이 지나면 사라진다 — 간헐적 실패는 여러 번의 리포트를
+      # 나란히 놓고 비교해야 패턴이 보인다.
+      - name: 테스트 리포트 업로드 (실패 시)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            build/reports/tests/test/
+            build/test-results/test/
+          retention-days: 14
