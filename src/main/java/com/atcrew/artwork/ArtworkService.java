@@ -33,9 +33,12 @@ public interface ArtworkService {
      *
      * @param viewerLanguages 뷰어가 노출받기로 한 게시물 언어(로그인-R16). 비어 있으면 언어 필터를
      *                        적용하지 않는다 — 비로그인 뷰어가 여기에 해당한다
+     * @param sort            정렬 기준(이슈 #78). null이면 {@link ArtworkSort#LATEST}
+     * @param cursor          {@code "정렬값_작품ID"} 형태의 복합 커서. 정렬 기준이 바뀌면 커서 의미도
+     *                        달라지므로 정렬을 바꿀 때는 커서 없이 첫 페이지부터 다시 요청해야 한다
      */
     CursorPage<ArtworkSummaryInfo> getCommunityArtworks(ArtworkField artworkField, AgeRating ageRating,
-                                                        List<Language> viewerLanguages,
+                                                        List<Language> viewerLanguages, ArtworkSort sort,
                                                         String cursor, int size);
 
     CursorPage<ArtworkSummaryInfo> getMyArtworks(String memberId, String cursor, int size);
