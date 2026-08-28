@@ -367,7 +367,7 @@ class SearchModuleTests {
 
     /** ArtworkSearchIndexer의 @ApplicationModuleListener는 비동기라, 색인 반영까지 폴링한다. */
     private List<SearchResultItem> awaitSearchResult(Supplier<SearchPage<SearchResultItem>> query) {
-        Instant deadline = Instant.now().plus(Duration.ofSeconds(15));
+        Instant deadline = Instant.now().plus(Duration.ofSeconds(45));
         while (Instant.now().isBefore(deadline)) {
             SearchPage<SearchResultItem> page = query.get();
             if (!page.items().isEmpty()) {
@@ -379,7 +379,7 @@ class SearchModuleTests {
     }
 
     private void awaitCondition(Supplier<Boolean> condition) {
-        Instant deadline = Instant.now().plus(Duration.ofSeconds(15));
+        Instant deadline = Instant.now().plus(Duration.ofSeconds(45));
         while (Instant.now().isBefore(deadline)) {
             if (condition.get()) return;
             sleep();

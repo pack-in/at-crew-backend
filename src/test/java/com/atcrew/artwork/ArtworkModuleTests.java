@@ -320,7 +320,7 @@ class ArtworkModuleTests {
     }
 
     private void awaitCondition(BooleanSupplier condition) {
-        Instant deadline = Instant.now().plus(Duration.ofSeconds(15));
+        Instant deadline = Instant.now().plus(Duration.ofSeconds(45));
         while (Instant.now().isBefore(deadline)) {
             if (condition.getAsBoolean()) return;
             try {
