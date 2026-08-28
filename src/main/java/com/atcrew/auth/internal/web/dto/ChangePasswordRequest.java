@@ -18,7 +18,11 @@ public record ChangePasswordRequest(
         String newPassword,
 
         @Schema(format = "password")
-        String newPasswordConfirm
+        String newPasswordConfirm,
+
+        // 현재 세션 식별용 — 변경 후 이 토큰만 유지하고 나머지 Refresh Token은 모두 폐기한다.
+        @NotBlank(message = "Refresh Token은 필수입니다")
+        String refreshToken
 ) {
     @AssertTrue(message = "비밀번호가 일치하지 않습니다")
     public boolean isNewPasswordConfirmed() {

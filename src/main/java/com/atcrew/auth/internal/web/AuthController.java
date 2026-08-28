@@ -75,7 +75,8 @@ class AuthController {
 
     @Operation(summary = "비밀번호 변경",
             description = "현재 비밀번호를 확인한 뒤 새 비밀번호로 변경합니다. 이메일 가입 계정 전용이며, "
-                    + "변경 후에는 기존 Refresh Token이 모두 폐기되므로 다시 로그인해야 합니다.")
+                    + "요청에 실린 Refresh Token(현재 기기 세션)은 유지되고, 같은 회원의 다른 Refresh Token은 "
+                    + "모두 폐기됩니다(다른 기기는 로그아웃).")
     @ApiResponses({
             @ApiResponse(responseCode = "204", description = "변경 성공"),
             @ApiResponse(responseCode = "400", description = "입력 형식 오류·현재 비밀번호 불일치·소셜 로그인 계정"),
@@ -86,7 +87,7 @@ class AuthController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void changePassword(@RequestBody @Valid ChangePasswordRequest request) {
         authService.changePassword(securityUtils.getCurrentMemberId(),
-                request.currentPassword(), request.newPassword());
+                request.currentPassword(), request.newPassword(), request.refreshToken());
     }
 
     @Operation(summary = "비밀번호 재설정 요청",

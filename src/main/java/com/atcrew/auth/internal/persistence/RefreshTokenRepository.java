@@ -17,6 +17,13 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, Stri
     @Query("DELETE FROM RefreshToken r WHERE r.memberId = :memberId")
     void deleteAllByMemberId(String memberId);
 
+    // 위 deleteAllByMemberId와 동일한 즉시 flush 이유(INSERT-before-DELETE 순서 문제) — 현재 세션의
+    // 토큰(tokenValue)만 남기고 같은 회원의 나머지 Refresh Token을 지운다(설정-R13, 비밀번호 변경 시
+    // 현재 기기는 유지, 다른 기기만 로그아웃).
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("DELETE FROM RefreshToken r WHERE r.memberId = :memberId AND r.tokenValue != :tokenValue")
+    void deleteAllByMemberIdExceptTokenValue(String memberId, String tokenValue);
+
     // 만료 조건을 쿼리에 명시해 TTL 인덱스 대체 정리 배치의 지연이 보안에 영향을 주지 않게 한다
     // (docs/design/mariadb-migration-design.md §3.5.2)
     Optional<RefreshToken> findByTokenValueAndExpiresAtAfter(String tokenValue, Instant now);

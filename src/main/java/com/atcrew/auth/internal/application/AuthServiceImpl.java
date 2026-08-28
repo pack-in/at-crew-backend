@@ -227,7 +227,7 @@ class AuthServiceImpl implements AuthService {
 
     @Override
     @Transactional
-    public void changePassword(String memberId, String currentPassword, String newPassword) {
+    public void changePassword(String memberId, String currentPassword, String newPassword, String currentRefreshToken) {
         MemberInfo member = memberService.findById(memberId);
 
         // GOOGLE 계정은 비밀번호 자체가 없어 변경 대상이 아니다.
@@ -246,8 +246,10 @@ class AuthServiceImpl implements AuthService {
         }
 
         memberService.changePassword(memberId, newPassword);
-        // 비밀번호가 바뀌면 기존에 유출됐을 수 있는 refresh token도 함께 끊는다 — 재로그인이 필요하다.
-        refreshTokenRepository.deleteAllByMemberId(memberId);
+        // 비밀번호가 바뀌면 유출됐을 수 있는 다른 기기의 refresh token은 끊되, 현재 기기(요청에 실린
+        // 토큰)는 유지한다(설정-R13). currentRefreshToken이 이미 만료·미존재여도 != 조건은 그 값을 가진
+        // row만 제외할 뿐이라 안전하게 나머지 전체가 삭제된다.
+        refreshTokenRepository.deleteAllByMemberIdExceptTokenValue(memberId, currentRefreshToken);
 
         log.info("비밀번호 변경: memberId={}", memberId);
     }
