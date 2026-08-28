@@ -1,5 +1,7 @@
 package com.atcrew.community.internal.web;
 
+import com.atcrew.community.internal.exception.CommunityErrorCode;
+import com.atcrew.community.internal.exception.CommunityException;
 import com.atcrew.artwork.AgeRating;
 import com.atcrew.artwork.ArtworkField;
 import com.atcrew.artwork.ArtworkService;
@@ -59,7 +61,7 @@ class CommunityController {
             @Parameter(description = "작품 분야 필터") @RequestParam(required = false) ArtworkField artworkField,
             @Parameter(description = "연령 등급 필터 (기본 ALL)") @RequestParam(required = false) AgeRating ageRating,
             @Parameter(description = "커서 (마지막 작품 createdAt millis)") @RequestParam(required = false) String cursor,
-            @Parameter(description = "페이지 크기 (기본 20, 최대 50)") @RequestParam(required = false) Integer size) {
+            @Parameter(description = "페이지 크기 (기본 20, 최대 50). 0은 빈 목록, 음수는 400 INVALID_SIZE") @RequestParam(required = false) Integer size) {
         return ApiResponse.success(artworkService.getCommunityArtworks(
                 artworkField, ageRating, viewerLanguages(), cursor, resolveSize(size)));
     }
@@ -74,7 +76,7 @@ class CommunityController {
             @Parameter(description = "활동 분야 필터") @RequestParam(required = false) ActivityField activityField,
             @Parameter(description = "정렬 기준 (RECENTLY_UPDATED·VIEW_COUNT·EXPERIENCE, 기본 RECENTLY_UPDATED)") @RequestParam(required = false) ProfileSort sort,
             @Parameter(description = "커서") @RequestParam(required = false) String cursor,
-            @Parameter(description = "페이지 크기 (기본 20, 최대 50)") @RequestParam(required = false) Integer size) {
+            @Parameter(description = "페이지 크기 (기본 20, 최대 50). 0은 빈 목록, 음수는 400 INVALID_SIZE") @RequestParam(required = false) Integer size) {
         return ApiResponse.success(memberService.searchProfiles(new SearchProfilesCommand(
                 List.of(EmploymentStatus.AVAILABLE, EmploymentStatus.NEGOTIABLE),
                 activityField, sort, viewerLanguages(), cursor, resolveSize(size))));
@@ -85,7 +87,7 @@ class CommunityController {
     @GetMapping("/job-postings")
     public ApiResponse<CursorPage<CommunityJobPostingCardInfo>> getJobPostings(
             @Parameter(description = "커서") @RequestParam(required = false) String cursor,
-            @Parameter(description = "페이지 크기 (기본 20, 최대 50)") @RequestParam(required = false) Integer size) {
+            @Parameter(description = "페이지 크기 (기본 20, 최대 50). 0은 빈 목록, 음수는 400 INVALID_SIZE") @RequestParam(required = false) Integer size) {
         return ApiResponse.success(recruitService.getJobPostingFeed(cursor, resolveSize(size)));
     }
 
@@ -94,12 +96,20 @@ class CommunityController {
     @GetMapping("/team-recruits")
     public ApiResponse<CursorPage<CommunityTeamRecruitCardInfo>> getTeamRecruits(
             @Parameter(description = "커서") @RequestParam(required = false) String cursor,
-            @Parameter(description = "페이지 크기 (기본 20, 최대 50)") @RequestParam(required = false) Integer size) {
+            @Parameter(description = "페이지 크기 (기본 20, 최대 50). 0은 빈 목록, 음수는 400 INVALID_SIZE") @RequestParam(required = false) Integer size) {
         return ApiResponse.success(recruitService.getTeamRecruitFeed(cursor, resolveSize(size)));
     }
 
     private int resolveSize(Integer size) {
-        return size != null ? Math.min(size, MAX_SIZE) : DEFAULT_SIZE;
+        if (size == null) {
+            return DEFAULT_SIZE;
+        }
+        // 음수는 그대로 흘려보내면 조회 계층에서 500이 된다(2026-08-28 prod에서 확인).
+        // 0은 빈 목록을 돌려주는 기존 동작이라 그대로 둔다 — 음수만 막는다.
+        if (size < 0) {
+            throw new CommunityException(CommunityErrorCode.INVALID_SIZE);
+        }
+        return Math.min(size, MAX_SIZE);
     }
 
     // 언어 세그먼트 필터 기준(로그인-R16). 비로그인은 빈 목록 → 필터 미적용(전체 노출).
