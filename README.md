@@ -144,6 +144,7 @@ Swagger UI는 로컬과 개발 프로필에서만 열립니다(`http://localhost
 | 규약 | [CONTRIBUTING.md](CONTRIBUTING.md), [docs/conventions/](docs/conventions/) |
 | 테스트 전략 | [docs/testing/rest-docs-guide.md](docs/testing/rest-docs-guide.md) |
 | 로드맵 | [docs/roadmap.md](docs/roadmap.md) |
+| 다이어그램 생성 | [scripts/diagrams/build.py](scripts/diagrams/build.py) — 위 SVG 두 개를 다시 만든다 |
 
 전체 문서 인덱스는 [CLAUDE.md](CLAUDE.md)의 문서 목록 표에 있습니다.
 
