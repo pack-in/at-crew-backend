@@ -63,7 +63,8 @@ class ArtworkController {
             + "언어를 2개 이상 고르는 것은 프로 플랜 전용입니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "업로드 성공")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400",
-            description = "게시물 언어 개수 오류(INVALID_LANGUAGE_COUNT)")
+            description = "게시물 언어 개수 오류(INVALID_LANGUAGE_COUNT), "
+                    + "직접입력 값이 10자 초과 또는 항목당 10개 초과(INVALID_CUSTOM_TAG)")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403",
             description = "스타터 작품 개수 초과(STARTER_ARTWORK_LIMIT_EXCEEDED), "
                     + "스타터의 다중 언어 선택(MULTI_LANGUAGE_REQUIRES_PRO), "
@@ -93,7 +94,8 @@ class ArtworkController {
     @Operation(summary = "작품 수정")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "수정 성공")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400",
-            description = "게시물 언어 개수 오류(INVALID_LANGUAGE_COUNT)")
+            description = "게시물 언어 개수 오류(INVALID_LANGUAGE_COUNT), "
+                    + "직접입력 값이 10자 초과 또는 항목당 10개 초과(INVALID_CUSTOM_TAG)")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403",
             description = "스타터의 다중 언어 선택(MULTI_LANGUAGE_REQUIRES_PRO), "
                     + "주 사용 언어 미포함(LANGUAGE_NOT_ALLOWED)")
@@ -150,7 +152,7 @@ class ArtworkController {
         return new UploadArtworkCommand(
                 req.imageKeys(), req.representativeImageIndex(), req.thumbnailKey(),
                 req.imageLayoutType(), req.title(), req.description(),
-                req.artworkField(), req.creativeType(), req.roles(), req.genres(),
+                req.artworkField(), req.creativeType(), req.roles(), req.genres(), req.customTags(),
                 req.tags(), req.ageRating(), req.languages(), req.publishToFeed(), req.portfolioIds(), req.tools(),
                 req.workDuration(), req.cutCount(), req.videoLinks(), materials);
     }
@@ -161,12 +163,12 @@ class ArtworkController {
         return new UpdateArtworkCommand(
                 req.imageKeys(), req.representativeImageIndex(), req.thumbnailKey(),
                 req.imageLayoutType(), req.title(), req.description(),
-                req.artworkField(), req.creativeType(), req.roles(), req.genres(),
+                req.artworkField(), req.creativeType(), req.roles(), req.genres(), req.customTags(),
                 req.tags(), req.ageRating(), req.languages(), req.tools(),
                 req.workDuration(), req.cutCount(), req.videoLinks(), materials);
     }
 
     private MaterialData toMaterialData(MaterialRequest r) {
-        return new MaterialData(r.name(), r.targets(), r.attachmentKeys(), r.links());
+        return new MaterialData(r.name(), r.targets(), r.customTargets(), r.attachmentKeys(), r.links());
     }
 }

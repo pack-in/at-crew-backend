@@ -20,6 +20,7 @@ public record ArtworkInfo(
         CreativeType creativeType,
         List<ArtworkRole> roles,
         List<Genre> genres,
+        List<ArtworkCustomTagInfo> customTags,
         List<String> tags,
         List<String> tools,
         WorkDuration workDuration,

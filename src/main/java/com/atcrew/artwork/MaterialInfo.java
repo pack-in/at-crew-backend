@@ -5,6 +5,7 @@ import java.util.List;
 public record MaterialInfo(
         String name,
         List<MaterialTarget> targets,
+        List<String> customTargets,
         List<String> attachmentKeys,
         List<String> links
 ) {

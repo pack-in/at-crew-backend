@@ -121,6 +121,7 @@ class ArtworkServiceImpl implements ArtworkService {
                 command.creativeType(),
                 command.roles(),
                 command.genres(),
+                command.customTags(),
                 command.tags(),
                 command.ageRating(),
                 command.languages(),
@@ -202,6 +203,7 @@ class ArtworkServiceImpl implements ArtworkService {
                 command.creativeType(),
                 command.roles(),
                 command.genres(),
+                command.customTags(),
                 command.tags(),
                 command.ageRating(),
                 command.languages(),
@@ -701,7 +703,7 @@ class ArtworkServiceImpl implements ArtworkService {
     private List<Material> toMaterials(List<MaterialData> data) {
         if (data == null) return List.of();
         return data.stream()
-                .map(d -> new Material(d.name(), d.targets(), d.attachmentKeys(), d.links()))
+                .map(d -> new Material(d.name(), d.targets(), d.customTargets(), d.attachmentKeys(), d.links()))
                 .toList();
     }
 }

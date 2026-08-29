@@ -86,7 +86,7 @@ class ArtworkMediaEventListenerTest {
     private Artwork artworkWith(String... imageKeys) {
         return Artwork.create("author-1", "제목", "설명", List.of(imageKeys), 0, null,
                 ImageLayoutType.VERTICAL_SCROLL, ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
-                List.of(), List.of(), List.of(), AgeRating.ALL, List.of(Language.KO), Visibility.PUBLIC,
+                List.of(), List.of(), null, List.of(), AgeRating.ALL, List.of(Language.KO), Visibility.PUBLIC,
                 List.of(), null, null, List.of(), List.of());
     }
 }
