@@ -2,6 +2,9 @@
 # 9200 포트는 docker가 모든 인터페이스에 바인딩하지만, 실제 접근 제어는 AWS 보안 그룹에서
 # 앱 서버 EC2(프라이빗 IP 또는 보안 그룹 참조)만 허용하도록 건다 — 이 EC2 자체는 퍼블릭 IP를 붙이지 않는다
 # (docs/NEXT_STEPS.md "비용 관리": 2024년부터 AWS가 퍼블릭 IPv4 자체에 과금).
+#
+# 이슈 #76 — EC2 #1로 통합 진행 중(docker-compose.app.yml의 elasticsearch 서비스). EC2 #2 종료가
+# 끝나면 이 파일은 삭제 대상이다. 그 전까지는 롤백 경로로 유지한다.
 services:
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:9.2.8
