@@ -1,5 +1,5 @@
-# EC2 #1(앱 서버) 전용 — 앱 컨테이너와 MariaDB를 같이 띄운다(self-hosted, laiteu와 동일 패턴).
-# docs/design/mariadb-migration-design.md §10-1 참고. Elasticsearch는 별도 EC2(docker-compose.search.yml).
+# EC2 #1(앱 서버) 전용 — 앱·MariaDB·Elasticsearch를 같이 띄운다(self-hosted, laiteu와 동일 패턴).
+# docs/design/mariadb-migration-design.md §10-1, 이슈 #76(EC2 #2 통합) 참고.
 services:
   mariadb:
     image: mariadb:11.4
@@ -26,6 +26,27 @@ services:
       interval: 3s
       timeout: 5s
       retries: 20
+
+  # 이슈 #76 — 원래 EC2 #2 전용이던 검색 컨테이너를 여기로 통합. 앱 JVM·MariaDB와 한 인스턴스
+  # 메모리를 나눠 쓰므로 힙을 절반(1g→512m)으로 줄였다. 프라이빗 IP로 원격 접근할 필요가 없어져
+  # 포트도 호스트에 노출하지 않는다 — 같은 compose 네트워크 안에서 서비스명(elasticsearch)으로만 접근.
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.2.8
+    restart: always
+    environment:
+      discovery.type: single-node
+      # TODO: xpack.security는 현재 비활성 — 네트워크 격리(포트 미노출)로 1차 방어 중.
+      # 실사용자 트래픽 전이면 인증 활성화 재검토(로컬 dev도 동일하게 비활성, docker-compose.yml 참고).
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+      TZ: UTC
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    logging:
+      driver: json-file
+      options:
+        max-size: 50m
+        max-file: "3"
 
   app:
     image: ${APP_IMAGE}
@@ -57,6 +78,9 @@ services:
     depends_on:
       mariadb:
         condition: service_healthy
+      elasticsearch:
+        condition: service_started
 
 volumes:
   mariadb_data:
+  elasticsearch_data:
