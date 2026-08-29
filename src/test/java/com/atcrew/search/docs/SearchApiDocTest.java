@@ -182,7 +182,7 @@ class SearchApiDocTest extends RestDocsIntegrationSupport {
                 imageKeys, 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 "검색문서화 작품", "설명",
                 ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL, List.of(ArtworkRole.LINEART),
-                List.of(Genre.BL), List.of("태그"),
+                List.of(Genre.BL), null, List.of("태그"),
                 AgeRating.ALL, List.of(Language.KO), true, List.of(), List.of(), null, null, List.of(), List.of()
         ));
 

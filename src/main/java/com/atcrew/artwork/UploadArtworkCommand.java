@@ -21,6 +21,7 @@ public record UploadArtworkCommand(
         CreativeType creativeType,       // 창작 유형
         List<ArtworkRole> roles,         // 담당 역할
         List<Genre> genres,              // 장르 (정본 enum)
+        List<ArtworkCustomTagInfo> customTags, // 담당 역할·장르 직접입력 값 (업로드-R13)
         List<String> tags,               // 태그
         AgeRating ageRating,             // 연령 등급
         List<Language> languages,        // 게시물 작성·노출 언어 (업로드-R30) — 스타터 1개, 프로 다중

@@ -15,6 +15,7 @@ public record UpdateArtworkCommand(
         CreativeType creativeType,
         List<ArtworkRole> roles,
         List<Genre> genres,
+        List<ArtworkCustomTagInfo> customTags,
         List<String> tags,
         AgeRating ageRating,
         List<Language> languages,

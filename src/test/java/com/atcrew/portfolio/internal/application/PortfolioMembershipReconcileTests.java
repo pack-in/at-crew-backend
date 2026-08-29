@@ -227,7 +227,7 @@ class PortfolioMembershipReconcileTests {
         return artworkService.uploadArtwork(memberId, new UploadArtworkCommand(
                 List.of(imageKey), 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 "작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
-                List.of(ArtworkRole.LINEART), List.of(Genre.FANTASY), List.of("태그"),
+                List.of(ArtworkRole.LINEART), List.of(Genre.FANTASY), null, List.of("태그"),
                 AgeRating.ALL, List.of(Language.KO), true, List.of(), List.of("clip studio"),
                 new WorkDuration(1, 1, 1, 1), 1, List.of(), List.of())).id();
     }

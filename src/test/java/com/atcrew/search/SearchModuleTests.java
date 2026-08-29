@@ -425,7 +425,7 @@ class SearchModuleTests {
         ArtworkInfo artwork = artworkService.uploadArtwork(memberId, new UploadArtworkCommand(
                 imageKeys, 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 title, "설명",
-                field, creativeType, roles, genres, List.of("태그"),
+                field, creativeType, roles, genres, null, List.of("태그"),
                 ageRating, List.of(Language.KO), true, List.of(), List.of(), null, null, List.of(), List.of()
         ));
 

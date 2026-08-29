@@ -1,6 +1,7 @@
 package com.atcrew.artwork.internal.web.dto;
 
 import com.atcrew.artwork.AgeRating;
+import com.atcrew.artwork.ArtworkCustomTagInfo;
 import com.atcrew.artwork.ArtworkField;
 import com.atcrew.artwork.ArtworkRole;
 import com.atcrew.artwork.CreativeType;
@@ -28,6 +29,8 @@ public record UploadArtworkRequest(
         @NotNull CreativeType creativeType,
         @NotEmpty List<ArtworkRole> roles,
         List<Genre> genres,
+        // 담당 역할·장르 직접입력 값(업로드-R13). 항목당 최대 10개·값은 최대 10자 — 유형 2개 기준 상한.
+        @Size(max = 20) List<@NotNull ArtworkCustomTagInfo> customTags,
         @Size(max = 7) List<String> tags,
         @NotNull AgeRating ageRating,
         // 작품 설정 6단계의 게시물 작성·노출 언어(업로드-R30). 스타터는 주 사용 언어 1개만,

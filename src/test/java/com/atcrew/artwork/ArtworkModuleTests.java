@@ -75,10 +75,10 @@ class ArtworkModuleTests {
         ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, new UploadArtworkCommand(
                 List.of("raw/1.png", "raw/2.png"), 1, "raw/thumb.png", ImageLayoutType.VERTICAL_SCROLL,
                 "제목", "설명", ArtworkField.WEBTOON, CreativeType.ORIGINAL,
-                List.of(ArtworkRole.LINEART, ArtworkRole.COLORING), List.of(Genre.FANTASY, Genre.ACTION), List.of("태그1", "태그2"),
+                List.of(ArtworkRole.LINEART, ArtworkRole.COLORING), List.of(Genre.FANTASY, Genre.ACTION), null, List.of("태그1", "태그2"),
                 AgeRating.ALL, List.of(Language.KO), true, List.of(), List.of("clip studio"),
                 new WorkDuration(1, 2, 3, 4), 12, List.of("https://youtube.com/watch?v=1"),
-                List.of(new MaterialData("배경소스", List.of(MaterialTarget.BACKGROUND), List.of("raw/mat.png"), List.of("https://acon3d.com/x")))
+                List.of(new MaterialData("배경소스", List.of(MaterialTarget.BACKGROUND), null, List.of("raw/mat.png"), List.of("https://acon3d.com/x")))
         ));
 
         ArtworkInfo found = artworkService.getArtwork(uploaded.id(), memberId);
@@ -102,13 +102,86 @@ class ArtworkModuleTests {
     }
 
     @Test
+    void 업로드_시_담당업무_장르_소재대상_직접입력_값이_저장되고_조회에_반영된다() {
+        String memberId = registerAuthor();
+
+        ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, new UploadArtworkCommand(
+                List.of("raw/1.png"), 0, null, ImageLayoutType.VERTICAL_SCROLL,
+                "제목", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
+                List.of(ArtworkRole.ETC), List.of(),
+                List.of(new ArtworkCustomTagInfo(ArtworkCustomTagType.ROLE, "특수효과"),
+                        new ArtworkCustomTagInfo(ArtworkCustomTagType.GENRE, "이세계")),
+                List.of(),
+                AgeRating.ALL, List.of(Language.KO), true, List.of(), List.of(),
+                null, null, List.of(),
+                List.of(new MaterialData("소품", List.of(MaterialTarget.WEAPON),
+                        List.of("커스텀무기"), List.of(), List.of()))
+        ));
+
+        ArtworkInfo found = artworkService.getArtwork(uploaded.id(), memberId);
+
+        assertThat(found.customTags()).containsExactlyInAnyOrder(
+                new ArtworkCustomTagInfo(ArtworkCustomTagType.ROLE, "특수효과"),
+                new ArtworkCustomTagInfo(ArtworkCustomTagType.GENRE, "이세계"));
+        assertThat(found.materials().get(0).customTargets()).containsExactly("커스텀무기");
+    }
+
+    @Test
+    void 담당업무_직접입력_값이_10자를_초과하면_예외() {
+        String memberId = registerAuthor();
+
+        assertThatThrownBy(() -> artworkService.uploadArtwork(memberId, baseUploadCommandWithCustomTags(
+                List.of(new ArtworkCustomTagInfo(ArtworkCustomTagType.ROLE, "12345678901")))))
+                .isInstanceOf(DomainException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("INVALID_CUSTOM_TAG");
+    }
+
+    @Test
+    void 같은_항목_안에서_중복된_직접입력_값은_조용히_무시된다() {
+        String memberId = registerAuthor();
+
+        ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, baseUploadCommandWithCustomTags(
+                List.of(new ArtworkCustomTagInfo(ArtworkCustomTagType.ROLE, "특수효과"),
+                        new ArtworkCustomTagInfo(ArtworkCustomTagType.ROLE, "특수효과"))));
+
+        assertThat(uploaded.customTags()).containsExactly(
+                new ArtworkCustomTagInfo(ArtworkCustomTagType.ROLE, "특수효과"));
+    }
+
+    @Test
+    void 수정_시_customTags가_null이면_유지되고_빈_목록이면_전체_삭제된다() {
+        String memberId = registerAuthor();
+        ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, baseUploadCommandWithCustomTags(
+                List.of(new ArtworkCustomTagInfo(ArtworkCustomTagType.ROLE, "특수효과"))));
+
+        ArtworkInfo unchanged = artworkService.updateArtwork(memberId, uploaded.id(), new UpdateArtworkCommand(
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null));
+        assertThat(unchanged.customTags()).containsExactly(
+                new ArtworkCustomTagInfo(ArtworkCustomTagType.ROLE, "특수효과"));
+
+        ArtworkInfo cleared = artworkService.updateArtwork(memberId, uploaded.id(), new UpdateArtworkCommand(
+                null, null, null, null, null, null, null, null, null, null, List.of(),
+                null, null, null, null, null, null, null, null));
+        assertThat(cleared.customTags()).isEmpty();
+    }
+
+    private UploadArtworkCommand baseUploadCommandWithCustomTags(List<ArtworkCustomTagInfo> customTags) {
+        return new UploadArtworkCommand(
+                List.of("raw/1.png"), 0, null, ImageLayoutType.VERTICAL_SCROLL,
+                "테스트 작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
+                List.of(), List.of(), customTags, List.of(),
+                AgeRating.ALL, List.of(Language.KO), true, List.of(), List.of(), null, null, List.of(), List.of());
+    }
+
+    @Test
     void 이미지_교체_후_기존_이미지_행이_삭제되고_새_이미지로_대체된다() {
         String memberId = registerAuthor();
         ArtworkInfo uploaded = uploadMinimal(memberId, "raw/old1.png", "raw/old2.png");
 
         ArtworkInfo updated = artworkService.updateArtwork(memberId, uploaded.id(), new UpdateArtworkCommand(
                 List.of("raw/new1.png", "raw/new2.png", "raw/new3.png"), 2, null, null,
-                null, null, null, null, null, null, null, null, null, null, null, null, null, null));
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null));
 
         assertThat(updated.images()).extracting(ArtworkImageInfo::originalKey)
                 .containsExactly("raw/new1.png", "raw/new2.png", "raw/new3.png");
@@ -120,12 +193,12 @@ class ArtworkModuleTests {
         String memberId = registerAuthor();
         ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, baseUploadCommand(
                 List.of("raw/1.png"),
-                List.of(new MaterialData("옛소재", List.of(MaterialTarget.BACKGROUND), List.of(), List.of()))));
+                List.of(new MaterialData("옛소재", List.of(MaterialTarget.BACKGROUND), null, List.of(), List.of()))));
 
         ArtworkInfo updated = artworkService.updateArtwork(memberId, uploaded.id(), new UpdateArtworkCommand(
-                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-                List.of(new MaterialData("새소재1", List.of(MaterialTarget.CHARACTER), List.of(), List.of()),
-                        new MaterialData("새소재2", List.of(MaterialTarget.ACCESSORY), List.of(), List.of()))));
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                List.of(new MaterialData("새소재1", List.of(MaterialTarget.CHARACTER), null, List.of(), List.of()),
+                        new MaterialData("새소재2", List.of(MaterialTarget.ACCESSORY), null, List.of(), List.of()))));
 
         assertThat(updated.materials()).extracting(MaterialInfo::name)
                 .containsExactly("새소재1", "새소재2");
@@ -139,7 +212,7 @@ class ArtworkModuleTests {
         for (int i = 0; i < 3; i++) {
             uploaded = artworkService.updateArtwork(memberId, uploaded.id(), new UpdateArtworkCommand(
                     List.of("raw/round" + i + "-1.png", "raw/round" + i + "-2.png"), 0, null, null,
-                    null, null, null, null, null, null, null, null, null, null, null, null, null, null));
+                    null, null, null, null, null, null, null, null, null, null, null, null, null, null, null));
         }
 
         assertThat(uploaded.images()).hasSize(2);
@@ -233,7 +306,7 @@ class ArtworkModuleTests {
         ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, new UploadArtworkCommand(
                 List.of("raw/ct.png"), 0, "raw/custom-thumb.png", ImageLayoutType.VERTICAL_SCROLL,
                 "테스트 작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
-                List.of(), List.of(), List.of(),
+                List.of(), List.of(), null, List.of(),
                 AgeRating.ALL, List.of(Language.KO), true, List.of(), List.of(), null, null, List.of(), List.of()));
         processImage(uploaded.id(), "raw/ct.png", MediaProcessingStatus.DONE);
         awaitReady(memberId, uploaded.id());
@@ -539,7 +612,7 @@ class ArtworkModuleTests {
         ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, new UploadArtworkCommand(
                 List.of(imageKey), 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 "피드 작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
-                List.of(), List.of(), List.of(),
+                List.of(), List.of(), null, List.of(),
                 ageRating, languages, true, List.of(), List.of(), null, null, List.of(), List.of()));
         processImage(uploaded.id(), imageKey, MediaProcessingStatus.DONE);
         awaitReady(memberId, uploaded.id());
@@ -550,7 +623,7 @@ class ArtworkModuleTests {
         return new UploadArtworkCommand(
                 List.of("raw/lang.png"), 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 "테스트 작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
-                List.of(), List.of(), List.of(),
+                List.of(), List.of(), null, List.of(),
                 AgeRating.ALL, languages, true, List.of(), List.of(), null, null, List.of(), List.of());
     }
 
@@ -569,7 +642,7 @@ class ArtworkModuleTests {
         return new UploadArtworkCommand(
                 imageKeys, 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 "테스트 작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
-                List.of(), List.of(), List.of(),
+                List.of(), List.of(), null, List.of(),
                 AgeRating.ALL, List.of(Language.KO), true, List.of(), List.of(), null, null, List.of(), materials);
     }
 
