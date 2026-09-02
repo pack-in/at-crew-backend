@@ -10,10 +10,12 @@
 | 경로 | 내용 |
 |---|---|
 | `YYYY-MM-DD-<상황>.md` | 그 시점의 측정 결과. **이전 파일을 덮어쓰지 않고 계속 쌓는다** |
+| `data/` | 측정 원본 CSV — 구간별 시계열, 엔드포인트별, 서버 자원 샘플. 문서의 표는 요약이고 **비교 근거는 이쪽이다**([data/README.md](data/README.md)) |
 | `../../../scripts/baseline/collect-host.sh` | EC2 #1에서 실행하는 A·B·C군 수집기 |
 | `../../../scripts/baseline/load-test.js` | k6 부하 시나리오(읽기 전용) |
 | `../../../scripts/baseline/restore-drill.sh` | 로컬 복구 훈련. 단계별 소요시간 출력 |
 | `../../../scripts/baseline/seed-loadtest-data.sh` | 처리량 측정용 더미 데이터 시딩. `--clean`으로 원복 |
+| `../../../scripts/baseline/summarize-k6.py` | k6 원본 JSON을 구간별 CSV로 집계. **집계는 항상 이걸로 한다** |
 
 파일명에 상황을 넣는 이유는 날짜만으로는 나중에 무엇과 무엇을 비교해야 하는지 알 수 없기
 때문이다(`2026-09-02-pre-es-consolidation.md` ↔ `-post-es-consolidation.md`처럼 짝을 이룬다).
@@ -74,6 +76,10 @@ VPC/보안 그룹/AMI ID는 결과 문서에도 스크립트 출력에도 적지
 
 ## 실행
 
+측정값은 문서에 요약을 쓰고 **원본 CSV를 `data/`에 함께 남긴다.** 요약만 남기면 다음 회차와
+구간별로 비교할 수 없다. k6 원본 JSON은 한 번에 최대 1 GB라 저장소에 넣지 않는다 —
+`summarize-k6.py`로 줄여서 넣는다.
+
 ```bash
 # A·B·C군 — EC2 #1에서 수집, 결과는 로컬에 받는다
 ssh -i ~/.ssh/<키페어>.pem ec2-user@<EC2 #1> 'bash -s' < scripts/baseline/collect-host.sh \
@@ -83,5 +89,8 @@ ssh -i ~/.ssh/<키페어>.pem ec2-user@<EC2 #1> 'bash -s' < scripts/baseline/col
 ./scripts/baseline/restore-drill.sh
 
 # B군 한계 처리량 — 로컬에서 부하 생성. 아래 주의사항을 먼저 읽을 것
-k6 run scripts/baseline/load-test.js
+k6 run --out json=/tmp/raw.json scripts/baseline/load-test.js
+./scripts/baseline/summarize-k6.py /tmp/raw.json --label <조건> \
+    --out docs/operations/baseline/data/$(date -u +%F)-loadtest-<조건>.csv \
+    --endpoint-out docs/operations/baseline/data/$(date -u +%F)-loadtest-<조건>-endpoints.csv
 ```

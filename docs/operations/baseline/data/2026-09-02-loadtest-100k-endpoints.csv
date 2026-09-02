@@ -1,0 +1,7 @@
+label,endpoint,backend,p50_ms,p95_ms,p99_ms,n
+100k-artworks,community_artworks,mariadb,931.0,3933.5,4261.2,206
+100k-artworks,search,elasticsearch,104.7,224.8,293.7,204
+100k-artworks,recruit_job_postings,mariadb,94.9,1873.9,2521.1,207
+100k-artworks,community_banners,mariadb,27.8,1801.6,2345.5,203
+100k-artworks,billing_catalog,app,26.6,1607.0,1950.7,221
+100k-artworks,community_authors,mariadb,26.6,1816.9,2320.8,159
