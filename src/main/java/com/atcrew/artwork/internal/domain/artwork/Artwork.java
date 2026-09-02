@@ -34,6 +34,8 @@ import jakarta.persistence.PostPersist;
 import jakarta.persistence.Table;
 import jakarta.persistence.Transient;
 import jakarta.persistence.Version;
+
+import org.hibernate.annotations.BatchSize;
 import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
@@ -74,6 +76,7 @@ public class Artwork implements Persistable<String> {
     // 뒤이어 UPDATE로 채우는 2단계 패턴이라 artwork_id NOT NULL 제약과 충돌한다
     // (docs/design/mariadb-migration-design.md §11/§12에서 이미 발견된 함정과 동일 패턴).
     @OneToMany(mappedBy = "artwork", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @BatchSize(size = 100)   // 목록 조회 시 컬렉션 N+1 완화 (recruit 모듈과 동일 패턴, 이슈 #112)
     @OrderBy("ordinal ASC")
     private List<ArtworkImage> images = new ArrayList<>();
 
@@ -92,12 +95,14 @@ public class Artwork implements Persistable<String> {
     private CreativeType creativeType;
 
     @ElementCollection(fetch = FetchType.EAGER)
+    @BatchSize(size = 100)   // 목록 조회 시 컬렉션 N+1 완화 (recruit 모듈과 동일 패턴, 이슈 #112)
     @CollectionTable(name = "artwork_roles", joinColumns = @JoinColumn(name = "artwork_id"))
     @Column(name = "value")
     @Enumerated(EnumType.STRING)
     private Set<ArtworkRole> roles = new HashSet<>();
 
     @ElementCollection(fetch = FetchType.EAGER)
+    @BatchSize(size = 100)   // 목록 조회 시 컬렉션 N+1 완화 (recruit 모듈과 동일 패턴, 이슈 #112)
     @CollectionTable(name = "artwork_genres", joinColumns = @JoinColumn(name = "artwork_id"))
     @Column(name = "value")
     @Enumerated(EnumType.STRING)
@@ -106,15 +111,18 @@ public class Artwork implements Persistable<String> {
     // 직접입력 태그 — 항목(type)을 함께 저장해 한 테이블로 관리한다(ArtworkCustomTagType 참고,
     // com.atcrew.member.internal.domain.CustomTag와 동일 패턴).
     @ElementCollection(fetch = FetchType.EAGER)
+    @BatchSize(size = 100)   // 목록 조회 시 컬렉션 N+1 완화 (recruit 모듈과 동일 패턴, 이슈 #112)
     @CollectionTable(name = "artwork_custom_tags", joinColumns = @JoinColumn(name = "artwork_id"))
     private Set<ArtworkCustomTag> customTags = new HashSet<>();
 
     @ElementCollection(fetch = FetchType.EAGER)
+    @BatchSize(size = 100)   // 목록 조회 시 컬렉션 N+1 완화 (recruit 모듈과 동일 패턴, 이슈 #112)
     @CollectionTable(name = "artwork_tags", joinColumns = @JoinColumn(name = "artwork_id"))
     @Column(name = "value")
     private Set<String> tags = new HashSet<>();
 
     @ElementCollection(fetch = FetchType.EAGER)
+    @BatchSize(size = 100)   // 목록 조회 시 컬렉션 N+1 완화 (recruit 모듈과 동일 패턴, 이슈 #112)
     @CollectionTable(name = "artwork_tools", joinColumns = @JoinColumn(name = "artwork_id"))
     @Column(name = "value")
     private Set<String> tools = new HashSet<>();
@@ -151,6 +159,7 @@ public class Artwork implements Persistable<String> {
     // 개수 검증은 플랜을 아는 서비스 계층이 한다. 마이그레이션 이전 작품은 비어 있고, 언어 필터에서
     // "항상 노출"로 폴백한다.
     @ElementCollection(fetch = FetchType.EAGER)
+    @BatchSize(size = 100)   // 목록 조회 시 컬렉션 N+1 완화 (recruit 모듈과 동일 패턴, 이슈 #112)
     @CollectionTable(name = "artwork_languages", joinColumns = @JoinColumn(name = "artwork_id"))
     @Column(name = "value")
     @Enumerated(EnumType.STRING)
@@ -176,6 +185,7 @@ public class Artwork implements Persistable<String> {
 
     // images와 동일한 이유로 양방향 매핑 (§11/§12 패턴)
     @OneToMany(mappedBy = "artwork", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @BatchSize(size = 100)   // 목록 조회 시 컬렉션 N+1 완화 (recruit 모듈과 동일 패턴, 이슈 #112)
     @OrderBy("ordinal ASC")
     private List<Material> materials = new ArrayList<>();
 
