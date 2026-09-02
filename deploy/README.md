@@ -89,6 +89,9 @@ main push(=PR 머지) 시 빌드·테스트 → Docker Hub 푸시 → EC2 재기
    (이 파일의 default_server와 충돌해 기동이 실패한다).
    이 레포의 `deploy/` 디렉토리를 EC2에 올리고(`git clone` 또는 `scp`), `.env.example`을 `.env`로
    복사해 값을 채운다. Firebase 서비스 계정 JSON도 별도로 올려 `FIREBASE_CREDENTIALS_PATH`에 지정.
+
+   앱을 배포한 뒤 **`./bootstrap.sh`를 반드시 한 번 실행한다.** 관측 에이전트(Alloy)와 백업 타이머는
+   앱 compose에 들어 있지 않아 앱 배포만으로는 설치되지 않는다(아래 "인스턴스를 교체할 때" 참고).
 2. **EC2 #2(Elasticsearch)**: 위와 동일하게 Docker 설치(nginx는 불필요) 후
    `docker compose -f docker-compose.search.yml up -d`.
 3. **Cloudflare**: `api.at-crew.com` A레코드를 EC2 #1 탄력적 IP로, 프록시(오렌지 클라우드) 켜고
@@ -105,3 +108,34 @@ main push(=PR 머지) 시 빌드·테스트 → Docker Hub 푸시 → EC2 재기
 ```bash
 DOCKERHUB_USER=<본인 계정> SSH_KEY=~/.ssh/<키페어>.pem APP_HOST=ec2-user@<EC2 #1 탄력적 IP> ./deploy/deploy.sh
 ```
+
+## 인스턴스를 교체할 때
+
+앱 서버를 새 인스턴스로 옮기면(blue-green 이전, AMI 교체, 리전 이동 등) **컨테이너 밖에서 도는 것들은
+따라오지 않는다.** 앱은 `docker-compose.app.yml`로 배포되지만 아래 둘은 각각 별도 compose 파일과
+systemd 유닛이다.
+
+| 항목 | 실체 | 빠뜨렸을 때 |
+|---|---|---|
+| 관측 에이전트 | `docker-compose.observability.yml`(Alloy) | 메트릭·로그 수집이 끊긴다. `[P1] 앱 메트릭 수집 불가`가 계속 울리는데 서비스는 멀쩡한 상태가 된다 |
+| DB 백업 | `systemd/atcrew-backup.{service,timer}` | 백업이 조용히 멈춘다. 관측도 함께 죽어 있으면 백업 감시 알람마저 울리지 않는다 |
+
+앱을 새 인스턴스에 올린 직후 **`./bootstrap.sh`를 실행하면 둘 다 설치·기동된다.** 멱등하므로 이미
+설치된 호스트에서 다시 돌려도 안전하다.
+
+```bash
+cd ~/at-crew-backend/deploy && ./bootstrap.sh
+```
+
+이전 완료 체크리스트:
+
+- [ ] `./bootstrap.sh` 실행 — Alloy 기동 + 백업 타이머 등록
+- [ ] 1분 뒤 수집 확인 — `curl -s http://127.0.0.1:12345/metrics | grep prometheus_remote_storage_samples_total`이 증가하고 `samples_failed_total`이 0
+- [ ] 백업 1회 수동 검증 — `sudo systemctl start atcrew-backup.service` 후 `journalctl -u atcrew-backup.service -n 20`
+- [ ] **`APP_HOST` 저장소 Secret을 새 인스턴스 주소로 갱신** — 갱신하지 않으면 다음 main 병합에서
+      자동 배포가 옛 주소로 SSH를 시도해 실패한다
+- [ ] Grafana에 걸어둔 silence 해제
+
+> 2026-09-02에 이 목록이 없어서 v2 이전 때 관측과 백업이 함께 누락됐다(이슈 #115). 관측 스택을 앱과
+> 분리한 것은 "배포가 실패해도 수집은 계속되게" 하려는 의도였는데, 인스턴스를 교체할 때는 그 분리가
+> 그대로 누락으로 이어진다.
