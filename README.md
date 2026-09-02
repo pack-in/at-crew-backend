@@ -14,12 +14,12 @@
 | 항목 | 규모 |
 |---|---|
 | 도메인 모듈 | 10개 + 공용 `common` |
-| 프로덕션 코드 | Java 447개 파일, 23,276줄 |
-| 테스트 코드 | Java 70개 파일, 15,274줄 (프로덕션 대비 66%) |
-| DB 마이그레이션 | Flyway `V1` ~ `V34` |
+| 프로덕션 코드 | Java 450개 파일, 23,653줄 |
+| 테스트 코드 | Java 72개 파일, 15,919줄 (프로덕션 대비 67%) |
+| DB 마이그레이션 | Flyway `V1` ~ `V35` |
 | 공개 API | 97개 경로, 119개 오퍼레이션, 18개 태그 |
 | 외부 연동 | Stripe, Cloudflare R2/Worker, Elasticsearch, Resend, Firebase |
-| 운영 | EC2 자동 배포 + 헬스체크 조건부 롤백, Grafana Cloud, Sentry, Discord 2단계 알람, 일 1회 DB 백업 |
+| 운영 | 프라이빗 서브넷 EC2, SSM 자동 배포 + 헬스체크 조건부 롤백, Grafana Cloud, Sentry, Discord 2단계 알람, 일 1회 DB 백업 |
 
 ## 기술 스택
 
@@ -30,7 +30,7 @@
 | 인증 | 자체 이메일 인증(JWT) + Firebase(Google 로그인) |
 | 외부 연동 | Stripe(결제/구독), Cloudflare R2 + Worker(이미지 파이프라인), Resend(메일) |
 | 테스트 | JUnit 5, Testcontainers, MockMvc + Spring REST Docs |
-| 인프라 | Docker Compose on EC2, nginx, Cloudflare, GitHub Actions |
+| 인프라 | Docker Compose on EC2(프라이빗 서브넷), nginx, Cloudflare Tunnel, AWS SSM, GitHub Actions |
 | 관측 | Grafana Cloud(메트릭, 로그, 업타임), Sentry(에러), Discord 알람 |
 
 ## 시스템 아키텍처
@@ -41,7 +41,11 @@
 ② 앱은 Worker를 비동기로 트리거만 하며, ③ 변환은 Worker가 R2를 상대로 수행하고, ④ 완료는
 `X-Internal-Secret`으로 검증되는 webhook으로 되돌아옵니다 — **애플리케이션 서버는 이미지 바이트를 직접 다루지 않습니다.**
 
-- **CI/CD** — PR마다 빌드와 전체 테스트, main 병합 시 arm64 이미지 빌드 → EC2 배포 → 헬스체크 → 실패 시 조건부 롤백
+네트워크 경계도 같은 원칙입니다. **인스턴스에 열린 인바운드 포트가 없습니다** — 앱 서버는 프라이빗
+서브넷에 있고, 외부 트래픽은 `cloudflared`가 바깥으로 연 Cloudflare Tunnel로만 들어옵니다. 배포와 운영
+접속도 SSH가 아니라 AWS SSM을 거치므로, 열어야 할 포트도 CI에 둘 SSH 키도 없습니다.
+
+- **CI/CD** — PR마다 빌드와 전체 테스트, main 병합 시 arm64 이미지 빌드 → SSM으로 원격 재기동 → 헬스체크 → 실패 시 조건부 롤백
 - **백업** — MariaDB 덤프를 매일 R2로 업로드, 26시간 이상 성공 기록이 없으면 P1 알람
 
 ## 모듈 구조
@@ -108,6 +112,11 @@ presign 발급, Worker 트리거, webhook 수신, 재시도, 고아파일 정리
 롤백(스키마 변경이 낀 배포는 롤백하지 않고 사람을 호출), 알람은 P1/P2 2단계로 Discord에 라우팅합니다.
 관측 스택은 자체 호스팅 대신 Grafana Cloud를 썼습니다 — 감시 대상과 함께 죽지 않아야 하고, 1인 운영에서
 유지보수 대상을 늘리지 않기 위해서입니다.
+
+그 판단이 실제로 값을 했습니다. 인스턴스를 프라이빗 서브넷으로 옮기는 과정에서 관측 에이전트가
+따라오지 못해 수집이 끊겼는데, 외부 프로브는 조용하고 메트릭 알람만 울리는 조합 덕분에 "서비스는
+살아 있고 수집만 죽었다"를 알람만 보고 판정할 수 있었습니다. 이후 호스트에 직접 설치되는 것들
+(관측 에이전트, 백업 타이머, 스왑)은 `deploy/bootstrap.sh` 한 번으로 세우도록 묶었습니다.
 [observability-design](docs/design/observability-design.md), [incident-runbook](docs/operations/incident-runbook.md)
 
 ## API 문서

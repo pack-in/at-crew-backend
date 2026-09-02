@@ -57,9 +57,9 @@ C = dict(page="#ffffff", zone_fill="#f6f8fa", zone_stroke="#d1d9e0", card="#ffff
 BOXES = {
     "client":  (40, 400, 140, 76, "클라이언트", "웹, 앱", "neutral"),
     "cf":      (225, 400, 150, 76, "Cloudflare", "DNS, CDN, WAF", "neutral"),
-    "nginx":   (450, 400, 100, 76, "nginx", ":80", "neutral"),
+    "nginx":   (450, 400, 100, 76, "nginx", ":80, :443", "neutral"),
     "app":     (580, 372, 330, 132, "Spring Boot 4", ":8080 API, :8081 관리", "blue"),
-    "mariadb": (450, 575, 150, 64, "MariaDB", "Flyway V1–V34", "neutral"),
+    "mariadb": (450, 575, 150, 64, "MariaDB", "Flyway V1–V35", "neutral"),
     "es":      (625, 575, 165, 64, "Elasticsearch", "조회 전용 색인", "neutral"),
     "alloy":   (790, 680, 140, 64, "Grafana Alloy", "", "pink"),
     "r2":      (470, 120, 180, 76, "Cloudflare R2", "원본, 변형본", "purple"),
@@ -70,14 +70,14 @@ BOXES = {
     "discord": (1040, 790, 190, 68, "Discord", "P1 / P2 알람", "pink"),
 }
 
-ZONE = (420, 330, 520, 440, "EC2 #1 (Docker Compose)")
+ZONE = (420, 330, 520, 440, "EC2 (Private Subnet, Docker Compose)")
 
 # (경로, 색, 라벨, 라벨좌표, 정렬, 양쪽화살표)
 # 화살표가 서로 교차하지 않도록 좌표를 맞춰 둔 것이라 박스를 옮기면 같이 손봐야 한다.
 EDGES = [
     ("M180,438 H219",      "neutral", "",                            None,       "middle", False),
     ("M550,438 H574",      "neutral", "",                            None,       "middle", False),
-    ("M375,438 H444",      "neutral", "",                            None,       "middle", False),
+    ("M375,438 H444",      "neutral", "Tunnel",                      (410, 428), "middle", False),
     ("M640,504 L528,569",  "neutral", "JPA + Flyway",                (520, 543), "end",    False),
     ("M726,504 L710,569",  "neutral", "색인/조회",                    (762, 545), "middle", False),
     ("M110,400 V158 H464", "purple",  "① 직접 업로드 (presigned URL)", (300, 148), "middle", False),
@@ -91,7 +91,8 @@ EDGES = [
     ("M1135,718 V784",     "pink",    "",                            None,       "middle", False),
 ]
 
-ARIA = ("AT-CREW 시스템 아키텍처. 클라이언트 요청은 Cloudflare와 nginx를 거쳐 EC2의 Spring Boot 앱에 닿는다. "
+ARIA = ("AT-CREW 시스템 아키텍처. 클라이언트 요청은 Cloudflare에서 Cloudflare Tunnel을 타고 프라이빗 서브넷의 "
+        "nginx를 거쳐 Spring Boot 앱에 닿는다. 인스턴스에 열린 인바운드 포트는 없다. "
         "이미지는 클라이언트가 R2에 직접 올린 뒤 Cloudflare Worker가 변환해 webhook으로 되돌려준다. "
         "관측 신호는 Alloy와 Sentry를 통해 Grafana Cloud와 Discord로 나간다.")
 
