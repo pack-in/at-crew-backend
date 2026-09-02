@@ -1,0 +1,7 @@
+label,endpoint,backend,p50_ms,p95_ms,p99_ms,n
+before-warm,community_artworks,mariadb,1026.2,5106.2,5546.8,271
+before-warm,recruit_job_postings,mariadb,104.9,3264.2,3692.9,304
+before-warm,search,elasticsearch,42.1,77.2,176.6,262
+before-warm,community_authors,mariadb,18.1,2995.4,3546.5,299
+before-warm,community_banners,mariadb,12.7,2990.3,3566.9,275
+before-warm,billing_catalog,app,12.2,2940.0,3495.4,296
