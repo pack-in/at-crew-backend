@@ -324,9 +324,13 @@ CPU 크레딧은 이번 7분 측정에서 문제가 되지 않았다(576 → 572
 | `artworks_reindex_1787815687030` | 0 | 0 KB | yellow |
 | `recruit_posts_v1` | 0 | 0 KB | yellow |
 
-**색인이 비어 있다.** `artworks_reindex_…`는 이름 그대로 재색인 과정에서 만들어진 임시 인덱스가
-남은 것으로 보이고, 정상적인 별칭 대상 인덱스(`artworks_v1` 등)가 보이지 않는다. 통합 후 전체
-재색인(`/internal/search/reindex`)을 돌릴 때 이 잔여 인덱스 처리도 같이 확인해야 한다.
+**색인이 비어 있다.** 문서 수 0건이라 검색이 어떤 결과도 내지 못하는 상태다.
+
+> **정정(2026-09-02).** 최초 작성 시 `artworks_reindex_…`를 "재색인 과정에서 남은 임시 인덱스"로
+> 적었으나 **틀렸다.** staging에서 `/internal/search/reindex`를 실제로 돌려 확인한 결과, 이
+> 서비스의 재색인은 `artworks_reindex_<타임스탬프>` 인덱스를 새로 만들고 `artworks` 별칭을 거기로
+> 옮기는 방식이다. 즉 이 이름이 **정상 라이브 인덱스**이며 잔여물이 아니다. `_cat/indices`만 보면
+> 구분되지 않으므로 `_cat/aliases`를 함께 봐야 한다.
 
 `yellow`는 단일 노드에서 복제본을 배치할 곳이 없어서 나오는 정상 상태다.
 
@@ -506,6 +510,15 @@ Cloudflare(R2·Workers·DNS)와 Grafana Cloud 요금은 AWS 청구서에 없어 
    `-Xmx`가 없어 기본 `MaxRAMPercentage 25%`가 적용되고, 그 결과 힙 최대가 958 MB다. 인스턴스
    메모리에 자동으로 연동되므로 **인스턴스를 바꾸면 힙도 조용히 따라 바뀐다.**
 3. **`slow_query_log`가 OFF다.** 느린 쿼리가 생겨도 기록이 남지 않는다.
+3-1. **작가 조회가 한 건이라도 실패하면 피드 전체가 500이 된다.**
+   `ArtworkServiceImpl`의 `toSummaryPage`(572행)와 `getArtworksForReindex`(540행),
+   `BookmarkServiceImpl`(147행)이 작가 정보를 `Collectors.toMap`으로 모으면서 조회 실패 시
+   `catch`로 **null을 반환**한다. 그런데 `Collectors.toMap`은 값이 null이면 `NullPointerException`을
+   던진다 — **null을 허용하려던 방어 코드가 실제로는 동작하지 않고, 작가 한 명만 조회에 실패해도
+   그 페이지 전체가 500이 된다.** staging에 더미 데이터를 넣고 조회하다 실제로 재현했다
+   (회원 한 명의 `primary_language` 값이 enum과 어긋나 `findById`가 던졌고, 작품 목록 전체가 500).
+   현재 프로덕션은 데이터가 거의 없어 드러나지 않을 뿐이다. `HashMap`에 직접 `put`하거나
+   `Optional`/기본값으로 바꾸면 의도대로 동작한다.
 4. **`t4g.medium`은 버스터블(T계열)이다.** CPU 크레딧 잔량이 지속 부하의 한계를 좌우하는데
    이번 측정에 포함하지 않았다. 부하 테스트를 한다면 `CPUCreditBalance`를 같이 봐야 하고,
    크레딧 소진 시점의 처리량이 진짜 한계 처리량이다.
