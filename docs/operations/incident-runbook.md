@@ -1,26 +1,16 @@
 # 장애 대응 런북
 
 > 작성일: 2026-08-26
-> 대상: prod(`api.at-crew.com`, EC2 #1). 알람 정의는 `deploy/observability/alerts/rules.json`,
+> 대상: prod(`api.at-crew.com`, 앱 서버). 알람 정의는 `deploy/observability/alerts/rules.json`,
 > 설계 배경은 `docs/design/observability-design.md`.
 
 알람이 왔을 때 **무엇을 확인하고 무엇을 실행하는가**만 적는다. 원인 분석 방법론이 아니라 손 순서다.
 
 ## 0. 공통 — 접속과 첫 3분
 
-`<APP_HOST>`는 EC2 #1의 퍼블릭 IP다(AWS 콘솔 또는 저장소 Secret `APP_HOST`).
-`~/.ssh/config`에 별칭을 만들어 두면 장애 대응 중에 자리표시자를 치환할 필요가 없다.
-
-```
-Host atcrew-prod
-  HostName <APP_HOST>
-  User ec2-user
-  IdentityFile ~/.ssh/<키페어>.pem
-```
-
-**퍼블릭 IP가 없는 인스턴스는 SSM으로 붙는다.** 프라이빗 서브넷으로 옮긴 뒤에는 위 SSH가 아예 닿지
-않는다 — 그때 "접근할 수 없다"고 판단하고 멈추지 말 것(2026-09-02에 실제로 그렇게 판단해 복구가
-지연됐다). 인스턴스에 `AmazonSSMManagedInstanceCore` 역할이 붙어 있으면 아래가 동작한다.
+**접속은 SSM이다. SSH는 닿지 않는다.** 앱 서버는 프라이빗 서브넷에 있어 퍼블릭 IP가 없다(#110).
+SSH가 안 된다고 "접근할 수 없다"고 판단하고 멈추지 말 것 — 2026-09-02에 실제로 그렇게 판단해 복구가
+지연됐다. 인스턴스 ID는 저장소 Secret `APP_INSTANCE_ID`에 있다.
 
 ```bash
 aws ssm describe-instance-information \
@@ -37,13 +27,17 @@ aws ssm get-command-invocation --command-id "$CMD" --instance-id <인스턴스 I
   --query '[Status,StandardOutputContent]' --output text
 ```
 
+첫 3분에 확인할 것 — 레포의 `deploy/ssm-run.sh`로 한 번에 보낸다.
+
 ```bash
-ssh atcrew-prod
-cd ~/at-crew-backend/deploy
-docker-compose -f docker-compose.app.yml ps          # 컨테이너 상태
-docker-compose -f docker-compose.app.yml logs --tail=100 app
-curl -s http://127.0.0.1:8081/actuator/health/readiness | jq .   # 의존성별 상태
-df -h /                                               # 디스크
+export APP_INSTANCE_ID=<인스턴스 ID>
+deploy/ssm-run.sh <<'EOF'
+docker ps --format '{{.Names}}\t{{.Status}}'
+CID=$(docker ps -a --filter 'label=com.docker.compose.service=app' --format '{{.ID}}' | head -1)
+docker logs --tail=100 "$CID" 2>&1
+curl -s http://127.0.0.1:8081/actuator/health/readiness
+df -h /
+EOF
 ```
 
 관측 링크
@@ -52,8 +46,8 @@ df -h /                                               # 디스크
 - 로그 조회: Explore → `grafanacloud-atcrew-logs` → `{service_name="app"} |= "<requestId>"`
 - 에러 상세: Sentry 프로젝트 `at-crew-backend`
 
-> `<APP_HOST>`·`<키페어>`·`<GRAFANA_URL>`은 실제 값을 적지 않는다(공개 저장소). 각각 저장소 Secret
-> `APP_HOST`, 로컬 `~/.ssh/`의 키 파일, Secret `GRAFANA_URL`을 참조한다.
+> `<인스턴스 ID>`·`<GRAFANA_URL>`은 실제 값을 적지 않는다(공개 저장소). 각각 저장소 Secret
+> `APP_INSTANCE_ID`, `GRAFANA_URL`을 참조한다.
 
 ---
 
@@ -67,9 +61,10 @@ df -h /                                               # 디스크
 2. 앱은 살아 있는데 응답이 없는가 — `curl -v http://127.0.0.1:8080/api/community/banners`.
    200이면 앱은 정상이고 그 앞단(nginx·Cloudflare) 문제다.
 3. nginx — `sudo systemctl status nginx`, `sudo nginx -t`, `sudo tail -50 /var/log/nginx/error.log`.
-4. Cloudflare — 대시보드에서 `api.at-crew.com` A레코드와 SSL/TLS 모드가 **Flexible**인지 확인.
-   과거 이 값이 바뀌어 521(Web Server Is Down)이 난 적이 있다(2026-08-10, 2026-08-13).
-   권한이 없으면 root에게 요청해야 한다.
+4. Cloudflare Tunnel — 유입 경로가 터널이므로 `cloudflared`가 죽으면 origin이 통째로 사라진다.
+   `systemctl status cloudflared`, `sudo journalctl -u cloudflared -n 50`. 대시보드의 터널 상태와
+   ingress 규칙(`api.at-crew.com` → 로컬 nginx)도 함께 확인한다. 권한이 없으면 root에게 요청해야 한다.
+   과거 SSL/TLS 모드가 바뀌어 521(Web Server Is Down)이 난 적이 있다(2026-08-10, 2026-08-13).
 5. 직전 배포가 원인으로 의심되면 §배포 실패·롤백으로.
 
 ### [P1] 앱 컨테이너 크래시 루프

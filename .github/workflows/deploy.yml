@@ -6,20 +6,15 @@ name: Deploy
 #
 # 필요한 저장소 Secrets(Settings > Secrets and variables > Actions):
 #   DOCKERHUB_USERNAME, DOCKERHUB_TOKEN — Docker Hub 로그인/푸시
-#   APP_SECURITY_GROUP_ID               — 앱 서버 보안 그룹 ID (sg-...)
-#   APP_HOST                            — EC2 #1 탄력적 IP
-#   EC2_SSH_KEY                         — EC2 키페어 .pem 파일 내용 그대로
+#   APP_INSTANCE_ID                     — 앱 서버 EC2 인스턴스 ID (i-...)
 #   DISCORD_WEBHOOK_P1, DISCORD_WEBHOOK_P2   — 배포 결과 통지(관측 설계 §7)
 #   GRAFANA_URL, GRAFANA_API_KEY             — 배포 중 알람 억제(silence). 없으면 해당 단계를 건너뛴다
-#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY — 보안 그룹 22번 임시 개방/회수용
+#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY — SSM으로 원격 명령 실행
 #
-# 앱 서버 보안 그룹은 22번을 특정 IP에만 허용한다. 러너 IP는 매 실행마다 바뀌므로 배포 직전에
-# 그 IP만 열고 끝나면 반드시 회수한다(회수는 if: always() — 앞 단계가 실패해도 규칙을 남기지 않는다).
-#
-# TODO(인프라): SSH + 보안그룹 임시 개방 방식을 SSM Session Manager로 대체한다. 22번 포트를 아예
-# 닫고 IAM으로 접근을 통제하며 접속 이력이 CloudTrail에 남는 구성이 정석이다. 인스턴스에
-# AmazonSSMManagedInstanceCore 역할 부착 + 워크플로에 session-manager-plugin 설치가 선행 조건이며,
-# 결제 sandbox 검증이 끝난 뒤 착수한다.
+# 원격 실행은 전부 SSM이다(deploy/ssm-run.sh). 앱 서버가 프라이빗 서브넷으로 옮겨가면서
+# (#110) 퍼블릭 IP가 없어져 러너에서 SSH가 닿지 않는다. 예전에는 배포마다 보안 그룹 22번을 러너 IP로
+# 열었다 닫았는데, SSM은 포트를 열지 않고 IAM으로 통제하며 실행 이력이 CloudTrail에 남는다.
+# 그래서 EC2_SSH_KEY·APP_HOST·APP_SECURITY_GROUP_ID는 더 이상 쓰지 않는다.
 on:
   push:
     branches: [main]
@@ -37,9 +32,9 @@ jobs:
     env:
       TZ: UTC
       AWS_REGION: ap-northeast-2
-      # 앱 서버(EC2 #1) 보안 그룹 ID. 그 자체로는 자격증명이 아니지만, 레포가 공개라 인프라 식별자를
+      # 앱 서버 인스턴스 ID. 그 자체로는 자격증명이 아니지만, 레포가 공개라 인프라 식별자를
       # 평문으로 남기지 않는다(계정 정찰에 그대로 쓰인다) — 저장소 Secrets에 넣어 참조한다.
-      APP_SECURITY_GROUP_ID: ${{ secrets.APP_SECURITY_GROUP_ID }}
+      APP_INSTANCE_ID: ${{ secrets.APP_INSTANCE_ID }}
       # 배포 중 알람 억제용. 미등록이면 빈 값이고 해당 단계는 조용히 건너뛴다.
       GRAFANA_URL: ${{ secrets.GRAFANA_URL }}
       GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
@@ -93,23 +88,15 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: 보안 그룹에 러너 IP 임시 허용 (22번)
-        id: open-ssh
+      - name: SSM 연결 확인
         run: |
-          RUNNER_IP=$(curl -s --fail https://checkip.amazonaws.com)
-          echo "RUNNER_CIDR=${RUNNER_IP}/32" >> "$GITHUB_ENV"
-          # 이전 실행이 비정상 종료돼 규칙이 남아 있으면 중복 오류가 나므로 무시하고 진행한다.
-          aws ec2 authorize-security-group-ingress \
-            --group-id "$APP_SECURITY_GROUP_ID" \
-            --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=${RUNNER_IP}/32,Description=github-actions-${{ github.run_id }}}]" \
-            || echo "규칙이 이미 존재해 건너뜁니다"
-
-      - name: EC2 SSH 키 준비
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H "${{ secrets.APP_HOST }}" >> ~/.ssh/known_hosts
+          chmod +x deploy/ssm-run.sh
+          PING=$(aws ssm describe-instance-information \
+            --filters "Key=InstanceIds,Values=$APP_INSTANCE_ID" \
+            --query 'InstanceInformationList[0].PingStatus' --output text)
+          echo "PingStatus=$PING"
+          # Online이 아니면 이후 모든 원격 단계가 무의미하게 실패한다 — 여기서 바로 멈춘다.
+          [ "$PING" = "Online" ] || { echo "SSM 에이전트가 Online이 아니다"; exit 1; }
 
       # 배포가 실패했을 때 되돌아갈 지점 — 지금 서버가 실제로 돌리고 있는 이미지 태그를 먼저 확보한다.
       # 커밋 이력이 아니라 "현재 떠 있는 것"을 기준으로 잡아야, 이전 배포가 실패로 끝났던 경우에도
@@ -119,8 +106,8 @@ jobs:
         run: |
           # compose ps는 APP_IMAGE 환경변수가 없으면 프로젝트 파싱에 실패한다(실측). 컨테이너 이름도
           # 디렉토리명에 의존하므로, compose가 붙여주는 라벨로 조회한다.
-          PREV=$(ssh -i ~/.ssh/deploy_key "ec2-user@${{ secrets.APP_HOST }}" \
-            "docker ps --filter 'label=com.docker.compose.service=app' --format '{{.Image}}' | head -1")
+          PREV=$(echo "docker ps --filter 'label=com.docker.compose.service=app' --format '{{.Image}}' | head -1" \
+            | deploy/ssm-run.sh | tr -d '\r' | tail -1)
           echo "image=$PREV" >> "$GITHUB_OUTPUT"
           echo "직전 실행 이미지: ${PREV:-(없음)}"
 
@@ -146,9 +133,13 @@ jobs:
         env:
           IMAGE_BASE: ${{ secrets.DOCKERHUB_USERNAME }}/at-crew-backend
         run: |
-          ssh -i ~/.ssh/deploy_key "ec2-user@${{ secrets.APP_HOST }}" "cd ~/at-crew-backend/deploy && \
-            APP_IMAGE=$IMAGE_BASE:${{ github.sha }} docker-compose -f docker-compose.app.yml pull app && \
-            APP_IMAGE=$IMAGE_BASE:${{ github.sha }} docker-compose -f docker-compose.app.yml up -d"
+          deploy/ssm-run.sh <<EOF
+          set -e
+          cd /home/ec2-user/at-crew-backend/deploy
+          export APP_IMAGE=$IMAGE_BASE:${{ github.sha }}
+          docker-compose -f docker-compose.app.yml pull app
+          docker-compose -f docker-compose.app.yml up -d
+          EOF
 
       # 재기동 명령이 성공했다는 것과 앱이 실제로 뜬 것은 다르다 — 2026-08-19에는 Flyway 적용 순서가
       # 꼬여 크래시 루프에 빠졌는데도 배포는 초록으로 끝났다. liveness가 UP이 될 때까지 최대 3분 기다린다.
@@ -156,7 +147,7 @@ jobs:
         id: health
         continue-on-error: true
         run: |
-          ssh -i ~/.ssh/deploy_key "ec2-user@${{ secrets.APP_HOST }}" '
+          deploy/ssm-run.sh <<'EOF'
             for i in $(seq 1 36); do
               if curl -fsS --max-time 5 http://127.0.0.1:8081/actuator/health/liveness | grep -q UP; then
                 echo "liveness UP ($((i*5))초)"; exit 0
@@ -170,7 +161,8 @@ jobs:
             # 컨테이너를 라벨로 직접 찾아 로그를 뜬다.
             CID=$(docker ps -a --filter "label=com.docker.compose.service=app" --format "{{.ID}}" | head -1)
             [ -n "$CID" ] && docker logs --tail=100 "$CID" 2>&1 || echo "app 컨테이너를 찾지 못했다"
-            exit 1'
+            exit 1
+          EOF
 
       # 스키마는 롤백되지 않는다. 새 마이그레이션이 적용된 뒤 구버전 앱으로 되돌리면 ddl-auto: validate가
       # 실패해 또 죽는다 — 이 경우엔 자동 롤백 대신 사람을 부른다(설계 D13).
@@ -210,27 +202,31 @@ jobs:
           PREV="${{ steps.prev.outputs.image }}"
           echo "롤백 대상: $PREV"
           # 배포 후 prune으로 이전 이미지가 서버에 남아 있지 않으므로 레지스트리에서 다시 받는다.
-          ssh -i ~/.ssh/deploy_key "ec2-user@${{ secrets.APP_HOST }}" "cd ~/at-crew-backend/deploy && \
-            APP_IMAGE=$PREV docker-compose -f docker-compose.app.yml pull app && \
-            APP_IMAGE=$PREV docker-compose -f docker-compose.app.yml up -d"
+          deploy/ssm-run.sh <<EOF
+          set -e
+          cd /home/ec2-user/at-crew-backend/deploy
+          export APP_IMAGE=$PREV
+          docker-compose -f docker-compose.app.yml pull app
+          docker-compose -f docker-compose.app.yml up -d
+          EOF
           # 롤백 대상은 관리 포트(8081) 분리 이전 이미지일 수 있다 — 그 경우 8081만 보면 컨테이너가
           # 정상 복귀했는데도 롤백이 실패로 기록된다(2026-08-27 실측). 어느 쪽이든 살아났으면 성공으로 본다.
-          ssh -i ~/.ssh/deploy_key "ec2-user@${{ secrets.APP_HOST }}" '
+          deploy/ssm-run.sh <<'EOF'
             for i in $(seq 1 36); do
               curl -fsS --max-time 5 http://127.0.0.1:8081/actuator/health/liveness 2>/dev/null | grep -q UP && exit 0
               curl -fsS --max-time 5 http://127.0.0.1:8080/actuator/health 2>/dev/null | grep -q UP && exit 0
               sleep 5
             done
-            echo "롤백 후에도 liveness가 올라오지 않는다"; exit 1'
+            echo "롤백 후에도 liveness가 올라오지 않는다"; exit 1
+          EOF
 
       # 배포마다 새 SHA 태그 이미지(약 500MB)가 쌓이는데 지우는 단계가 없어 루트 볼륨 8GB 중 74%가
       # 찼었다(2026-08-24 점검, 정리로 43%까지 회수). 실행 중인 컨테이너가 쓰는 이미지는 prune 대상이
       # 아니므로 현재 배포본과 mariadb만 남는다.
       - name: 사용하지 않는 이미지 정리
-        if: always() && env.RUNNER_CIDR != ''
+        if: always() && env.APP_INSTANCE_ID != ''
         continue-on-error: true
-        run: |
-          ssh -i ~/.ssh/deploy_key "ec2-user@${{ secrets.APP_HOST }}" "docker image prune -af"
+        run: echo "docker image prune -af" | deploy/ssm-run.sh
 
       - name: 알람 억제 해제
         if: always() && steps.silence.outputs.id != ''
@@ -238,15 +234,6 @@ jobs:
         run: |
           curl -sS -X DELETE "$GRAFANA_URL/api/alertmanager/grafana/api/v2/silence/${{ steps.silence.outputs.id }}" \
             -H "Authorization: Bearer $GRAFANA_API_KEY" || true
-
-      - name: 보안 그룹에서 러너 IP 회수
-        # 앞 단계가 실패해도 반드시 돌려놓는다 — 실패한 배포가 22번을 열어둔 채 끝나면 안 된다.
-        if: always() && env.RUNNER_CIDR != ''
-        run: |
-          aws ec2 revoke-security-group-ingress \
-            --group-id "$APP_SECURITY_GROUP_ID" \
-            --protocol tcp --port 22 --cidr "$RUNNER_CIDR" \
-            || echo "회수할 규칙이 없습니다"
 
       # 성공·롤백·실패 세 경우 모두 알린다. 롤백과 실패는 P1(즉시 확인), 성공은 P2(기록용)로 보낸다
       # — 이 통지는 위 silence와 무관한 별도 경로라 배포 억제 중에도 항상 도착한다.
