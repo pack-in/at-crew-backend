@@ -1,0 +1,7 @@
+label,endpoint,backend,p50_ms,p95_ms,p99_ms,n
+empty-db,community_authors,mariadb,50.6,810.9,1093.9,31339
+empty-db,search,elasticsearch,50.1,422.4,526.6,31326
+empty-db,recruit_job_postings,mariadb,48.7,806.2,1072.9,31714
+empty-db,community_artworks,mariadb,45.4,808.4,1092.3,31402
+empty-db,billing_catalog,app,44.3,800.5,1082.3,31264
+empty-db,community_banners,mariadb,42.6,804.3,1072.1,31066
