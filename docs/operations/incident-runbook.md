@@ -18,6 +18,25 @@ Host atcrew-prod
   IdentityFile ~/.ssh/<키페어>.pem
 ```
 
+**퍼블릭 IP가 없는 인스턴스는 SSM으로 붙는다.** 프라이빗 서브넷으로 옮긴 뒤에는 위 SSH가 아예 닿지
+않는다 — 그때 "접근할 수 없다"고 판단하고 멈추지 말 것(2026-09-02에 실제로 그렇게 판단해 복구가
+지연됐다). 인스턴스에 `AmazonSSMManagedInstanceCore` 역할이 붙어 있으면 아래가 동작한다.
+
+```bash
+aws ssm describe-instance-information \
+  --query 'InstanceInformationList[].[InstanceId,PingStatus]' --output text   # Online이면 접속 가능
+aws ssm start-session --target <인스턴스 ID>            # session-manager-plugin 필요
+```
+
+플러그인 없이 명령만 돌릴 때는 `send-command`를 쓴다. 출력은 `get-command-invocation`으로 받는다.
+
+```bash
+CMD=$(aws ssm send-command --instance-ids <인스턴스 ID> --document-name AWS-RunShellScript \
+  --parameters 'commands=["docker ps"]' --query Command.CommandId --output text)
+aws ssm get-command-invocation --command-id "$CMD" --instance-id <인스턴스 ID> \
+  --query '[Status,StandardOutputContent]' --output text
+```
+
 ```bash
 ssh atcrew-prod
 cd ~/at-crew-backend/deploy
@@ -97,6 +116,16 @@ curl -s http://127.0.0.1:12345/metrics | grep prometheus_remote_storage_samples_
 Alloy만 죽었다면 사용자 영향은 없지만 **다른 모든 알람이 함께 눈이 먼 상태**이므로 즉시 되살린다.
 `docker-compose -f docker-compose.observability.yml up -d`
 
+컨테이너가 죽은 게 아니라 **애초에 없다면 인스턴스 교체 때 누락된 것이다**(2026-09-02 v2 이전에서
+실제 발생, 이슈 #115). 이 경우 백업 타이머도 함께 빠져 있을 가능성이 높으므로 둘을 한 번에 세운다.
+
+```bash
+cd ~/at-crew-backend/deploy && ./bootstrap.sh
+```
+
+`[P1] API 전면 다운`은 조용한데 이 알람만 울린다면 **서비스는 살아 있고 수집만 끊긴 것이다.** 외부
+프로브는 서비스에 직접 붙고 이 알람은 Alloy 파이프라인에 의존하기 때문에, 이 조합 자체가 판정 근거다.
+
 ### [P1] DB 백업 26시간 미실행
 
 ```bash
@@ -107,6 +136,10 @@ cat /var/lib/node_exporter/textfile_collector/backup.prom
 ```
 
 흔한 원인: R2 토큰 만료·권한 변경, 디스크 부족으로 덤프 생성 실패, mariadb 컨테이너 이름 변경.
+
+`list-timers`에 `atcrew-backup.timer`가 **아예 없으면** 타이머가 설치되지 않은 것이다(인스턴스 교체
+때 누락). `./bootstrap.sh`로 설치한다 — 백업이 한 번도 돈 적 없는 상태이므로 설치 후 수동 실행까지
+해서 실제로 R2에 올라가는지 확인한다.
 
 `.env`에 `R2_BACKUP_BUCKET`·`R2_BACKUP_ACCESS_KEY`·`R2_BACKUP_SECRET_KEY`가 없으면 스크립트가 즉시
 멈춘다(기본값·폴백을 두지 않는다 — 예전에는 없는 버킷이나 권한 없는 키로 떨어져 백업이 조용히
