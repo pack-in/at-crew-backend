@@ -27,7 +27,7 @@ fail() { echo "[bootstrap] $1" >&2; exit 1; }
 # .env를 source 하지 않는다 — 셸은 값을 명령으로 해석해서 깨진다(backup.sh와 같은 이유).
 read_env() { sed -n "s/^$1=//p" "$ENV_FILE" | tail -1 | sed -e 's/^"//' -e 's/"$//'; }
 
-echo "[bootstrap] 1/4 사전 조건 확인"
+echo "[bootstrap] 1/5 사전 조건 확인"
 [ -f "$ENV_FILE" ] || fail ".env가 없다: $ENV_FILE — .env.example을 복사해 값을 채울 것"
 command -v docker >/dev/null || fail "docker가 없다"
 command -v docker-compose >/dev/null || fail "docker-compose가 없다 (플러그인 아닌 standalone 바이너리)"
@@ -44,16 +44,50 @@ for KEY in GRAFANA_CLOUD_PROM_URL GRAFANA_CLOUD_PROM_USER GRAFANA_CLOUD_LOKI_URL
 done
 [ -z "$MISSING" ] || fail ".env에 값이 비어 있다:$MISSING"
 
-echo "[bootstrap] 2/4 백업 지표 디렉토리 준비: $METRIC_DIR"
+echo "[bootstrap] 2/5 백업 지표 디렉토리 준비: $METRIC_DIR"
 # backup.sh가 성공 시각을 여기에 남기고 Alloy의 textfile 컬렉터가 읽어 간다. 디렉토리가 없으면
 # 백업은 돌지만 "언제 성공했는지"가 관측에 안 잡혀 백업 감시 알람이 영원히 NoData가 된다.
 sudo mkdir -p "$METRIC_DIR"
 sudo chown "$(id -un)" "$METRIC_DIR"
 
-echo "[bootstrap] 3/4 관측 에이전트(Alloy) 기동"
+echo "[bootstrap] 3/5 스왑 파일 구성"
+# 앱·MariaDB·Elasticsearch가 한 인스턴스 메모리를 나눠 쓰는데 스왑이 없으면 완충 구간 없이
+# 곧바로 OOM 킬러가 돈다 — 한 컨테이너의 폭주가 다른 컨테이너를 죽인다(이슈 #116).
+# 컨테이너 메모리 상한(docker-compose.app.yml)과 짝을 이루는 호스트 쪽 방어다.
+SWAP_FILE="${SWAP_FILE:-/swapfile}"
+SWAP_SIZE_MB="${SWAP_SIZE_MB:-2048}"
+# zram은 스왑으로 잡히지만 RAM을 압축해 쓰는 것이라 OOM 완충이 되지 못한다 — 메모리가 부족한
+# 상황에서 메모리를 더 쓰는 구조다. Amazon Linux 2023은 zram을 기본으로 켜 두므로(실측: t4g.nano
+# 에서 /dev/zram0 412MB), 이걸 "스왑 있음"으로 세면 디스크 스왑이 영영 만들어지지 않는다.
+DISK_SWAP="$(swapon --show=NAME --noheadings 2>/dev/null | grep -v '^/dev/zram' || true)"
+if [ -n "$DISK_SWAP" ]; then
+  echo "  - 이미 디스크 스왑이 있다 — 건너뛴다: $(echo "$DISK_SWAP" | tr '\n' ' ')"
+else
+  # 루트 사용률 85% 초과는 [P1] 알람 대상이다 — 스왑 파일이 그 알람을 유발하면 안 된다.
+  AVAIL_MB="$(df -Pm / | awk 'NR==2{print $4}')"
+  [ "$AVAIL_MB" -gt "$((SWAP_SIZE_MB + 2048))" ] \
+    || fail "루트 여유가 부족하다(${AVAIL_MB}MB) — 스왑 ${SWAP_SIZE_MB}MB에 더해 2GB는 남겨야 한다. SWAP_SIZE_MB로 줄이거나 디스크를 늘릴 것"
+  # fallocate를 쓰지 않는다 — xfs에서 미기록 익스텐트가 생겨 swapon이 "swapfile has holes"로
+  # 거부한다(Amazon Linux 2023의 루트 파일시스템이 xfs다). dd로 실제 블록을 채운다.
+  sudo dd if=/dev/zero of="$SWAP_FILE" bs=1M count="$SWAP_SIZE_MB" status=none
+  sudo chmod 600 "$SWAP_FILE"
+  sudo mkswap "$SWAP_FILE" >/dev/null
+  sudo swapon "$SWAP_FILE"
+  # 재부팅 후에도 살아 있어야 한다 — 없으면 인스턴스가 재시작되는 순간 조용히 사라진다.
+  grep -q "^${SWAP_FILE} " /etc/fstab || echo "${SWAP_FILE} none swap sw 0 0" | sudo tee -a /etc/fstab >/dev/null
+  echo "  - 스왑 ${SWAP_SIZE_MB}MB 생성·활성화, /etc/fstab 등록 완료"
+fi
+# 스왑은 성능 경로가 아니라 OOM 완충이다. 기본값 60은 메모리에 여유가 있어도 적극적으로
+# 스왑아웃해 지연을 늘린다 — 정말 부족할 때만 쓰도록 낮춘다.
+# /etc/sysctl.d가 없는 호스트에서 tee가 실패하면 set -e로 스크립트 전체가 죽는다 — 먼저 만든다.
+sudo mkdir -p /etc/sysctl.d
+printf 'vm.swappiness = 10\n' | sudo tee /etc/sysctl.d/99-atcrew-swappiness.conf >/dev/null
+sudo sysctl -q -w vm.swappiness=10
+
+echo "[bootstrap] 4/5 관측 에이전트(Alloy) 기동"
 docker-compose -f docker-compose.observability.yml up -d
 
-echo "[bootstrap] 4/4 백업 타이머 설치"
+echo "[bootstrap] 5/5 백업 타이머 설치"
 chmod +x "$DEPLOY_DIR/backup.sh"
 sudo cp systemd/atcrew-backup.service systemd/atcrew-backup.timer /etc/systemd/system/
 sudo systemctl daemon-reload
@@ -75,6 +109,12 @@ if curl -fsS --max-time 5 -o /dev/null http://127.0.0.1:8081/actuator/prometheus
 else
   echo "  - 경고: 앱 관리 포트(8081)가 응답하지 않는다. 앱이 아직 안 떴다면 무시해도 되지만," >&2
   echo "          앱이 떠 있는데도 이러면 Alloy가 수집하지 못해 [P1] 앱 메트릭 수집 불가가 울린다." >&2
+fi
+
+if swapon --show=NAME --noheadings 2>/dev/null | grep -qv '^/dev/zram'; then
+  echo "  - 디스크 스왑: $(swapon --show=NAME,SIZE --noheadings | grep -v zram | tr '\n' ' '), swappiness=$(cat /proc/sys/vm/swappiness)"
+else
+  fail "디스크 스왑이 활성화되지 않았다 — zram만으로는 OOM 완충이 되지 않는다"
 fi
 
 systemctl list-timers atcrew-backup.timer --all --no-pager | sed -n '2p;3p'
