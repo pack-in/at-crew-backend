@@ -126,6 +126,7 @@ systemd 유닛이다.
 |---|---|---|
 | 관측 에이전트 | `docker-compose.observability.yml`(Alloy) | 메트릭·로그 수집이 끊긴다. `[P1] 앱 메트릭 수집 불가`가 계속 울리는데 서비스는 멀쩡한 상태가 된다 |
 | DB 백업 | `systemd/atcrew-backup.{service,timer}` | 백업이 조용히 멈춘다. 관측도 함께 죽어 있으면 백업 감시 알람마저 울리지 않는다 |
+| 스왑 | `/swapfile` + `/etc/fstab` | 메모리 완충이 없어 OOM 킬러가 곧바로 돈다. 앱·MariaDB·Elasticsearch가 한 인스턴스를 나눠 쓰므로 한 컨테이너의 폭주가 다른 컨테이너를 죽인다(이슈 #116) |
 
 앱을 새 인스턴스에 올린 직후 **`./bootstrap.sh`를 실행하면 둘 다 설치·기동된다.** 멱등하므로 이미
 설치된 호스트에서 다시 돌려도 안전하다.
@@ -136,7 +137,9 @@ cd ~/at-crew-backend/deploy && ./bootstrap.sh
 
 이전 완료 체크리스트:
 
-- [ ] `./bootstrap.sh` 실행 — Alloy 기동 + 백업 타이머 등록
+- [ ] `./bootstrap.sh` 실행 — 스왑 구성 + Alloy 기동 + 백업 타이머 등록
+- [ ] 스왑 확인 — `swapon --show`에 `/swapfile`이 보일 것. **`/dev/zram0`만 있으면 안 된다** —
+      zram은 RAM을 압축해 쓰는 것이라 OOM 완충이 되지 못한다(Amazon Linux 2023 기본값)
 - [ ] 1분 뒤 수집 확인 — `curl -s http://127.0.0.1:12345/metrics | grep prometheus_remote_storage_samples_total`이 증가하고 `samples_failed_total`이 0
 - [ ] 백업 1회 수동 검증 — `sudo systemctl start atcrew-backup.service` 후 `journalctl -u atcrew-backup.service -n 20`
 - [ ] **`APP_INSTANCE_ID` 저장소 Secret을 새 인스턴스 ID로 갱신** — 갱신하지 않으면 다음 main
