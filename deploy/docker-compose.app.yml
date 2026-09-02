@@ -11,6 +11,16 @@ services:
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     volumes:
       - mariadb_data:/var/lib/mysql
+      # 슬로우 쿼리 로그(이슈 #118). MariaDB가 conf.d/*.cnf를 자동으로 읽는다 — command 인자에
+      # 섞지 않고 파일로 두어 설정마다 이유를 주석으로 남긴다.
+      - ./mariadb/slow-query.cnf:/etc/mysql/conf.d/slow-query.cnf:ro
+    # 메모리 상한(이슈 #116) — 앱·MariaDB·Elasticsearch가 한 인스턴스(3,830MB)를 나눠 쓰고 스왑이
+    # 없다. 상한이 없으면 한 컨테이너의 폭주가 OOM 킬러를 불러 다른 컨테이너를 죽인다.
+    # 세 값의 합(3,300MB)이 인스턴스보다 작아야 호스트 몫이 남는다.
+    deploy:
+      resources:
+        limits:
+          memory: 600m
     # 로그 로테이션(docs/design/observability-design.md §4) — docker 기본 json-file 드라이버는 무제한이라
     # 장기 가동 시 로그만으로 디스크가 찬다. 컨테이너당 최대 150MB로 묶는다.
     logging:
@@ -42,6 +52,12 @@ services:
       TZ: UTC
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
+    # 힙 512m에 더해 Lucene·스레드 스택·다이렉트 버퍼가 붙는다. 2026-09-02 실측 RSS가
+    # 약 950~1,000MB였으므로 1,100m로 잡는다(이슈 #116).
+    deploy:
+      resources:
+        limits:
+          memory: 1100m
     logging:
       driver: json-file
       options:
@@ -60,9 +76,20 @@ services:
       # .env의 값은 호스트(EC2) 파일 경로다 — 컨테이너 안에서는 안 보이므로 아래 볼륨으로 마운트한
       # 컨테이너 내부 경로로 덮어쓴다(실제 배포 중 FileNotFoundException으로 발견).
       FIREBASE_CREDENTIALS_PATH: /app/firebase-credentials.json
+      # JVM 힙을 명시한다(이슈 #116). Dockerfile의 ENTRYPOINT에 -Xmx가 없어 지금까지는 기본
+      # MaxRAMPercentage 25%가 적용됐고, 그 25%의 분모는 **컨테이너 메모리 상한**이다.
+      # 아래 limits(1600m)를 거는 순간 힙이 958MB에서 400MB로 조용히 줄어든다 —
+      # 상한과 힙은 반드시 함께 정해야 한다. 900m는 상한 전 실효값(958MB)에 맞춘 값이다.
+      JAVA_TOOL_OPTIONS: "-Xmx900m"
     volumes:
       # deploy/ 디렉토리에 firebase-credentials.json이라는 이름으로 올려둔 파일을 그대로 마운트한다.
       - ./firebase-credentials.json:/app/firebase-credentials.json:ro
+    # 힙 900m에 메타스페이스·코드캐시·스레드 스택·다이렉트 버퍼가 더해진다. 2026-09-02 실측
+    # RSS가 540~651MB(그때 힙 사용량은 230MB)였으므로 힙 밖 오버헤드를 약 400MB로 보고 1600m로 잡는다.
+    deploy:
+      resources:
+        limits:
+          memory: 1600m
     ports:
       # nginx(호스트에 직접 설치)만 접근하면 되므로 루프백에만 바인딩 — 8080을 외부에 직접 노출하지 않는다.
       - "127.0.0.1:8080:8080"
