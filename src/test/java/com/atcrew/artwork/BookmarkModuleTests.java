@@ -154,7 +154,7 @@ class BookmarkModuleTests {
         ArtworkInfo artwork = artworkService.uploadArtwork(authorId, new UploadArtworkCommand(
                 imageKeys, 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 "북마크테스트 작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
-                List.of(), List.of(), List.of(),
+                List.of(), List.of(), null, List.of(),
                 AgeRating.ALL, List.of(Language.KO), true, List.of(), List.of(), null, null, List.of(), List.of()));
         // media webhook → MediaAssetProcessedEvent → artwork 리스너(비동기)로 READY 전환된다.
         mediaCallbackService.process(MediaOwnerType.ARTWORK, artwork.id(), imageKeys.get(0),

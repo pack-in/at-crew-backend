@@ -208,7 +208,7 @@ class ArtworkSortModuleTests {
         ArtworkInfo uploaded = artworkService.uploadArtwork(authorId, new UploadArtworkCommand(
                 List.of(imageKey), 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 "정렬 검증 작품", "설명", field, CreativeType.ORIGINAL,
-                List.of(), List.of(), List.of(),
+                List.of(), List.of(), null, List.of(),
                 AgeRating.ALL, List.of(Language.KO), true, List.of(), List.of(), null, null, List.of(), List.of()));
         jdbcTemplate.update("UPDATE artworks SET status = 'READY' WHERE id = ?", uploaded.id());
         return uploaded.id();

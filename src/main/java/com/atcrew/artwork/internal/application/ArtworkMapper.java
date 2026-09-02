@@ -35,6 +35,7 @@ class ArtworkMapper {
                 artwork.getCreativeType(),
                 artwork.getRoles(),
                 artwork.getGenres(),
+                artwork.getCustomTags(),
                 artwork.getTags(),
                 artwork.getTools(),
                 artwork.getWorkDuration(),
@@ -46,7 +47,7 @@ class ArtworkMapper {
                 artwork.isPortfolioIncluded(),
                 artwork.isBlocked(),
                 artwork.getMaterials().stream()
-                        .map(m -> new MaterialInfo(m.getName(), m.getTargets(),
+                        .map(m -> new MaterialInfo(m.getName(), m.getTargets(), m.getCustomTargets(),
                                 m.getAttachmentKeys(), m.getLinks()))
                         .toList(),
                 artwork.getStatus(),

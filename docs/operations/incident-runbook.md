@@ -1,30 +1,43 @@
 # 장애 대응 런북
 
 > 작성일: 2026-08-26
-> 대상: prod(`api.at-crew.com`, EC2 #1). 알람 정의는 `deploy/observability/alerts/rules.json`,
+> 대상: prod(`api.at-crew.com`, 앱 서버). 알람 정의는 `deploy/observability/alerts/rules.json`,
 > 설계 배경은 `docs/design/observability-design.md`.
 
 알람이 왔을 때 **무엇을 확인하고 무엇을 실행하는가**만 적는다. 원인 분석 방법론이 아니라 손 순서다.
 
 ## 0. 공통 — 접속과 첫 3분
 
-`<APP_HOST>`는 EC2 #1의 퍼블릭 IP다(AWS 콘솔 또는 저장소 Secret `APP_HOST`).
-`~/.ssh/config`에 별칭을 만들어 두면 장애 대응 중에 자리표시자를 치환할 필요가 없다.
-
-```
-Host atcrew-prod
-  HostName <APP_HOST>
-  User ec2-user
-  IdentityFile ~/.ssh/<키페어>.pem
-```
+**접속은 SSM이다. SSH는 닿지 않는다.** 앱 서버는 프라이빗 서브넷에 있어 퍼블릭 IP가 없다(#110).
+SSH가 안 된다고 "접근할 수 없다"고 판단하고 멈추지 말 것 — 2026-09-02에 실제로 그렇게 판단해 복구가
+지연됐다. 인스턴스 ID는 저장소 Secret `APP_INSTANCE_ID`에 있다.
 
 ```bash
-ssh atcrew-prod
-cd ~/at-crew-backend/deploy
-docker-compose -f docker-compose.app.yml ps          # 컨테이너 상태
-docker-compose -f docker-compose.app.yml logs --tail=100 app
-curl -s http://127.0.0.1:8081/actuator/health/readiness | jq .   # 의존성별 상태
-df -h /                                               # 디스크
+aws ssm describe-instance-information \
+  --query 'InstanceInformationList[].[InstanceId,PingStatus]' --output text   # Online이면 접속 가능
+aws ssm start-session --target <인스턴스 ID>            # session-manager-plugin 필요
+```
+
+플러그인 없이 명령만 돌릴 때는 `send-command`를 쓴다. 출력은 `get-command-invocation`으로 받는다.
+
+```bash
+CMD=$(aws ssm send-command --instance-ids <인스턴스 ID> --document-name AWS-RunShellScript \
+  --parameters 'commands=["docker ps"]' --query Command.CommandId --output text)
+aws ssm get-command-invocation --command-id "$CMD" --instance-id <인스턴스 ID> \
+  --query '[Status,StandardOutputContent]' --output text
+```
+
+첫 3분에 확인할 것 — 레포의 `deploy/ssm-run.sh`로 한 번에 보낸다.
+
+```bash
+export APP_INSTANCE_ID=<인스턴스 ID>
+deploy/ssm-run.sh <<'EOF'
+docker ps --format '{{.Names}}\t{{.Status}}'
+CID=$(docker ps -a --filter 'label=com.docker.compose.service=app' --format '{{.ID}}' | head -1)
+docker logs --tail=100 "$CID" 2>&1
+curl -s http://127.0.0.1:8081/actuator/health/readiness
+df -h /
+EOF
 ```
 
 관측 링크
@@ -33,8 +46,8 @@ df -h /                                               # 디스크
 - 로그 조회: Explore → `grafanacloud-atcrew-logs` → `{service_name="app"} |= "<requestId>"`
 - 에러 상세: Sentry 프로젝트 `at-crew-backend`
 
-> `<APP_HOST>`·`<키페어>`·`<GRAFANA_URL>`은 실제 값을 적지 않는다(공개 저장소). 각각 저장소 Secret
-> `APP_HOST`, 로컬 `~/.ssh/`의 키 파일, Secret `GRAFANA_URL`을 참조한다.
+> `<인스턴스 ID>`·`<GRAFANA_URL>`은 실제 값을 적지 않는다(공개 저장소). 각각 저장소 Secret
+> `APP_INSTANCE_ID`, `GRAFANA_URL`을 참조한다.
 
 ---
 
@@ -48,9 +61,10 @@ df -h /                                               # 디스크
 2. 앱은 살아 있는데 응답이 없는가 — `curl -v http://127.0.0.1:8080/api/community/banners`.
    200이면 앱은 정상이고 그 앞단(nginx·Cloudflare) 문제다.
 3. nginx — `sudo systemctl status nginx`, `sudo nginx -t`, `sudo tail -50 /var/log/nginx/error.log`.
-4. Cloudflare — 대시보드에서 `api.at-crew.com` A레코드와 SSL/TLS 모드가 **Flexible**인지 확인.
-   과거 이 값이 바뀌어 521(Web Server Is Down)이 난 적이 있다(2026-08-10, 2026-08-13).
-   권한이 없으면 root에게 요청해야 한다.
+4. Cloudflare Tunnel — 유입 경로가 터널이므로 `cloudflared`가 죽으면 origin이 통째로 사라진다.
+   `systemctl status cloudflared`, `sudo journalctl -u cloudflared -n 50`. 대시보드의 터널 상태와
+   ingress 규칙(`api.at-crew.com` → 로컬 nginx)도 함께 확인한다. 권한이 없으면 root에게 요청해야 한다.
+   과거 SSL/TLS 모드가 바뀌어 521(Web Server Is Down)이 난 적이 있다(2026-08-10, 2026-08-13).
 5. 직전 배포가 원인으로 의심되면 §배포 실패·롤백으로.
 
 ### [P1] 앱 컨테이너 크래시 루프
@@ -97,6 +111,16 @@ curl -s http://127.0.0.1:12345/metrics | grep prometheus_remote_storage_samples_
 Alloy만 죽었다면 사용자 영향은 없지만 **다른 모든 알람이 함께 눈이 먼 상태**이므로 즉시 되살린다.
 `docker-compose -f docker-compose.observability.yml up -d`
 
+컨테이너가 죽은 게 아니라 **애초에 없다면 인스턴스 교체 때 누락된 것이다**(2026-09-02 v2 이전에서
+실제 발생, 이슈 #115). 이 경우 백업 타이머도 함께 빠져 있을 가능성이 높으므로 둘을 한 번에 세운다.
+
+```bash
+cd ~/at-crew-backend/deploy && ./bootstrap.sh
+```
+
+`[P1] API 전면 다운`은 조용한데 이 알람만 울린다면 **서비스는 살아 있고 수집만 끊긴 것이다.** 외부
+프로브는 서비스에 직접 붙고 이 알람은 Alloy 파이프라인에 의존하기 때문에, 이 조합 자체가 판정 근거다.
+
 ### [P1] DB 백업 26시간 미실행
 
 ```bash
@@ -107,6 +131,10 @@ cat /var/lib/node_exporter/textfile_collector/backup.prom
 ```
 
 흔한 원인: R2 토큰 만료·권한 변경, 디스크 부족으로 덤프 생성 실패, mariadb 컨테이너 이름 변경.
+
+`list-timers`에 `atcrew-backup.timer`가 **아예 없으면** 타이머가 설치되지 않은 것이다(인스턴스 교체
+때 누락). `./bootstrap.sh`로 설치한다 — 백업이 한 번도 돈 적 없는 상태이므로 설치 후 수동 실행까지
+해서 실제로 R2에 올라가는지 확인한다.
 
 `.env`에 `R2_BACKUP_BUCKET`·`R2_BACKUP_ACCESS_KEY`·`R2_BACKUP_SECRET_KEY`가 없으면 스크립트가 즉시
 멈춘다(기본값·폴백을 두지 않는다 — 예전에는 없는 버킷이나 권한 없는 키로 떨어져 백업이 조용히

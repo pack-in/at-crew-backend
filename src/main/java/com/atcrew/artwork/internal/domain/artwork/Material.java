@@ -37,6 +37,13 @@ public class Material {
     @JdbcTypeCode(SqlTypes.JSON)
     private List<MaterialTarget> targets;
 
+    // 소재 대상 직접입력 값(업로드-R13, 이슈 #98) — targets(정본 enum)와 나란히 저장한다. targets와
+    // 달리 정본 목록이 없어 애초에 enum화가 불가능한 값이라 커스텀 태그 테이블 패턴도 적용하지 않고
+    // targets와 같은 JSON 방식을 그대로 따른다.
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "custom_targets")
+    private List<String> customTargets;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "attachment_keys")
     private List<String> attachmentKeys;
@@ -47,9 +54,11 @@ public class Material {
     protected Material() {
     }
 
-    public Material(String name, List<MaterialTarget> targets, List<String> attachmentKeys, List<String> links) {
+    public Material(String name, List<MaterialTarget> targets, List<String> customTargets,
+                     List<String> attachmentKeys, List<String> links) {
         this.name = name;
         this.targets = targets;
+        this.customTargets = customTargets;
         this.attachmentKeys = attachmentKeys;
         this.links = links;
     }
@@ -62,6 +71,7 @@ public class Material {
 
     public String getName() { return name; }
     public List<MaterialTarget> getTargets() { return targets; }
+    public List<String> getCustomTargets() { return customTargets; }
     public List<String> getAttachmentKeys() { return attachmentKeys; }
     public List<String> getLinks() { return links; }
 }

@@ -2,6 +2,8 @@ package com.atcrew.artwork.internal.domain.artwork;
 
 import com.atcrew.artwork.AgeRating;
 import com.atcrew.artwork.ArtworkAccess;
+import com.atcrew.artwork.ArtworkCustomTagInfo;
+import com.atcrew.artwork.ArtworkCustomTagType;
 import com.atcrew.artwork.ArtworkField;
 import com.atcrew.artwork.ArtworkRole;
 import com.atcrew.artwork.ArtworkStatus;
@@ -32,6 +34,8 @@ import jakarta.persistence.PostPersist;
 import jakarta.persistence.Table;
 import jakarta.persistence.Transient;
 import jakarta.persistence.Version;
+
+import org.hibernate.annotations.BatchSize;
 import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
@@ -42,8 +46,10 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 @Entity
@@ -70,6 +76,7 @@ public class Artwork implements Persistable<String> {
     // 뒤이어 UPDATE로 채우는 2단계 패턴이라 artwork_id NOT NULL 제약과 충돌한다
     // (docs/design/mariadb-migration-design.md §11/§12에서 이미 발견된 함정과 동일 패턴).
     @OneToMany(mappedBy = "artwork", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @BatchSize(size = 100)   // 목록 조회 시 컬렉션 N+1 완화 (recruit 모듈과 동일 패턴, 이슈 #112)
     @OrderBy("ordinal ASC")
     private List<ArtworkImage> images = new ArrayList<>();
 
@@ -88,23 +95,34 @@ public class Artwork implements Persistable<String> {
     private CreativeType creativeType;
 
     @ElementCollection(fetch = FetchType.EAGER)
+    @BatchSize(size = 100)   // 목록 조회 시 컬렉션 N+1 완화 (recruit 모듈과 동일 패턴, 이슈 #112)
     @CollectionTable(name = "artwork_roles", joinColumns = @JoinColumn(name = "artwork_id"))
     @Column(name = "value")
     @Enumerated(EnumType.STRING)
     private Set<ArtworkRole> roles = new HashSet<>();
 
     @ElementCollection(fetch = FetchType.EAGER)
+    @BatchSize(size = 100)   // 목록 조회 시 컬렉션 N+1 완화 (recruit 모듈과 동일 패턴, 이슈 #112)
     @CollectionTable(name = "artwork_genres", joinColumns = @JoinColumn(name = "artwork_id"))
     @Column(name = "value")
     @Enumerated(EnumType.STRING)
     private Set<Genre> genres = new HashSet<>();
 
+    // 직접입력 태그 — 항목(type)을 함께 저장해 한 테이블로 관리한다(ArtworkCustomTagType 참고,
+    // com.atcrew.member.internal.domain.CustomTag와 동일 패턴).
     @ElementCollection(fetch = FetchType.EAGER)
+    @BatchSize(size = 100)   // 목록 조회 시 컬렉션 N+1 완화 (recruit 모듈과 동일 패턴, 이슈 #112)
+    @CollectionTable(name = "artwork_custom_tags", joinColumns = @JoinColumn(name = "artwork_id"))
+    private Set<ArtworkCustomTag> customTags = new HashSet<>();
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @BatchSize(size = 100)   // 목록 조회 시 컬렉션 N+1 완화 (recruit 모듈과 동일 패턴, 이슈 #112)
     @CollectionTable(name = "artwork_tags", joinColumns = @JoinColumn(name = "artwork_id"))
     @Column(name = "value")
     private Set<String> tags = new HashSet<>();
 
     @ElementCollection(fetch = FetchType.EAGER)
+    @BatchSize(size = 100)   // 목록 조회 시 컬렉션 N+1 완화 (recruit 모듈과 동일 패턴, 이슈 #112)
     @CollectionTable(name = "artwork_tools", joinColumns = @JoinColumn(name = "artwork_id"))
     @Column(name = "value")
     private Set<String> tools = new HashSet<>();
@@ -141,6 +159,7 @@ public class Artwork implements Persistable<String> {
     // 개수 검증은 플랜을 아는 서비스 계층이 한다. 마이그레이션 이전 작품은 비어 있고, 언어 필터에서
     // "항상 노출"로 폴백한다.
     @ElementCollection(fetch = FetchType.EAGER)
+    @BatchSize(size = 100)   // 목록 조회 시 컬렉션 N+1 완화 (recruit 모듈과 동일 패턴, 이슈 #112)
     @CollectionTable(name = "artwork_languages", joinColumns = @JoinColumn(name = "artwork_id"))
     @Column(name = "value")
     @Enumerated(EnumType.STRING)
@@ -166,6 +185,7 @@ public class Artwork implements Persistable<String> {
 
     // images와 동일한 이유로 양방향 매핑 (§11/§12 패턴)
     @OneToMany(mappedBy = "artwork", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @BatchSize(size = 100)   // 목록 조회 시 컬렉션 N+1 완화 (recruit 모듈과 동일 패턴, 이슈 #112)
     @OrderBy("ordinal ASC")
     private List<Material> materials = new ArrayList<>();
 
@@ -195,7 +215,8 @@ public class Artwork implements Persistable<String> {
                                  String thumbnailKey,
                                  ImageLayoutType imageLayoutType, ArtworkField artworkField,
                                  CreativeType creativeType, List<ArtworkRole> roles,
-                                 List<Genre> genres, List<String> tags,
+                                 List<Genre> genres, List<ArtworkCustomTagInfo> customTags,
+                                 List<String> tags,
                                  AgeRating ageRating, List<Language> languages, Visibility visibility,
                                  List<String> tools, WorkDuration workDuration,
                                  Integer cutCount, List<String> videoLinks,
@@ -218,6 +239,7 @@ public class Artwork implements Persistable<String> {
         artwork.creativeType = creativeType;
         artwork.roles = new HashSet<>(roles != null ? roles : List.of());
         artwork.genres = new HashSet<>(genres != null ? genres : List.of());
+        artwork.customTags = normalizeCustomTags(customTags != null ? customTags : List.of());
         artwork.tags = new HashSet<>(tags != null ? tags : List.of());
         artwork.ageRating = ageRating;
         artwork.languages = new HashSet<>(languages != null ? languages : List.of());
@@ -248,7 +270,8 @@ public class Artwork implements Persistable<String> {
                               ImageLayoutType imageLayoutType, Integer representativeImageIndex,
                               String thumbnailKey,
                               ArtworkField artworkField, CreativeType creativeType,
-                              List<ArtworkRole> roles, List<Genre> genres, List<String> tags,
+                              List<ArtworkRole> roles, List<Genre> genres,
+                              List<ArtworkCustomTagInfo> customTags, List<String> tags,
                               AgeRating ageRating, List<Language> languages, List<String> tools,
                               WorkDuration workDuration, Integer cutCount,
                               List<String> videoLinks) {
@@ -266,6 +289,7 @@ public class Artwork implements Persistable<String> {
         if (creativeType != null) this.creativeType = creativeType;
         if (roles != null) this.roles = new HashSet<>(roles);
         if (genres != null) this.genres = new HashSet<>(genres);
+        if (customTags != null) this.customTags = normalizeCustomTags(customTags);
         if (tags != null) this.tags = new HashSet<>(tags);
         if (ageRating != null) this.ageRating = ageRating;
         if (languages != null) this.languages = new HashSet<>(languages);
@@ -273,6 +297,34 @@ public class Artwork implements Persistable<String> {
         if (workDuration != null) this.setWorkDuration(workDuration);
         if (cutCount != null) this.cutCount = cutCount;
         if (videoLinks != null) this.videoLinks = new ArrayList<>(videoLinks);
+    }
+
+    private static final int MAX_CUSTOM_TAGS_PER_TYPE = 10;
+
+    /**
+     * 직접입력 태그 정규화 (기획서 업로드-R13): 앞뒤 공백 제거, 공백만 남으면 저장하지 않음,
+     * 최대 10자, 같은 항목 안에서 중복 불가. 항목당 개수 상한은 명세에 없지만, 무제한 저장을
+     * 막기 위해 10개로 둔다(com.atcrew.member.internal.domain.Member.normalizeCustomTags와 동일 규칙).
+     */
+    private static Set<ArtworkCustomTag> normalizeCustomTags(List<ArtworkCustomTagInfo> tags) {
+        Set<ArtworkCustomTag> normalized = new HashSet<>();
+        Map<ArtworkCustomTagType, Integer> counts = new EnumMap<>(ArtworkCustomTagType.class);
+        for (ArtworkCustomTagInfo tag : tags) {
+            if (tag == null || tag.type() == null || tag.value() == null) continue;
+            String value = tag.value().trim();
+            if (value.isEmpty()) continue; // 공백만 입력 시 미저장
+            if (value.length() > ArtworkCustomTag.MAX_LENGTH) {
+                throw new ArtworkException(ArtworkErrorCode.INVALID_CUSTOM_TAG,
+                        "최대 " + ArtworkCustomTag.MAX_LENGTH + "자: " + value);
+            }
+            if (!normalized.add(new ArtworkCustomTag(tag.type(), value))) continue; // 중복은 조용히 무시
+            int count = counts.merge(tag.type(), 1, Integer::sum);
+            if (count > MAX_CUSTOM_TAGS_PER_TYPE) {
+                throw new ArtworkException(ArtworkErrorCode.INVALID_CUSTOM_TAG,
+                        tag.type() + " 항목당 최대 " + MAX_CUSTOM_TAGS_PER_TYPE + "개");
+            }
+        }
+        return normalized;
     }
 
     // 이미지 교체 1단계 — 기존 이미지를 컬렉션에서 제거해 orphanRemoval 삭제를 예약하고 원본 데이터를 반환한다.
@@ -434,6 +486,14 @@ public class Artwork implements Persistable<String> {
     public CreativeType getCreativeType() { return creativeType; }
     public List<ArtworkRole> getRoles() { return roles.stream().sorted().toList(); }
     public List<Genre> getGenres() { return genres.stream().sorted().toList(); }
+
+    public List<ArtworkCustomTagInfo> getCustomTags() {
+        return customTags.stream()
+                .sorted(java.util.Comparator.comparing(ArtworkCustomTag::getType).thenComparing(ArtworkCustomTag::getValue))
+                .map(t -> new ArtworkCustomTagInfo(t.getType(), t.getValue()))
+                .toList();
+    }
+
     public List<String> getTags() { return tags.stream().sorted().toList(); }
     public List<String> getTools() { return tools.stream().sorted().toList(); }
 

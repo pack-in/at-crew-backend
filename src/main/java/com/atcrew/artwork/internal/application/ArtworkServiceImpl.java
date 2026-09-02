@@ -121,6 +121,7 @@ class ArtworkServiceImpl implements ArtworkService {
                 command.creativeType(),
                 command.roles(),
                 command.genres(),
+                command.customTags(),
                 command.tags(),
                 command.ageRating(),
                 command.languages(),
@@ -202,6 +203,7 @@ class ArtworkServiceImpl implements ArtworkService {
                 command.creativeType(),
                 command.roles(),
                 command.genres(),
+                command.customTags(),
                 command.tags(),
                 command.ageRating(),
                 command.languages(),
@@ -536,13 +538,10 @@ class ArtworkServiceImpl implements ArtworkService {
         List<Artwork> page = hasNext ? artworks.subList(0, size) : artworks;
 
         Set<String> authorIds = page.stream().map(Artwork::getAuthorId).collect(Collectors.toSet());
-        java.util.Map<String, MemberInfo> authorMap = authorIds.stream()
-                .collect(Collectors.toMap(
-                        id -> id,
-                        id -> {
-                            try { return memberService.findById(id); } catch (Exception e) { return null; }
-                        }
-                ));
+        // 배치 조회 — 예전에는 작가마다 findById를 부르고 실패 시 null을 반환했는데,
+        // Collectors.toMap이 null 값에 NPE를 던져 작가 한 명의 조회 실패가 페이지 전체를
+        // 500으로 만들었다(이슈 #112). 없는 작가는 맵에 담기지 않고 조회 결과가 null이 된다.
+        java.util.Map<String, MemberInfo> authorMap = memberService.findAllByIds(authorIds);
 
         List<ArtworkInfo> items = page.stream()
                 .map(a -> ArtworkMapper.toInfo(a, authorMap.get(a.getAuthorId())))
@@ -568,13 +567,10 @@ class ArtworkServiceImpl implements ArtworkService {
 
         // 작가 정보 일괄 조회 (N+1 완화 — 향후 batch API 추가 예정)
         Set<String> authorIds = page.stream().map(Artwork::getAuthorId).collect(Collectors.toSet());
-        java.util.Map<String, MemberInfo> authorMap = authorIds.stream()
-                .collect(Collectors.toMap(
-                        id -> id,
-                        id -> {
-                            try { return memberService.findById(id); } catch (Exception e) { return null; }
-                        }
-                ));
+        // 배치 조회 — 예전에는 작가마다 findById를 부르고 실패 시 null을 반환했는데,
+        // Collectors.toMap이 null 값에 NPE를 던져 작가 한 명의 조회 실패가 페이지 전체를
+        // 500으로 만들었다(이슈 #112). 없는 작가는 맵에 담기지 않고 조회 결과가 null이 된다.
+        java.util.Map<String, MemberInfo> authorMap = memberService.findAllByIds(authorIds);
 
         List<ArtworkSummaryInfo> items = page.stream()
                 .map(a -> ArtworkMapper.toSummaryInfo(a, authorMap.get(a.getAuthorId())))
@@ -701,7 +697,7 @@ class ArtworkServiceImpl implements ArtworkService {
     private List<Material> toMaterials(List<MaterialData> data) {
         if (data == null) return List.of();
         return data.stream()
-                .map(d -> new Material(d.name(), d.targets(), d.attachmentKeys(), d.links()))
+                .map(d -> new Material(d.name(), d.targets(), d.customTargets(), d.attachmentKeys(), d.links()))
                 .toList();
     }
 }
