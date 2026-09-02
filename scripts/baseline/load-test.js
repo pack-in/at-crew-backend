@@ -40,12 +40,14 @@ const ENDPOINTS = [
   { name: 'community_authors',    path: '/api/community/authors?size=20',       backend: 'mariadb' },
   { name: 'community_banners',    path: '/api/community/banners',               backend: 'mariadb' },
   { name: 'recruit_job_postings', path: '/api/recruit/job-postings?size=20',    backend: 'mariadb' },
-  { name: 'search',               path: '/api/search?q=일러스트&size=20',        backend: 'elasticsearch' },
+  { name: 'search',               path: `/api/search?q=${encodeURIComponent('일러스트')}&size=20`,        backend: 'elasticsearch' },
   { name: 'billing_catalog',      path: '/api/billing/catalog',                 backend: 'app' },
 ];
 
 export const options = {
   discardResponseBodies: true,
+  // k6 기본 요약에는 p99가 없다 — 결과 문서에 p99를 적으려면 명시해야 한다.
+  summaryTrendStats: ['avg', 'min', 'med', 'p(90)', 'p(95)', 'p(99)', 'max'],
   scenarios: {
     // 도착률(arrival rate) 기반이다. VU 기반으로 하면 서버가 느려질수록 부하도 같이
     // 줄어서 한계점이 흐려진다 — 서버 상태와 무관하게 초당 요청 수를 밀어 넣어야
@@ -70,8 +72,11 @@ export const options = {
   // 중단 조건을 미리 고정한다. 임계를 넘으면 k6가 테스트를 즉시 끝낸다 —
   // "어디까지 버티나"를 보려다 서비스를 정지시키는 걸 막는 장치다.
   thresholds: {
-    'http_req_failed':   [{ threshold: 'rate<0.01', abortOnFail: true, delayAbortEval: '20s' }],
+    // 중단은 서버 오류(5xx·연결 실패)에서만 건다. 4xx가 나오면 그건 서버 한계가 아니라
+    // 시나리오의 요청이 틀린 것이므로, 테스트를 멈추는 대신 아래 http_req_failed로 기록만 남긴다.
+    'ep_failed':         [{ threshold: 'rate<0.01', abortOnFail: true, delayAbortEval: '20s' }],
     'http_req_duration': [{ threshold: 'p(95)<3000', abortOnFail: true, delayAbortEval: '20s' }],
+    'http_req_failed':   ['rate<0.01'],
   },
 };
 
