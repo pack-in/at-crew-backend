@@ -39,7 +39,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.Objects;
 import java.util.Optional;
@@ -204,6 +206,18 @@ class MemberServiceImpl implements MemberService {
     @Override
     public MemberInfo findById(String memberId) {
         return MemberMapper.toInfo(findMemberById(memberId));
+    }
+
+    @Override
+    public Map<String, MemberInfo> findAllByIds(Collection<String> memberIds) {
+        if (memberIds == null || memberIds.isEmpty()) {
+            return Map.of();
+        }
+        // findMemberById와 달리 없는 ID·탈퇴 회원에 예외를 던지지 않고 결과에서 뺀다.
+        // 목록 조회에서 작가 한 명의 상태 때문에 페이지 전체가 실패하면 안 된다.
+        return memberRepository.findAllById(memberIds).stream()
+                .filter(Member::isActive)
+                .collect(java.util.stream.Collectors.toMap(Member::getId, MemberMapper::toInfo));
     }
 
     @Override

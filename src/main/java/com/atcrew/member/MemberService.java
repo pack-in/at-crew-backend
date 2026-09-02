@@ -2,7 +2,9 @@ package com.atcrew.member;
 
 import com.atcrew.common.response.CursorPage;
 
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -40,6 +42,15 @@ public interface MemberService {
     Optional<MemberInfo> findActiveByLoginEmailAndProviderOrEmpty(String loginEmail, AuthProvider authProvider);
 
     MemberInfo findById(String memberId);
+
+    /**
+     * 여러 회원을 한 번에 조회해 ID로 찾을 수 있는 맵으로 돌려준다 (목록 화면의 작가 정보 일괄 조회용).
+     *
+     * <p>존재하지 않거나 비활성(탈퇴)인 ID는 결과에 담기지 않는다 — 예외를 던지는
+     * {@link #findById(String)}와 다르다. 목록에서 작가 한 명이 탈퇴했다고 페이지 전체가
+     * 실패해서는 안 되므로, 없는 값의 처리는 호출부가 맵 조회 결과(null)로 판단한다.
+     */
+    Map<String, MemberInfo> findAllByIds(Collection<String> memberIds);
 
     /**
      * 구인 가능 상태 창작자 프로필 검색. 커뮤니티 "작가 찾아보기" 탭에서 사용.

@@ -143,13 +143,8 @@ class BookmarkServiceImpl implements BookmarkService {
         Set<String> authorIds = artworkMap.values().stream()
                 .map(Artwork::getAuthorId)
                 .collect(Collectors.toSet());
-        Map<String, MemberInfo> authorMap = authorIds.stream()
-                .collect(Collectors.toMap(
-                        id -> id,
-                        id -> {
-                            try { return memberService.findById(id); } catch (Exception e) { return null; }
-                        }
-                ));
+        // 배치 조회 — 자세한 배경은 ArtworkServiceImpl의 같은 지점 주석 참고(이슈 #112).
+        Map<String, MemberInfo> authorMap = memberService.findAllByIds(authorIds);
 
         List<BookmarkEntryInfo> items = page.stream()
                 .filter(e -> artworkMap.containsKey(e.getArtworkId()))
