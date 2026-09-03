@@ -286,7 +286,7 @@ PH-03에서 확정한다.
 | billing | 완료 (Stripe 구독·단건 상품·웹훅·게이팅, sandbox 범위) | `docs/design/billing-module-design.md` |
 | community | 완료 (배너, 포트폴리오/작가 찾아보기 피드) | `docs/design/community-module-design.md` |
 | company(기업 프로필) | 완료 (기업 정보/경력, 구인글 카드 그리드) | (설계 문서 미등록 — CLAUDE.md 문서 목록 갱신 필요) |
-| search | 완료 (Elasticsearch 기반 포트폴리오 검색) | `docs/design/search-module-design.md` |
+| search | 완료 (Elasticsearch 기반 포트폴리오 검색). 인프라: 별도 검색 서버 없이 앱 인스턴스에 통합(이슈 #76, 2026-09-02) | `docs/design/search-module-design.md`, `docs/design/infra-security-hardening-design.md` |
 
 ---
 

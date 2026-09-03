@@ -1,0 +1,10 @@
+# 1분 주기 — 복제 지연은 백업과 달리 분 단위로 확인해야 알람이 의미 있다.
+[Unit]
+Description=AT-CREW Replica 복제 지연 체크 타이머
+
+[Timer]
+OnCalendar=*:0/1
+Persistent=true
+
+[Install]
+WantedBy=timers.target
