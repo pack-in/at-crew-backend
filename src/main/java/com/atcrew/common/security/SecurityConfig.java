@@ -114,6 +114,8 @@ class SecurityConfig {
                             // Worker가 새 형식으로 전환된 뒤 LegacyArtworkCallbackController와 함께 제거한다.
                             .requestMatchers(HttpMethod.POST, "/internal/artwork/images/processed").permitAll()
                             .requestMatchers(HttpMethod.POST, "/internal/search/reindex").permitAll()
+                            // 이슈 #114 — artwork용만 permitAll에 있고 recruit용이 누락돼 항상 401이었다.
+                            .requestMatchers(HttpMethod.POST, "/internal/search/reindex/recruit").permitAll()
                             // 요금제 페이지는 비로그인도 열람한다(요금제-R03).
                             .requestMatchers(HttpMethod.GET, "/api/billing/catalog").permitAll()
                             // Stripe 웹훅 — 인증 대신 서명 검증으로 보호한다(BillingWebhookController).
