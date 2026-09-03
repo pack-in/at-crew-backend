@@ -63,9 +63,9 @@ variable "cloudflare_account_id" {
 }
 
 variable "waf_enabled" {
-  description = "Cloudflare WAF 관리형 룰 적용 여부. 기본 false — apply 즉시 라이브 트래픽에 영향을 주는 유일한 리소스라 별도로 지켜볼 수 있을 때 true로 전환한다(PLAN-HUMAN PH-10, QA 2026-09-02 지적 반영)."
+  description = "Cloudflare WAF 관리형 룰 적용 여부. 2026-09-03 적용 완료 후 기본 true — false로 되돌리면 다음 apply가 존의 WAF 룰셋을 삭제하므로 오탐 롤백 목적이 아니면 내리지 않는다."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "app_instance_type" {
