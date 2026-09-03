@@ -5,8 +5,8 @@
 # 오탐으로 정상 요청이 차단될 가능성이 낮지만 0은 아니다 — apply 직후 최소 몇 시간은 Sentry
 # 5xx·Cloudflare Security Events를 지켜볼 사람이 있을 때 적용할 것(PLAN-HUMAN PH-10 원래 계획대로).
 #
-# OWASP Core Ruleset은 이번에 포함하지 않았다 — Cloudflare Managed Ruleset보다 오탐률이 높은
-# 편이라, 최소한의 검증된 베이스라인부터 켜고 안정성 확인 후 추가하는 게 안전하다.
+# OWASP Core Ruleset은 포함하지 않았다 — 유료 플랜 전용이기도 하고, Managed보다 오탐률이
+# 높은 편이라 최소한의 검증된 베이스라인부터 켜는 게 안전하다.
 resource "cloudflare_ruleset" "waf_managed" {
   count = var.waf_enabled ? 1 : 0
 
@@ -19,11 +19,14 @@ resource "cloudflare_ruleset" "waf_managed" {
   rules {
     action = "execute"
     action_parameters {
-      # Cloudflare Managed Ruleset — 전 계정 공통 고정 ID(Cloudflare 문서 기준, 계정마다 다르지 않음)
-      id = "efb7b8c949ac4650a09736fc376e9aee"
+      # Cloudflare Managed Free Ruleset — Free 플랜에서 실행할 수 있는 유일한 관리형 룰셋.
+      # 2026-09-03: 원래 유료 전용 Cloudflare Managed Ruleset(efb7b8c9…)을 쓰려다
+      # "not entitled to execute this managed ruleset"으로 거부당해 확인한 값이다.
+      # 존 플랜을 Pro 이상으로 올리면 efb7b8c9…(Managed) / 4814384a…(OWASP)로 교체할 수 있다.
+      id = "77454fe2d30c4220b5701f6fdfb893ba"
     }
     expression  = "true"
-    description = "Cloudflare Managed Ruleset 전체 활성화"
+    description = "Cloudflare Managed Free Ruleset 활성화"
     enabled     = true
   }
 }
