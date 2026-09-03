@@ -85,3 +85,56 @@ variable "docker_compose_version" {
   type        = string
   default     = "v2.29.7"
 }
+
+# ── 확장 청사진(ha-blueprint.tf) ─────────────────────────────────────────────
+variable "ha_enabled" {
+  description = <<-EOT
+    앱 2대 + RDS Multi-AZ를 실제로 만들지 여부. 기본은 false다.
+    켜기 전에 07-ha/ADR-01-multi-az.md §7의 전환 트리거를 확인할 것.
+    `terraform plan -var ha_enabled=true`로 무엇이 생기는지 먼저 본다.
+  EOT
+  type        = bool
+  default     = false
+}
+
+variable "availability_zone_secondary" {
+  description = "두 번째 AZ. 서울은 2a~2d 모두 t4g를 지원하므로 어느 것이든 무방하다(2026-09-03 확인)"
+  type        = string
+  default     = "ap-northeast-2c"
+}
+
+variable "private_subnet_secondary_cidr" {
+  description = "두 번째 AZ의 Private Subnet. 서브넷 자체는 무료라 ha_enabled와 무관하게 만든다"
+  type        = string
+  default     = "10.20.2.0/24"
+}
+
+variable "rds_instance_class" {
+  description = "RDS 인스턴스 클래스. Multi-AZ는 단일 대비 약 2배 요금이다"
+  type        = string
+  default     = "db.t4g.micro"
+}
+
+variable "rds_engine_version" {
+  description = "self-hosted와 같은 계열을 쓴다(현재 mariadb:11.4 컨테이너)"
+  type        = string
+  default     = "11.4"
+}
+
+variable "rds_allocated_storage" {
+  description = "초기 스토리지(GB). max_allocated_storage까지 자동 확장된다"
+  type        = number
+  default     = 20
+}
+
+variable "rds_max_allocated_storage" {
+  description = "자동 확장 상한(GB)"
+  type        = number
+  default     = 100
+}
+
+variable "rds_backup_retention_days" {
+  description = "RDS 자동 백업 보관 일수. 1 이상이면 PITR이 켜져 RPO가 5분 수준이 된다"
+  type        = number
+  default     = 7
+}
