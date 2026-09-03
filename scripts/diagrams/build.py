@@ -162,6 +162,129 @@ def build_architecture(out_path):
     return out_path
 
 
+# ------------------------------------------------------------------ infra
+
+# 인프라 구성도. architecture.svg가 "요청이 어떤 컴포넌트를 지나는가"를 그린다면 이쪽은
+# "그 컴포넌트가 어느 네트워크 경계 안에 있는가"를 그린다. #110으로 전용 VPC가 생기면서
+# 서브넷·라우팅 경계가 보안 설명의 핵심이 됐는데 논리 그림에는 그게 드러나지 않는다.
+#
+# 공개 저장소이므로 인스턴스 ID·탄력적 IP·VPC/보안그룹 ID는 넣지 않는다(deploy/README.md 원칙).
+# 서브넷 CIDR은 RFC1918 사설 대역이라 그대로 둔다 — 없으면 그림이 읽히지 않는다.
+
+IW, IH = 1340, 700
+
+# (x, y, w, h, 라벨, 색키, 점선여부)
+IZONES = [
+    (430,  40, 870, 620, "AWS ap-northeast-2 (서울)",        "muted",   True),
+    (462,  86, 806, 552, "at-crew VPC (10.20.0.0/16)",      "purple",  False),
+    (494, 196, 742, 420, "가용 영역 ap-northeast-2a",         "muted",   True),
+    (520, 306, 250, 130, "Public subnet (10.20.0.0/24)",    "blue",    False),
+    (812, 246, 396, 340, "Private subnet (10.20.1.0/24)",   "pink",    False),
+]
+
+IBOXES = {
+    "users":   (40, 250, 130, 66, "사용자", "웹, 앱", "neutral"),
+    "cf":      (206, 240, 168, 88, "Cloudflare", "DNS, WAF, Tunnel", "purple"),
+    "ops":     (40, 440, 150, 76, "GitHub Actions", "배포 워크플로", "neutral"),
+    "ssm":     (222, 448, 152, 62, "AWS SSM", "IAM 통제", "blue"),
+    "igw":     (586, 116, 118, 56, "IGW", "", "neutral"),
+    "net":     (760, 110, 250, 62, "인터넷 아웃바운드", "R2, Stripe, Grafana", "neutral"),
+    "nat":     (546, 352, 198, 62, "NAT 인스턴스", "", "neutral"),
+    "server":  (840, 296, 340, 262, "앱 서버 (t4g.medium)", "", "blue"),
+}
+
+# 앱 서버 카드 안에 쌓아 그릴 줄. (텍스트, 색키, 굵게)
+SERVER_LINES = [
+    ("cloudflared — 터널 종단", "purple", False),
+    ("nginx :80, :443", "neutral", False),
+    ("─", "border", False),
+    ("Docker Compose", "muted", True),
+    ("app :8080 / :8081", "blue", False),
+    ("mariadb, elasticsearch", "neutral", False),
+    ("alloy (관측)", "pink", False),
+]
+
+IEDGES = [
+    ("M170,283 H200",          "neutral", "",                    None,        "middle", False),
+    ("M374,284 H1010 V292",    "purple",  "Tunnel (아웃바운드 연결)", (620, 274), "middle", True),
+    ("M190,478 H216",          "neutral", "",                    None,        "middle", False),
+    ("M374,479 H836",          "blue",    "SSM 원격 명령 (SSH·개방 포트 없음)", (620, 469), "middle", False),
+    ("M838,383 H750",          "neutral", "아웃바운드",             (794, 373),  "middle", False),
+    ("M645,352 V178",          "neutral", "",                    None,        "middle", False),
+    ("M704,144 H752",          "neutral", "",                    None,        "middle", False),
+]
+
+INOTE = ("미구성(#110 Phase 1·2 잔여): 두 번째 가용 영역, ALB, MariaDB Replica. "
+         "현재는 단일 AZ·단일 인스턴스이며 인바운드 포트를 열지 않는다.")
+
+INFRA_ARIA = ("AT-CREW 인프라 구성도. 서울 리전의 전용 VPC 안에 가용 영역 하나가 있고, "
+              "퍼블릭 서브넷에는 NAT 인스턴스가, 프라이빗 서브넷에는 앱 서버가 있다. "
+              "사용자 트래픽은 Cloudflare Tunnel로, 배포는 AWS SSM으로 들어오며 인바운드 포트는 없다.")
+
+
+def build_infra(out_path):
+    o = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {IW} {IH}" width="{IW}" height="{IH}" '
+         f'role="img" aria-label="{_esc(INFRA_ARIA)}">',
+         '<title>AT-CREW 인프라 구성도</title>', '<defs>']
+    for key in ("neutral", "blue", "purple", "pink"):
+        o.append(f'<marker id="i-{key}" viewBox="0 0 10 10" refX="9" refY="5" '
+                 f'markerWidth="7" markerHeight="7" orient="auto-start-reverse">'
+                 f'<path d="M0,0 L10,5 L0,10 z" fill="{C[key]}"/></marker>')
+    o.append('</defs>')
+    o.append(f'<rect x="0" y="0" width="{IW}" height="{IH}" rx="12" fill="{C["page"]}"/>')
+
+    for x, y, w, h, label, key, dashed in IZONES:
+        stroke = C[key] if key in C else C["zone_stroke"]
+        dash = ' stroke-dasharray="7 5"' if dashed else ''
+        o.append(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="12" fill="none" '
+                 f'stroke="{stroke}" stroke-width="1.5"{dash}/>')
+        o.append(f'<text x="{x+16}" y="{y+24}" font-family="{FONT}" font-size="12.5" '
+                 f'font-weight="600" fill="{stroke}">{_esc(label)}</text>')
+
+    for d, key, label, lxy, anchor, dbl in IEDGES:
+        col = C[key]
+        start = f' marker-start="url(#i-{key})"' if dbl else ''
+        o.append(f'<path d="{d}" fill="none" stroke="{col}" stroke-width="1.8" '
+                 f'marker-end="url(#i-{key})"{start}/>')
+        if label and lxy:
+            o.append(f'<text x="{lxy[0]}" y="{lxy[1]}" font-family="{FONT}" font-size="12.5" '
+                     f'text-anchor="{anchor}" fill="{col}">{_esc(label)}</text>')
+
+    for name, (x, y, w, h, title, sub, key) in IBOXES.items():
+        col = C[key] if key != "neutral" else C["border"]
+        o.append(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="10" fill="{C["card"]}" '
+                 f'stroke="{col}" stroke-width="{2 if key != "neutral" else 1.4}"/>')
+        cx = x + w / 2
+        if name == "server":
+            o.append(f'<text x="{cx}" y="{y+30}" font-family="{FONT}" font-size="14.5" font-weight="700" '
+                     f'text-anchor="middle" fill="{C["text"]}">{_esc(title)}</text>')
+            ly = y + 58
+            for text, ckey, bold in SERVER_LINES:
+                if text == "─":
+                    o.append(f'<line x1="{x+26}" y1="{ly-8}" x2="{x+w-26}" y2="{ly-8}" '
+                             f'stroke="{C["border"]}" stroke-width="1"/>')
+                    ly += 12
+                    continue
+                fill = C.get(ckey, C["text"])
+                weight = "600" if bold else "400"
+                o.append(f'<text x="{cx}" y="{ly}" font-family="{FONT}" font-size="12.5" '
+                         f'font-weight="{weight}" text-anchor="middle" fill="{fill}">{_esc(text)}</text>')
+                ly += 26
+            continue
+        ty = y + (h / 2 + 6) if not sub else y + h / 2 - 2
+        o.append(f'<text x="{cx}" y="{ty}" font-family="{FONT}" font-size="14" font-weight="600" '
+                 f'text-anchor="middle" fill="{C["text"]}">{_esc(title)}</text>')
+        if sub:
+            o.append(f'<text x="{cx}" y="{y+h/2+18}" font-family="{FONT}" font-size="11.5" '
+                     f'text-anchor="middle" fill="{C["muted"]}">{_esc(sub)}</text>')
+
+    o.append(f'<text x="40" y="{IH-24}" font-family="{FONT}" font-size="12" '
+             f'fill="{C["muted"]}">{_esc(INOTE)}</text>')
+    o.append('</svg>')
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(o))
+    return out_path
+
 # --------------------------------------------------------------------- modules
 
 # htmlLabels를 켜두면 라벨이 foreignObject 안의 HTML로 나오고, 거기 닫히지 않은 <br>가
@@ -240,10 +363,14 @@ def render_mermaid(mmd_path, out_path):
 # ------------------------------------------------------------------------ main
 
 def main():
-    targets = sys.argv[1:] or ["architecture", "modules"]
-    unknown = [t for t in targets if t not in ("architecture", "modules")]
+    targets = sys.argv[1:] or ["architecture", "infra", "modules"]
+    unknown = [t for t in targets if t not in ("architecture", "infra", "modules")]
     if unknown:
-        sys.exit(f"모르는 대상: {', '.join(unknown)} (architecture | modules)")
+        sys.exit(f"모르는 대상: {', '.join(unknown)} (architecture | infra | modules)")
+
+    if "infra" in targets:
+        p = build_infra(os.path.join(ASSETS, "infra.svg"))
+        print(f"생성 {p} ({os.path.getsize(p)} bytes)")
 
     if "architecture" in targets:
         p = build_architecture(os.path.join(ASSETS, "architecture.svg"))
