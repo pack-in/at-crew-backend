@@ -98,6 +98,41 @@ jobs:
           # Online이 아니면 이후 모든 원격 단계가 무의미하게 실패한다 — 여기서 바로 멈춘다.
           [ "$PING" = "Online" ] || { echo "SSM 에이전트가 Online이 아니다"; exit 1; }
 
+      # 배포는 이미지만 갱신한다 — deploy/ 아래 파일(compose·nginx·systemd·mariadb 설정)은 서버에
+      # 있는 것이 그대로 쓰인다. 그래서 레포에서 그 파일을 고쳐 병합해도 프로덕션에는 아무 일도
+      # 일어나지 않는데, CI·배포·알림이 전부 초록이라 "적용된 줄 아는" 상태가 된다
+      # (#116 메모리 상한, #118 slow query log가 실제로 그렇게 두 주 가까이 미적용이었다 — #127).
+      #
+      # 자동으로 덮어쓰지 않는 이유: 서버에만 있는 운영 설정이 실재한다(nginx의 443 블록,
+      # MariaDB semi-sync). 레포 기준으로 밀어버리면 서비스가 죽는다. 그래서 지금은 차이를
+      # 드러내기만 하고, 반영은 사람이 판단한다. 역방향 정리가 끝나면 실패로 승격한다.
+      - name: deploy/ 드리프트 감지
+        id: drift
+        continue-on-error: true
+        run: |
+          {
+            echo "### deploy/ 드리프트"
+            echo
+            OUT=$(deploy/ssm-run.sh <<'REMOTE'
+          cd /home/ec2-user/at-crew-backend
+          sudo -u ec2-user git fetch origin main -q 2>/dev/null || true
+          echo "서버 HEAD: $(sudo -u ec2-user git rev-parse --short HEAD 2>/dev/null || echo 알수없음)"
+          echo "--- 레포 main과 다른 파일 ---"
+          sudo -u ec2-user git diff --name-only origin/main -- deploy/ 2>/dev/null || echo "(비교 실패)"
+          echo "--- 로컬 수정/미추적 ---"
+          sudo -u ec2-user git status --porcelain -- deploy/ 2>/dev/null || true
+          REMOTE
+          )
+            echo '```'
+            echo "$OUT"
+            echo '```'
+            if echo "$OUT" | grep -qE '^deploy/|^ M |^\?\? '; then
+              echo
+              echo "⚠️ 서버의 \`deploy/\`가 레포와 다르다. 이번 배포로는 반영되지 않는다 — #127"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          cat "$GITHUB_STEP_SUMMARY"
+
       # 배포가 실패했을 때 되돌아갈 지점 — 지금 서버가 실제로 돌리고 있는 이미지 태그를 먼저 확보한다.
       # 커밋 이력이 아니라 "현재 떠 있는 것"을 기준으로 잡아야, 이전 배포가 실패로 끝났던 경우에도
       # 정상 동작하던 버전으로 돌아간다.
