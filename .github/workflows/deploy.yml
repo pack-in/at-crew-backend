@@ -130,12 +130,18 @@ jobs:
 
       # 동기화가 실제로 맞췄는지 확인한다. 남는 차이가 있으면 서버에서 직접 손댄 것이므로
       # 레포로 되돌리기 전까지 같은 조용한 실패가 반복된다.
+      #
+      # 판정은 git status가 아니라 배포 커밋과의 diff로 한다. 서버는 deploy/만 체크아웃하고
+      # HEAD는 옛 커밋에 머물러 있어서, status는 "HEAD와 다르다"는 이유로 정상 동기화된 파일까지
+      # 전부 변경으로 보고한다(2026-09-03 첫 실행에서 9건 오탐). 거짓 경고가 매번 뜨면 진짜
+      # 드리프트가 묻힌다.
       - name: deploy/ 드리프트 확인
         continue-on-error: true
         run: |
-          OUT=$(deploy/ssm-run.sh <<'REMOTE'
+          OUT=$(deploy/ssm-run.sh <<REMOTE
           cd /home/ec2-user/at-crew-backend
-          sudo -u ec2-user git status --porcelain -- deploy/
+          sudo -u ec2-user git diff --name-only ${{ github.sha }} -- deploy/
+          sudo -u ec2-user git ls-files --others --exclude-standard -- deploy/
           REMOTE
           )
           if [ -n "$OUT" ]; then
