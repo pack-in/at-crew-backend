@@ -41,9 +41,18 @@
 ② 앱은 Worker를 비동기로 트리거만 하며, ③ 변환은 Worker가 R2를 상대로 수행하고, ④ 완료는
 `X-Internal-Secret`으로 검증되는 webhook으로 되돌아옵니다 — **애플리케이션 서버는 이미지 바이트를 직접 다루지 않습니다.**
 
-네트워크 경계도 같은 원칙입니다. **인스턴스에 열린 인바운드 포트가 없습니다** — 앱 서버는 프라이빗
-서브넷에 있고, 외부 트래픽은 `cloudflared`가 바깥으로 연 Cloudflare Tunnel로만 들어옵니다. 배포와 운영
-접속도 SSH가 아니라 AWS SSM을 거치므로, 열어야 할 포트도 CI에 둘 SSH 키도 없습니다.
+### 인프라 구성
+
+위 그림이 "요청이 어떤 컴포넌트를 지나는가"라면, 아래는 "그 컴포넌트가 어느 네트워크 경계 안에 있는가"입니다.
+
+![AT-CREW 인프라 구성](docs/assets/infra.svg)
+
+**인스턴스에 열린 인바운드 포트가 없습니다.** 앱 서버는 프라이빗 서브넷에 있고, 외부 트래픽은
+`cloudflared`가 바깥으로 연 Cloudflare Tunnel로만 들어옵니다. 배포와 운영 접속도 SSH가 아니라 AWS SSM을
+거치므로, 열어야 할 포트도 CI에 둘 SSH 키도 없습니다. 아웃바운드만 NAT 인스턴스를 지나 나갑니다.
+
+2 AZ 이중화·ALB·DB Replica는 아직 구성하지 않았습니다(#110 Phase 1·2 잔여). 트래픽 규모가 이를 요구하는
+시점에 올리는 편이 낫다고 봤고, 그때까지는 단일 AZ·단일 인스턴스라는 사실을 그림에 그대로 적어 둡니다.
 
 - **CI/CD** — PR마다 빌드와 전체 테스트, main 병합 시 arm64 이미지 빌드 → SSM으로 원격 재기동 → 헬스체크 → 실패 시 조건부 롤백
 - **백업** — MariaDB 덤프를 매일 R2로 업로드, 26시간 이상 성공 기록이 없으면 P1 알람
@@ -153,7 +162,7 @@ Swagger UI는 로컬과 개발 프로필에서만 열립니다(`http://localhost
 | 규약 | [CONTRIBUTING.md](CONTRIBUTING.md), [docs/conventions/](docs/conventions/) |
 | 테스트 전략 | [docs/testing/rest-docs-guide.md](docs/testing/rest-docs-guide.md) |
 | 로드맵 | [docs/roadmap.md](docs/roadmap.md) |
-| 다이어그램 생성 | [scripts/diagrams/build.py](scripts/diagrams/build.py) — 위 SVG 두 개를 다시 만든다 |
+| 다이어그램 생성 | [scripts/diagrams/build.py](scripts/diagrams/build.py) — 위 SVG 세 개를 다시 만든다 (`architecture` \| `infra` \| `modules`) |
 
 전체 문서 인덱스는 [CLAUDE.md](CLAUDE.md)의 문서 목록 표에 있습니다.
 
