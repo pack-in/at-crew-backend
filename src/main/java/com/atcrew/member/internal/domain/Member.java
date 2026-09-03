@@ -44,6 +44,7 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Transient;
 import jakarta.persistence.Version;
 import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedBy;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.domain.Persistable;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
@@ -227,6 +228,11 @@ public class Member implements Persistable<String> {
 
     @LastModifiedDate
     private Instant updatedAt;
+    // 변경 주체(이슈 #138). 회원 ID이거나 SYSTEM, 운영자 수동 UPDATE는 "ops:<담당자>".
+    // 기록 시작 전 행은 NULL로 남는다.
+    @LastModifiedBy
+    @Column(name = "last_modified_by", length = 64)
+    private String lastModifiedBy;
 
     // MariaDB 전환(docs/design/mariadb-migration-design.md §3.1) — 애플리케이션이 ID를 직접 할당하므로
     // Persistable로 신규 여부를 명시해 신규 엔티티는 매번 merge()(선행 SELECT) 대신 persist()로 처리되게 한다.

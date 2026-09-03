@@ -19,6 +19,7 @@ import jakarta.persistence.Version;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedBy;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.domain.Persistable;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
@@ -90,6 +91,11 @@ public class Portfolio implements Persistable<String> {
 
     @LastModifiedDate
     private Instant updatedAt;
+    // 변경 주체(이슈 #138). 회원 ID이거나 SYSTEM, 운영자 수동 UPDATE는 "ops:<담당자>".
+    // 기록 시작 전 행은 NULL로 남는다.
+    @LastModifiedBy
+    @Column(name = "last_modified_by", length = 64)
+    private String lastModifiedBy;
 
     // "업데이트순" 정렬 기준 (마이페이지_작가-R37) — [수정하기](updatePortfolio)로 저장한 시점만 기록한다.
     // updatedAt은 작품 추가/제거·정합성 재계산 같은 시스템 변경에도 갱신돼 정렬 기준으로 쓸 수 없다.
