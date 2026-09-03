@@ -31,16 +31,23 @@ UPDATE로 수행하고, 아래 재색인 호출을 반드시 함께 실행한다
 원본과 그 스냅샷을 **항상 함께** 차단한다. 원본만 막으면 이미 배포된 고정형 포트폴리오 링크로
 스냅샷이 계속 노출된다.
 
+`:operator`에는 **실행한 사람**을 `ops:<담당자>` 형식으로 넣는다(예: `ops:danhan`). 생략하지 않는다 —
+DB 직접 UPDATE는 앱을 거치지 않아 요청 로그(MDC의 `memberId`)에도 남지 않으므로, 이 컬럼을 비우면
+누가 이 작품을 차단했는지 사후에 알아낼 방법이 아예 없다(이슈 #138). 컬럼은 `VARCHAR(64)`이고,
+앱이 채우는 값(회원 ID 또는 `SYSTEM`)과 구분하려고 `ops:` 접두사를 쓴다.
+
 ```sql
 -- 1) 원본 작품 차단
 UPDATE artworks
-   SET blocked_at = UTC_TIMESTAMP(6)
+   SET blocked_at = UTC_TIMESTAMP(6),
+       last_modified_by = :operator
  WHERE id = :artworkId
    AND blocked_at IS NULL;
 
 -- 2) 해당 원본에서 만들어진 모든 고정형 스냅샷 차단
 UPDATE portfolio_item_snapshots
-   SET blocked_at = UTC_TIMESTAMP(6)
+   SET blocked_at = UTC_TIMESTAMP(6),
+       last_modified_by = :operator
  WHERE source_artwork_id = :artworkId
    AND blocked_at IS NULL;
 ```
@@ -53,13 +60,15 @@ UPDATE portfolio_item_snapshots
 ```sql
 -- 1) 원본 작품 차단 해제
 UPDATE artworks
-   SET blocked_at = NULL
+   SET blocked_at = NULL,
+       last_modified_by = :operator
  WHERE id = :artworkId
    AND blocked_at IS NOT NULL;
 
 -- 2) 해당 원본에서 만들어진 모든 고정형 스냅샷 차단 해제
 UPDATE portfolio_item_snapshots
-   SET blocked_at = NULL
+   SET blocked_at = NULL,
+       last_modified_by = :operator
  WHERE source_artwork_id = :artworkId
    AND blocked_at IS NOT NULL;
 ```

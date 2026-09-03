@@ -7,6 +7,7 @@ import com.atcrew.company.RecruitStatus;
 import com.atcrew.company.UpdateCompanyInfoCommand;
 import com.atcrew.company.internal.exception.CompanyErrorCode;
 import com.atcrew.company.internal.exception.CompanyException;
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityListeners;
 import jakarta.persistence.EnumType;
@@ -18,6 +19,7 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Transient;
 import jakarta.persistence.Version;
 import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedBy;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.domain.Persistable;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
@@ -64,6 +66,11 @@ public class Company implements Persistable<String> {
 
     @LastModifiedDate
     private Instant updatedAt;
+    // 변경 주체(이슈 #138). 회원 ID이거나 SYSTEM, 운영자 수동 UPDATE는 "ops:<담당자>".
+    // 기록 시작 전 행은 NULL로 남는다.
+    @LastModifiedBy
+    @Column(name = "last_modified_by", length = 64)
+    private String lastModifiedBy;
 
     // Banner와 동일 — 애플리케이션이 ID를 미리 발급하므로 Persistable로 신규 여부를 명시해
     // save()가 merge(선행 SELECT) 대신 persist(INSERT)로 동작하게 한다.

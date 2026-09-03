@@ -5,13 +5,8 @@
 # 오탐으로 정상 요청이 차단될 가능성이 낮지만 0은 아니다 — apply 직후 최소 몇 시간은 Sentry
 # 5xx·Cloudflare Security Events를 지켜볼 사람이 있을 때 적용할 것(PLAN-HUMAN PH-10 원래 계획대로).
 #
-# OWASP Core Ruleset은 이번에 포함하지 않았다 — Cloudflare Managed Ruleset보다 오탐률이 높은
-# 편이라, 최소한의 검증된 베이스라인부터 켜고 안정성 확인 후 추가하는 게 안전하다.
-#
-# 2026-09-03 정정: 원래 쓴 룰셋 ID(efb7b8c949ac4650a09736fc376e9aee, 유료 Managed Ruleset)는
-# Free 플랜에 entitle되지 않아 apply가 실패했다(terraform apply 에러로 확인). 그 뒤 Cloudflare
-# 대시보드에서 직접 "Cloudflare Managed **Free** Ruleset"이 켜진 걸 발견 — Free 플랜에서도 쓸 수
-# 있는 축소판이다. 실제 라이브 상태(id=77454fe2d30c4220b5701f6fdfb893ba)에 코드를 맞춘다.
+# OWASP Core Ruleset은 포함하지 않았다 — 유료 플랜 전용이기도 하고, Managed보다 오탐률이
+# 높은 편이라 최소한의 검증된 베이스라인부터 켜는 게 안전하다.
 resource "cloudflare_ruleset" "waf_managed" {
   count = var.waf_enabled ? 1 : 0
 
@@ -24,7 +19,10 @@ resource "cloudflare_ruleset" "waf_managed" {
   rules {
     action = "execute"
     action_parameters {
-      # Cloudflare Managed Free Ruleset — Free 플랜에서 entitle되는 축소판(전 계정 공통 고정 ID).
+      # Cloudflare Managed Free Ruleset — Free 플랜에서 실행할 수 있는 유일한 관리형 룰셋.
+      # 2026-09-03: 원래 유료 전용 Cloudflare Managed Ruleset(efb7b8c9…)을 쓰려다
+      # "not entitled to execute this managed ruleset"으로 거부당해 확인한 값이다.
+      # 존 플랜을 Pro 이상으로 올리면 efb7b8c9…(Managed) / 4814384a…(OWASP)로 교체할 수 있다.
       id = "77454fe2d30c4220b5701f6fdfb893ba"
     }
     expression  = "true"
