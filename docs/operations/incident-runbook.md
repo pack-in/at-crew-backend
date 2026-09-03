@@ -198,6 +198,77 @@ curl -s http://127.0.0.1:8081/actuator/health/liveness
 
 ---
 
+## 앱 인스턴스 손실 — 통째로 다시 만들기
+
+인스턴스가 종료됐거나 부팅 불가일 때. **실측 RTO 약 5분**
+(2026-09-03 훈련, `docs/operations/baseline/2026-09-03-rto-drill.md`).
+
+### 순서를 지킬 것 — 특히 3번과 4번
+
+```
+1) Terraform 시작 템플릿으로 인스턴스 생성   (T+0)
+2) SSM 접속 가능 확인                      (T+92초)
+3) deploy/ 배치 → mariadb만 먼저 기동       ★ 앱을 같이 띄우지 않는다
+4) DB 복원                                 ★ 그 다음에 앱을 띄운다
+5) 앱 기동 → health UP
+6) bootstrap.sh (스왑·Alloy·백업 타이머)
+7) Cloudflare Tunnel 연결 확인 → 트래픽 복귀
+```
+
+**3번과 4번 순서가 중요하다.** 앱을 먼저 띄우면 Flyway가 빈 스키마를 만들고, 그 위에 덤프를
+얹으면 스키마 이력이 어긋난다. **mariadb만 띄우고 복원한 뒤 앱을 올린다.**
+
+### 실행
+
+```bash
+# 1) 인스턴스 생성 — 시작 템플릿에 SSM 에이전트·Docker 설치가 들어 있다
+aws ec2 run-instances --launch-template LaunchTemplateName=at-crew-app --count 1
+
+# 2) SSM 접속 가능해질 때까지 대기(약 90초)
+aws ssm describe-instance-information --filters "Key=InstanceIds,Values=<새 인스턴스>"
+
+# 3) deploy/ 배치 후 — mariadb만 먼저
+cd ~/at-crew-backend/deploy
+docker-compose -f docker-compose.app.yml up -d mariadb elasticsearch
+
+# 4) DB 복원 (아래 "DB 복원" 절 참고)
+
+# 5) 앱 기동
+docker-compose -f docker-compose.app.yml up -d app
+
+# 6) 컨테이너 밖 구성 — 빠뜨리면 관측·백업이 조용히 죽는다(이슈 #115)
+./bootstrap.sh
+```
+
+**`APP_INSTANCE_ID` 저장소 Secret을 새 인스턴스 ID로 갱신한다.** 갱신하지 않으면 다음 배포가
+없어진 인스턴스로 SSM 명령을 보내 실패한다.
+
+### 실측 소요 시간 (2026-09-03)
+
+| 단계 | T+ | 구간 |
+|---|---|---|
+| OS 부팅 | 29초 | 29초 |
+| Docker·docker-compose 설치 | 89초 | 60초 |
+| **SSM 접속 가능** | **92초** | 3초 |
+| `deploy/` 배치 | 135초 | 42초 |
+| 이미지 pull | 158초 | 23초 |
+| 컨테이너 기동 | 180초 | 22초 |
+| 앱 health UP | 218초 | 38초 |
+| R2 덤프 내려받기 + 복원 | 223초 | 5초 |
+| `bootstrap.sh` | **292초** | 69초 |
+
+**Cloudflare Tunnel 연결과 DNS 전환은 이 측정에 포함되지 않았다**(실제 토큰이 필요해 훈련에서 제외).
+실제 RTO는 약 5분보다 조금 더 길다.
+
+덤프가 10 KB 기준이라 **데이터가 늘면 복원 구간이 늘어난다.** 다른 구간은 데이터 크기와 무관하다.
+
+### 훈련에서 드러났던 함정
+
+> **AL2023 minimal AMI에는 SSM 에이전트가 없다.** 이슈 #122로 SSH 인바운드를 없앴으므로,
+> 에이전트를 설치하지 않고 인스턴스를 만들면 **접속할 수단이 하나도 없다.** 2026-09-03 훈련에서
+> 21분을 헤맨 원인이 이것이다. Terraform 시작 템플릿(`deploy/terraform/app-launch-template.tf`)의
+> user_data가 이 설치를 맨 앞에 두고 있으니 **템플릿을 쓰지 않고 손으로 만들 때만 주의하면 된다.**
+
 ## DB 복원
 
 백업은 매일 R2 `at-crew-backups/db-backups/atcrew-<UTC타임스탬프>.sql.gz`에 올라간다.

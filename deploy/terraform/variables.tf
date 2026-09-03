@@ -67,3 +67,21 @@ variable "waf_enabled" {
   type        = bool
   default     = false
 }
+
+variable "app_instance_type" {
+  description = "앱 서버 인스턴스 타입. 2026-09-02 부하 측정 기준 t4g.medium에서 한계 처리량 약 15 RPS"
+  type        = string
+  default     = "t4g.medium"
+}
+
+variable "app_root_volume_size" {
+  description = "앱 서버 루트 볼륨(GB). 도커 이미지·로그·DB 볼륨이 여기 들어간다"
+  type        = number
+  default     = 30
+}
+
+variable "docker_compose_version" {
+  description = "docker-compose standalone 바이너리 버전(플러그인 아님 — deploy/README.md 참고)"
+  type        = string
+  default     = "v2.29.7"
+}
