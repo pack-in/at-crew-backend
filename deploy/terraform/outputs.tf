@@ -22,7 +22,3 @@ output "app_security_group_id" {
   description = "PH-07 blue-green 전환 시 새 앱 인스턴스에 붙일 SG"
   value       = aws_security_group.app.id
 }
-
-output "db_replica_security_group_id" {
-  value = aws_security_group.db_replica.id
-}
