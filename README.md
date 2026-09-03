@@ -4,7 +4,7 @@
 
 창작자와 기업을 잇는 포트폴리오/구인 플랫폼 **AT-CREW**의 백엔드입니다.
 운영 중이던 서비스 **라이트(Laiteu)** 의 기술 부채를 정리하기 위해 **모듈형 모놀리식(Modular Monolith)** 으로
-전면 재작성했고, 라이트 종료 전 무중단 데이터 마이그레이션을 전제로 데이터 모델 호환성을 유지합니다.
+전면 재작성했습니다. 
 
 > **[API 문서](https://at-crew-api-docs.pages.dev/)** — REST Docs로 생성, main 병합 시 자동 갱신
 > **서비스 API** — `https://api.at-crew.com`
@@ -29,31 +29,33 @@
 
 ![AT-CREW 시스템 아키텍처](docs/assets/architecture.svg)
 
-이미지 파이프라인이 이 그림의 핵심입니다. ① 클라이언트는 서버가 발급한 presigned URL로 R2에 **직접** 올리고,
+이미지 파이프라인: ① 클라이언트는 서버가 발급한 presigned URL로 R2에 **직접** 올리고,
 ② 앱은 Worker를 비동기로 트리거만 하며, ③ 변환은 Worker가 R2를 상대로 수행하고, ④ 완료는
 `X-Internal-Secret`으로 검증되는 webhook으로 되돌아옵니다 — **애플리케이션 서버는 이미지 바이트를 직접 다루지 않습니다.**
 
 ### 인프라 구성
 
-위 그림이 "요청이 어떤 컴포넌트를 지나는가"라면, 아래는 "그 컴포넌트가 어느 네트워크 경계 안에 있는가"입니다.
-
 ![AT-CREW 인프라 구성](docs/assets/infra.svg)
 
-**인스턴스에 열린 인바운드 포트가 없습니다.** 앱 서버는 프라이빗 서브넷에 있고, 외부 트래픽은
+앱 서버는 프라이빗 서브넷에 있고, 외부 트래픽은
 `cloudflared`가 바깥으로 연 Cloudflare Tunnel로만 들어옵니다. 배포와 운영 접속도 SSH가 아니라 AWS SSM을
 거치므로, 열어야 할 포트도 CI에 둘 SSH 키도 없습니다. 아웃바운드만 NAT 인스턴스를 지나 나갑니다.
 
-2 AZ 이중화·ALB·DB Replica는 아직 구성하지 않았습니다(#110 Phase 1·2 잔여). 트래픽 규모가 이를 요구하는
-시점에 올리는 편이 낫다고 봤고, 그때까지는 단일 AZ·단일 인스턴스라는 사실을 그림에 그대로 적어 둡니다.
+**2 AZ 이중화와 자동 페일오버는 코드로 정의해 두고 꺼 둔 상태입니다.** 측정 결과 현 규모에서 켤 근거가
+없었습니다 — 한계 처리량 약 15 RPS, 인스턴스 재생성 RTO 약 5분인데 켜면 월 약 $70이 추가됩니다.
+대신 `deploy/terraform/ha-blueprint.tf`에 앱 2대 + RDS Multi-AZ 구성을 정의하고
+`terraform apply -var ha_enabled=true` 한 줄로 전환되게 했습니다. 전환 트리거는 숫자로 정의해
+[ha-expansion-path](docs/design/ha-expansion-path.md)에 적었습니다.
 
 - **CI/CD** — PR마다 빌드와 전체 테스트, main 병합 시 arm64 이미지 빌드 → SSM으로 원격 재기동 → 헬스체크 → 실패 시 조건부 롤백
 - **백업** — MariaDB 덤프를 매일 R2로 업로드, 26시간 이상 성공 기록이 없으면 P1 알람
+- **복구** — 백업 복원과 인스턴스 재생성을 실제로 수행해 **RTO 약 5분**을 실측했습니다. 절차와 측정
+  원본은 [운영 기준선](docs/operations/baseline/)에 있습니다
 
 ## 모듈 구조
 
 도메인 모듈은 서로 직접 의존하지 않습니다. 공개 인터페이스(루트 패키지)와 도메인 이벤트로만 통신하고,
-구현은 각 모듈의 `internal/` 아래에 감춥니다. 이 규칙은 문서가 아니라 테스트로 강제됩니다 —
-`ModularStructureTests`가 Spring Modulith의 `modules.verify()`로 경계 위반과 순환 의존을 빌드에서 잡습니다.
+구현은 각 모듈의 `internal/` 아래에 감춥니다. `ModularStructureTests`가 Spring Modulith의 `modules.verify()`로 경계 위반과 순환 의존을 빌드에서 잡습니다.
 
 ![모듈 의존 관계](docs/assets/modules.svg)
 
@@ -74,8 +76,7 @@
 
 ## 설계 결정
 
-되돌리기 어려운 선택만 추렸습니다. 각 항목은 **무엇을 내주고 무엇을 얻었는지**로 적었고, 대안 검토
-과정과 기각 사유는 링크한 설계 문서에 남아 있습니다.
+각 항목은 **무엇을 내주고 무엇을 얻었는지**로 적었고, 대안 검토 과정과 기각 사유는 링크한 설계 문서에 적혀 있습니다.
 
 | 결정 | 트레이드오프 | 문서 |
 |---|---|---|
@@ -85,17 +86,9 @@
 | 검색은 Elasticsearch 조회 전용 색인으로 분리 | 색인 동기화 복잡도와 메모리 1GB를 내주고, 7개 축 다중선택 필터(담당 업무 22종·장르 29종 등)와 한국어 관련도 검색을 얻었다. 원본은 MariaDB에 두고 도메인 이벤트로만 동기화한다 | [search-module](docs/design/search-module-design.md) |
 | 저장·연산은 UTC, 변환은 표시 계층에서만 | 표시마다 변환 비용을 치르고, 일본·중국·영미권 확장 시점의 데이터 마이그레이션을 없앴다. 컨테이너·JVM·로그 타임스탬프까지 UTC로 고정했다 | [global-timezone](docs/design/global-timezone-strategy.md) |
 | 관측 스택은 자체 호스팅 대신 Grafana Cloud | 월 고정비와 외부 의존을 지고, **감시 대상과 함께 죽지 않는 관측**을 얻었다. 인스턴스 이전 중 수집이 끊겼을 때 외부 프로브는 조용하고 메트릭 알람만 울려 "서비스는 살아 있고 수집만 죽었다"를 알람만으로 판정할 수 있었다 | [observability](docs/design/observability-design.md) |
+| 고가용성 구성을 만들지 않고 코드로만 정의한다 | 실사용자 0명·한계 처리량 15 RPS에서 월 $70을 정당화할 근거가 없었다. 대신 `ha_enabled` 변수 하나로 전환되게 하고, 뒤집을 조건을 수치로 정의했다 | [ha-expansion-path](docs/design/ha-expansion-path.md) |
 | 인바운드 포트를 하나도 열지 않는다 | Cloudflare Tunnel과 AWS SSM에 의존하는 대신, origin IP 직접 타격 경로와 CI에 두는 SSH 키를 함께 없앴다. 보안 그룹을 배포마다 여닫던 절차도 사라졌다 | [incident-runbook](docs/operations/incident-runbook.md) |
 | 사용자를 받기 전에 운영 가능한 상태로 | 기능 출시를 늦추고, 관측·알람·조건부 롤백·백업을 먼저 세웠다. 스키마 변경이 낀 배포는 자동 롤백하지 않고 사람을 부른다 — 스키마는 되돌아가지 않기 때문이다 | [observability](docs/design/observability-design.md) |
-
-## API 문서
-
-MockMvc + REST Docs 테스트가 통과해야만 문서가 생성되고, main 병합마다 OpenAPI 3.1 스펙을 떠서
-[Cloudflare Pages](https://at-crew-api-docs.pages.dev/)로 자동 배포합니다. 문서와 구현이 어긋날 수 없는 구조입니다.
-
-![AT-CREW API 문서 (Swagger UI)](docs/assets/swagger-ui.png)
-
-prod에서는 springdoc이 꺼져 있어 실서버가 문서 소스가 될 수 없고, `OpenApiExportTest`가 유일한 생성 경로입니다.
 
 ## 문서
 
@@ -103,12 +96,11 @@ prod에서는 springdoc이 꺼져 있어 실서버가 문서 소스가 될 수 �
 |---|---|
 | 설계 문서 | [docs/design/](docs/design/) — 모듈별 설계와 의사결정 근거 |
 | 운영 절차 | [docs/operations/](docs/operations/) — 장애 대응 런북, 모더레이션 |
+| 운영 기준선 | [docs/operations/baseline/](docs/operations/baseline/) — 성능·복구 실측값과 재현 스크립트. 개선 전후를 같은 절차로 비교한다 |
 | 규약 | [CONTRIBUTING.md](CONTRIBUTING.md), [docs/conventions/](docs/conventions/) |
 | 테스트 전략 | [docs/testing/rest-docs-guide.md](docs/testing/rest-docs-guide.md) |
 | 로드맵 | [docs/roadmap.md](docs/roadmap.md) |
 | 다이어그램 생성 | [scripts/diagrams/build.py](scripts/diagrams/build.py) — 위 SVG 세 개를 다시 만든다 (`architecture` \| `infra` \| `modules`) |
-
-전체 문서 인덱스는 [CLAUDE.md](CLAUDE.md)의 문서 목록 표에 있습니다.
 
 ## 라이선스
 

@@ -222,26 +222,41 @@ INFRA_ARIA = ("AT-CREW 인프라 구성도. 서울 리전의 전용 VPC 안에 �
               "사용자 트래픽은 Cloudflare Tunnel로, 배포는 AWS SSM으로 들어오며 인바운드 포트는 없다.")
 
 
-def build_infra(out_path):
-    o = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {IW} {IH}" width="{IW}" height="{IH}" '
-         f'role="img" aria-label="{_esc(INFRA_ARIA)}">',
-         '<title>AT-CREW 인프라 구성도</title>', '<defs>']
+def build_infra(out_path, *, w=None, h=None, zones=None, edges=None, boxes=None,
+                card_lines=None, note=None, aria=None, title="AT-CREW 인프라 구성도"):
+    """인프라 구성도를 그린다.
+
+    인자를 주지 않으면 현재 구성(I* 상수)을 그린다. HA 청사진처럼 다른 구성을 그릴 때만
+    데이터를 넘긴다 — 렌더 로직은 하나만 두고 데이터만 갈아끼운다.
+    """
+    w = w or IW
+    h = h or IH
+    zones = zones if zones is not None else IZONES
+    edges = edges if edges is not None else IEDGES
+    boxes = boxes if boxes is not None else IBOXES
+    card_lines = card_lines if card_lines is not None else {"server": SERVER_LINES}
+    note = note if note is not None else INOTE
+    aria = aria if aria is not None else INFRA_ARIA
+
+    o = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}" width="{w}" height="{h}" '
+         f'role="img" aria-label="{_esc(aria)}">',
+         f'<title>{_esc(title)}</title>', '<defs>']
     for key in ("neutral", "blue", "purple", "pink"):
         o.append(f'<marker id="i-{key}" viewBox="0 0 10 10" refX="9" refY="5" '
                  f'markerWidth="7" markerHeight="7" orient="auto-start-reverse">'
                  f'<path d="M0,0 L10,5 L0,10 z" fill="{C[key]}"/></marker>')
     o.append('</defs>')
-    o.append(f'<rect x="0" y="0" width="{IW}" height="{IH}" rx="12" fill="{C["page"]}"/>')
+    o.append(f'<rect x="0" y="0" width="{w}" height="{h}" rx="12" fill="{C["page"]}"/>')
 
-    for x, y, w, h, label, key, dashed in IZONES:
+    for zx, zy, zw, zh, label, key, dashed in zones:
         stroke = C[key] if key in C else C["zone_stroke"]
         dash = ' stroke-dasharray="7 5"' if dashed else ''
-        o.append(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="12" fill="none" '
+        o.append(f'<rect x="{zx}" y="{zy}" width="{zw}" height="{zh}" rx="12" fill="none" '
                  f'stroke="{stroke}" stroke-width="1.5"{dash}/>')
-        o.append(f'<text x="{x+16}" y="{y+24}" font-family="{FONT}" font-size="12.5" '
+        o.append(f'<text x="{zx+16}" y="{zy+24}" font-family="{FONT}" font-size="12.5" '
                  f'font-weight="600" fill="{stroke}">{_esc(label)}</text>')
 
-    for d, key, label, lxy, anchor, dbl in IEDGES:
+    for d, key, label, lxy, anchor, dbl in edges:
         col = C[key]
         start = f' marker-start="url(#i-{key})"' if dbl else ''
         o.append(f'<path d="{d}" fill="none" stroke="{col}" stroke-width="1.8" '
@@ -250,18 +265,18 @@ def build_infra(out_path):
             o.append(f'<text x="{lxy[0]}" y="{lxy[1]}" font-family="{FONT}" font-size="12.5" '
                      f'text-anchor="{anchor}" fill="{col}">{_esc(label)}</text>')
 
-    for name, (x, y, w, h, title, sub, key) in IBOXES.items():
+    for name, (x, y, bw, bh, btitle, sub, key) in boxes.items():
         col = C[key] if key != "neutral" else C["border"]
-        o.append(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="10" fill="{C["card"]}" '
+        o.append(f'<rect x="{x}" y="{y}" width="{bw}" height="{bh}" rx="10" fill="{C["card"]}" '
                  f'stroke="{col}" stroke-width="{2 if key != "neutral" else 1.4}"/>')
-        cx = x + w / 2
-        if name == "server":
+        cx = x + bw / 2
+        if name in card_lines:
             o.append(f'<text x="{cx}" y="{y+30}" font-family="{FONT}" font-size="14.5" font-weight="700" '
-                     f'text-anchor="middle" fill="{C["text"]}">{_esc(title)}</text>')
+                     f'text-anchor="middle" fill="{C["text"]}">{_esc(btitle)}</text>')
             ly = y + 58
-            for text, ckey, bold in SERVER_LINES:
+            for text, ckey, bold in card_lines[name]:
                 if text == "─":
-                    o.append(f'<line x1="{x+26}" y1="{ly-8}" x2="{x+w-26}" y2="{ly-8}" '
+                    o.append(f'<line x1="{x+26}" y1="{ly-8}" x2="{x+bw-26}" y2="{ly-8}" '
                              f'stroke="{C["border"]}" stroke-width="1"/>')
                     ly += 12
                     continue
@@ -271,19 +286,84 @@ def build_infra(out_path):
                          f'font-weight="{weight}" text-anchor="middle" fill="{fill}">{_esc(text)}</text>')
                 ly += 26
             continue
-        ty = y + (h / 2 + 6) if not sub else y + h / 2 - 2
+        ty = y + (bh / 2 + 6) if not sub else y + bh / 2 - 2
         o.append(f'<text x="{cx}" y="{ty}" font-family="{FONT}" font-size="14" font-weight="600" '
-                 f'text-anchor="middle" fill="{C["text"]}">{_esc(title)}</text>')
+                 f'text-anchor="middle" fill="{C["text"]}">{_esc(btitle)}</text>')
         if sub:
-            o.append(f'<text x="{cx}" y="{y+h/2+18}" font-family="{FONT}" font-size="11.5" '
+            o.append(f'<text x="{cx}" y="{y+bh/2+18}" font-family="{FONT}" font-size="11.5" '
                      f'text-anchor="middle" fill="{C["muted"]}">{_esc(sub)}</text>')
 
-    o.append(f'<text x="40" y="{IH-24}" font-family="{FONT}" font-size="12" '
-             f'fill="{C["muted"]}">{_esc(INOTE)}</text>')
+    o.append(f'<text x="40" y="{h-24}" font-family="{FONT}" font-size="12" '
+             f'fill="{C["muted"]}">{_esc(note)}</text>')
     o.append('</svg>')
     with open(out_path, "w", encoding="utf-8") as f:
         f.write("\n".join(o))
     return out_path
+
+# --------------------------------------------------------------- infra (HA 청사진)
+
+# 고가용성 전환 후의 구성도. 지금은 만들지 않고 코드로만 정의돼 있다
+# (deploy/terraform/ha-blueprint.tf, var.ha_enabled = false).
+# infra.svg가 "지금 무엇이 있는가"라면 이쪽은 "무엇으로 바뀔 수 있는가"다.
+# 근거와 전환 트리거는 docs/design/ha-expansion-path.md에 있다.
+
+HW, HH = 1340, 830
+
+HZONES = [
+    (430,  40, 870, 750, "AWS ap-northeast-2 (서울)",       "muted",  True),
+    (462,  86, 806, 682, "at-crew VPC (10.20.0.0/16)",     "purple", False),
+    (494, 186, 742, 268, "가용 영역 ap-northeast-2a",        "muted",  True),
+    (760, 220, 452, 220, "Private subnet (10.20.1.0/24)",  "pink",   False),
+    (516, 340, 220,  96, "Public subnet (10.20.0.0/24)",   "blue",   False),
+    (494, 478, 742, 268, "가용 영역 ap-northeast-2c",        "muted",  True),
+    (760, 512, 452, 220, "Private subnet (10.20.2.0/24)",  "pink",   False),
+]
+
+HBOXES = {
+    "users":   (40, 250, 130, 66, "사용자", "웹, 앱", "neutral"),
+    "cf":      (206, 236, 168, 92, "Cloudflare", "DNS, WAF, Tunnel", "purple"),
+    "ops":     (40, 450, 150, 76, "GitHub Actions", "배포 워크플로", "neutral"),
+    "ssm":     (222, 458, 152, 62, "AWS SSM", "IAM 통제", "blue"),
+    "igw":     (586, 116, 118, 52, "IGW", "", "neutral"),
+    "net":     (760, 112, 250, 56, "인터넷 아웃바운드", "R2, Stripe, Grafana", "neutral"),
+    "nat":     (534, 374, 184, 52, "NAT 인스턴스", "", "neutral"),
+    "server1": (790, 254, 202, 178, "앱 #1 (t4g.medium)", "", "blue"),
+    "server2": (790, 546, 202, 178, "앱 #2 (t4g.medium)", "", "blue"),
+    "rds1":    (1016, 292, 176, 80, "RDS Primary", "MariaDB Multi-AZ", "purple"),
+    "rds2":    (1016, 584, 176, 80, "RDS Standby", "자동 전환 60~120초", "muted"),
+}
+
+# mariadb가 RDS로 빠져 앱 서버 카드에서 사라진다 — 그만큼 인스턴스 메모리가 비워진다.
+HA_SERVER_LINES = [
+    ("cloudflared — 터널 replica", "purple", False),
+    ("─", "border", False),
+    ("Docker Compose", "muted", True),
+    ("app :8080 / :8081", "blue", False),
+    ("elasticsearch, alloy", "neutral", False),
+]
+
+HEDGES = [
+    ("M170,283 H200",                 "neutral", "",                 None,        "middle", False),
+    ("M374,266 H510 V300 H784",       "purple",  "Tunnel replica",   (628, 290),  "middle", False),
+    ("M374,298 H486 V612 H784",       "purple",  "Tunnel replica",   (628, 602),  "middle", False),
+    ("M374,478 H476 V464 H886 V436", "blue",    "SSM 원격 명령",      (640, 448),  "middle", False),
+    ("M374,500 H476 V690 H784",       "blue",    "",                 None,        "middle", False),
+    ("M994,336 H1012",                "neutral", "",                 None,        "middle", False),
+    ("M996,624 H1232 V336 H1196",     "neutral", "",                 None,        "middle", False),
+    ("M1104,374 V582",                "pink",    "동기 복제",          (1114, 470), "start",  True),
+    ("M788,400 H722",                 "neutral", "",                 None,        "middle", False),
+    ("M626,372 V172",                 "neutral", "아웃바운드",         (638, 258),  "start",  False),
+    ("M704,142 H752",                 "neutral", "",                 None,        "middle", False),
+]
+
+HNOTE = ("청사진 — 아직 만들지 않았다(deploy/terraform/ha-blueprint.tf, ha_enabled = false). "
+         "앱은 Tunnel replica로, DB는 RDS Multi-AZ로 자동 페일오버한다. 전환 트리거는 "
+         "docs/design/ha-expansion-path.md 참고.")
+
+HA_ARIA = ("AT-CREW 고가용성 청사진. 서울 리전 VPC 안에 가용 영역 두 개가 있고 각각의 "
+           "프라이빗 서브넷에 앱 인스턴스가 하나씩 있다. Cloudflare Tunnel replica가 두 앱으로 "
+           "트래픽을 보내고, RDS Multi-AZ가 Primary와 Standby를 동기 복제해 자동 전환한다.")
+
 
 # --------------------------------------------------------------------- modules
 
@@ -363,13 +443,21 @@ def render_mermaid(mmd_path, out_path):
 # ------------------------------------------------------------------------ main
 
 def main():
-    targets = sys.argv[1:] or ["architecture", "infra", "modules"]
-    unknown = [t for t in targets if t not in ("architecture", "infra", "modules")]
+    known = ("architecture", "infra", "infra-ha", "modules")
+    targets = sys.argv[1:] or list(known)
+    unknown = [t for t in targets if t not in known]
     if unknown:
-        sys.exit(f"모르는 대상: {', '.join(unknown)} (architecture | infra | modules)")
+        sys.exit(f"모르는 대상: {', '.join(unknown)} ({' | '.join(known)})")
 
     if "infra" in targets:
         p = build_infra(os.path.join(ASSETS, "infra.svg"))
+        print(f"생성 {p} ({os.path.getsize(p)} bytes)")
+
+    if "infra-ha" in targets:
+        p = build_infra(os.path.join(ASSETS, "infra-ha.svg"),
+                        w=HW, h=HH, zones=HZONES, edges=HEDGES, boxes=HBOXES,
+                        card_lines={"server1": HA_SERVER_LINES, "server2": HA_SERVER_LINES},
+                        note=HNOTE, aria=HA_ARIA, title="AT-CREW 고가용성 청사진")
         print(f"생성 {p} ({os.path.getsize(p)} bytes)")
 
     if "architecture" in targets:

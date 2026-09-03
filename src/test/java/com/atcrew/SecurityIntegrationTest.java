@@ -249,6 +249,24 @@ class SecurityIntegrationTest extends RestDocsIntegrationSupport {
     }
 
     @Test
+    void 재색인_artwork_permitAll_통과() throws Exception {
+        // 시크릿 헤더가 틀려도 Security 필터는 통과해야 한다 — 401이 나더라도 code가
+        // UNAUTHENTICATED(필터 차단)가 아니라 INTERNAL_SECRET_INVALID(컨트롤러 도달)여야 통과로 본다.
+        mockMvc.perform(post("/internal/search/reindex")
+                        .header("X-Internal-Secret", "wrong-secret"))
+                .andExpect(jsonPath("$.code").value("INTERNAL_SECRET_INVALID"));
+    }
+
+    @Test
+    void 재색인_recruit_permitAll_통과() throws Exception {
+        // 이슈 #114 회귀 테스트 — SecurityConfig의 permitAll 목록에서 이 경로만 빠져 있어서
+        // 항상 UNAUTHENTICATED(필터 차단)로 막혔었다.
+        mockMvc.perform(post("/internal/search/reindex/recruit")
+                        .header("X-Internal-Secret", "wrong-secret"))
+                .andExpect(jsonPath("$.code").value("INTERNAL_SECRET_INVALID"));
+    }
+
+    @Test
     void 검색_토큰_없이_401_아님() throws Exception {
         // 검색어·필터 없음 → 최초 진입 상태로 빈 결과, 401이 아님을 확인
         mockMvc.perform(get("/api/search"))

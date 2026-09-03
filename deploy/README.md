@@ -62,6 +62,8 @@ aws ssm start-session --target <인스턴스 ID>     # session-manager-plugin �
 - `bootstrap.sh` — 새 호스트에 관측 에이전트와 백업 타이머를 설치한다
 - `backup.sh`, `systemd/` — MariaDB 일일 백업 스크립트와 타이머 유닛
 - `deploy.sh` — 로컬에서 빌드→Docker Hub 푸시→앱 서버 재배포까지 한 번에
+- `terraform/app-launch-template.tf` — **앱 서버 재생성용 시작 템플릿.** 아래 "최초 1회 설정"을
+  user_data로 자동화한 것이다. 장애 시에는 손으로 하지 말고 이걸 쓴다
 
 ## 자동 배포 (`.github/workflows/deploy.yml`)
 
@@ -83,8 +85,19 @@ main push(=PR 머지) 시 빌드·테스트 → Docker Hub 푸시 → 앱 서버
 인스턴스·서브넷·인스턴스 프로파일은 이미 위 표대로 만들어져 있다 — 아래는 그 위에서 소프트웨어만
 설치하면 된다.
 
+> **손으로 만들지 말고 `terraform/app-launch-template.tf`를 쓰는 편이 낫다.** 아래 설치 과정이
+> user_data로 들어 있어 인스턴스를 띄우면 자동으로 실행된다. 아래는 그 내용의 설명이자, 템플릿을
+>쓸 수 없을 때의 수동 절차다.
+
 1. **앱 서버**: Amazon Linux 2023이라 `dnf` 사용.
    ```bash
+   # ★ SSM 에이전트를 가장 먼저 설치한다. AL2023 minimal AMI에는 들어 있지 않고,
+   #   퍼블릭 IP도 SSH도 없으므로 이걸 빠뜨리면 이 인스턴스에 접속할 수단이 하나도 없다.
+   #   2026-09-03 RTO 훈련에서 실제로 겪었다(docs/operations/baseline/2026-09-03-rto-drill.md).
+   sudo dnf install -y amazon-ssm-agent \
+     || sudo dnf install -y https://s3.ap-northeast-2.amazonaws.com/amazon-ssm-ap-northeast-2/latest/linux_arm64/amazon-ssm-agent.rpm
+   sudo systemctl enable --now amazon-ssm-agent
+
    sudo dnf install -y nginx docker
    sudo systemctl enable --now docker
    sudo usermod -aG docker ec2-user   # 재접속해야 반영됨
@@ -146,6 +159,8 @@ cd ~/at-crew-backend/deploy && ./bootstrap.sh
       병합에서 자동 배포가 없어진 인스턴스로 SSM 명령을 보내 실패한다
 - [ ] 새 인스턴스에 `AmazonSSMManagedInstanceCore` 인스턴스 프로파일이 붙어 있는지 확인 —
       `aws ssm describe-instance-information`에 `Online`으로 나와야 배포가 된다
+- [ ] **`Online`으로 안 나오면 SSM 에이전트가 설치되지 않은 것이다.** 인스턴스 프로파일만으로는
+      부족하다 — AL2023 minimal AMI에는 에이전트가 없다. 시작 템플릿을 쓰면 자동으로 들어간다
 - [ ] Grafana에 걸어둔 silence 해제
 
 > 2026-09-02에 이 목록이 없어서 v2 이전 때 관측과 백업이 함께 누락됐다(이슈 #115). 관측 스택을 앱과
