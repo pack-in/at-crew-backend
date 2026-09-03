@@ -9,18 +9,6 @@
 > **[API 문서](https://at-crew-api-docs.pages.dev/)** — REST Docs로 생성, main 병합 시 자동 갱신
 > **서비스 API** — `https://api.at-crew.com`
 
-## 한눈에 보기
-
-| 항목 | 규모 |
-|---|---|
-| 도메인 모듈 | 10개 + 공용 `common` |
-| 프로덕션 코드 | Java 447개 파일, 23,276줄 |
-| 테스트 코드 | Java 70개 파일, 15,274줄 (프로덕션 대비 66%) |
-| DB 마이그레이션 | Flyway `V1` ~ `V34` |
-| 공개 API | 97개 경로, 119개 오퍼레이션, 18개 태그 |
-| 외부 연동 | Stripe, Cloudflare R2/Worker, Elasticsearch, Resend, Firebase |
-| 운영 | EC2 자동 배포 + 헬스체크 조건부 롤백, Grafana Cloud, Sentry, Discord 2단계 알람, 일 1회 DB 백업 |
-
 ## 기술 스택
 
 | 영역 | 사용 기술 |
@@ -30,8 +18,12 @@
 | 인증 | 자체 이메일 인증(JWT) + Firebase(Google 로그인) |
 | 외부 연동 | Stripe(결제/구독), Cloudflare R2 + Worker(이미지 파이프라인), Resend(메일) |
 | 테스트 | JUnit 5, Testcontainers, MockMvc + Spring REST Docs |
-| 인프라 | Docker Compose on EC2, nginx, Cloudflare, GitHub Actions |
+| 인프라 | Docker Compose on EC2(프라이빗 서브넷), nginx, Cloudflare Tunnel, AWS SSM, GitHub Actions |
 | 관측 | Grafana Cloud(메트릭, 로그, 업타임), Sentry(에러), Discord 알람 |
+
+도메인 모듈 10개와 공용 `common`으로 나뉩니다. 프로덕션 Java 450개 파일 23,653줄에 테스트 72개 파일
+15,919줄(프로덕션 대비 67%)이 붙어 있고, Flyway 마이그레이션은 `V35`까지, 공개 API는 97개 경로
+119개 오퍼레이션입니다.
 
 ## 시스템 아키텍처
 
@@ -41,7 +33,20 @@
 ② 앱은 Worker를 비동기로 트리거만 하며, ③ 변환은 Worker가 R2를 상대로 수행하고, ④ 완료는
 `X-Internal-Secret`으로 검증되는 webhook으로 되돌아옵니다 — **애플리케이션 서버는 이미지 바이트를 직접 다루지 않습니다.**
 
-- **CI/CD** — PR마다 빌드와 전체 테스트, main 병합 시 arm64 이미지 빌드 → EC2 배포 → 헬스체크 → 실패 시 조건부 롤백
+### 인프라 구성
+
+위 그림이 "요청이 어떤 컴포넌트를 지나는가"라면, 아래는 "그 컴포넌트가 어느 네트워크 경계 안에 있는가"입니다.
+
+![AT-CREW 인프라 구성](docs/assets/infra.svg)
+
+**인스턴스에 열린 인바운드 포트가 없습니다.** 앱 서버는 프라이빗 서브넷에 있고, 외부 트래픽은
+`cloudflared`가 바깥으로 연 Cloudflare Tunnel로만 들어옵니다. 배포와 운영 접속도 SSH가 아니라 AWS SSM을
+거치므로, 열어야 할 포트도 CI에 둘 SSH 키도 없습니다. 아웃바운드만 NAT 인스턴스를 지나 나갑니다.
+
+2 AZ 이중화·ALB·DB Replica는 아직 구성하지 않았습니다(#110 Phase 1·2 잔여). 트래픽 규모가 이를 요구하는
+시점에 올리는 편이 낫다고 봤고, 그때까지는 단일 AZ·단일 인스턴스라는 사실을 그림에 그대로 적어 둡니다.
+
+- **CI/CD** — PR마다 빌드와 전체 테스트, main 병합 시 arm64 이미지 빌드 → SSM으로 원격 재기동 → 헬스체크 → 실패 시 조건부 롤백
 - **백업** — MariaDB 덤프를 매일 R2로 업로드, 26시간 이상 성공 기록이 없으면 P1 알람
 
 ## 모듈 구조
@@ -69,46 +74,19 @@
 
 ## 설계 결정
 
-각 결정의 대안 검토 과정은 링크한 설계 문서에 남아 있습니다.
+되돌리기 어려운 선택만 추렸습니다. 각 항목은 **무엇을 내주고 무엇을 얻었는지**로 적었고, 대안 검토
+과정과 기각 사유는 링크한 설계 문서에 남아 있습니다.
 
-### 모듈 경계를 리뷰가 아니라 빌드가 막는다
-
-모듈형 모놀리식은 규율이 없으면 6개월 만에 얽힌 단일체로 돌아갑니다. 그래서 경계 검증을 사람의 주의력에
-맡기지 않고 `ApplicationModules.verify()`로 CI에 걸었습니다. 실제로 관측 코드를 `common`에 모으려다
-순환 의존이 생겨 빌드가 깨졌고, 계측 위치를 각 소유 모듈로 되돌렸습니다.
-
-### 이미지 파이프라인을 도메인에서 뽑아 `media` 모듈로
-
-presign 발급, Worker 트리거, webhook 수신, 재시도, 고아파일 정리는 저장소/인프라 관심사이지 artwork의
-도메인 규칙이 아닙니다. recruit이 같은 것을 두 번째로 필요로 한 시점에, 복제본이 세 번째로 늘기 전에
-공용 모듈로 추출했습니다. [media-module §1](docs/design/media-module-design.md)
-
-### MongoDB → MariaDB 전면 전환
-
-문서형 저장소에서 관계형으로 옮기며 ID 전략, 스키마 정규화, 원자 연산 재설계, Modulith 이벤트
-레지스트리까지 함께 정리했습니다. PK는 성능이 가장 좋은 `Long` 대신 String(UUIDv7)을 유지했습니다 —
-연번 추측으로 인한 ID enumeration 노출과 4개 모듈의 공개 계약 전면 수정을 피하기 위해서입니다.
-[mariadb-migration-design](docs/design/mariadb-migration-design.md)
-
-### 검색은 별도 색인으로 분리
-
-검색 화면이 7개 축의 다중선택 필터(담당 업무 22종, 장르 29종 등)와 한국어 관련도 검색을 동시에
-요구해서, Elasticsearch를 **조회 전용** 색인으로 두고 원본은 MariaDB에 유지한 채 도메인 이벤트로
-동기화합니다. [search-module](docs/design/search-module-design.md)
-
-### 시간대는 UTC로 저장하고 표시에서만 변환
-
-일본, 중국, 영미권 확장을 전제로 저장과 연산은 전부 `Instant`(UTC)이고, 변환은 표시 계층에서 회원
-시간대 기준으로만 일어납니다. 컨테이너, JVM, 로그 타임스탬프까지 UTC로 못 박았습니다.
-[global-timezone-strategy](docs/design/global-timezone-strategy.md)
-
-### 사용자를 받기 전에 운영 가능한 상태로
-
-실사용자 유입 전에 관측, 알람, 배포 안전장치, 백업을 먼저 갖췄습니다. 배포는 헬스체크 후 조건부 자동
-롤백(스키마 변경이 낀 배포는 롤백하지 않고 사람을 호출), 알람은 P1/P2 2단계로 Discord에 라우팅합니다.
-관측 스택은 자체 호스팅 대신 Grafana Cloud를 썼습니다 — 감시 대상과 함께 죽지 않아야 하고, 1인 운영에서
-유지보수 대상을 늘리지 않기 위해서입니다.
-[observability-design](docs/design/observability-design.md), [incident-runbook](docs/operations/incident-runbook.md)
+| 결정 | 트레이드오프 | 문서 |
+|---|---|---|
+| 모듈 경계를 리뷰가 아니라 빌드가 막는다 | 초기 마찰과 우회 불가를 감수하고, 6개월 뒤 얽힌 단일체로 돌아가는 것을 막았다. 실제로 관측 코드를 `common`에 모으려다 순환 의존으로 빌드가 깨져 계측을 각 소유 모듈로 되돌렸다 | `ApplicationModules.verify()` |
+| 이미지 파이프라인을 `media` 모듈로 추출 | 모듈 하나를 더 얹는 대신, presign·Worker·webhook·재시도·고아 정리가 artwork와 recruit에 중복되는 것을 막았다. 두 번째 소비자가 생긴 시점에 뽑았다 | [media-module](docs/design/media-module-design.md) |
+| MongoDB → MariaDB 전면 전환, PK는 String(UUIDv7) | `Long` PK의 성능과 저장 효율을 내주고, 연번 추측에 의한 ID enumeration 노출과 공개 계약 4개 모듈의 전면 수정을 피했다 | [mariadb-migration](docs/design/mariadb-migration-design.md) |
+| 검색은 Elasticsearch 조회 전용 색인으로 분리 | 색인 동기화 복잡도와 메모리 1GB를 내주고, 7개 축 다중선택 필터(담당 업무 22종·장르 29종 등)와 한국어 관련도 검색을 얻었다. 원본은 MariaDB에 두고 도메인 이벤트로만 동기화한다 | [search-module](docs/design/search-module-design.md) |
+| 저장·연산은 UTC, 변환은 표시 계층에서만 | 표시마다 변환 비용을 치르고, 일본·중국·영미권 확장 시점의 데이터 마이그레이션을 없앴다. 컨테이너·JVM·로그 타임스탬프까지 UTC로 고정했다 | [global-timezone](docs/design/global-timezone-strategy.md) |
+| 관측 스택은 자체 호스팅 대신 Grafana Cloud | 월 고정비와 외부 의존을 지고, **감시 대상과 함께 죽지 않는 관측**을 얻었다. 인스턴스 이전 중 수집이 끊겼을 때 외부 프로브는 조용하고 메트릭 알람만 울려 "서비스는 살아 있고 수집만 죽었다"를 알람만으로 판정할 수 있었다 | [observability](docs/design/observability-design.md) |
+| 인바운드 포트를 하나도 열지 않는다 | Cloudflare Tunnel과 AWS SSM에 의존하는 대신, origin IP 직접 타격 경로와 CI에 두는 SSH 키를 함께 없앴다. 보안 그룹을 배포마다 여닫던 절차도 사라졌다 | [incident-runbook](docs/operations/incident-runbook.md) |
+| 사용자를 받기 전에 운영 가능한 상태로 | 기능 출시를 늦추고, 관측·알람·조건부 롤백·백업을 먼저 세웠다. 스키마 변경이 낀 배포는 자동 롤백하지 않고 사람을 부른다 — 스키마는 되돌아가지 않기 때문이다 | [observability](docs/design/observability-design.md) |
 
 ## API 문서
 
@@ -119,22 +97,6 @@ MockMvc + REST Docs 테스트가 통과해야만 문서가 생성되고, main �
 
 prod에서는 springdoc이 꺼져 있어 실서버가 문서 소스가 될 수 없고, `OpenApiExportTest`가 유일한 생성 경로입니다.
 
-## 로컬 실행
-
-```bash
-# 의존 서비스 기동 (MariaDB, Elasticsearch)
-docker compose up -d
-
-# 애플리케이션 실행 — http://localhost:8080, 관리 포트 8081
-./gradlew bootRun
-
-# 전체 테스트 (Testcontainers 사용, Docker 필요)
-./gradlew build
-```
-
-Swagger UI는 로컬과 개발 프로필에서만 열립니다(`http://localhost:8080/swagger-ui.html`). prod에서는
-꺼져 있고, 대신 정적으로 배포된 API 문서를 봅니다.
-
 ## 문서
 
 | 분류 | 위치 |
@@ -144,7 +106,7 @@ Swagger UI는 로컬과 개발 프로필에서만 열립니다(`http://localhost
 | 규약 | [CONTRIBUTING.md](CONTRIBUTING.md), [docs/conventions/](docs/conventions/) |
 | 테스트 전략 | [docs/testing/rest-docs-guide.md](docs/testing/rest-docs-guide.md) |
 | 로드맵 | [docs/roadmap.md](docs/roadmap.md) |
-| 다이어그램 생성 | [scripts/diagrams/build.py](scripts/diagrams/build.py) — 위 SVG 두 개를 다시 만든다 |
+| 다이어그램 생성 | [scripts/diagrams/build.py](scripts/diagrams/build.py) — 위 SVG 세 개를 다시 만든다 (`architecture` \| `infra` \| `modules`) |
 
 전체 문서 인덱스는 [CLAUDE.md](CLAUDE.md)의 문서 목록 표에 있습니다.
 

@@ -8,14 +8,26 @@ services:
       MARIADB_DATABASE: atcrew
       MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD}
       TZ: UTC
-    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    # PA-07(docs/design/infra-security-hardening-design.md D6/D7) — 반동기(semi-sync) Replica의
+    # Primary 쪽 설정. server-id/log-bin은 복제 자체에 필요, semisync는 Replica가 커밋을 실제로
+    # 받았다는 응답을 기다린 뒤 커밋을 완료해 장애 시 데이터 유실 창을 좁힌다(완전 동기는 아니다 —
+    # 타임아웃 지나면 비동기로 자동 전환되어 Primary 가용성은 유지된다).
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --server-id=1
+      --log-bin=mariadb-bin
+      --binlog-format=ROW
+      --plugin-load-add=semisync_master.so
+      --rpl-semi-sync-master-enabled=1
+      --rpl-semi-sync-master-timeout=1000
     volumes:
       - mariadb_data:/var/lib/mysql
       # 슬로우 쿼리 로그(이슈 #118). MariaDB가 conf.d/*.cnf를 자동으로 읽는다 — command 인자에
       # 섞지 않고 파일로 두어 설정마다 이유를 주석으로 남긴다.
       - ./mariadb/slow-query.cnf:/etc/mysql/conf.d/slow-query.cnf:ro
-    # 메모리 상한(이슈 #116) — 앱·MariaDB·Elasticsearch가 한 인스턴스(3,830MB)를 나눠 쓰고 스왑이
-    # 없다. 상한이 없으면 한 컨테이너의 폭주가 OOM 킬러를 불러 다른 컨테이너를 죽인다.
+    # 메모리 상한(이슈 #116) — 앱·MariaDB·Elasticsearch가 한 인스턴스(3,830MB)를 나눠 쓴다.
+    # 스왑 2GB가 완충으로 깔려 있지만(deploy/bootstrap.sh) 상한이 없으면 한 컨테이너의 폭주가 OOM 킬러를 불러 다른 컨테이너를 죽인다.
     # 세 값의 합(3,300MB)이 인스턴스보다 작아야 호스트 몫이 남는다.
     deploy:
       resources:
@@ -28,7 +40,12 @@ services:
       options:
         max-size: 50m
         max-file: "3"
-    # 외부에 포트를 노출하지 않는다 — app 컨테이너가 같은 docker 네트워크에서 서비스명(mariadb)으로 접근.
+    # D12(2026-09-02) 정정: Replica가 별도 EC2 인스턴스라 도커 내부 네트워크만으로는 복제가 안 된다
+    # — 호스트에 3306을 노출해야 한다. 대신 방어는 네트워크 계층(보안그룹의 app SG — db_replica SG에서
+    # 오는 트래픽만 허용)으로 옮긴다. 0.0.0.0 바인딩이지만 SG가 실제 소스를 걸러낸다
+    # (nginx 80/443과 동일한 이중 방어 원칙).
+    ports:
+      - "3306:3306"
     healthcheck:
       # depends_on만으로는 컨테이너 "시작"만 기다리고 MariaDB가 실제 접속 가능한 시점은 안 기다린다 —
       # 첫 배포 때 app이 초기화 중인 MariaDB에 Connection refused로 붙었다가 죽는 걸 실제로 겪고 추가함.
