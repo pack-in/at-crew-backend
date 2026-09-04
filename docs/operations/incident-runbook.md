@@ -140,24 +140,6 @@ cat /var/lib/node_exporter/textfile_collector/backup.prom
 멈춘다(기본값·폴백을 두지 않는다 — 예전에는 없는 버킷이나 권한 없는 키로 떨어져 백업이 조용히
 실패했다).
 
-### [P1] DB Replica 복제 스레드 중단
-
-`docs/design/infra-security-hardening-design.md` D6/D7 참고. `atcrew-replica-down` 알람.
-
-```bash
-docker exec mariadb-replica mariadb -u root -h "$REPLICA_HOST" -e "SHOW SLAVE STATUS\G"
-```
-
-`Slave_IO_Running`/`Slave_SQL_Running` 중 어느 쪽이 `No`인지 먼저 본다.
-
-- **IO_Running=No** — 네트워크 단절이나 Primary 쪽 문제일 가능성. Primary가 살아있는지부터
-  확인(`atcrew-app-down` 등 다른 알람이 같이 울렸는지). `Last_IO_Error` 확인.
-- **SQL_Running=No** — 복제 스트림 자체는 오는데 적용에 실패(중복 키 등). `Last_SQL_Error` 확인,
-  단순 재시도로 되는 경우(`STOP SLAVE; START SLAVE;`)와 수동 개입이 필요한 경우를 구분한다.
-
-**Primary가 완전히 죽어서 승격이 필요하면 "DB Replica 승격" 섹션으로.** 승격은 이 알람만 보고
-바로 하지 않는다 — split-brain 리스크(설계 문서 D7 참고).
-
 ---
 
 ## P2
@@ -171,7 +153,6 @@ docker exec mariadb-replica mariadb -u root -h "$REPLICA_HOST" -e "SHOW SLAVE ST
 | 이미지 후처리 결과 미도착 | Worker 시크릿 `SERVER_CALLBACK_URL`이 `https://api.at-crew.com/internal/media/images/processed`인지 → nginx 액세스 로그에 그 경로 요청이 찍히는지 | 콜백이 실패로 오는 게 아니라 아예 안 오는 상태. 2026-08 실제 사고(이슈 #59)와 같은 유형 |
 | 미완료 이벤트 누적 | `SELECT COUNT(*), EVENT_TYPE FROM EVENT_PUBLICATION WHERE COMPLETION_DATE IS NULL GROUP BY EVENT_TYPE` | 특정 타입만 쌓이면 그 리스너가 예외를 던지고 있다 |
 | 구독 결제 실패 | Stripe 대시보드 → 해당 고객 | 여러 건이 몰리면 카드 문제가 아니라 연동 문제 |
-| DB Replica 복제 지연 60초 초과 | `docker exec mariadb-replica mariadb -u root -h "$REPLICA_HOST" -e "SHOW SLAVE STATUS\G"`로 `Seconds_Behind_Master` 확인 | Primary 쓰기 폭주나 Replica 리소스 부족이 흔한 원인. 지연이 계속 늘기만 하면 승격 시 유실 범위가 커진다 |
 
 ---
 
@@ -330,34 +311,16 @@ docker rm -f restore-drill
 
 ## DB Replica 승격
 
-`docs/design/infra-security-hardening-design.md` D7 — 자동 페일오버는 하지 않는다. Primary 장애가
-확인되면(위 "[P1] DB Replica 복제 스레드 중단" 절차로 오탐이 아님을 먼저 확인) 사람이 직접 실행한다.
+**2026-09-03 — self-hosted Replica 계획(수동 승격 스크립트)은 폐기됐다.** `docs/design/
+ha-expansion-path.md`가 대체 결정이다 — DB 이중화가 필요해지는 시점에 self-hosted Replica가 아니라
+**RDS Multi-AZ**로 바로 전환한다(`ha_enabled=true`). RDS는 AWS가 60~120초 안에 자동 페일오버하므로
+이 문서의 수동 승격 절차 자체가 필요 없어진다.
 
-```bash
-cd ~/at-crew-backend/deploy
-REPLICA_HOST=<EC2 #2 프라이빗 IP> ./db-promote.sh
-```
+지금(`ha_enabled=false`)은 DB 이중화가 전혀 없는 상태다 — Primary 장애 시 복구 수단은 "DB 복원"
+절(R2 일 1회 백업, RPO 최대 24시간)뿐이다.
 
-스크립트가 하는 일: Replica의 복제 스레드 정지·`read_only` 해제 → 앱 `.env`의 `MARIADB_HOST`를
-Replica로 전환 → 앱 컨테이너 재기동(수 초~수십 초 다운타임) → liveness 확인.
-
-Route53 Private Hosted Zone(PA-10)이 IAM 권한 부족으로 아직 비활성이라(`deploy/terraform/README.md`
-참고) 지금은 `.env` 전환 방식이다 — 권한이 열리면 DNS 레코드만 바꾸는 방식으로 교체해 앱 재기동
-없이 승격할 수 있다(원래 설계 의도, D8).
-
-승격 후 구 Primary는 원인 파악 전까지 그대로 둔다(전원을 끄지 않는다 — 로그·상태가 사고 조사에
-필요할 수 있다). 원인이 해소되면 `deploy/replica-setup.sh`로 구 Primary를 새 Replica로 재구성한다.
-
-### 드릴 절차 (분기마다 한 번)
-
-복원 리허설과 마찬가지로, 승격도 해본 적 없으면 실제 장애 때 신뢰할 수 없다. 트래픽이 적은 시간대에
-**실제로 한 번 승격**하고 RTO를 측정한다(plans/260901-infra-upgrade/PLAN-HUMAN.md PH-09).
-
-1. 승격 직전 `Seconds_Behind_Master`가 0인지 확인
-2. `db-promote.sh` 실행, 각 단계 소요 시간 기록
-3. 승격된 DB로 로그인·조회 등 핵심 플로우 스모크 테스트
-4. 문제 없으면 그대로 유지하거나, `replica-setup.sh`로 원래 역할로 되돌린다
-5. 실측 RTO를 이 문서에 갱신(DB 복원 절의 "소요 시간" 표와 같은 형식)
+**RDS 전환 시 할 일**: `ha-expansion-path.md` §6 전환 절차를 따르고, 그 결과로 바뀌는 실제 페일오버
+동작(자동, RDS 콘솔에서 강제 전환 드릴)에 맞춰 이 섹션을 다시 쓴다.
 
 ---
 
@@ -369,3 +332,22 @@ Route53 Private Hosted Zone(PA-10)이 IAM 권한 부족으로 아직 비활성�
 
 긴급하게 특정 알람만 잠시 끄려면 Grafana UI에서 해당 룰을 pause하고, **같은 날 안에** 파일에도
 반영한다 — 파일과 실제가 갈라진 채로 두면 다음 배포에서 조용히 되살아난다.
+
+## 계획된 정지 전 — 알람 무음 처리
+
+인스턴스를 의도적으로 멈추는 작업(볼륨 교체, 인스턴스 타입 변경, 재생성 훈련)은 P1 `API 전면 다운`을
+그대로 발화시킨다. 2026-09-03 루트 볼륨 암호화 작업에서 실제로 발화했다 — 5분짜리 계획 정비였는데
+알람만 보면 실제 장애와 구분되지 않는다. 진짜 장애가 왔을 때 "또 정비겠지"로 넘기게 만드는 게 이
+문제의 실제 비용이다.
+
+정지 **전에** Silence를 걸고, 작업이 끝나면 만료를 기다리지 말고 바로 지운다.
+
+- Silence 생성: 알람 메시지에 붙어 오는 `Silence:` 링크를 그대로 쓰거나
+  Grafana → Alerting → Silences → New silence에서 matcher `severity = p1`, 지속 시간은
+  **예상 다운타임의 2배**로 잡는다(짧게 잡아 도중에 풀리면 의미가 없다).
+- 작업 후: Silence를 즉시 만료시킨다. 남겨두면 그 창 동안 실제 장애를 놓친다.
+- 계획 정비의 다운타임은 실측해 남긴다. 2026-09-03 기준 루트 볼륨 교체는 앱 서버 5분 1초,
+  NAT 인스턴스 1분 51초였다(정지 → `healthz` 200 회복까지).
+
+Silence를 안 걸고 작업했다면 최소한 사후에 그 발화가 계획 정비였다고 기록에 남긴다 — 알람 이력은
+가용성 판단의 근거로 쓰이므로, 정비로 인한 발화가 섞인 채 방치되면 그 근거가 오염된다.
