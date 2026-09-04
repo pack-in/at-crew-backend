@@ -21,17 +21,13 @@
 | 인프라 | Docker Compose on EC2(프라이빗 서브넷), nginx, Cloudflare Tunnel, AWS SSM, GitHub Actions |
 | 관측 | Grafana Cloud(메트릭, 로그, 업타임), Sentry(에러), Discord 알람 |
 
-도메인 모듈 10개와 공용 `common`으로 나뉩니다. 프로덕션 Java 450개 파일 23,653줄에 테스트 72개 파일
-15,919줄(프로덕션 대비 67%)이 붙어 있고, Flyway 마이그레이션은 `V35`까지, 공개 API는 97개 경로
-119개 오퍼레이션입니다.
-
 ## 시스템 아키텍처
 
 ![AT-CREW 시스템 아키텍처](docs/assets/architecture.svg)
 
 이미지 파이프라인: ① 클라이언트는 서버가 발급한 presigned URL로 R2에 **직접** 올리고,
 ② 앱은 Worker를 비동기로 트리거만 하며, ③ 변환은 Worker가 R2를 상대로 수행하고, ④ 완료는
-`X-Internal-Secret`으로 검증되는 webhook으로 되돌아옵니다 — **애플리케이션 서버는 이미지 바이트를 직접 다루지 않습니다.**
+`X-Internal-Secret`으로 검증되는 webhook으로 되돌아옵니다.
 
 ### 인프라 구성
 
@@ -41,16 +37,44 @@
 `cloudflared`가 바깥으로 연 Cloudflare Tunnel로만 들어옵니다. 배포와 운영 접속도 SSH가 아니라 AWS SSM을
 거치므로, 열어야 할 포트도 CI에 둘 SSH 키도 없습니다. 아웃바운드만 NAT 인스턴스를 지나 나갑니다.
 
-**2 AZ 이중화와 자동 페일오버는 코드로 정의해 두고 꺼 둔 상태입니다.** 측정 결과 현 규모에서 켤 근거가
-없었습니다 — 한계 처리량 약 15 RPS, 인스턴스 재생성 RTO 약 5분인데 켜면 월 약 $70이 추가됩니다.
-대신 `deploy/terraform/ha-blueprint.tf`에 앱 2대 + RDS Multi-AZ 구성을 정의하고
-`terraform apply -var ha_enabled=true` 한 줄로 전환되게 했습니다. 전환 트리거는 숫자로 정의해
-[ha-expansion-path](docs/design/ha-expansion-path.md)에 적었습니다.
-
 - **CI/CD** — PR마다 빌드와 전체 테스트, main 병합 시 arm64 이미지 빌드 → SSM으로 원격 재기동 → 헬스체크 → 실패 시 조건부 롤백
 - **백업** — MariaDB 덤프를 매일 R2로 업로드, 26시간 이상 성공 기록이 없으면 P1 알람
-- **복구** — 백업 복원과 인스턴스 재생성을 실제로 수행해 **RTO 약 5분**을 실측했습니다. 절차와 측정
-  원본은 [운영 기준선](docs/operations/baseline/)에 있습니다
+- **복구** — 백업 복원과 인스턴스 재생성을 실제로 수행해 **RTO 약 5분**을 실측했습니다.
+
+### 설계 기준
+
+구성을 고른 근거를 숫자로 고정해 둡니다. 근거가 없으면 "일단 이중화"로 흐르고, 그 비용은 트래픽이
+아니라 청구서에만 나타납니다.
+
+| 항목 | 값 | 근거 |
+|---|---|---|
+| 목표 사용자 규모 | MAU 1,000 | 서비스 출시 첫 해 목표 |
+| 설계 피크 | **약 5 RPS** | DAU 300(MAU의 30%) × 세션당 30요청 = 일 9,000요청, 피크 시간대에 20% 집중 시 약 0.5 RPS. 10배 여유를 둔 값 |
+| 실측 한계 처리량 | **약 15 RPS** | `t4g.medium` 1대, 작품 10만 건. 같은 데이터에서 N+1을 고친 뒤 무릎이 약 27 RPS로 올라갔습니다 |
+| RTO | **약 5분** | 인스턴스 재생성과 루트 볼륨 교체를 실제로 수행해 잰 값(2026-09-03 볼륨 교체 5분 1초) |
+| RPO | **최대 24시간** | 일 1회 덤프. 2 AZ 전환 시 반동기 복제로 0에 가깝게 내려갑니다 |
+
+설계 피크의 3배를 실측 한계가 덮습니다. **이중화를 켤 근거가 아직 숫자에 없습니다** — 그래서 켜지
+않았고, 대신 켤 수 있는 상태로 만들어 뒀습니다.
+
+### 2 AZ 이중화 확장 경로 (정의만 하고 꺼 둔 상태)
+
+![2 AZ 이중화 구성](docs/assets/infra-ha.svg)
+
+`deploy/terraform/ha-blueprint.tf`에 앱 2대 + RDS Multi-AZ 구성이 들어 있고 `ha_enabled = false`로
+꺼져 있습니다. 전환 조건과 절차, 비용은 [ha-expansion-path](docs/design/ha-expansion-path.md)에
+숫자로 적었습니다.
+
+### 보안
+
+| 계층 | 구성 |
+|---|---|
+| 인바운드 | 열린 포트 없음 — Cloudflare Tunnel의 아웃바운드 연결로만 트래픽이 들어옵니다 |
+| WAF | Cloudflare 관리형 룰셋(엣지). 방화벽(보안 그룹)이 "누가 닿을 수 있나"를, WAF가 "무엇을 보내는가"를 봅니다 |
+| 운영 접속 | SSH 없음 — AWS SSM Session Manager. CI에 둘 개인키도 없습니다 |
+| 저장 데이터 | EBS 볼륨 전체 암호화(KMS), 계정 기본 암호화 활성 |
+| 비밀 | 서버의 `.env`와 GitHub Actions 시크릿으로 분리, 커밋 전 gitleaks 훅이 검사 |
+| 감사 | 요청 로그에 주체(`memberId`)와 요청 ID, 데이터 변경에 `last_modified_by`. 운영자의 DB 직접 조작도 같은 컬럼에 남깁니다 |
 
 ## 모듈 구조
 
@@ -58,37 +82,6 @@
 구현은 각 모듈의 `internal/` 아래에 감춥니다. `ModularStructureTests`가 Spring Modulith의 `modules.verify()`로 경계 위반과 순환 의존을 빌드에서 잡습니다.
 
 ![모듈 의존 관계](docs/assets/modules.svg)
-
-## 모듈
-
-| 모듈 | 책임 | 설계 문서 |
-|---|---|---|
-| `auth` | 이메일 자체 인증, Google 로그인, JWT 발급/갱신, 비밀번호 재설정 | [auth-email-custom-redesign](docs/design/auth-email-custom-redesign.md) |
-| `member` | 회원/작가 프로필, 거주 국가, 성인 콘텐츠 설정 | [global-country-plan](docs/design/global-country-plan-design.md) |
-| `company` | 기업 계정, 프로필, 경력 | [company-profile-module](docs/design/company-profile-module-design.md) |
-| `artwork` | 작품 CRUD, 북마크, 휴지통, 이미지 연결 | [artwork-module](docs/design/artwork-module-design.md) |
-| `portfolio` | 작가 페이지, 공유 포트폴리오(고정형/최신반영형), 복제 | [portfolio-module](docs/design/portfolio-module-design.md) |
-| `media` | Presigned URL 발급, Worker 트리거, 콜백, 재시도, 고아 파일 정리 | [media-module](docs/design/media-module-design.md) |
-| `community` | 커뮤니티 피드, 배너, 작가 찾아보기 | [community-module](docs/design/community-module-design.md) |
-| `search` | Elasticsearch 색인과 동기화, 다축 태그 필터 검색 | [search-module](docs/design/search-module-design.md) |
-| `recruit` | 구인글, 팀원모집글, 구직글, 지원 접수, 끌어올리기, 관심 작가 | [recruit-module](docs/design/recruit-module-design.md) |
-| `billing` | Stripe Checkout, 구독, 웹훅, entitlement 원장, 플랜 게이팅 | [billing-module](docs/design/billing-module-design.md) |
-
-## 설계 결정
-
-각 항목은 **무엇을 내주고 무엇을 얻었는지**로 적었고, 대안 검토 과정과 기각 사유는 링크한 설계 문서에 적혀 있습니다.
-
-| 결정 | 트레이드오프 | 문서 |
-|---|---|---|
-| 모듈 경계를 리뷰가 아니라 빌드가 막는다 | 초기 마찰과 우회 불가를 감수하고, 6개월 뒤 얽힌 단일체로 돌아가는 것을 막았다. 실제로 관측 코드를 `common`에 모으려다 순환 의존으로 빌드가 깨져 계측을 각 소유 모듈로 되돌렸다 | `ApplicationModules.verify()` |
-| 이미지 파이프라인을 `media` 모듈로 추출 | 모듈 하나를 더 얹는 대신, presign·Worker·webhook·재시도·고아 정리가 artwork와 recruit에 중복되는 것을 막았다. 두 번째 소비자가 생긴 시점에 뽑았다 | [media-module](docs/design/media-module-design.md) |
-| MongoDB → MariaDB 전면 전환, PK는 String(UUIDv7) | `Long` PK의 성능과 저장 효율을 내주고, 연번 추측에 의한 ID enumeration 노출과 공개 계약 4개 모듈의 전면 수정을 피했다 | [mariadb-migration](docs/design/mariadb-migration-design.md) |
-| 검색은 Elasticsearch 조회 전용 색인으로 분리 | 색인 동기화 복잡도와 메모리 1GB를 내주고, 7개 축 다중선택 필터(담당 업무 22종·장르 29종 등)와 한국어 관련도 검색을 얻었다. 원본은 MariaDB에 두고 도메인 이벤트로만 동기화한다 | [search-module](docs/design/search-module-design.md) |
-| 저장·연산은 UTC, 변환은 표시 계층에서만 | 표시마다 변환 비용을 치르고, 일본·중국·영미권 확장 시점의 데이터 마이그레이션을 없앴다. 컨테이너·JVM·로그 타임스탬프까지 UTC로 고정했다 | [global-timezone](docs/design/global-timezone-strategy.md) |
-| 관측 스택은 자체 호스팅 대신 Grafana Cloud | 월 고정비와 외부 의존을 지고, **감시 대상과 함께 죽지 않는 관측**을 얻었다. 인스턴스 이전 중 수집이 끊겼을 때 외부 프로브는 조용하고 메트릭 알람만 울려 "서비스는 살아 있고 수집만 죽었다"를 알람만으로 판정할 수 있었다 | [observability](docs/design/observability-design.md) |
-| 고가용성 구성을 만들지 않고 코드로만 정의한다 | 실사용자 0명·한계 처리량 15 RPS에서 월 $70을 정당화할 근거가 없었다. 대신 `ha_enabled` 변수 하나로 전환되게 하고, 뒤집을 조건을 수치로 정의했다 | [ha-expansion-path](docs/design/ha-expansion-path.md) |
-| 인바운드 포트를 하나도 열지 않는다 | Cloudflare Tunnel과 AWS SSM에 의존하는 대신, origin IP 직접 타격 경로와 CI에 두는 SSH 키를 함께 없앴다. 보안 그룹을 배포마다 여닫던 절차도 사라졌다 | [incident-runbook](docs/operations/incident-runbook.md) |
-| 사용자를 받기 전에 운영 가능한 상태로 | 기능 출시를 늦추고, 관측·알람·조건부 롤백·백업을 먼저 세웠다. 스키마 변경이 낀 배포는 자동 롤백하지 않고 사람을 부른다 — 스키마는 되돌아가지 않기 때문이다 | [observability](docs/design/observability-design.md) |
 
 ## 문서
 
@@ -100,7 +93,7 @@
 | 규약 | [CONTRIBUTING.md](CONTRIBUTING.md), [docs/conventions/](docs/conventions/) |
 | 테스트 전략 | [docs/testing/rest-docs-guide.md](docs/testing/rest-docs-guide.md) |
 | 로드맵 | [docs/roadmap.md](docs/roadmap.md) |
-| 다이어그램 생성 | [scripts/diagrams/build.py](scripts/diagrams/build.py) — 위 SVG 세 개를 다시 만든다 (`architecture` \| `infra` \| `modules`) |
+| 다이어그램 생성 | [scripts/diagrams/build.py](scripts/diagrams/build.py) — 위 SVG 네 개를 다시 만든다 (`architecture` \| `infra` \| `infra-ha` \| `modules`) |
 
 ## 라이선스
 
