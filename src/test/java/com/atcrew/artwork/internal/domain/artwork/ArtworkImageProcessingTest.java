@@ -19,6 +19,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>전환 조건은 "모든 이미지 DONE"이 아니라 "PENDING이 하나도 없고 DONE이 하나 이상"이다 —
  * 전자로 바꾸면 이미지 하나만 FAILED여도 작품이 영원히 READY로 넘어가지 못한다.
+ *
+ * <p>PENDING이 없는데 DONE도 없는 경우(전량 실패)는 READY가 아니라 FAILED로 끝낸다 — 이 분기가 없으면
+ * 작품이 PROCESSING에 영구 고착되고, 재시도 스케줄러는 PENDING만 다루므로 자력 복구도 불가능하다.
  */
 class ArtworkImageProcessingTest {
 
@@ -59,13 +62,39 @@ class ArtworkImageProcessingTest {
     }
 
     @Test
-    void 모든_이미지가_실패하면_READY로_전환되지_않는다() {
+    void 모든_이미지가_실패하면_FAILED로_전환된다() {
         Artwork artwork = artworkWith("raw/1.png", "raw/2.png");
 
         artwork.markImageProcessed("raw/1.png", null, null, null, false);
         artwork.markImageProcessed("raw/2.png", null, null, null, false);
 
-        assertThat(artwork.getStatus()).isEqualTo(ArtworkStatus.PROCESSING);
+        assertThat(artwork.getStatus()).isEqualTo(ArtworkStatus.FAILED);
+    }
+
+    // 업로드 직후 PROCESSING 상태에서 휴지통에 넣으면 Worker 콜백이 그 뒤에 도착한다 — 이때 상태를
+    // 덮어쓰면 사용자가 버린 작품이 휴지통에서 사라지고 되살아난다.
+    @Test
+    void 휴지통에_있는_작품은_늦게_도착한_콜백으로_되살아나지_않는다() {
+        Artwork artwork = artworkWith("raw/1.png");
+        artwork.moveToTrash();
+
+        artwork.markImageProcessed("raw/1.png", "thumb/1.avif", null, "original/1.avif", true);
+
+        assertThat(artwork.getStatus()).isEqualTo(ArtworkStatus.DELETED);
+        // 이미지 변환 결과 자체는 반영해 둔다 — 복구했을 때 그대로 쓸 수 있어야 한다.
+        assertThat(artwork.getImages().get(0).getProcessingStatus()).isEqualTo(ImageProcessingStatus.DONE);
+        assertThat(artwork.getImages().get(0).getThumbKey()).isEqualTo("thumb/1.avif");
+    }
+
+    @Test
+    void 휴지통에_있는_작품은_전량_실패_콜백으로도_상태가_바뀌지_않는다() {
+        Artwork artwork = artworkWith("raw/1.png");
+        artwork.moveToTrash();
+
+        artwork.markImageProcessed("raw/1.png", null, null, null, false);
+
+        assertThat(artwork.getStatus()).isEqualTo(ArtworkStatus.DELETED);
+        assertThat(artwork.getImages().get(0).getProcessingStatus()).isEqualTo(ImageProcessingStatus.FAILED);
     }
 
     @Test

@@ -22,6 +22,7 @@ import com.atcrew.artwork.internal.exception.ArtworkException;
 import com.atcrew.artwork.internal.persistence.ArtworkRepository;
 import com.atcrew.billing.BillingService;
 import com.atcrew.common.response.CursorPage;
+import com.atcrew.media.MediaConstraints;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaQualityTier;
 import com.atcrew.media.MediaService;
@@ -84,7 +85,7 @@ class ArtworkServiceImpl implements ArtworkService {
     }
 
     @Override
-    public List<PresignedUrlInfo> generatePresignedUrls(int count, List<String> contentTypes) {
+    public List<PresignedUrlInfo> generatePresignedUrls(int count, List<String> contentTypes, List<Long> fileSizes) {
         // 발급 자체는 media에 위임하지만(docs/design/media-module-design.md §9.1-3), 입력 검증은 여기 남긴다 —
         // media는 IllegalArgumentException을 던지므로 그대로 흘리면 기존 400 ARTWORK 에러코드가 500으로 바뀐다.
         if (count < 1 || count > 30) {
@@ -98,7 +99,19 @@ class ArtworkServiceImpl implements ArtworkService {
                 throw new ArtworkException(ArtworkErrorCode.INVALID_CONTENT_TYPE, ct);
             }
         }
-        return mediaService.generatePresignedUrls(count, contentTypes).stream()
+        // 크기는 클라이언트가 보낼 때만 검사한다 — 보내지 않는 구버전 클라이언트도 계속 발급받되,
+        // 상한 초과분은 Worker가 변환 직전 실측으로 걸러 FAILED가 된다.
+        if (fileSizes != null) {
+            if (fileSizes.size() != count) {
+                throw new ArtworkException(ArtworkErrorCode.INVALID_IMAGE_COUNT, "count와 fileSizes 수가 일치해야 합니다");
+            }
+            for (Long size : fileSizes) {
+                if (size != null && size > MediaConstraints.MAX_ORIGINAL_BYTES) {
+                    throw new ArtworkException(ArtworkErrorCode.IMAGE_TOO_LARGE, size + "바이트");
+                }
+            }
+        }
+        return mediaService.generatePresignedUrls(count, contentTypes, fileSizes).stream()
                 .map(info -> new PresignedUrlInfo(info.key(), info.uploadUrl()))
                 .toList();
     }
@@ -595,7 +608,10 @@ class ArtworkServiceImpl implements ArtworkService {
         }
         // 보유 작품 행에 락을 걸어 개수를 센다 — 락 없는 count만으로는 동시 요청이 같은 개수를 보고
         // 둘 다 통과해 제한을 넘길 수 있다.
-        long owned = artworkRepository.findByAuthorIdAndStatusNotForUpdate(memberId, ArtworkStatus.DELETED).size();
+        // FAILED는 이미지가 한 장도 안 남아 공개할 수 없는 작품이라 한도에서 뺀다 — 넣어두면 변환 실패
+        // 때문에 재업로드가 막혀 사용자가 스스로 빠져나올 수 없다. PROCESSING은 성공할 수 있으므로 센다.
+        long owned = artworkRepository.findByAuthorIdAndStatusNotInForUpdate(
+                memberId, List.of(ArtworkStatus.DELETED, ArtworkStatus.FAILED)).size();
         if (owned + increment > STARTER_ARTWORK_LIMIT) {
             throw new ArtworkException(ArtworkErrorCode.STARTER_ARTWORK_LIMIT_EXCEEDED,
                     "memberId=" + memberId + ", owned=" + owned + ", increment=" + increment);

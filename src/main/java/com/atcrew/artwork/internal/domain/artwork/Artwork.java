@@ -431,11 +431,20 @@ public class Artwork implements Persistable<String> {
                         img.markFailed();
                     }
                 });
+        // 휴지통 작품의 상태는 콜백으로 덮어쓰지 않는다 — 업로드 직후 PROCESSING 상태에서 삭제하면
+        // Worker 콜백이 그 뒤에 도착하는데, 그대로 두면 사용자가 버린 작품이 휴지통에서 사라지고
+        // 되살아난다. 이미지 변환 결과는 위에서 이미 반영했으므로 복구하면 그대로 쓸 수 있다.
+        if (status == ArtworkStatus.DELETED) {
+            return;
+        }
         // 처리 중인 이미지가 없고 하나라도 성공한 경우 READY로 전환 (부분 실패 허용)
         boolean noneProcessing = images.stream().noneMatch(ArtworkImage::isPending);
         boolean anyDone = images.stream().anyMatch(ArtworkImage::isDone);
         if (noneProcessing && anyDone) {
             this.status = ArtworkStatus.READY;
+        } else if (noneProcessing) {
+            // 전량 실패 — 재시도 스케줄러는 PENDING만 다루므로 여기서 끝내지 않으면 PROCESSING에 영원히 남는다.
+            this.status = ArtworkStatus.FAILED;
         }
     }
 
