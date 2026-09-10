@@ -608,7 +608,10 @@ class ArtworkServiceImpl implements ArtworkService {
         }
         // 보유 작품 행에 락을 걸어 개수를 센다 — 락 없는 count만으로는 동시 요청이 같은 개수를 보고
         // 둘 다 통과해 제한을 넘길 수 있다.
-        long owned = artworkRepository.findByAuthorIdAndStatusNotForUpdate(memberId, ArtworkStatus.DELETED).size();
+        // FAILED는 이미지가 한 장도 안 남아 공개할 수 없는 작품이라 한도에서 뺀다 — 넣어두면 변환 실패
+        // 때문에 재업로드가 막혀 사용자가 스스로 빠져나올 수 없다. PROCESSING은 성공할 수 있으므로 센다.
+        long owned = artworkRepository.findByAuthorIdAndStatusNotInForUpdate(
+                memberId, List.of(ArtworkStatus.DELETED, ArtworkStatus.FAILED)).size();
         if (owned + increment > STARTER_ARTWORK_LIMIT) {
             throw new ArtworkException(ArtworkErrorCode.STARTER_ARTWORK_LIMIT_EXCEEDED,
                     "memberId=" + memberId + ", owned=" + owned + ", increment=" + increment);

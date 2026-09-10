@@ -460,6 +460,28 @@ class ArtworkModuleTests {
                 .isEqualTo("STARTER_ARTWORK_LIMIT_EXCEEDED");
     }
 
+    // 변환 실패로 이미지가 한 장도 안 남은 작품이 한도를 차지하면, 실패 때문에 재업로드까지 막혀
+    // 사용자가 스스로 빠져나올 수 없다 — FAILED는 세지 않는다.
+    @Test
+    void 이미지가_전부_실패한_작품은_스타터_한도에_포함되지_않는다() {
+        String memberId = registerAuthor();
+        for (int i = 0; i < 3; i++) {
+            uploadMinimal(memberId, "raw/quota-ok-" + i + ".png");
+        }
+        ArtworkInfo failed = uploadMinimal(memberId, "raw/quota-failed.png");
+        processImage(failed.id(), "raw/quota-failed.png", MediaProcessingStatus.FAILED);
+        awaitCondition(() -> artworkService.getArtworkStatus(memberId, failed.id()) == ArtworkStatus.FAILED);
+
+        // 정상 3건 + 실패 1건이지만 한도(4)에 걸리지 않고 네 번째 정상 업로드가 통과한다.
+        ArtworkInfo fourth = uploadMinimal(memberId, "raw/quota-ok-3.png");
+        assertThat(fourth.id()).isNotNull();
+
+        assertThatThrownBy(() -> uploadMinimal(memberId, "raw/quota-over.png"))
+                .isInstanceOf(DomainException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("STARTER_ARTWORK_LIMIT_EXCEEDED");
+    }
+
     @Test
     void 프로_플랜은_작품_개수_제한이_없고_다운그레이드해도_기존_작품은_유지된다() {
         String memberId = registerAuthor();

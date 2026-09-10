@@ -12,6 +12,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -52,9 +53,9 @@ public interface ArtworkRepository extends JpaRepository<Artwork, String>, JpaSp
      * ({@code ArtworkServiceImpl.assertArtworkQuota} 전용).
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("SELECT a FROM Artwork a WHERE a.authorId = :authorId AND a.status <> :excludedStatus")
-    List<Artwork> findByAuthorIdAndStatusNotForUpdate(
-            @Param("authorId") String authorId, @Param("excludedStatus") ArtworkStatus excludedStatus);
+    @Query("SELECT a FROM Artwork a WHERE a.authorId = :authorId AND a.status NOT IN :excludedStatuses")
+    List<Artwork> findByAuthorIdAndStatusNotInForUpdate(
+            @Param("authorId") String authorId, @Param("excludedStatuses") Collection<ArtworkStatus> excludedStatuses);
 
     // 조회수 원자적 증가(이슈 #78) — 읽고-더하고-쓰는 방식은 동시 조회가 서로의 증가를 덮어쓴다.
     // 낙관적 락(@Version)을 쓰면 인기 작품일수록 충돌로 조회 자체가 실패하므로 벌크 UPDATE로 처리한다
