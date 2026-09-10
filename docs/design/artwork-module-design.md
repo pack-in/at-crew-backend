@@ -55,7 +55,7 @@ artwork/                          ← public API
     │   │   ├── Artwork.java
     │   │   ├── ArtworkImage.java      ← embedded
     │   │   ├── Material.java          ← embedded (소재)
-    │   │   ├── ArtworkStatus.java     ← PROCESSING / READY / DELETED
+    │   │   ├── ArtworkStatus.java     ← PROCESSING / READY / FAILED / DELETED
     │   │   ├── Visibility.java        ← PUBLIC / PRIVATE (+ LINK_ONLY deprecated)
     │   │   ├── ImageLayoutType.java   ← VERTICAL_SCROLL / HORIZONTAL_SWIPE
     │   │   ├── AgeRating.java         ← ALL / ADULT
@@ -125,7 +125,7 @@ public class Artwork {
     private List<Material> materials;
 
     // 상태
-    private ArtworkStatus status;            // PROCESSING / READY / DELETED
+    private ArtworkStatus status;            // PROCESSING / READY / FAILED / DELETED
     private Instant deletedAt;
 
     @CreatedDate
@@ -233,7 +233,7 @@ AgeRating      : ALL(전체) / ADULT(성인 R-18)
 Visibility     : PUBLIC(작품 피드 공개 ON) / PRIVATE(작품 피드 공개 OFF)
                  / LINK_ONLY(deprecated — 라이트 ETL 매핑용 레거시, 판정상 PRIVATE와 동일 취급)
 
-ArtworkStatus  : PROCESSING / READY / DELETED
+ArtworkStatus  : PROCESSING / READY / FAILED / DELETED
 ```
 
 ---
@@ -539,7 +539,8 @@ public void onMemberDeactivated(MemberDeactivatedEvent event) {
 ```
 [업로드 완료]
      ↓
-PROCESSING ──(모든 이미지 Worker 처리 완료)──▶ READY
+PROCESSING ──(모든 이미지 Worker 처리 완료, 하나라도 성공)──▶ READY
+     └────────(모든 이미지 Worker 처리 완료, 전부 실패)────▶ FAILED
                                                  ↓
                                            (삭제 요청)
                                                  ↓

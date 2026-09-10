@@ -6,6 +6,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import com.atcrew.billing.internal.persistence.SubscriptionRepository;
 import com.atcrew.common.exception.DomainException;
+import com.atcrew.media.MediaConstraints;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaProcessingStatus;
 import com.atcrew.media.internal.application.MediaCallbackService;
@@ -247,6 +248,46 @@ class ArtworkModuleTests {
                 .containsExactly(ImageProcessingStatus.DONE, ImageProcessingStatus.FAILED);
     }
 
+    // 전량 실패는 READY 조건("PENDING 없음 AND DONE 하나 이상")의 어느 분기에도 걸리지 않아 PROCESSING에
+    // 갇혔었다 — 재시도 스케줄러도 PENDING만 보므로 자력 복구가 불가능했다(2026-09-09 프로덕션 4건).
+    @Test
+    void 이미지가_전부_실패하면_FAILED로_전환된다() {
+        String memberId = registerAuthor();
+        ArtworkInfo uploaded = uploadMinimal(memberId, "raw/f1.png", "raw/f2.png");
+
+        processImage(uploaded.id(), "raw/f1.png", MediaProcessingStatus.FAILED);
+        processImage(uploaded.id(), "raw/f2.png", MediaProcessingStatus.FAILED);
+
+        awaitCondition(() -> artworkService.getArtworkStatus(memberId, uploaded.id()) == ArtworkStatus.FAILED);
+        // 실패해도 작성자 본인은 계속 열람할 수 있어야 한다 — 프론트가 재업로드를 안내하려면 상세가 필요하다.
+        ArtworkInfo found = artworkService.getArtwork(uploaded.id(), memberId);
+        assertThat(found.images()).extracting(ArtworkImageInfo::processingStatus)
+                .containsExactly(ImageProcessingStatus.FAILED, ImageProcessingStatus.FAILED);
+    }
+
+    @Test
+    void presign은_상한을_넘는_파일_크기를_거부한다() {
+        assertThatThrownBy(() -> artworkService.generatePresignedUrls(1, List.of("image/png"),
+                List.of(MediaConstraints.MAX_ORIGINAL_BYTES + 1)))
+                .isInstanceOf(DomainException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("IMAGE_TOO_LARGE");
+
+        // 상한 이하는 그대로 발급되고, fileSizes를 생략한 클라이언트도 계속 받아준다.
+        assertThat(artworkService.generatePresignedUrls(1, List.of("image/png"),
+                List.of(MediaConstraints.MAX_ORIGINAL_BYTES))).hasSize(1);
+        assertThat(artworkService.generatePresignedUrls(1, List.of("image/png"), null)).hasSize(1);
+    }
+
+    @Test
+    void presign은_count와_fileSizes_수가_다르면_거부한다() {
+        assertThatThrownBy(() -> artworkService.generatePresignedUrls(2, List.of("image/png", "image/png"),
+                List.of(1024L)))
+                .isInstanceOf(DomainException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("INVALID_IMAGE_COUNT");
+    }
+
     // 동시성 시맨틱 검증 (docs/design/mariadb-migration-design.md §7 리스크 3 — 스레드 2개 경합).
     // 같은 작품의 이미지 처리완료 이벤트가 동시에 도착하면 두 리스너 트랜잭션이 겹친다 —
     // ArtworkMediaEventListener가 부모 작품 행을 비관적 락으로 직렬화하지 않으면 서로의 갱신을
@@ -419,6 +460,28 @@ class ArtworkModuleTests {
                 .isEqualTo("STARTER_ARTWORK_LIMIT_EXCEEDED");
     }
 
+    // 변환 실패로 이미지가 한 장도 안 남은 작품이 한도를 차지하면, 실패 때문에 재업로드까지 막혀
+    // 사용자가 스스로 빠져나올 수 없다 — FAILED는 세지 않는다.
+    @Test
+    void 이미지가_전부_실패한_작품은_스타터_한도에_포함되지_않는다() {
+        String memberId = registerAuthor();
+        for (int i = 0; i < 3; i++) {
+            uploadMinimal(memberId, "raw/quota-ok-" + i + ".png");
+        }
+        ArtworkInfo failed = uploadMinimal(memberId, "raw/quota-failed.png");
+        processImage(failed.id(), "raw/quota-failed.png", MediaProcessingStatus.FAILED);
+        awaitCondition(() -> artworkService.getArtworkStatus(memberId, failed.id()) == ArtworkStatus.FAILED);
+
+        // 정상 3건 + 실패 1건이지만 한도(4)에 걸리지 않고 네 번째 정상 업로드가 통과한다.
+        ArtworkInfo fourth = uploadMinimal(memberId, "raw/quota-ok-3.png");
+        assertThat(fourth.id()).isNotNull();
+
+        assertThatThrownBy(() -> uploadMinimal(memberId, "raw/quota-over.png"))
+                .isInstanceOf(DomainException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("STARTER_ARTWORK_LIMIT_EXCEEDED");
+    }
+
     @Test
     void 프로_플랜은_작품_개수_제한이_없고_다운그레이드해도_기존_작품은_유지된다() {
         String memberId = registerAuthor();
@@ -538,13 +601,13 @@ class ArtworkModuleTests {
                 .mapToObj(i -> "image/png")
                 .toList();
 
-        List<PresignedUrlInfo> urls = artworkService.generatePresignedUrls(30, contentTypes30);
+        List<PresignedUrlInfo> urls = artworkService.generatePresignedUrls(30, contentTypes30, null);
 
         assertThat(urls).hasSize(30);
 
         List<String> contentTypes31 = new ArrayList<>(contentTypes30);
         contentTypes31.add("image/png");
-        assertThatThrownBy(() -> artworkService.generatePresignedUrls(31, contentTypes31))
+        assertThatThrownBy(() -> artworkService.generatePresignedUrls(31, contentTypes31, null))
                 .isInstanceOf(DomainException.class)
                 .extracting(e -> ((DomainException) e).getCode())
                 .isEqualTo("INVALID_IMAGE_COUNT");
