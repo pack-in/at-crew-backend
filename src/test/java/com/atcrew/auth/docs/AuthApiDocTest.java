@@ -178,12 +178,13 @@ class AuthApiDocTest extends RestDocsIntegrationSupport {
     }
 
     /**
-     * 비밀번호 변경 성공 시나리오 문서화.
-     * 회원가입으로 토큰을 얻은 뒤 현재 비밀번호를 확인받고 새 비밀번호로 교체한다.
-     * 요청에 실은 Refresh Token(현재 기기 세션)은 유지되고, 다른 기기의 Refresh Token은 폐기됨을 함께 검증한다(설정-R13).
+     * 비밀번호 변경 재인증(1단계)→확정(2단계) 성공 시나리오 문서화(이슈 #152).
+     * 회원가입으로 토큰을 얻은 뒤 현재 비밀번호를 확인받아 재인증 토큰을 받고, 그 토큰으로 새
+     * 비밀번호로 교체한다. 요청에 실은 Refresh Token(현재 기기 세션)은 유지되고, 다른 기기의
+     * Refresh Token은 폐기됨을 함께 검증한다(설정-R13).
      */
     @Test
-    void 비밀번호_변경_성공_문서화() throws Exception {
+    void 비밀번호_변경_재인증_및_확정_성공_문서화() throws Exception {
         String uniqueEmail = "doc-pwchange-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com";
         MvcResult registerResult = mockMvc.perform(post("/api/auth/email/register")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -201,23 +202,52 @@ class AuthApiDocTest extends RestDocsIntegrationSupport {
         String otherDeviceRefreshToken = "other-device-" + UUID.randomUUID();
         refreshTokenRepository.save(RefreshToken.of(memberId, otherDeviceRefreshToken, Instant.now().plusSeconds(3600)));
 
+        MvcResult verifyResult = mockMvc.perform(post("/api/auth/email/password-change/verify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .content(objectMapper.writeValueAsString(new PasswordChangeVerifyRequest("Secure1!"))))
+                .andExpect(status().isOk())
+                .andDo(document("auth/password-change-verify",
+                        preprocessRequest(prettyPrint()),
+                        preprocessResponse(prettyPrint()),
+                        requestFields(
+                                fieldWithPath("currentPassword").description("현재 비밀번호")
+                        ),
+                        relaxedResponseFields(
+                                fieldWithPath("code").description("응답 코드 (SUCCESS)"),
+                                fieldWithPath("data.reauthToken").description("2단계(비밀번호 변경 확정)에 사용할 재인증 토큰")
+                        )
+                ))
+                .andReturn();
+        String reauthToken = objectMapper.readTree(verifyResult.getResponse().getContentAsString())
+                .at("/data/reauthToken").asText();
+
         mockMvc.perform(post("/api/auth/email/password-change")
                         .contentType(MediaType.APPLICATION_JSON)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                         .content(objectMapper.writeValueAsString(
-                                new ChangePasswordRequest("Secure1!", "Changed1!", "Changed1!", currentRefreshToken))))
+                                new ChangePasswordRequest(reauthToken, "Changed1!", "Changed1!", currentRefreshToken))))
                 .andExpect(status().isNoContent())
                 .andDo(document("auth/password-change",
                         preprocessRequest(prettyPrint()),
                         preprocessResponse(prettyPrint()),
                         requestFields(
-                                fieldWithPath("currentPassword").description("현재 비밀번호"),
+                                fieldWithPath("reauthToken").description("1단계(재인증)에서 받은 재인증 토큰"),
                                 fieldWithPath("newPassword").description("새 비밀번호 (영문·숫자·특수문자 포함 8자 이상)"),
                                 fieldWithPath("newPasswordConfirm").description("새 비밀번호 확인"),
                                 fieldWithPath("refreshToken").description(
                                         "현재 세션의 Refresh Token (유지되며, 같은 회원의 다른 Refresh Token은 모두 폐기됩니다)")
                         )
                 ));
+
+        // 재인증 토큰은 1회용 — 같은 토큰으로 재시도하면 401
+        mockMvc.perform(post("/api/auth/email/password-change")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .content(objectMapper.writeValueAsString(
+                                new ChangePasswordRequest(reauthToken, "Changed2!", "Changed2!", currentRefreshToken))))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("INVALID_PASSWORD_REAUTH_TOKEN"));
 
         // 다른 기기의 Refresh Token은 폐기되어 갱신할 수 없다
         mockMvc.perform(post("/api/auth/refresh")
@@ -244,20 +274,36 @@ class AuthApiDocTest extends RestDocsIntegrationSupport {
     }
 
     /**
-     * 현재 비밀번호가 틀리면 400으로 거부되는지 확인한다.
+     * 현재 비밀번호가 틀리면 재인증(1단계)에서 400으로 거부되는지 확인한다.
      */
     @Test
-    void 비밀번호_변경_현재_비밀번호_불일치_400() throws Exception {
+    void 비밀번호_변경_재인증_현재_비밀번호_불일치_400() throws Exception {
         String uniqueEmail = "doc-pwwrong-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com";
         String accessToken = registerAndGetAccessToken(uniqueEmail, "Secure1!", "비번오답유저");
+
+        mockMvc.perform(post("/api/auth/email/password-change/verify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .content(objectMapper.writeValueAsString(new PasswordChangeVerifyRequest("WrongPass1!"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("CURRENT_PASSWORD_MISMATCH"));
+    }
+
+    /**
+     * 재인증 없이(유효하지 않은 토큰으로) 확정을 시도하면 401을 반환하는지 확인한다.
+     */
+    @Test
+    void 비밀번호_변경_확정_유효하지않은_재인증토큰_401() throws Exception {
+        String uniqueEmail = "doc-pwchange-noreauth-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com";
+        String accessToken = registerAndGetAccessToken(uniqueEmail, "Secure1!", "재인증없음유저");
 
         mockMvc.perform(post("/api/auth/email/password-change")
                         .contentType(MediaType.APPLICATION_JSON)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                         .content(objectMapper.writeValueAsString(
-                                new ChangePasswordRequest("WrongPass1!", "Changed1!", "Changed1!", "dummy-refresh-token"))))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("CURRENT_PASSWORD_MISMATCH"));
+                                new ChangePasswordRequest("no-such-reauth-token", "Changed1!", "Changed1!", "dummy-refresh-token"))))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("INVALID_PASSWORD_REAUTH_TOKEN"));
     }
 
     /**
@@ -527,8 +573,11 @@ class AuthApiDocTest extends RestDocsIntegrationSupport {
     /** 로그아웃 요청 바디 */
     record LogoutRequest(String refreshToken) {}
 
-    /** 비밀번호 변경 요청 바디 */
-    record ChangePasswordRequest(String currentPassword, String newPassword, String newPasswordConfirm, String refreshToken) {}
+    /** 비밀번호 변경 재인증(1단계) 요청 바디 */
+    record PasswordChangeVerifyRequest(String currentPassword) {}
+
+    /** 비밀번호 변경 확정(2단계) 요청 바디 */
+    record ChangePasswordRequest(String reauthToken, String newPassword, String newPasswordConfirm, String refreshToken) {}
 
     /** 비밀번호 재설정 요청 바디 */
     record PasswordResetRequestRequest(String email) {}

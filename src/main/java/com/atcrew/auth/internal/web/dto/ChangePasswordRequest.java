@@ -6,9 +6,9 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 
 public record ChangePasswordRequest(
-        @NotBlank(message = "현재 비밀번호를 입력해주세요")
-        @Schema(format = "password")
-        String currentPassword,
+        // verify 단계(PasswordChangeVerifyRequest)에서 발급받은 재인증 토큰 — 이슈 #152.
+        @NotBlank(message = "재인증이 필요해요")
+        String reauthToken,
 
         // 정책은 이메일 회원가입(EmailRegisterRequest)과 동일하게 유지한다.
         @NotBlank(message = "새 비밀번호를 입력해주세요")

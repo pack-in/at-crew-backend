@@ -11,6 +11,8 @@ import com.atcrew.auth.internal.web.dto.EmailRegisterRequest;
 import com.atcrew.auth.internal.web.dto.GoogleLoginRequest;
 import com.atcrew.auth.internal.web.dto.GoogleRegisterRequest;
 import com.atcrew.auth.internal.web.dto.LogoutRequest;
+import com.atcrew.auth.internal.web.dto.PasswordChangeVerifyRequest;
+import com.atcrew.auth.internal.web.dto.PasswordChangeVerifyResponse;
 import com.atcrew.auth.internal.web.dto.PasswordResetConfirmRequest;
 import com.atcrew.auth.internal.web.dto.PasswordResetRequestRequest;
 import com.atcrew.auth.internal.web.dto.PasswordResetVerifyRequest;
@@ -75,21 +77,38 @@ class AuthController {
         return com.atcrew.common.response.ApiResponse.success(authService.registerWithEmail(command));
     }
 
-    @Operation(summary = "비밀번호 변경",
-            description = "현재 비밀번호를 확인한 뒤 새 비밀번호로 변경합니다. 이메일 가입 계정 전용이며, "
+    @Operation(summary = "비밀번호 변경 재인증 (1단계)",
+            description = "현재 비밀번호를 확인합니다. 이메일 가입 계정 전용이며, 성공 시 2단계(비밀번호 변경 확정)에서 "
+                    + "쓸 재인증 토큰을 반환합니다. 재인증 토큰의 유효 시간이 지나면 1단계부터 다시 진행해야 합니다.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "재인증 성공 — 재인증 토큰 반환"),
+            @ApiResponse(responseCode = "400", description = "입력 형식 오류·현재 비밀번호 불일치·소셜 로그인 계정"),
+            @ApiResponse(responseCode = "401", description = "인증 필요"),
+            @ApiResponse(responseCode = "428", description = "비밀번호 재설정 필요 (마이그레이션 회원)"),
+            @ApiResponse(responseCode = "429", description = "재인증 시도 횟수 초과")
+    })
+    @PostMapping("/email/password-change/verify")
+    public com.atcrew.common.response.ApiResponse<PasswordChangeVerifyResponse> verifyCurrentPasswordForChange(
+            @RequestBody @Valid PasswordChangeVerifyRequest request) {
+        String reauthToken = authService.verifyCurrentPasswordForChange(
+                securityUtils.getCurrentMemberId(), request.currentPassword());
+        return com.atcrew.common.response.ApiResponse.success(new PasswordChangeVerifyResponse(reauthToken));
+    }
+
+    @Operation(summary = "비밀번호 변경 확정 (2단계)",
+            description = "1단계에서 받은 재인증 토큰으로 새 비밀번호를 확정합니다. 재인증 토큰은 1회용이며, "
                     + "요청에 실린 Refresh Token(현재 기기 세션)은 유지되고, 같은 회원의 다른 Refresh Token은 "
                     + "모두 폐기됩니다(다른 기기는 로그아웃).")
     @ApiResponses({
             @ApiResponse(responseCode = "204", description = "변경 성공"),
-            @ApiResponse(responseCode = "400", description = "입력 형식 오류·현재 비밀번호 불일치·소셜 로그인 계정"),
-            @ApiResponse(responseCode = "401", description = "인증 필요"),
-            @ApiResponse(responseCode = "428", description = "비밀번호 재설정 필요 (마이그레이션 회원)")
+            @ApiResponse(responseCode = "400", description = "입력 형식 오류"),
+            @ApiResponse(responseCode = "401", description = "인증 필요 또는 재인증 토큰이 유효하지 않거나 만료됨")
     })
     @PostMapping("/email/password-change")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void changePassword(@RequestBody @Valid ChangePasswordRequest request) {
         authService.changePassword(securityUtils.getCurrentMemberId(),
-                request.currentPassword(), request.newPassword(), request.refreshToken());
+                request.reauthToken(), request.newPassword(), request.refreshToken());
     }
 
     @Operation(summary = "비밀번호 재설정 요청",

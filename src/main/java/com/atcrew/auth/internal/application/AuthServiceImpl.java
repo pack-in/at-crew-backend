@@ -8,9 +8,11 @@ import com.atcrew.auth.GoogleRegisterCommand;
 import com.atcrew.auth.internal.domain.RefreshToken;
 import com.atcrew.auth.internal.exception.AuthErrorCode;
 import com.atcrew.auth.internal.exception.AuthException;
+import com.atcrew.auth.internal.domain.PasswordReauthToken;
 import com.atcrew.auth.internal.domain.PasswordResetToken;
 import com.atcrew.auth.internal.infra.firebase.FirebaseUser;
 import com.atcrew.auth.internal.infra.firebase.FirebaseVerifier;
+import com.atcrew.auth.internal.persistence.PasswordReauthTokenRepository;
 import com.atcrew.auth.internal.persistence.PasswordResetTokenRepository;
 import com.atcrew.auth.internal.persistence.RefreshTokenRepository;
 import com.atcrew.common.exception.DomainException;
@@ -54,6 +56,9 @@ class AuthServiceImpl implements AuthService {
     private static final int RESET_CODE_TTL_SECONDS = 600; // 10분 — Figma 이메일 문구 확정값
     // verify 성공 후 confirm까지 허용하는 세션 창 — Figma에 구체값이 없어 임시로 5분(미확정 항목).
     private static final int RESET_SESSION_TTL_SECONDS = 300;
+    // 비밀번호 변경(설정 화면) 1단계→2단계 재인증 창 — 마찬가지로 Figma에 구체값이 없어 임시로 5분
+    // (이슈 #152 미확정 항목, 재설정 세션과 같은 값을 채택했다).
+    private static final int PASSWORD_REAUTH_TTL_SECONDS = 300;
 
     private final FirebaseVerifier firebaseVerifier;
     private final MemberService memberService;
@@ -62,6 +67,8 @@ class AuthServiceImpl implements AuthService {
     private final LoginAttemptLimiter loginAttemptLimiter;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final PasswordResetAttemptLimiter passwordResetAttemptLimiter;
+    private final PasswordReauthTokenRepository passwordReauthTokenRepository;
+    private final PasswordChangeAttemptLimiter passwordChangeAttemptLimiter;
     private final MailSender mailSender;
     private final String resetCodePepper;
 
@@ -70,6 +77,8 @@ class AuthServiceImpl implements AuthService {
                     LoginAttemptLimiter loginAttemptLimiter,
                     PasswordResetTokenRepository passwordResetTokenRepository,
                     PasswordResetAttemptLimiter passwordResetAttemptLimiter,
+                    PasswordReauthTokenRepository passwordReauthTokenRepository,
+                    PasswordChangeAttemptLimiter passwordChangeAttemptLimiter,
                     MailSender mailSender,
                     @Value("${auth.password-reset.code-pepper}") String resetCodePepper) {
         this.firebaseVerifier = firebaseVerifier;
@@ -79,6 +88,8 @@ class AuthServiceImpl implements AuthService {
         this.loginAttemptLimiter = loginAttemptLimiter;
         this.passwordResetTokenRepository = passwordResetTokenRepository;
         this.passwordResetAttemptLimiter = passwordResetAttemptLimiter;
+        this.passwordReauthTokenRepository = passwordReauthTokenRepository;
+        this.passwordChangeAttemptLimiter = passwordChangeAttemptLimiter;
         this.mailSender = mailSender;
         this.resetCodePepper = resetCodePepper;
     }
@@ -232,12 +243,18 @@ class AuthServiceImpl implements AuthService {
         }
 
         refreshTokenRepository.deleteByIdReturningCount(stored.getId());
+        // 로그아웃 시 미사용 비밀번호 변경 재인증 토큰도 함께 폐기한다(이슈 #152 — 즉시 폐기가
+        // 서버 저장 방식을 택한 이유였다. 무상태 JWT였다면 이 폐기가 불가능했다).
+        passwordReauthTokenRepository.deleteAllByMemberId(memberId);
         log.info("로그아웃: memberId={}", memberId);
     }
 
     @Override
     @Transactional
-    public void changePassword(String memberId, String currentPassword, String newPassword, String currentRefreshToken) {
+    public String verifyCurrentPasswordForChange(String memberId, String currentPassword) {
+        // 코드 검증 전에 시도 횟수부터 차단 — BCrypt 연산 전에 무차별 대입 자체를 막는다.
+        passwordChangeAttemptLimiter.checkBlocked(memberId);
+
         MemberInfo member = memberService.findById(memberId);
 
         // GOOGLE 계정은 비밀번호 자체가 없어 변경 대상이 아니다.
@@ -251,8 +268,33 @@ class AuthServiceImpl implements AuthService {
             throw new AuthException(AuthErrorCode.PASSWORD_RESET_REQUIRED);
         }
         if (!verification.isMatched()) {
-            log.warn("비밀번호 변경 실패(현재 비밀번호 불일치): memberId={}", memberId);
+            passwordChangeAttemptLimiter.recordFailure(memberId);
+            log.warn("비밀번호 변경 재인증 실패(현재 비밀번호 불일치): memberId={}", memberId);
             throw new AuthException(AuthErrorCode.CURRENT_PASSWORD_MISMATCH);
+        }
+
+        // 재요청 시 이전 재인증 토큰은 무효화 — 회원당 하나만 살아있게 한다(§ PasswordResetToken과 동일 정책).
+        passwordReauthTokenRepository.deleteAllByMemberId(memberId);
+        String reauthToken = generateToken();
+        passwordReauthTokenRepository.save(PasswordReauthToken.of(
+                memberId, sha256Hex(reauthToken), Instant.now().plusSeconds(PASSWORD_REAUTH_TTL_SECONDS)));
+
+        log.info("비밀번호 변경 재인증 성공: memberId={}", memberId);
+        return reauthToken;
+    }
+
+    @Override
+    @Transactional
+    public void changePassword(String memberId, String reauthToken, String newPassword, String currentRefreshToken) {
+        String tokenHash = sha256Hex(reauthToken);
+        PasswordReauthToken stored = passwordReauthTokenRepository
+                .findByMemberIdAndTokenHashAndExpiresAtAfter(memberId, tokenHash, Instant.now())
+                .orElse(null);
+
+        // consumeRefreshToken과 동일한 findAndDelete 패턴 — 영향 행 수로 승자를 가려 동시 재사용을 막는다.
+        if (stored == null || passwordReauthTokenRepository.deleteByIdReturningCount(stored.getId()) == 0) {
+            log.warn("비밀번호 변경 재인증 토큰 미존재·만료 또는 재사용 시도: memberId={}", memberId);
+            throw new AuthException(AuthErrorCode.INVALID_PASSWORD_REAUTH_TOKEN);
         }
 
         memberService.changePassword(memberId, newPassword);

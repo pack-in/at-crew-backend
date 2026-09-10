@@ -16,11 +16,16 @@ public enum AuthErrorCode {
     FIREBASE_NOT_CONFIGURED(HttpStatus.SERVICE_UNAVAILABLE, "Firebase가 설정되지 않았습니다"),
     UNSUPPORTED_AUTH_PROVIDER(HttpStatus.BAD_REQUEST, "지원하지 않는 로그인 방식입니다"),
 
-    // 비밀번호 변경 (설정 화면)
+    // 비밀번호 변경 (설정 화면, 이슈 #152로 2단계 재인증 도입)
     // 이미 인증된 요청이므로 401이 아닌 400을 쓴다 — 401은 클라이언트 공통 인터셉터에서
     // 토큰 만료로 해석돼 로그아웃 처리될 수 있어 "현재 비밀번호 오답"과 의미가 어긋난다.
     CURRENT_PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "현재 비밀번호가 일치하지 않아요"),
     PASSWORD_CHANGE_NOT_SUPPORTED(HttpStatus.BAD_REQUEST, "소셜 로그인 계정은 비밀번호를 변경할 수 없어요"),
+    // 2단계(새 비밀번호 입력)의 재인증 토큰 오류 — Figma "시간이 초과되었어요. 현재 비밀번호를 다시
+    // 입력해주세요" 문구에 대응. 401을 쓰지만 액세스 토큰과 무관한 별도 토큰이라 CURRENT_PASSWORD_MISMATCH와
+    // 마찬가지로 클라이언트 공통 401 인터셉터의 "로그아웃 처리" 오작동 여지가 있다 — FE 연동 시 이 코드만은
+    // 예외 처리하도록 별도 안내가 필요하다(§ 이슈 #152 인계 사항).
+    INVALID_PASSWORD_REAUTH_TOKEN(HttpStatus.UNAUTHORIZED, "시간이 초과되었어요. 현재 비밀번호를 다시 입력해주세요"),
 
     // 토큰
     INVALID_REFRESH_TOKEN(HttpStatus.UNAUTHORIZED, "Refresh Token이 유효하지 않거나 만료되었습니다"),

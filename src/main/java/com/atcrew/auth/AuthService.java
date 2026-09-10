@@ -20,11 +20,18 @@ public interface AuthService {
     void logout(String memberId, String refreshToken);
 
     /**
-     * 비밀번호 변경 — EMAIL 가입 계정 전용. 현재 비밀번호를 확인한 뒤 새 비밀번호로 교체하고,
-     * currentRefreshToken(현재 기기 세션)을 제외한 해당 회원의 나머지 Refresh Token을 모두 폐기한다
-     * (설정-R13 — 현재 기기는 유지, 다른 기기만 로그아웃).
+     * 비밀번호 변경 1단계(재인증, 이슈 #152) — EMAIL 가입 계정 전용. 현재 비밀번호를 확인하고, 성공 시
+     * 2단계(changePassword)에서 쓸 짧은 수명의 재인증 토큰을 발급한다. 시도 횟수는 memberId 기준으로
+     * 제한된다.
      */
-    void changePassword(String memberId, String currentPassword, String newPassword, String currentRefreshToken);
+    String verifyCurrentPasswordForChange(String memberId, String currentPassword);
+
+    /**
+     * 비밀번호 변경 2단계(확정, 이슈 #152) — 1단계에서 발급된 재인증 토큰을 소비하고 새 비밀번호로
+     * 교체한다. reauthToken은 단발성이며, 성공 시 currentRefreshToken(현재 기기 세션)을 제외한 해당
+     * 회원의 나머지 Refresh Token을 모두 폐기한다(설정-R13 — 현재 기기는 유지, 다른 기기만 로그아웃).
+     */
+    void changePassword(String memberId, String reauthToken, String newPassword, String currentRefreshToken);
 
     /**
      * 비밀번호 재설정 요청(§7, 이슈 #151) — 가입 여부·계정 상태와 무관하게 항상 성공적으로 끝난다
