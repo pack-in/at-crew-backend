@@ -16,7 +16,9 @@ public enum RecruitErrorCode {
     INVALID_STATUS_TRANSITION(HttpStatus.BAD_REQUEST, "허용되지 않는 상태 전이입니다"),
     INVALID_CURSOR(HttpStatus.BAD_REQUEST, "커서 형식이 올바르지 않습니다"),
     INVALID_AMOUNT_RANGE(HttpStatus.BAD_REQUEST, "최소 금액은 최대 금액보다 클 수 없습니다"),
-    INVALID_ACTIVITY_REGION(HttpStatus.BAD_REQUEST, "온라인 활동인 경우 활동 지역을 입력할 수 없습니다");
+    INVALID_ACTIVITY_REGION(HttpStatus.BAD_REQUEST, "온라인 활동인 경우 활동 지역을 입력할 수 없습니다"),
+    // 상한값은 media 모듈이 Worker와 공유한다(MediaConstraints.MAX_ORIGINAL_BYTES) — 문구의 10MB는 그 값이다
+    IMAGE_TOO_LARGE(HttpStatus.BAD_REQUEST, "이미지 한 장의 용량은 10MB를 넘을 수 없습니다");
 
     private final HttpStatus status;
     private final String message;

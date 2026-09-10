@@ -6,6 +6,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import com.atcrew.billing.internal.persistence.SubscriptionRepository;
 import com.atcrew.common.exception.DomainException;
+import com.atcrew.media.MediaConstraints;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaProcessingStatus;
 import com.atcrew.media.internal.application.MediaCallbackService;
@@ -245,6 +246,46 @@ class ArtworkModuleTests {
         ArtworkInfo found = artworkService.getArtwork(uploaded.id(), memberId);
         assertThat(found.images()).extracting(ArtworkImageInfo::processingStatus)
                 .containsExactly(ImageProcessingStatus.DONE, ImageProcessingStatus.FAILED);
+    }
+
+    // 전량 실패는 READY 조건("PENDING 없음 AND DONE 하나 이상")의 어느 분기에도 걸리지 않아 PROCESSING에
+    // 갇혔었다 — 재시도 스케줄러도 PENDING만 보므로 자력 복구가 불가능했다(2026-09-09 프로덕션 4건).
+    @Test
+    void 이미지가_전부_실패하면_FAILED로_전환된다() {
+        String memberId = registerAuthor();
+        ArtworkInfo uploaded = uploadMinimal(memberId, "raw/f1.png", "raw/f2.png");
+
+        processImage(uploaded.id(), "raw/f1.png", MediaProcessingStatus.FAILED);
+        processImage(uploaded.id(), "raw/f2.png", MediaProcessingStatus.FAILED);
+
+        awaitCondition(() -> artworkService.getArtworkStatus(memberId, uploaded.id()) == ArtworkStatus.FAILED);
+        // 실패해도 작성자 본인은 계속 열람할 수 있어야 한다 — 프론트가 재업로드를 안내하려면 상세가 필요하다.
+        ArtworkInfo found = artworkService.getArtwork(uploaded.id(), memberId);
+        assertThat(found.images()).extracting(ArtworkImageInfo::processingStatus)
+                .containsExactly(ImageProcessingStatus.FAILED, ImageProcessingStatus.FAILED);
+    }
+
+    @Test
+    void presign은_상한을_넘는_파일_크기를_거부한다() {
+        assertThatThrownBy(() -> artworkService.generatePresignedUrls(1, List.of("image/png"),
+                List.of(MediaConstraints.MAX_ORIGINAL_BYTES + 1)))
+                .isInstanceOf(DomainException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("IMAGE_TOO_LARGE");
+
+        // 상한 이하는 그대로 발급되고, fileSizes를 생략한 클라이언트도 계속 받아준다.
+        assertThat(artworkService.generatePresignedUrls(1, List.of("image/png"),
+                List.of(MediaConstraints.MAX_ORIGINAL_BYTES))).hasSize(1);
+        assertThat(artworkService.generatePresignedUrls(1, List.of("image/png"), null)).hasSize(1);
+    }
+
+    @Test
+    void presign은_count와_fileSizes_수가_다르면_거부한다() {
+        assertThatThrownBy(() -> artworkService.generatePresignedUrls(2, List.of("image/png", "image/png"),
+                List.of(1024L)))
+                .isInstanceOf(DomainException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("INVALID_IMAGE_COUNT");
     }
 
     // 동시성 시맨틱 검증 (docs/design/mariadb-migration-design.md §7 리스크 3 — 스레드 2개 경합).
@@ -538,13 +579,13 @@ class ArtworkModuleTests {
                 .mapToObj(i -> "image/png")
                 .toList();
 
-        List<PresignedUrlInfo> urls = artworkService.generatePresignedUrls(30, contentTypes30);
+        List<PresignedUrlInfo> urls = artworkService.generatePresignedUrls(30, contentTypes30, null);
 
         assertThat(urls).hasSize(30);
 
         List<String> contentTypes31 = new ArrayList<>(contentTypes30);
         contentTypes31.add("image/png");
-        assertThatThrownBy(() -> artworkService.generatePresignedUrls(31, contentTypes31))
+        assertThatThrownBy(() -> artworkService.generatePresignedUrls(31, contentTypes31, null))
                 .isInstanceOf(DomainException.class)
                 .extracting(e -> ((DomainException) e).getCode())
                 .isEqualTo("INVALID_IMAGE_COUNT");

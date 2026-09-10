@@ -122,8 +122,11 @@ public enum MediaProcessingStatus { PENDING, DONE, FAILED }
 - **등급은 업로드 시점 플랜으로 확정되고 변환은 1회뿐이다.** 프로 → 스타터 다운그레이드로 기존 이미지
   화질이 내려가지 않고(요금제-R01), 스타터 → 프로 전환으로 기존 이미지가 선명해지지도 않는다.
   재시도(`ImageRetryScheduler`)가 최초와 같은 결과를 내도록 `media_assets.quality_tier`에 함께 보관한다.
-- 업로드 원본 용량 상한은 **5MB**다. Presigned PUT은 서명에 Content-Length 조건을 넣을 수 없어 크기를
-  강제하지 못하므로, Worker가 변환 직전 R2 객체 크기를 검사해 초과분을 FAILED 콜백으로 돌려보낸다.
+- 업로드 원본 용량 상한은 **10MB**(`MediaConstraints.MAX_ORIGINAL_BYTES`)다. Presigned PUT은 서명에
+  Content-Length 조건을 넣을 수 없어 크기를 강제하지 못하므로 검사는 두 겹이다 — presign 발급 시
+  클라이언트가 보낸 `fileSizes`로 미리 거르고(선택 입력이라 생략 가능), Worker가 변환 직전 R2 객체
+  크기를 실측해 초과분을 FAILED 콜백으로 돌려보낸다. 신고값은 믿을 수 없으므로 Worker 검사가 최종
+  방어선이고, 두 값은 반드시 같아야 한다.
 
 ---
 
@@ -182,7 +185,10 @@ public record MediaAssetProcessedEvent(MediaOwnerType ownerType, String ownerId,
   `PROCESSING → READY`로 전환하는 조건은 **"모든 이미지 DONE"이 아니라** `Artwork.markImageProcessed`의
   기존 규칙 그대로 **"PENDING이 하나도 없고(재시도 여지 없음) DONE이 하나 이상"** — 부분 실패를 허용한다
   (QA에서 발견: 최초 초안이 "모든 이미지 DONE"으로 잘못 적어, 그대로 구현했다면 이미지 하나라도 FAILED면
-  영원히 READY로 못 넘어가는 회귀가 생겼을 것). 이 로직은 `Artwork` 애그리게잇에 그대로 남고, 리스너는
+  영원히 READY로 못 넘어가는 회귀가 생겼을 것). **PENDING이 없는데 DONE도 없으면(전량 실패) `FAILED`로
+  끝낸다** — 이 분기가 없으면 어느 조건에도 걸리지 않아 PROCESSING에 영구 고착되고, 재시도 스케줄러는
+  PENDING만 다루므로 자력 복구도 불가능하다(2026-09-09 프로덕션 4건, 원인은 용량 상한 초과).
+  이 로직은 `Artwork` 애그리게잇에 그대로 남고, 리스너는
   이벤트를 받아 `Artwork`에 위임만 한다 — 부분 실패 허용 여부 판단 자체는 도메인 로직이라 media로 옮기지
   않는다.
 - **recruit 소비**(신규): 자신의 `job_posting_images`/`team_posting_images`/`job_seeking_post_images` 행을

@@ -21,6 +21,8 @@ public enum ArtworkErrorCode {
     INVALID_LANGUAGE_COUNT(HttpStatus.BAD_REQUEST, "게시물 언어는 1개 이상 4개 이하로 선택해야 합니다"),
     INVALID_IMAGE_COUNT(HttpStatus.BAD_REQUEST, "이미지 수는 1개 이상 30개 이하여야 합니다"),
     INVALID_CONTENT_TYPE(HttpStatus.BAD_REQUEST, "허용되지 않는 이미지 형식입니다. jpeg, png, webp만 가능합니다"),
+    // 상한값은 media 모듈이 Worker와 공유한다(MediaConstraints.MAX_ORIGINAL_BYTES) — 문구의 10MB는 그 값이다
+    IMAGE_TOO_LARGE(HttpStatus.BAD_REQUEST, "이미지 한 장의 용량은 10MB를 넘을 수 없습니다"),
     INVALID_REPRESENTATIVE_INDEX(HttpStatus.BAD_REQUEST, "대표 이미지 인덱스가 유효하지 않습니다"),
     INVALID_CUSTOM_TAG(HttpStatus.BAD_REQUEST, "직접입력 값은 최대 10자까지 입력할 수 있습니다"),
     BOOKMARK_FOLDER_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 북마크 폴더입니다"),

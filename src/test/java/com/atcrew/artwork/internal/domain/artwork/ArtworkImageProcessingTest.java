@@ -19,6 +19,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>전환 조건은 "모든 이미지 DONE"이 아니라 "PENDING이 하나도 없고 DONE이 하나 이상"이다 —
  * 전자로 바꾸면 이미지 하나만 FAILED여도 작품이 영원히 READY로 넘어가지 못한다.
+ *
+ * <p>PENDING이 없는데 DONE도 없는 경우(전량 실패)는 READY가 아니라 FAILED로 끝낸다 — 이 분기가 없으면
+ * 작품이 PROCESSING에 영구 고착되고, 재시도 스케줄러는 PENDING만 다루므로 자력 복구도 불가능하다.
  */
 class ArtworkImageProcessingTest {
 
@@ -59,13 +62,13 @@ class ArtworkImageProcessingTest {
     }
 
     @Test
-    void 모든_이미지가_실패하면_READY로_전환되지_않는다() {
+    void 모든_이미지가_실패하면_FAILED로_전환된다() {
         Artwork artwork = artworkWith("raw/1.png", "raw/2.png");
 
         artwork.markImageProcessed("raw/1.png", null, null, null, false);
         artwork.markImageProcessed("raw/2.png", null, null, null, false);
 
-        assertThat(artwork.getStatus()).isEqualTo(ArtworkStatus.PROCESSING);
+        assertThat(artwork.getStatus()).isEqualTo(ArtworkStatus.FAILED);
     }
 
     @Test

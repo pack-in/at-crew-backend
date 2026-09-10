@@ -436,6 +436,9 @@ public class Artwork implements Persistable<String> {
         boolean anyDone = images.stream().anyMatch(ArtworkImage::isDone);
         if (noneProcessing && anyDone) {
             this.status = ArtworkStatus.READY;
+        } else if (noneProcessing) {
+            // 전량 실패 — 재시도 스케줄러는 PENDING만 다루므로 여기서 끝내지 않으면 PROCESSING에 영원히 남는다.
+            this.status = ArtworkStatus.FAILED;
         }
     }
 

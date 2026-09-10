@@ -15,9 +15,11 @@ const QUALITY_TIERS = {
 };
 const DEFAULT_TIER = "ORIGINAL";
 
-// 업로드 원본 용량 상한 5MB. Presigned PUT은 크기를 강제할 수 없어(서명에 Content-Length 조건이 없다)
+// 업로드 원본 용량 상한 10MB. Presigned PUT은 크기를 강제할 수 없어(서명에 Content-Length 조건이 없다)
 // 변환 직전 R2 객체 크기로 검사하고, 초과분은 FAILED 콜백으로 돌려보낸다.
-const MAX_ORIGINAL_BYTES = 5 * 1024 * 1024;
+// 서버도 presign 발급 시 같은 값으로 미리 거른다 — MediaConstraints.MAX_ORIGINAL_BYTES와 반드시 같아야 한다.
+// 여기는 클라이언트가 신고한 크기를 믿지 않는 최종 방어선이라, 서버 검증이 있어도 남겨둔다.
+const MAX_ORIGINAL_BYTES = 10 * 1024 * 1024;
 
 export default {
   async fetch(request, env, ctx) {
