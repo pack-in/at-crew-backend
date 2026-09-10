@@ -56,7 +56,7 @@ class AuthServiceImplTest {
     static final String MEMBER_ID = "member-001";
     static final String ACCESS_TOKEN = "access.jwt";
     static final String REFRESH_TOKEN = "refresh.jwt";
-    static final String FRONTEND_BASE_URL = "https://at-crew.com";
+    static final String RESET_CODE_PEPPER = "test-pepper";
 
     @BeforeEach
     void setUp() {
@@ -70,7 +70,7 @@ class AuthServiceImplTest {
         mailSender = mock(MailSender.class);
         authService = new AuthServiceImpl(firebaseVerifier, memberService, jwtProvider,
                 refreshTokenRepository, loginAttemptLimiter, passwordResetTokenRepository,
-                passwordResetAttemptLimiter, mailSender, FRONTEND_BASE_URL);
+                passwordResetAttemptLimiter, mailSender, RESET_CODE_PEPPER);
 
         when(jwtProvider.generateAccessToken(anyString(), anyString())).thenReturn(ACCESS_TOKEN);
         when(jwtProvider.generateRefreshToken(anyString())).thenReturn(REFRESH_TOKEN);
@@ -401,7 +401,7 @@ class AuthServiceImplTest {
         verify(passwordResetAttemptLimiter).recordAttempt(EMAIL);
         verify(passwordResetTokenRepository).deleteAllByMemberId(MEMBER_ID);
         verify(passwordResetTokenRepository).save(any());
-        verify(mailSender).send(eq(EMAIL), anyString(), contains(FRONTEND_BASE_URL + "/reset-password?token="));
+        verify(mailSender).send(eq(EMAIL), eq("비밀번호 재설정 코드"), anyString());
         // GOOGLE 계정 조회는 EMAIL 계정이 있으면 시도하지 않는다
         verify(memberService, never()).findActiveByLoginEmailAndProviderOrEmpty(EMAIL, AuthProvider.GOOGLE);
     }
@@ -446,7 +446,7 @@ class AuthServiceImplTest {
 
     @Test
     void 재설정_확정_성공_시_비밀번호변경_및_refresh토큰_전체폐기() {
-        PasswordResetToken stored = PasswordResetToken.of(MEMBER_ID, "hash", Instant.now().plusSeconds(3600));
+        PasswordResetToken stored = verifiedResetToken();
         when(passwordResetTokenRepository.findByTokenHashAndExpiresAtAfter(anyString(), any()))
                 .thenReturn(Optional.of(stored));
         when(passwordResetTokenRepository.deleteByIdReturningCount(stored.getId())).thenReturn(1);
@@ -471,9 +471,25 @@ class AuthServiceImplTest {
     }
 
     @Test
+    void 재설정_확정_검증되지_않은_코드_행이면_401() {
+        // verify를 거치지 않은 PENDING 행(코드 해시)을 confirm에 들이미는 경우 — 방어적으로 거른다.
+        PasswordResetToken stored = PasswordResetToken.of(MEMBER_ID, "hash", Instant.now().plusSeconds(600));
+        when(passwordResetTokenRepository.findByTokenHashAndExpiresAtAfter(anyString(), any()))
+                .thenReturn(Optional.of(stored));
+
+        assertThatThrownBy(() -> authService.confirmPasswordReset("raw-token", "NewPass1!"))
+                .isInstanceOf(AuthException.class)
+                .satisfies(e -> assertThat(((AuthException) e).getCode())
+                        .isEqualTo(AuthErrorCode.INVALID_PASSWORD_RESET_TOKEN.name()));
+
+        verify(passwordResetTokenRepository, never()).deleteByIdReturningCount(anyString());
+        verify(memberService, never()).changePassword(anyString(), anyString());
+    }
+
+    @Test
     void 재설정_확정_동시_재사용시_401() {
         // §3.3.2와 동일한 findAndDelete 패턴 — 조회는 성공했으나 DELETE 영향 행 수 0이면 이미 소비된 토큰
-        PasswordResetToken stored = PasswordResetToken.of(MEMBER_ID, "hash", Instant.now().plusSeconds(3600));
+        PasswordResetToken stored = verifiedResetToken();
         when(passwordResetTokenRepository.findByTokenHashAndExpiresAtAfter(anyString(), any()))
                 .thenReturn(Optional.of(stored));
         when(passwordResetTokenRepository.deleteByIdReturningCount(stored.getId())).thenReturn(0);
@@ -484,6 +500,83 @@ class AuthServiceImplTest {
                         .isEqualTo(AuthErrorCode.INVALID_PASSWORD_RESET_TOKEN.name()));
 
         verify(memberService, never()).changePassword(anyString(), anyString());
+    }
+
+    // ─── 비밀번호 재설정 코드 검증 ─────────────────────────────────────
+
+    @Test
+    void 재설정_코드_검증_성공시_세션토큰_발급() {
+        when(memberService.findActiveByLoginEmailAndProviderOrEmpty(EMAIL, AuthProvider.EMAIL))
+                .thenReturn(Optional.of(memberInfo(AuthProvider.EMAIL)));
+        PasswordResetToken stored = PasswordResetToken.of(MEMBER_ID, resetCodeHash("K4P7XM"), Instant.now().plusSeconds(600));
+        when(passwordResetTokenRepository.findByMemberIdAndExpiresAtAfter(eq(MEMBER_ID), any()))
+                .thenReturn(Optional.of(stored));
+
+        String sessionToken = authService.verifyPasswordResetCode(EMAIL, "K4P7XM");
+
+        assertThat(sessionToken).isNotBlank();
+        assertThat(stored.isVerified()).isTrue();
+        verify(passwordResetTokenRepository).save(stored);
+        verify(passwordResetAttemptLimiter, never()).recordVerifyFailure(anyString());
+    }
+
+    @Test
+    void 재설정_코드_검증_오답이면_401_및_실패기록() {
+        when(memberService.findActiveByLoginEmailAndProviderOrEmpty(EMAIL, AuthProvider.EMAIL))
+                .thenReturn(Optional.of(memberInfo(AuthProvider.EMAIL)));
+        PasswordResetToken stored = PasswordResetToken.of(MEMBER_ID, resetCodeHash("K4P7XM"), Instant.now().plusSeconds(600));
+        when(passwordResetTokenRepository.findByMemberIdAndExpiresAtAfter(eq(MEMBER_ID), any()))
+                .thenReturn(Optional.of(stored));
+
+        assertThatThrownBy(() -> authService.verifyPasswordResetCode(EMAIL, "WRONG1"))
+                .isInstanceOf(AuthException.class)
+                .satisfies(e -> assertThat(((AuthException) e).getCode())
+                        .isEqualTo(AuthErrorCode.INVALID_RESET_CODE.name()));
+
+        verify(passwordResetAttemptLimiter).recordVerifyFailure(EMAIL);
+        verify(passwordResetTokenRepository, never()).save(any());
+    }
+
+    @Test
+    void 재설정_코드_검증_만료또는_없으면_410() {
+        when(memberService.findActiveByLoginEmailAndProviderOrEmpty(EMAIL, AuthProvider.EMAIL))
+                .thenReturn(Optional.of(memberInfo(AuthProvider.EMAIL)));
+        when(passwordResetTokenRepository.findByMemberIdAndExpiresAtAfter(eq(MEMBER_ID), any()))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.verifyPasswordResetCode(EMAIL, "K4P7XM"))
+                .isInstanceOf(AuthException.class)
+                .satisfies(e -> assertThat(((AuthException) e).getCode())
+                        .isEqualTo(AuthErrorCode.RESET_CODE_EXPIRED.name()));
+    }
+
+    @Test
+    void 재설정_코드_검증_이미_사용된_코드면_409() {
+        when(memberService.findActiveByLoginEmailAndProviderOrEmpty(EMAIL, AuthProvider.EMAIL))
+                .thenReturn(Optional.of(memberInfo(AuthProvider.EMAIL)));
+        PasswordResetToken stored = verifiedResetToken();
+        when(passwordResetTokenRepository.findByMemberIdAndExpiresAtAfter(eq(MEMBER_ID), any()))
+                .thenReturn(Optional.of(stored));
+
+        assertThatThrownBy(() -> authService.verifyPasswordResetCode(EMAIL, "K4P7XM"))
+                .isInstanceOf(AuthException.class)
+                .satisfies(e -> assertThat(((AuthException) e).getCode())
+                        .isEqualTo(AuthErrorCode.RESET_CODE_ALREADY_USED.name()));
+
+        verify(passwordResetAttemptLimiter, never()).recordVerifyFailure(anyString());
+    }
+
+    @Test
+    void 재설정_코드_검증_시도_횟수_초과시_전파() {
+        doThrow(new AuthException(AuthErrorCode.TOO_MANY_ATTEMPTS))
+                .when(passwordResetAttemptLimiter).checkVerifyBlocked(EMAIL);
+
+        assertThatThrownBy(() -> authService.verifyPasswordResetCode(EMAIL, "K4P7XM"))
+                .isInstanceOf(AuthException.class)
+                .satisfies(e -> assertThat(((AuthException) e).getCode())
+                        .isEqualTo(AuthErrorCode.TOO_MANY_ATTEMPTS.name()));
+
+        verify(memberService, never()).findActiveByLoginEmailAndProviderOrEmpty(anyString(), any());
     }
 
     // ─── 헬퍼 ─────────────────────────────────────────────────────────
@@ -511,5 +604,24 @@ class AuthServiceImplTest {
         } catch (AuthException e) {
             return e;
         }
+    }
+
+    // AuthServiceImpl.hmacSha256Hex와 동일 알고리즘 — 테스트에서 검증용 코드 해시를 미리 계산한다.
+    private static String resetCodeHash(String code) {
+        try {
+            javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
+            mac.init(new javax.crypto.spec.SecretKeySpec(
+                    RESET_CODE_PEPPER.getBytes(java.nio.charset.StandardCharsets.UTF_8), "HmacSHA256"));
+            return java.util.HexFormat.of().formatHex(mac.doFinal(code.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    // verify를 이미 통과해 세션 토큰 해시로 전이된(VERIFIED) 상태의 행.
+    private PasswordResetToken verifiedResetToken() {
+        PasswordResetToken token = PasswordResetToken.of(MEMBER_ID, resetCodeHash("K4P7XM"), Instant.now().plusSeconds(600));
+        token.markVerified("session-token-hash", Instant.now().plusSeconds(300));
+        return token;
     }
 }

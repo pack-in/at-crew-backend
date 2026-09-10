@@ -50,6 +50,10 @@ mail:
     api-key: test-resend-key
     from-address: AT-CREW <test@at-crew.com>
 
+auth:
+  password-reset:
+    code-pepper: test-password-reset-code-pepper
+
 # 결제/구독(plans/260813-stripe-billing) — 이 파일이 main application.yml을 완전히 대체하므로
 # 상품 카탈로그를 여기에도 둔다. 없으면 요금제 API가 "상품 설정이 없습니다"로 500을 낸다.
 # 실제 Stripe 호출은 테스트에서 하지 않으므로 키는 비워 두고, Price ID만 판별 가능한 더미 값을 쓴다.

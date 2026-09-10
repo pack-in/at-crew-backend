@@ -128,6 +128,12 @@ mail:
     api-key: ${RESEND_API_KEY:dummy-resend-key}
     from-address: ${MAIL_FROM_ADDRESS:AT-CREW <onboarding@resend.dev>}
 
+auth:
+  password-reset:
+    # HMAC-SHA256 pepper — 6자리 코드(32^6 조합)는 평문 SHA-256만으로는 DB 유출 시 사전계산
+    # 테이블로 즉시 역산 가능해 별도 서버 시크릿을 더한다(이슈 #151).
+    code-pepper: ${PASSWORD_RESET_CODE_PEPPER:dummy-pepper-change-me}
+
 # 결제/구독(plans/260813-stripe-billing) — 키가 없어도 기동은 되고, 결제 API 호출 시점에만 실패한다.
 stripe:
   secret-key: ${STRIPE_SECRET_KEY:}

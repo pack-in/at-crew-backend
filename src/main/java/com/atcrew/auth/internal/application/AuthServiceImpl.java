@@ -29,7 +29,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
+import java.security.InvalidKeyException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
@@ -43,7 +46,14 @@ class AuthServiceImpl implements AuthService {
 
     private static final Logger log = LoggerFactory.getLogger(AuthServiceImpl.class);
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
-    private static final int RESET_TOKEN_TTL_SECONDS = 3600; // 1시간 — Figma 이메일 문구 확인(§7.3 정정)
+
+    // 비밀번호 재설정 코드(이슈 #151, Figma LAITEU node 6626:4159) — 대문자 6자리, 사람이 손으로 옮겨
+    // 적을 때 헷갈리는 I/O/0/1을 제외한 32자 알파벳. 조합 32^6 ≈ 10.7억.
+    private static final String RESET_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+    private static final int RESET_CODE_LENGTH = 6;
+    private static final int RESET_CODE_TTL_SECONDS = 600; // 10분 — Figma 이메일 문구 확정값
+    // verify 성공 후 confirm까지 허용하는 세션 창 — Figma에 구체값이 없어 임시로 5분(미확정 항목).
+    private static final int RESET_SESSION_TTL_SECONDS = 300;
 
     private final FirebaseVerifier firebaseVerifier;
     private final MemberService memberService;
@@ -53,7 +63,7 @@ class AuthServiceImpl implements AuthService {
     private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final PasswordResetAttemptLimiter passwordResetAttemptLimiter;
     private final MailSender mailSender;
-    private final String frontendBaseUrl;
+    private final String resetCodePepper;
 
     AuthServiceImpl(FirebaseVerifier firebaseVerifier, MemberService memberService,
                     JwtProvider jwtProvider, RefreshTokenRepository refreshTokenRepository,
@@ -61,7 +71,7 @@ class AuthServiceImpl implements AuthService {
                     PasswordResetTokenRepository passwordResetTokenRepository,
                     PasswordResetAttemptLimiter passwordResetAttemptLimiter,
                     MailSender mailSender,
-                    @Value("${app.frontend-base-url}") String frontendBaseUrl) {
+                    @Value("${auth.password-reset.code-pepper}") String resetCodePepper) {
         this.firebaseVerifier = firebaseVerifier;
         this.memberService = memberService;
         this.jwtProvider = jwtProvider;
@@ -70,7 +80,7 @@ class AuthServiceImpl implements AuthService {
         this.passwordResetTokenRepository = passwordResetTokenRepository;
         this.passwordResetAttemptLimiter = passwordResetAttemptLimiter;
         this.mailSender = mailSender;
-        this.frontendBaseUrl = frontendBaseUrl;
+        this.resetCodePepper = resetCodePepper;
     }
 
     @Override
@@ -263,7 +273,7 @@ class AuthServiceImpl implements AuthService {
 
         Optional<MemberInfo> emailMember = memberService.findActiveByLoginEmailAndProviderOrEmpty(email, AuthProvider.EMAIL);
         if (emailMember.isPresent()) {
-            sendResetLinkEmail(emailMember.get());
+            sendResetCodeEmail(emailMember.get());
         } else {
             // EMAIL 계정이 없을 때만 GOOGLE 계정 존재를 확인한다 — 두 provider가 같은 이메일로 공존할 수
             // 있으므로(rev.2) EMAIL이 있으면 그쪽이 우선이고, 없을 때만 안내 메일 발송을 시도한다.
@@ -276,15 +286,57 @@ class AuthServiceImpl implements AuthService {
 
     @Override
     @Transactional
-    public void confirmPasswordReset(String token, String newPassword) {
-        String tokenHash = sha256Hex(token);
+    public String verifyPasswordResetCode(String email, String code) {
+        // 코드 자체를 조회하기 전에 시도 횟수부터 차단 — 회원 존재 여부와 무관하게 무차별 대입 자체를 막는다.
+        passwordResetAttemptLimiter.checkVerifyBlocked(email);
+
+        Optional<MemberInfo> emailMember = memberService.findActiveByLoginEmailAndProviderOrEmpty(email, AuthProvider.EMAIL);
+        if (emailMember.isEmpty()) {
+            passwordResetAttemptLimiter.recordVerifyFailure(email);
+            log.warn("비밀번호 재설정 코드 검증 실패(회원 없음): email={}", LogMask.email(email));
+            throw new AuthException(AuthErrorCode.INVALID_RESET_CODE);
+        }
+        String memberId = emailMember.get().id();
+
+        PasswordResetToken stored = passwordResetTokenRepository
+                .findByMemberIdAndExpiresAtAfter(memberId, Instant.now())
+                .orElse(null);
+        if (stored == null) {
+            passwordResetAttemptLimiter.recordVerifyFailure(email);
+            throw new AuthException(AuthErrorCode.RESET_CODE_EXPIRED);
+        }
+        if (stored.isVerified()) {
+            throw new AuthException(AuthErrorCode.RESET_CODE_ALREADY_USED);
+        }
+        if (!stored.getTokenHash().equals(hmacSha256Hex(code))) {
+            passwordResetAttemptLimiter.recordVerifyFailure(email);
+            log.warn("비밀번호 재설정 코드 불일치: memberId={}", memberId);
+            throw new AuthException(AuthErrorCode.INVALID_RESET_CODE);
+        }
+
+        // 코드를 세션 토큰으로 전환한다(같은 행 재사용 — PasswordResetToken 클래스 주석 참고).
+        String sessionToken = generateToken();
+        stored.markVerified(sha256Hex(sessionToken), Instant.now().plusSeconds(RESET_SESSION_TTL_SECONDS));
+        passwordResetTokenRepository.save(stored);
+
+        log.info("비밀번호 재설정 코드 검증 완료: memberId={}", memberId);
+        return sessionToken;
+    }
+
+    @Override
+    @Transactional
+    public void confirmPasswordReset(String resetToken, String newPassword) {
+        String tokenHash = sha256Hex(resetToken);
         PasswordResetToken stored = passwordResetTokenRepository
                 .findByTokenHashAndExpiresAtAfter(tokenHash, Instant.now())
                 .orElse(null);
 
         // consumeRefreshToken과 동일한 findAndDelete 패턴 — 영향 행 수로 승자를 가려 동시 재사용을 막는다.
-        if (stored == null || passwordResetTokenRepository.deleteByIdReturningCount(stored.getId()) == 0) {
-            log.warn("비밀번호 재설정 토큰 미존재 또는 재사용 시도");
+        // isVerified()가 아니면(이론상 PENDING 상태의 코드 해시가 우연히 세션 해시와 같은 값 공간에서
+        // 충돌하는 경우는 없지만) 방어적으로 함께 거른다.
+        if (stored == null || !stored.isVerified()
+                || passwordResetTokenRepository.deleteByIdReturningCount(stored.getId()) == 0) {
+            log.warn("비밀번호 재설정 세션 미존재 또는 재사용 시도");
             throw new AuthException(AuthErrorCode.INVALID_PASSWORD_RESET_TOKEN);
         }
 
@@ -295,23 +347,23 @@ class AuthServiceImpl implements AuthService {
         log.info("비밀번호 재설정 완료: memberId={}", stored.getMemberId());
     }
 
-    private void sendResetLinkEmail(MemberInfo member) {
-        String rawToken = generateToken();
-        passwordResetTokenRepository.deleteAllByMemberId(member.id()); // 이전 미사용 토큰 무효화
+    private void sendResetCodeEmail(MemberInfo member) {
+        String code = generateResetCode();
+        passwordResetTokenRepository.deleteAllByMemberId(member.id()); // 이전 미사용 코드·세션 전부 무효화
         passwordResetTokenRepository.save(PasswordResetToken.of(
-                member.id(), sha256Hex(rawToken), Instant.now().plusSeconds(RESET_TOKEN_TTL_SECONDS)));
+                member.id(), hmacSha256Hex(code), Instant.now().plusSeconds(RESET_CODE_TTL_SECONDS)));
 
-        String resetUrl = frontendBaseUrl + "/reset-password?token=" + rawToken;
         String html = """
                 <p>@ 비밀번호를 잊으셨나요?</p>
                 <p>%s님의 새 비밀번호 설정을 안내해드려요.<br/>
-                아래 링크를 누른 다음, 새 비밀번호를 설정해주세요.<br/>
-                링크는 이메일 발송 시점으로부터 1시간 동안 유효합니다.</p>
-                <p><a href="%s">비밀번호 재설정</a></p>
+                아래 재설정 코드를 앳크루 화면에 입력한 다음, 새 비밀번호를 설정해주세요.</p>
+                <p style="font-size:24px;font-weight:bold;letter-spacing:4px;">%s</p>
+                <p>이 코드는 이메일 발송 시점으로부터 10분 동안 유효합니다.<br/>
+                본인이 요청하지 않았다면 이 메일을 무시해주세요. 비밀번호는 변경되지 않아요.</p>
                 <p>앳크루를 이용해주셔서 감사합니다.</p>
-                """.formatted(member.name(), resetUrl);
-        mailSender.send(member.loginEmail(), "비밀번호 재설정 안내", html);
-        log.info("비밀번호 재설정 메일 발송: memberId={}", member.id());
+                """.formatted(member.name(), code);
+        mailSender.send(member.loginEmail(), "비밀번호 재설정 코드", html);
+        log.info("비밀번호 재설정 코드 메일 발송: memberId={}", member.id());
     }
 
     private void sendGoogleAccountNoticeEmail(MemberInfo member) {
@@ -340,6 +392,28 @@ class AuthServiceImpl implements AuthService {
             return HexFormat.of().formatHex(digest.digest(value.getBytes(StandardCharsets.UTF_8)));
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 알고리즘을 사용할 수 없습니다", e);
+        }
+    }
+
+    // SecureRandom 기반 대문자 6자리 코드 — 알파벳은 RESET_CODE_ALPHABET(이슈 #151) 참고.
+    private static String generateResetCode() {
+        StringBuilder code = new StringBuilder(RESET_CODE_LENGTH);
+        for (int i = 0; i < RESET_CODE_LENGTH; i++) {
+            code.append(RESET_CODE_ALPHABET.charAt(SECURE_RANDOM.nextInt(RESET_CODE_ALPHABET.length())));
+        }
+        return code.toString();
+    }
+
+    // 평문 SHA-256과 달리 서버 시크릿(resetCodePepper)을 더한다 — 6자리 코드는 32^6(≈10.7억) 조합뿐이라
+    // 평문 해시만 저장하면 DB 유출 시 사전계산 테이블로 사실상 즉시 역산 가능하다(§ 이슈 #151).
+    // pepper는 애플리케이션 시크릿(환경변수)이라 DB만 유출돼서는 역산할 수 없다.
+    private String hmacSha256Hex(String code) {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(resetCodePepper.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            return HexFormat.of().formatHex(mac.doFinal(code.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException | InvalidKeyException e) {
+            throw new IllegalStateException("HmacSHA256 알고리즘을 사용할 수 없습니다", e);
         }
     }
 

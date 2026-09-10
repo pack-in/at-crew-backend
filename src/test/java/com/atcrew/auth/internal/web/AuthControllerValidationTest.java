@@ -286,6 +286,26 @@ class AuthControllerValidationTest {
                 .andDo(document("auth/validation/password-reset-confirm-mismatch"));
     }
 
+    @Test
+    void 비밀번호_재설정_코드검증_email_형식_오류_400() throws Exception {
+        mockMvc.perform(post("/api/auth/email/password-reset/verify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("email", "not-an-email", "code", "K4P7XM"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("auth/validation/password-reset-verify-invalid-email"));
+    }
+
+    @Test
+    void 비밀번호_재설정_코드검증_코드_길이_오류_400() throws Exception {
+        mockMvc.perform(post("/api/auth/email/password-reset/verify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("email", "user@test.com", "code", "SHORT"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("auth/validation/password-reset-verify-invalid-code-length"));
+    }
+
     // ─── 헬퍼 ─────────────────────────────────────────────────────────
 
     private String passwordChangeBody(String current, String next, String confirm) throws Exception {
@@ -297,9 +317,9 @@ class AuthControllerValidationTest {
         ));
     }
 
-    private String passwordResetConfirmBody(String token, String next, String confirm) throws Exception {
+    private String passwordResetConfirmBody(String resetToken, String next, String confirm) throws Exception {
         return objectMapper.writeValueAsString(Map.of(
-                "token", token,
+                "resetToken", resetToken,
                 "newPassword", next,
                 "newPasswordConfirm", confirm
         ));

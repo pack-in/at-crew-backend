@@ -27,15 +27,22 @@ public interface AuthService {
     void changePassword(String memberId, String currentPassword, String newPassword, String currentRefreshToken);
 
     /**
-     * 비밀번호 재설정 요청(§7) — 가입 여부·계정 상태와 무관하게 항상 성공적으로 끝난다(예외를 던지지
-     * 않음, enumeration 방지). EMAIL 활성 회원이면 재설정 링크 메일을, 동일 이메일의 GOOGLE 계정만
-     * 있으면 안내 메일을 실제로 발송한다 — 응답으로는 어느 쪽인지 구분할 수 없다.
+     * 비밀번호 재설정 요청(§7, 이슈 #151) — 가입 여부·계정 상태와 무관하게 항상 성공적으로 끝난다
+     * (예외를 던지지 않음, enumeration 방지). EMAIL 활성 회원이면 재설정 코드 메일을, 동일 이메일의
+     * GOOGLE 계정만 있으면 안내 메일을 실제로 발송한다 — 응답으로는 어느 쪽인지 구분할 수 없다.
      */
     void requestPasswordReset(String email);
 
     /**
-     * 비밀번호 재설정 확정(§7) — 토큰은 단발성이며 성공 시 즉시 소비되고, 해당 회원의 Refresh Token도
-     * 모두 폐기된다(전 기기 로그아웃).
+     * 비밀번호 재설정 코드 검증(이슈 #151) — 이메일로 받은 6자리 코드를 소비하고, confirm 단계에서
+     * 쓸 짧은 수명의 재설정 세션 토큰을 발급한다. 코드는 이 호출로 즉시 소비되며(재사용 불가), 검증
+     * 성공 여부는 계정 존재와 무관하게 코드 자체의 유효성만으로 판정된다.
      */
-    void confirmPasswordReset(String token, String newPassword);
+    String verifyPasswordResetCode(String email, String code);
+
+    /**
+     * 비밀번호 재설정 확정(§7, 이슈 #151) — verify 단계에서 발급된 재설정 세션 토큰은 단발성이며 성공
+     * 시 즉시 소비되고, 해당 회원의 Refresh Token도 모두 폐기된다(전 기기 로그아웃).
+     */
+    void confirmPasswordReset(String resetToken, String newPassword);
 }
