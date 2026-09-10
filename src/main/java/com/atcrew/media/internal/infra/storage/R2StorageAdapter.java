@@ -22,6 +22,8 @@ import java.util.Map;
 @Component
 class R2StorageAdapter implements ArtworkStoragePort {
     private static final Logger log = LoggerFactory.getLogger(R2StorageAdapter.class);
+    /** Worker에 넘기는 원본 읽기 URL의 유효 시간. 재시도도 매번 새로 발급하므로 짧게 잡을 이유가 없다. */
+    private static final long SOURCE_URL_EXPIRATION_MINUTES = 60;
     private final R2Properties props; private final S3Presigner presigner; private final S3Client s3Client;
     private final RestClient restClient;
     R2StorageAdapter(R2Properties props) {
@@ -39,14 +41,30 @@ class R2StorageAdapter implements ArtworkStoragePort {
                     .signatureDuration(Duration.ofMinutes(props.presignExpirationMinutes())).putObjectRequest(put).build()).url().toString();
         } catch (Exception e) { log.error("R2 presigned URL 생성 실패: key={}", key, e); throw new IllegalStateException("R2 presigned URL 생성 실패", e); }
     }
+    /**
+     * Worker는 원본 바이트를 직접 읽지 않고 {@code fetch(url, {cf:{image}})}로 변환한다 — R2 바인딩으로
+     * 넘기는 경로는 입력이 20MB로 막혀 있고(라이트 실데이터 기준 2.89%가 초과), URL 경로는 100MB까지
+     * 받는다. 그래서 키마다 읽기용 서명 URL을 함께 실어 보낸다.
+     *
+     * <p>만료는 넉넉히 준다. 변환은 트리거 응답을 기다리지 않고 백그라운드에서 진행되며, 큰 원본의 AVIF
+     * 인코딩은 수십 초가 걸릴 수 있다.
+     */
     @Override public void triggerWorker(MediaOwnerType ownerType, String ownerId, List<String> imageKeys,
                                         MediaVariantProfile variantProfile, MediaQualityTier qualityTier) {
         try {
+            List<String> sourceUrls = imageKeys.stream().map(this::generatePresignedGetUrl).toList();
             restClient.post().uri(props.workerTriggerUrl()).header("X-Callback-Secret", props.callbackSecret())
                     .body(Map.of("ownerType", ownerType.name(), "ownerId", ownerId, "imageKeys", imageKeys,
+                            "sourceUrls", sourceUrls,
                             "variantProfile", variantProfile.name(),
                             "qualityTier", qualityTier.name())).retrieve().toBodilessEntity();
         } catch (Exception e) { log.error("Worker 트리거 실패: ownerType={} ownerId={} keys={}", ownerType, ownerId, imageKeys, e); }
+    }
+    private String generatePresignedGetUrl(String key) {
+        var get = GetObjectRequest.builder().bucket(props.bucket()).key(key).build();
+        return presigner.presignGetObject(GetObjectPresignRequest.builder()
+                .signatureDuration(Duration.ofMinutes(SOURCE_URL_EXPIRATION_MINUTES))
+                .getObjectRequest(get).build()).url().toString();
     }
     @Override public void deleteFiles(List<String> keys) {
         if (keys == null || keys.isEmpty()) return;

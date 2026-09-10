@@ -122,10 +122,23 @@ public enum MediaProcessingStatus { PENDING, DONE, FAILED }
 - **등급은 업로드 시점 플랜으로 확정되고 변환은 1회뿐이다.** 프로 → 스타터 다운그레이드로 기존 이미지
   화질이 내려가지 않고(요금제-R01), 스타터 → 프로 전환으로 기존 이미지가 선명해지지도 않는다.
   재시도(`ImageRetryScheduler`)가 최초와 같은 결과를 내도록 `media_assets.quality_tier`에 함께 보관한다.
-- 업로드 원본 용량 상한은 **20MB**(`MediaConstraints.MAX_ORIGINAL_BYTES`)다. 이 값은 정책이 아니라
-  **Cloudflare Images 바인딩의 입력 한계**를 그대로 옮긴 것이다 — 기획(업로드-R04)은 플랜 무관
-  "용량 제한 없음"이므로 서버가 임의로 더 낮게 잡을 근거가 없고, 20MB를 넘는 파일은 클라이언트가
-  업로드 전에 줄여야 한다. Presigned PUT은 서명에 Content-Length 조건을 넣을 수 없어 크기를 강제하지
+- 업로드 원본 용량 상한은 **100MB**(`MediaConstraints.MAX_ORIGINAL_BYTES`)다. 이 값은 정책이 아니라
+  **Cloudflare Images 원격 변환의 입력 한계**를 그대로 옮긴 것이다 — 기획(업로드-R04)은 플랜 무관
+  "용량 제한 없음"이므로 서버가 임의로 더 낮게 잡을 근거가 없고, 100MB를 넘는 파일은 클라이언트가
+  업로드 전에 줄여야 한다.
+- **변환은 R2 바인딩이 아니라 `fetch(sourceUrl, {cf:{image}})`로 한다.** 바인딩(`env.IMAGES.input()`)은
+  원본 바이트를 Worker 메모리로 읽어야 해서 입력이 20MB로 막힌다(Workers 메모리 128MB). 라이트 실데이터
+  14,759건 중 20MB 초과가 426건(2.89%)이라 그대로 둘 수 없었다. URL 경로는 Cloudflare가 소스에서 직접
+  가져가므로 Worker 메모리를 쓰지 않고 100MB까지 받는다. 100MB 초과는 라이트 전체에서 2건(0.01%)이고
+  Images 자체의 한계라 어떤 방식으로도 처리할 수 없다.
+  - 이 때문에 서버는 트리거 payload에 `imageKeys`와 같은 순서의 **읽기용 서명 URL(`sourceUrls`)** 을
+    함께 싣는다(`R2StorageAdapter.triggerWorker`, 만료 60분).
+- **변환 결과의 포맷은 강제되지 않는다.** Cloudflare는 `format`을 "가능하면" 지키고, 면적이 큰 이미지는
+  AVIF 인코딩이 느려 **WebP로 폴백한다**(2026-09-10 실측: 2480×3508을 축소 없이 요청하면 WebP,
+  1280px로 줄이면 AVIF). 그래서 R2에 저장할 때 content-type을 `image/avif`로 못 박지 않고 응답의
+  실제 값을 그대로 쓴다 — 못 박으면 WebP 바이트에 avif 헤더가 붙어 브라우저가 디코드에 실패한다.
+  키 확장자는 `.avif`로 고정돼 있어 내용과 어긋날 수 있지만, 키는 식별자일 뿐이고 브라우저는
+  content-type을 보므로 동작에 문제가 없다. Presigned PUT은 서명에 Content-Length 조건을 넣을 수 없어 크기를 강제하지
   못하므로 검사는 두 겹이다 — presign 발급 시 클라이언트가 보낸 `fileSizes`로 미리 거르고(선택 입력이라
   생략 가능), Worker가 변환 직전 R2 객체 크기를 실측해 초과분을 FAILED 콜백으로 돌려보낸다. 신고값은
   믿을 수 없으므로 Worker 검사가 최종 방어선이고, 두 값은 반드시 같아야 한다.

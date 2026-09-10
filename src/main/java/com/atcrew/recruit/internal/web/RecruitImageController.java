@@ -36,11 +36,11 @@ class RecruitImageController {
 
     @Operation(summary = "이미지 Presigned URL 발급",
             description = "R2 직접 업로드용 Presigned PUT URL을 발급합니다. 게시글 작성·수정 시 thumbnailImage/"
-                    + "referenceImages에는 여기서 받은 key를 넣습니다. fileSizes를 함께 보내면 용량 상한(20MB)을 "
+                    + "referenceImages에는 여기서 받은 key를 넣습니다. fileSizes를 함께 보내면 용량 상한(100MB)을 "
                     + "업로드 시작 전에 검사합니다 — 생략해도 발급되지만 초과분은 이미지 처리 단계에서 실패 처리됩니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "발급 성공")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400",
-            description = "이미지 한 장이 20MB 초과(IMAGE_TOO_LARGE)")
+            description = "이미지 한 장이 100MB 초과(IMAGE_TOO_LARGE)")
     @PostMapping("/images/presign")
     public ApiResponse<List<PresignedUrlInfo>> generatePresignedUrls(@RequestBody @Valid PresignRequest request) {
         // media는 IllegalArgumentException을 던지므로 그대로 흘리면 400이 500으로 바뀐다 — artwork와 같은
