@@ -32,8 +32,13 @@ resource "aws_security_group" "nat" {
 # 그때 열어뒀던 3306 인바운드 규칙(db_replica SG)도 함께 제거했다.
 # PH-07(blue-green 전환)에서 실제 앱 인스턴스에 이 SG를 붙인다. 지금은 SG만 미리 만들어 둔다.
 resource "aws_security_group" "app" {
-  name        = "at-crew-app-sg"
-  description = "App server - no web inbound (Cloudflare Tunnel only)"
+  name = "at-crew-app-sg"
+  # ⚠️ description은 AWS에서 불변이다 — 고치면 Terraform이 SG를 destroy 후 재생성한다.
+  # 앱 인스턴스는 Terraform 관리 대상이 아니라(시작 템플릿만 코드로 있다) 옛 SG를 붙든 채 남고,
+  # 사용 중인 SG는 삭제되지 않으므로 apply가 중간에 실패한다. 실제로 2026-09-03에 db_replica
+  # 정리를 하면서 이 문자열에서 3306 관련 문구를 지웠다가 plan에 강제 교체가 잡혔다(2026-09-10 발견).
+  # 접근 통제는 아래 ingress/egress 규칙이 하고 이 문자열은 아무 효력이 없다 — 실물과 맞춰만 둔다.
+  description = "App server - no web inbound (Cloudflare Tunnel only), 3306 from db_replica SG for replication (D4/D12)"
   vpc_id      = aws_vpc.main.id
 
   egress {
