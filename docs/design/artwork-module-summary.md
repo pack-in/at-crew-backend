@@ -174,7 +174,7 @@ PENDING → (Worker DONE 콜백) → DONE
 
 | 필드 | 설명 |
 |------|------|
-| `originalKey` | R2에 업로드된 원본 파일 키 (`raw/UUID.ext`) |
+| `originalKey` | R2에 업로드된 원본 파일 키 (`raw/UUID.ext`). **처리 완료 후 실제 객체는 삭제된다** — 변환 결과가 원본을 대체하므로 식별·정리용 값일 뿐, 이미지 로드에 쓰지 않는다 |
 | `thumbKey` | Worker 생성 썸네일 키 |
 | `thumbAdultKey` | Worker 생성 성인물 블러 썸네일 키 |
 | `originalAvifKey` | Worker 생성 AVIF 변환본 키 |

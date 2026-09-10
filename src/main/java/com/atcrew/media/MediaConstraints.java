@@ -9,8 +9,13 @@ package com.atcrew.media;
  */
 public final class MediaConstraints {
 
-    /** 업로드 원본 용량 상한 10MB. */
-    public static final long MAX_ORIGINAL_BYTES = 10L * 1024 * 1024;
+    /**
+     * 업로드 원본 용량 상한 20MB — Cloudflare Images 바인딩이 받는 입력 한계이지 우리가 고른 정책값이 아니다.
+     *
+     * <p>기획(업로드-R04)은 플랜 무관 "용량 제한 없음"이므로 이 값은 기술 제약을 그대로 옮긴 것이다.
+     * 넘는 파일은 클라이언트가 업로드 전에 줄여야 하고, 서버가 대신 해 줄 수 있는 일은 없다.
+     */
+    public static final long MAX_ORIGINAL_BYTES = 20L * 1024 * 1024;
 
     private MediaConstraints() {
     }

@@ -50,13 +50,13 @@ class ArtworkController {
     }
 
     @Operation(summary = "이미지 Presigned URL 발급",
-            description = "R2 직접 업로드용 Presigned PUT URL을 발급합니다. fileSizes를 함께 보내면 용량 상한(10MB)을 "
+            description = "R2 직접 업로드용 Presigned PUT URL을 발급합니다. fileSizes를 함께 보내면 용량 상한(20MB)을 "
                     + "업로드 시작 전에 검사합니다 — 생략해도 발급되지만 초과분은 이미지 처리 단계에서 실패 처리됩니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "발급 성공")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400",
             description = "이미지 개수 오류 또는 count와 목록 수 불일치(INVALID_IMAGE_COUNT), "
                     + "허용되지 않는 형식(INVALID_CONTENT_TYPE), "
-                    + "이미지 한 장이 10MB 초과(IMAGE_TOO_LARGE)")
+                    + "이미지 한 장이 20MB 초과(IMAGE_TOO_LARGE)")
     @PostMapping("/artwork/images/presign")
     public ApiResponse<List<PresignedUrlInfo>> generatePresignedUrls(
             @RequestBody @Valid PresignRequest request) {
