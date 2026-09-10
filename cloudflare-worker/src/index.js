@@ -12,11 +12,14 @@ const AVIF_QUALITY = 80; // 썸네일 품질 — 카드 화질은 플랜 차등 
 //
 // ORIGINAL(프로)은 maxWidth가 없다 — 변환 결과가 raw 원본을 대체하고 원본은 변환 성공 후 삭제되므로,
 // 여기서 축소하면 그 해상도를 영영 되돌릴 수 없다. 요금제-R04의 "선명한 원본 화질"과도 이제 실제로 맞는다.
-// quality 100은 AVIF에서 비트 단위 무손실을 보장하지는 않지만(Cloudflare가 무손실을 명시한 건 WebP뿐),
-// 실측상 6MB PNG 원고가 약 330KB로 원본의 5% 수준이라 화질과 용량이 모두 납득할 범위다.
+//
+// quality 95인 이유: Cloudflare는 100에서만 무손실 모드로 넘어가고 거기서 크기가 급격히 뛴다.
+// 6MB PNG 원고(2480x3508) 실측 — q90 481KB(7.9%) / q95 788KB(13.0%) / q99 1,068KB(17.6%) /
+// q100 3,923KB(64.6%). 100은 99의 3.7배다. 원본을 지우는 목적이 저장량 절감인데 100을 쓰면 그 효과가
+// 대부분 사라지고, 우리는 작품 원본 보관 서비스가 아니라 비트 단위 동일까지 지킬 이유가 없다.
 const QUALITY_TIERS = {
   WEB: { maxWidth: 1280, quality: 72 },
-  ORIGINAL: { maxWidth: null, quality: 100 },
+  ORIGINAL: { maxWidth: null, quality: 95 },
 };
 const DEFAULT_TIER = "ORIGINAL";
 
