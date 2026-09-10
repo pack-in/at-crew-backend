@@ -54,10 +54,11 @@ class AuthServiceImpl implements AuthService {
     private static final String RESET_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
     private static final int RESET_CODE_LENGTH = 6;
     private static final int RESET_CODE_TTL_SECONDS = 600; // 10분 — Figma 이메일 문구 확정값
-    // verify 성공 후 confirm까지 허용하는 세션 창 — Figma에 구체값이 없어 임시로 5분(미확정 항목).
+    // verify 성공 후 confirm까지 허용하는 세션 창 — Figma에는 코드 자체의 TTL(위 10분)만 명시돼 있고
+    // 이 창은 별개 값이라 확인 필요 항목이었으나, 5분으로 확정했다(2026-09-10).
     private static final int RESET_SESSION_TTL_SECONDS = 300;
-    // 비밀번호 변경(설정 화면) 1단계→2단계 재인증 창 — 마찬가지로 Figma에 구체값이 없어 임시로 5분
-    // (이슈 #152 미확정 항목, 재설정 세션과 같은 값을 채택했다).
+    // 비밀번호 변경(설정 화면) 1단계→2단계 재인증 창 — 마찬가지로 Figma에 구체값이 없어 확인
+    // 필요 항목이었으나, 재설정 세션과 같은 5분으로 확정했다(2026-09-10).
     private static final int PASSWORD_REAUTH_TTL_SECONDS = 300;
 
     private final FirebaseVerifier firebaseVerifier;
