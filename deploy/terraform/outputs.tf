@@ -15,7 +15,8 @@ output "nat_instance_id" {
 }
 
 output "nat_instance_public_ip" {
-  value = aws_instance.nat.public_ip
+  description = "이 서비스 전체의 아웃바운드 IP. 탄력적 IP라 인스턴스를 정지·재생성해도 바뀌지 않는다"
+  value       = aws_eip.nat.public_ip
 }
 
 output "app_security_group_id" {
