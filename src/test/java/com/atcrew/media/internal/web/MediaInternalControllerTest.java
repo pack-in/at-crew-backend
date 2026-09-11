@@ -41,4 +41,32 @@ class MediaInternalControllerTest {
         verify(events).publishEvent(new MediaAssetProcessedEvent(MediaOwnerType.ARTWORK, "artwork-1", "raw/a.jpg",
                 "thumb/a.avif", null, "original/a.avif", MediaProcessingStatus.DONE));
     }
+
+    // 실패 사유는 저장하지 않고 로그로만 남기므로 여기서는 "사유가 와도 처리가 깨지지 않는다"까지만 본다.
+    // Worker가 보내는 payload 계약이 서버와 맞는지 확인하는 것이 목적이다.
+    @Test void webhookAcceptsFailureReasonOnFailedCallback() throws Exception {
+        mockMvc.perform(post("/internal/media/images/processed")
+                        .header("X-Internal-Secret", "secret").contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {"ownerType":"ARTWORK","ownerId":"artwork-1","imageKey":"raw/a.jpg",
+                             "thumbKey":null,"thumbAdultKey":null,"originalAvifKey":null,"status":"FAILED",
+                             "failureReason":"변환 실패: status=409 면적 초과"}
+                            """))
+                .andExpect(status().isNoContent());
+        verify(events).publishEvent(new MediaAssetProcessedEvent(MediaOwnerType.ARTWORK, "artwork-1", "raw/a.jpg",
+                null, null, null, MediaProcessingStatus.FAILED));
+    }
+
+    // 구버전 Worker는 failureReason을 아예 보내지 않는다 — 그때도 그대로 동작해야 배포 순서에 묶이지 않는다.
+    @Test void webhookAcceptsFailedCallbackWithoutFailureReason() throws Exception {
+        mockMvc.perform(post("/internal/media/images/processed")
+                        .header("X-Internal-Secret", "secret").contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {"ownerType":"ARTWORK","ownerId":"artwork-1","imageKey":"raw/a.jpg",
+                             "status":"FAILED"}
+                            """))
+                .andExpect(status().isNoContent());
+        verify(events).publishEvent(new MediaAssetProcessedEvent(MediaOwnerType.ARTWORK, "artwork-1", "raw/a.jpg",
+                null, null, null, MediaProcessingStatus.FAILED));
+    }
 }

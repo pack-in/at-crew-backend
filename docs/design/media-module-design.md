@@ -247,9 +247,16 @@ Body: {
   "thumbKey": "thumb/....avif",
   "thumbAdultKey": "thumb-adult/....avif",   // variantProfile=STANDARD_WITH_ADULT_BLUR일 때만
   "originalAvifKey": "original/....avif",
-  "status": "DONE" | "FAILED"
+  "status": "DONE" | "FAILED",
+  "failureReason": "변환 실패: status=409 ..."   // FAILED일 때만. 선택 필드
 }
 ```
+
+`failureReason`은 **저장하지 않고 서버 로그(WARN)로만 남긴다.** 실패는 드문 이벤트이고 필요한 것은
+"왜 실패했나"를 되짚는 것이라 컬럼을 늘릴 이유가 없다 — 로그는 Grafana Loki로 수집되므로 검색된다.
+이 값이 없으면 운영 중에는 `FAILED`라는 사실만 남아 용량 초과·**면적 초과(Images는 100MP를 넘기면
+거부한다)**·원본 없음을 구분할 수 없다. 구버전 Worker는 이 필드를 보내지 않으므로 선택 필드이며,
+서버는 없을 때 `(사유 미제공)`으로 기록한다.
 
 기존 `ArtworkInternalController`의 `X-Internal-Secret` 상수시간 비교(`MessageDigest.isEqual`) 검증 로직을
 그대로 옮긴다. 엔드포인트 하나로 모든 owner 타입의 콜백을 받는다 — artwork용/recruit용을 나누지 않는다
