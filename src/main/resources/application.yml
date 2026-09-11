@@ -98,8 +98,11 @@ jwt:
   access-token-expiration: 3600000       # 1시간 (ms)
   refresh-token-expiration: 2592000000   # 30일 (ms)
 
-firebase:
-  credentials-path: ${FIREBASE_CREDENTIALS_PATH:}
+# Google 로그인 — 허용할 OAuth Client ID 목록(콤마 구분, 공개값). 비어 있으면 Google 로그인만
+# 503으로 막히고 이메일 로그인은 정상 동작한다.
+google:
+  oauth:
+    client-ids: ${GOOGLE_OAUTH_CLIENT_IDS:}
 
 cloudflare:
   r2:

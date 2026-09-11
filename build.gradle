@@ -45,7 +45,9 @@ dependencies {
 	// SDK 초기화와 logback 어펜더 연결은 SentryConfig가 직접 한다.
 	implementation 'io.sentry:sentry-logback:8.16.0'
 	implementation 'org.springframework.boot:spring-boot-starter-security'
-	implementation 'com.google.firebase:firebase-admin:9.4.3'
+	// Google 로그인(plans/260911-google-login-firebase-removal) — Firebase Admin SDK를 걷어내고
+	// Google 공식 GoogleIdTokenVerifier로 ID Token 서명·iss·aud를 직접 검증한다.
+	implementation 'com.google.api-client:google-api-client:2.8.0'
 	implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
 	runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
 	runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'

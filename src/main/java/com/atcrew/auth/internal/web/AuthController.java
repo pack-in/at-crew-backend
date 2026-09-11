@@ -160,28 +160,28 @@ class AuthController {
     // ─── Google 인증 ─────────────────────────────────────────────────────
 
     @Operation(summary = "Google 로그인",
-            description = "Firebase ID Token으로 Google 로그인합니다. 미가입 시 404를 반환하므로 프론트가 가입 화면으로 이동합니다.")
+            description = "Google ID Token으로 Google 로그인합니다. 미가입 시 404를 반환하므로 프론트가 가입 화면으로 이동합니다.")
     @ApiResponse(responseCode = "200", description = "로그인 성공")
-    @ApiResponse(responseCode = "401", description = "Firebase 토큰 검증 실패")
+    @ApiResponse(responseCode = "401", description = "Google 토큰 검증 실패(INVALID_GOOGLE_TOKEN)")
     @ApiResponse(responseCode = "404", description = "미가입 계정 (가입 화면으로 이동)")
     @PostMapping("/google/login")
     public com.atcrew.common.response.ApiResponse<AuthInfo> googleLogin(
             @RequestBody @Valid GoogleLoginRequest request) {
-        return com.atcrew.common.response.ApiResponse.success(authService.loginWithGoogle(request.firebaseIdToken()));
+        return com.atcrew.common.response.ApiResponse.success(authService.loginWithGoogle(request.googleIdToken()));
     }
 
     @Operation(summary = "Google 회원가입",
-            description = "Firebase ID Token으로 Google 계정 회원가입합니다.")
+            description = "Google ID Token으로 Google 계정 회원가입합니다.")
     @ApiResponse(responseCode = "201", description = "회원가입 성공")
     @ApiResponse(responseCode = "400", description = "주 사용 언어 미선택(PRIMARY_LANGUAGE_REQUIRED)")
-    @ApiResponse(responseCode = "401", description = "Firebase 토큰 검증 실패")
+    @ApiResponse(responseCode = "401", description = "Google 토큰 검증 실패(INVALID_GOOGLE_TOKEN)")
     @ApiResponse(responseCode = "409", description = "이미 가입된 Google 계정")
     @ResponseStatus(HttpStatus.CREATED)
     @PostMapping("/google/register")
     public com.atcrew.common.response.ApiResponse<AuthInfo> googleRegister(
             @RequestBody @Valid GoogleRegisterRequest request) {
         GoogleRegisterCommand command = new GoogleRegisterCommand(
-                request.firebaseIdToken(), request.name(),
+                request.googleIdToken(), request.name(),
                 request.agreeService(), request.agreePrivacy(),
                 request.agreeThirdParty(), request.agreeMarketing(), request.timezone(), request.countryCode(),
                 request.primaryLanguage());
