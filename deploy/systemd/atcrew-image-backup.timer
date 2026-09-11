@@ -1,0 +1,14 @@
+# 매일 19:00 UTC = 04:00 KST.
+# DB 백업(18:00 UTC)과 한 시간 어긋나게 둔다 — t4g.medium 한 대에서 덤프와 동기화가 겹치면
+# 서로 CPU·네트워크를 다툰다.
+# Persistent=true: 인스턴스가 꺼져 있어 예정 시각을 놓쳤다면 기동 직후 한 번 실행한다.
+[Unit]
+Description=AT-CREW R2 이미지 백업 타이머
+
+[Timer]
+OnCalendar=*-*-* 19:00:00 UTC
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

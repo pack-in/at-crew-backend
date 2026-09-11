@@ -371,6 +371,81 @@
     ]
   },
   {
+    "uid": "atcrew-image-backup-stale",
+    "title": "[P2] R2 이미지 백업이 26시간 넘게 성공하지 않았다",
+    "ruleGroup": "at-crew-p2",
+    "folderUID": "__FOLDER_UID__",
+    "condition": "C",
+    "for": "0m",
+    "labels": {
+      "severity": "p2"
+    },
+    "annotations": {
+      "summary": "마지막 이미지 백업 성공 시각이 26시간 이상 지났다",
+      "description": "이미지 백업 스크립트(deploy/r2-image-backup.sh) 실패 또는 타이머 중단. R2에는 오브젝트 버저닝이 없어 원본이 지워지면 되돌릴 수단이 사라진다."
+    },
+    "noDataState": "OK",
+    "execErrState": "OK",
+    "isPaused": false,
+    "_comment": "DB 백업(P1)보다 한 단계 낮다 — 중단돼도 이미 복사된 사본은 남아 있고, 위험한 것은 그 사이 새로 올라온 이미지뿐이다. 판단 근거는 P1 규칙과 같은 26시간(93600초).",
+    "data": [
+      {
+        "refId": "A",
+        "relativeTimeRange": {
+          "from": 600,
+          "to": 0
+        },
+        "datasourceUid": "__PROM_UID__",
+        "model": {
+          "refId": "A",
+          "instant": true,
+          "editorMode": "code",
+          "expr": "time() - max(atcrew_image_backup_last_success_timestamp)"
+        }
+      },
+      {
+        "refId": "C",
+        "relativeTimeRange": {
+          "from": 600,
+          "to": 0
+        },
+        "datasourceUid": "__expr__",
+        "model": {
+          "refId": "C",
+          "type": "threshold",
+          "expression": "A",
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "conditions": [
+            {
+              "evaluator": {
+                "type": "gt",
+                "params": [
+                  93600
+                ]
+              },
+              "operator": {
+                "type": "and"
+              },
+              "query": {
+                "params": [
+                  "C"
+                ]
+              },
+              "reducer": {
+                "type": "last",
+                "params": []
+              },
+              "type": "query"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
     "uid": "atcrew-5xx",
     "title": "[P2] 5xx 응답 증가",
     "ruleGroup": "at-crew-p2",

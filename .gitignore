@@ -69,3 +69,11 @@ deploy/terraform/*.tfstate.*
 deploy/terraform/*.tfvars
 deploy/terraform/*.out
 deploy/terraform/*.tfplan
+
+### age 백업 암호화 개인키 (이 키 하나로 R2의 DB 덤프 전부가 열린다) ###
+*age-key*
+*.agekey
+age-key.txt
+
+### 시크릿 보관 위치 문서 (공개 저장소에 표적을 남기지 않는다) ###
+docs/operations/secrets-location.md

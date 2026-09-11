@@ -5,6 +5,14 @@
 # gitleaks 기본 규칙셋 사용
 useDefault = true
 
+# age 백업 암호화 개인키. gitleaks 기본 규칙셋에는 age 규칙이 없어서(2026-09-10 실측) 직접 넣는다.
+# 이 키가 유출되면 R2에 쌓인 DB 덤프 전부를 복호화할 수 있다.
+[[rules]]
+id = "age-secret-key"
+description = "age 개인키 (백업 덤프 복호화 키)"
+regex = '''AGE-SECRET-KEY-1[0-9A-Z]{50,70}'''
+tags = ["key", "age", "backup"]
+
 [allowlist]
 # 테스트 코드 내 예시 값 허용
 paths = [
