@@ -15,8 +15,9 @@ import java.util.List;
  *
  * <ul>
  *   <li>희망 장르: {@code member.DesiredGenre}(29) ↔ {@code artwork.Genre}(29) — 상수 이름까지 같아 1:1 매핑 가능</li>
- *   <li>희망 담당 업무: {@code member.DesiredRole}(23) ↔ {@code artwork.ArtworkRole}(22) — 프로필의 작화·식자가
- *       recruit에 없고, recruit의 ETC가 프로필에 없다(프로필은 직접입력으로 대체)</li>
+ *   <li>희망 담당 업무: {@code member.DesiredRole}(23) ↔ {@code artwork.ArtworkRole}(24) — 작화·식자 차이는
+ *       해소됐으나, recruit의 ETC가 프로필에 없고(프로필은 직접입력으로 대체), 1도명암의 상수 이름이
+ *       서로 달라(ONE_TONE_SHADING vs TONE_WORK) 이름 기준 매핑은 여전히 불가능하다</li>
  *   <li>선호 피드백 방식: {@code member.FeedbackPreference}(구체적·자율적·직설적·부드러운·한번에·자잘하게·상관없음)
  *       ↔ {@code FeedbackStyle}(상세한·최소한의·실시간·정기적) — <b>대응값이 전혀 없다</b></li>
  *   <li>작업 스타일: {@code member.WorkPace}(완성도 중심·속도 우선·작업별 조율)

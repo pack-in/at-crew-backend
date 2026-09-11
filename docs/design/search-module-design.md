@@ -47,7 +47,7 @@ community 모듈이 동일한 상황(§1.3, `community-module-design.md`)에서 
 | 작품 분야 | `artworkFields` | `com.atcrew.artwork.ArtworkField` | ⚠️ 아래 §1.4 참고 |
 | 창작 유형 | `creativeTypes` | `com.atcrew.artwork.CreativeType` | 1차창작/2차창작/팬아트/OC/커미션 5개 일치 |
 | 연령대 | `ageRatings` | `com.atcrew.artwork.AgeRating` | 전체연령가/R18/G18 3개 일치 |
-| 담당 업무 | `roles` | `com.atcrew.artwork.ArtworkRole` | 22개 일치(직접입력→`ETC`) |
+| 담당 업무 | `roles` | `com.atcrew.artwork.ArtworkRole` | 24개 일치(직접입력→`ETC`) |
 | 장르 | `genres` | `com.atcrew.artwork.Genre` | 29종 일치 — 정본화 완료(§1.4) |
 | 소재 대상 | `materialTargets` | `com.atcrew.artwork.MaterialTarget` | 7종 일치: 무기/배경/장신구/컷꾸미기/효과/식자/인물 |
 

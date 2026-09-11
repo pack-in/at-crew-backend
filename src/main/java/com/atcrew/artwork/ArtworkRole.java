@@ -2,6 +2,7 @@ package com.atcrew.artwork;
 
 public enum ArtworkRole {
     TOTAL_ARTWORK,        // 총작화
+    ARTWORK,              // 작화
     ADAPTATION_STORYBOARD,// 각색콘티
     STORYBOARD,           // 콘티
     DIRECTION,            // 연출
@@ -11,8 +12,9 @@ public enum ArtworkRole {
     BASE_COLOR,           // 밑색
     TONE_WORK,            // 1도명암
     POST_PROCESSING,      // 후보정
+    PANEL_DECORATION,     // 원고꾸미기
+    LETTERING,            // 식자
     FULL_COLOR,           // 풀채색
-    PANEL_DECORATION,     // 컷꾸미기
     THREE_D_MODELING,     // 3D모델링
     MATERIAL_MAKING,      // 소재제작
     MATERIAL_PLACEMENT,   // 소재배치
