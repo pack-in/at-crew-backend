@@ -122,8 +122,48 @@ public enum MediaProcessingStatus { PENDING, DONE, FAILED }
 - **등급은 업로드 시점 플랜으로 확정되고 변환은 1회뿐이다.** 프로 → 스타터 다운그레이드로 기존 이미지
   화질이 내려가지 않고(요금제-R01), 스타터 → 프로 전환으로 기존 이미지가 선명해지지도 않는다.
   재시도(`ImageRetryScheduler`)가 최초와 같은 결과를 내도록 `media_assets.quality_tier`에 함께 보관한다.
-- 업로드 원본 용량 상한은 **5MB**다. Presigned PUT은 서명에 Content-Length 조건을 넣을 수 없어 크기를
-  강제하지 못하므로, Worker가 변환 직전 R2 객체 크기를 검사해 초과분을 FAILED 콜백으로 돌려보낸다.
+- 업로드 원본 용량 상한은 **100MB**(`MediaConstraints.MAX_ORIGINAL_BYTES`)다. 이 값은 정책이 아니라
+  **Cloudflare Images 원격 변환의 입력 한계**를 그대로 옮긴 것이다 — 기획(업로드-R04)은 플랜 무관
+  "용량 제한 없음"이므로 서버가 임의로 더 낮게 잡을 근거가 없고, 100MB를 넘는 파일은 클라이언트가
+  업로드 전에 줄여야 한다.
+- **변환은 R2 바인딩이 아니라 `fetch(sourceUrl, {cf:{image}})`로 한다.** 바인딩(`env.IMAGES.input()`)은
+  원본 바이트를 Worker 메모리로 읽어야 해서 입력이 20MB로 막힌다(Workers 메모리 128MB). 라이트 실데이터
+  14,759건 중 20MB 초과가 426건(2.89%)이라 그대로 둘 수 없었다. URL 경로는 Cloudflare가 소스에서 직접
+  가져가므로 Worker 메모리를 쓰지 않고 100MB까지 받는다. 100MB 초과는 라이트 전체에서 2건(0.01%)이고
+  Images 자체의 한계라 어떤 방식으로도 처리할 수 없다.
+  - 이 때문에 서버는 트리거 payload에 `imageKeys`와 같은 순서의 **읽기용 서명 URL(`sourceUrls`)** 을
+    함께 싣는다(`R2StorageAdapter.triggerWorker`, 만료 60분).
+- **변환 결과의 포맷은 강제되지 않는다.** Cloudflare는 `format`을 "가능하면" 지키고, 면적이 큰 이미지는
+  AVIF 인코딩이 느려 **WebP로 폴백한다**(2026-09-10 실측: 2480×3508을 축소 없이 요청하면 WebP,
+  1280px로 줄이면 AVIF). 그래서 R2에 저장할 때 content-type을 `image/avif`로 못 박지 않고 응답의
+  실제 값을 그대로 쓴다 — 못 박으면 WebP 바이트에 avif 헤더가 붙어 브라우저가 디코드에 실패한다.
+  키 확장자는 `.avif`로 고정돼 있어 내용과 어긋날 수 있지만, 키는 식별자일 뿐이고 브라우저는
+  content-type을 보므로 동작에 문제가 없다. Presigned PUT은 서명에 Content-Length 조건을 넣을 수 없어 크기를 강제하지
+  못하므로 검사는 두 겹이다 — presign 발급 시 클라이언트가 보낸 `fileSizes`로 미리 거르고(선택 입력이라
+  생략 가능), Worker가 변환 직전 R2 객체 크기를 실측해 초과분을 FAILED 콜백으로 돌려보낸다. 신고값은
+  믿을 수 없으므로 Worker 검사가 최종 방어선이고, 두 값은 반드시 같아야 한다.
+- **raw 원본은 변환 성공 후 삭제한다.** 저장량의 대부분이 원본이고(2026-09-09 실측: raw 138.6MB 대
+  AVIF 0.52MB로 99.5%), 변환 결과가 원본을 대체하므로 남길 이유가 없다. 기획에도 원본 보관·다운로드
+  요구가 없다. 삭제는 **콜백이 서버에 닿은 뒤에만** 한다 — 콜백이 유실되면 서버는 계속 PENDING으로 보고
+  `ImageRetryScheduler`가 재시도를 거는데, 그때 원본이 없으면 영구 FAILED가 되기 때문이다. 그래서
+  `MediaAssetInfo.originalKey`·`ArtworkImageInfo.originalKey`는 처리 완료 후 실제 객체가 없는 식별자이며,
+  이미지를 불러오는 데 쓰면 안 된다(표시용은 `originalAvifKey`·`thumbKey`).
+- 원본을 지우므로 `ORIGINAL` 등급은 **해상도 상한 없이 `quality: 95`** 로 인코딩한다. 여기서 축소하면
+  그 해상도를 되돌릴 수 없고, 요금제-R04의 "선명한 원본 화질"과도 이제 실제로 맞는다.
+  q100이 아닌 이유는 **Cloudflare가 100에서만 무손실 모드로 전환해 크기가 급증**하기 때문이다.
+  6MB PNG 원고(2480×3508)를 실제 Images 바인딩으로 변환한 실측값:
+
+  | quality | 결과 | 원본 대비 |
+  |---|---|---|
+  | 85 | 348 KB | 5.7% |
+  | 90 | 481 KB | 7.9% |
+  | 95 | 788 KB | 13.0% |
+  | 99 | 1,068 KB | 17.6% |
+  | 100 | 3,923 KB | 64.6% |
+
+  100은 99의 3.7배다. 원본을 지우는 목적이 저장량 절감인데 100을 쓰면 그 효과가 대부분 사라진다.
+  `WEB`(스타터)은 기존대로 가로 1280px·q72다 — **플랜 차등은 화질로만 하고 용량으로는 하지 않는다**
+  (업로드-R04 "플랜 무관", 요금제-R03).
 
 ---
 
@@ -182,7 +222,10 @@ public record MediaAssetProcessedEvent(MediaOwnerType ownerType, String ownerId,
   `PROCESSING → READY`로 전환하는 조건은 **"모든 이미지 DONE"이 아니라** `Artwork.markImageProcessed`의
   기존 규칙 그대로 **"PENDING이 하나도 없고(재시도 여지 없음) DONE이 하나 이상"** — 부분 실패를 허용한다
   (QA에서 발견: 최초 초안이 "모든 이미지 DONE"으로 잘못 적어, 그대로 구현했다면 이미지 하나라도 FAILED면
-  영원히 READY로 못 넘어가는 회귀가 생겼을 것). 이 로직은 `Artwork` 애그리게잇에 그대로 남고, 리스너는
+  영원히 READY로 못 넘어가는 회귀가 생겼을 것). **PENDING이 없는데 DONE도 없으면(전량 실패) `FAILED`로
+  끝낸다** — 이 분기가 없으면 어느 조건에도 걸리지 않아 PROCESSING에 영구 고착되고, 재시도 스케줄러는
+  PENDING만 다루므로 자력 복구도 불가능하다(2026-09-09 프로덕션 4건, 원인은 용량 상한 초과).
+  이 로직은 `Artwork` 애그리게잇에 그대로 남고, 리스너는
   이벤트를 받아 `Artwork`에 위임만 한다 — 부분 실패 허용 여부 판단 자체는 도메인 로직이라 media로 옮기지
   않는다.
 - **recruit 소비**(신규): 자신의 `job_posting_images`/`team_posting_images`/`job_seeking_post_images` 행을

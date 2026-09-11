@@ -8,7 +8,8 @@ import java.util.Optional;
 
 public interface ArtworkService {
 
-    List<PresignedUrlInfo> generatePresignedUrls(int count, List<String> contentTypes);
+    /** @param fileSizes 업로드할 원본의 바이트 크기. 클라이언트가 보내지 않으면 null이며 이때 크기 검사는 건너뛴다. */
+    List<PresignedUrlInfo> generatePresignedUrls(int count, List<String> contentTypes, List<Long> fileSizes);
 
     ArtworkInfo uploadArtwork(String memberId, UploadArtworkCommand command);
 

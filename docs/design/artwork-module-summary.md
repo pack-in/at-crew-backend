@@ -84,7 +84,7 @@ com.atcrew.artwork.internal/               ← 모듈 외부에서 직접 접근
 | `visibility` | enum | PUBLIC(피드 공개 ON) / PRIVATE(피드 공개 OFF), LINK_ONLY는 deprecated |
 | `visibilityBeforeDelete` | enum | 휴지통 이동 전 공개 상태 스냅샷 |
 | `materials` | `List<Material>` | 소재 정보 (이름·대상·R2 첨부키·외부 링크) |
-| `status` | enum | PROCESSING / READY / DELETED |
+| `status` | enum | PROCESSING / READY / FAILED / DELETED |
 | `deletedAt` | Instant | 휴지통 이동 시각 |
 | `createdAt / updatedAt` | Instant | `@CreatedDate` / `@LastModifiedDate` 자동 관리 |
 
@@ -151,10 +151,14 @@ record WorkDuration(Integer months, Integer days, Integer hours, Integer minutes
            DELETED   ←→ (restoreArtworks) → READY
               ↓ (permanentlyDeleteArtworks)
            [DB에서 삭제]
+
+           PROCESSING ──(모든 이미지 콜백 수신, 전부 FAILED)──▶ FAILED
 ```
 
 - **PROCESSING**: 이미지 Worker 처리 중. 작가 본인은 조회 가능, 다른 사람은 접근 불가.
 - **READY**: 정상 공개 가능 상태. Visibility에 따라 노출 범위 결정.
+- **FAILED**: 이미지가 한 장도 성공하지 못한 상태. 작가 본인은 조회 가능(재업로드 안내용), 다른 사람은
+  접근 불가. 재시도 대상이 아니므로 작가가 이미지를 교체하면(`updateArtwork`) 다시 PROCESSING으로 간다.
 - **DELETED**: 휴지통. 다른 조회 API에 노출되지 않음. 복구 또는 영구 삭제 가능.
 
 #### 이미지 처리 상태 (각 ArtworkImage)
@@ -164,13 +168,13 @@ PENDING → (Worker DONE 콜백) → DONE
         → (Worker FAILED 콜백) → FAILED
 ```
 
-모든 이미지가 PENDING이 아니게 되고(DONE or FAILED), 하나라도 DONE이면 Artwork status를 READY로 전환. 전부 FAILED면 PROCESSING 유지 (수동 개입 필요).
+모든 이미지가 PENDING이 아니게 되고(DONE or FAILED), 하나라도 DONE이면 Artwork status를 READY로 전환. 전부 FAILED면 `FAILED`로 전환한다 — 재시도 스케줄러는 PENDING만 다루므로 PROCESSING에 두면 영구 고착된다.
 
 ### ArtworkImage (Artwork에 내장)
 
 | 필드 | 설명 |
 |------|------|
-| `originalKey` | R2에 업로드된 원본 파일 키 (`raw/UUID.ext`) |
+| `originalKey` | R2에 업로드된 원본 파일 키 (`raw/UUID.ext`). **처리 완료 후 실제 객체는 삭제된다** — 변환 결과가 원본을 대체하므로 식별·정리용 값일 뿐, 이미지 로드에 쓰지 않는다 |
 | `thumbKey` | Worker 생성 썸네일 키 |
 | `thumbAdultKey` | Worker 생성 성인물 블러 썸네일 키 |
 | `originalAvifKey` | Worker 생성 AVIF 변환본 키 |
@@ -359,7 +363,7 @@ R2 업로드 완료 후 작품 메타데이터를 저장. 바로 `PROCESSING` �
 
 #### `GET /api/artworks/{artworkId}/status` — 처리 상태 폴링
 
-작가 본인만. `PROCESSING / READY / DELETED` 반환. 클라이언트는 이 엔드포인트를 폴링해 업로드 완료를 감지.
+작가 본인만. `PROCESSING / READY / FAILED / DELETED` 반환. 클라이언트는 이 엔드포인트를 폴링해 업로드 완료를 감지.
 
 #### `PATCH /api/artworks/{artworkId}` — 작품 수정
 

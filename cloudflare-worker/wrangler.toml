@@ -13,9 +13,8 @@ compatibility_date = "2026-08-05"
 binding = "MEDIA_BUCKET"
 bucket_name = "at-crew-storage"
 
-# Cloudflare Images 변환 바인딩 — resize/crop/blur/avif 인코딩을 코드 없이 처리한다.
-[images]
-binding = "IMAGES"
+# Images 바인딩은 쓰지 않는다. 변환은 fetch(url, {cf:{image}})로 하고, 그 경로는 바인딩과 달리
+# 원본 바이트를 Worker 메모리로 가져오지 않아 입력 한계가 20MB가 아니라 100MB다.
 
 # 시크릿(CALLBACK_SECRET, INTERNAL_SECRET, SERVER_CALLBACK_URL)은 wrangler.toml에 적지 않는다.
 # `wrangler secret put <이름>`으로 등록한다 (README 참고).

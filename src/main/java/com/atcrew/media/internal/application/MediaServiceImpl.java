@@ -19,10 +19,13 @@ class MediaServiceImpl implements MediaService {
     private final ArtworkStoragePort storagePort; private final ImageProcessingWorker worker;
     MediaServiceImpl(MediaAssetRepository assets, OrphanedMediaKeyRepository orphans, ArtworkStoragePort storagePort,
                      ImageProcessingWorker worker) { this.assets = assets; this.orphans = orphans; this.storagePort = storagePort; this.worker = worker; }
-    @Override public List<PresignedUrlInfo> generatePresignedUrls(int count, List<String> contentTypes) {
+    @Override public List<PresignedUrlInfo> generatePresignedUrls(int count, List<String> contentTypes, List<Long> fileSizes) {
         if (count < 1 || count > 30) throw new IllegalArgumentException("이미지 개수는 1~30개여야 합니다.");
         if (contentTypes == null || contentTypes.size() != count || contentTypes.stream().anyMatch(t -> !ALLOWED_CONTENT_TYPES.contains(t)))
             throw new IllegalArgumentException("지원하지 않는 이미지 content type입니다.");
+        // fileSizes는 선택 입력이다 — 보내지 않는 클라이언트도 계속 받아준다(Worker가 실측으로 다시 거른다).
+        if (fileSizes != null && fileSizes.stream().anyMatch(s -> s != null && s > MediaConstraints.MAX_ORIGINAL_BYTES))
+            throw new IllegalArgumentException("이미지 용량이 상한을 초과했습니다.");
         return contentTypes.stream().map(type -> { String key = "raw/" + UuidV7Generator.generate() + extensionFor(type); return new PresignedUrlInfo(key, storagePort.generatePresignedPutUrl(key, type)); }).toList();
     }
     @Override @Transactional public void registerAndTriggerProcessing(MediaOwnerType ownerType, String ownerId,
