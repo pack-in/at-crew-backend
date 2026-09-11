@@ -97,6 +97,54 @@ class ArtworkImageProcessingTest {
         assertThat(artwork.getImages().get(0).getProcessingStatus()).isEqualTo(ImageProcessingStatus.FAILED);
     }
 
+    // 휴지통 복구는 삭제 전 상태를 기억하는 대신 이미지 현황으로 다시 계산한다(이슈 #146) —
+    // 예전에는 무조건 READY라 이미지가 없거나 전량 실패한 작품이 공개 상태로 살아났다.
+    @Test
+    void 처리_중에_버린_작품을_복구하면_PROCESSING으로_돌아온다() {
+        Artwork artwork = artworkWith("raw/1.png", "raw/2.png");
+        artwork.markImageProcessed("raw/1.png", "thumb/1.avif", null, "original/1.avif", true);
+        artwork.moveToTrash();
+
+        artwork.restore();
+
+        assertThat(artwork.getStatus()).isEqualTo(ArtworkStatus.PROCESSING);
+    }
+
+    @Test
+    void 전량_실패한_작품을_복구하면_FAILED로_돌아온다() {
+        Artwork artwork = artworkWith("raw/1.png");
+        artwork.markImageProcessed("raw/1.png", null, null, null, false);
+        artwork.moveToTrash();
+
+        artwork.restore();
+
+        assertThat(artwork.getStatus()).isEqualTo(ArtworkStatus.FAILED);
+    }
+
+    @Test
+    void 정상_작품을_복구하면_READY로_돌아온다() {
+        Artwork artwork = artworkWith("raw/1.png");
+        artwork.markImageProcessed("raw/1.png", "thumb/1.avif", null, "original/1.avif", true);
+        artwork.moveToTrash();
+
+        artwork.restore();
+
+        assertThat(artwork.getStatus()).isEqualTo(ArtworkStatus.READY);
+    }
+
+    // 삭제 시점 상태를 스냅샷으로 저장하는 방식이었다면 PROCESSING으로 되살아났을 경우다 —
+    // 휴지통에 있는 동안에도 콜백은 이미지 행을 계속 갱신하므로 스냅샷은 낡은 값이 된다.
+    @Test
+    void 버린_뒤_처리가_끝난_작품을_복구하면_READY로_돌아온다() {
+        Artwork artwork = artworkWith("raw/1.png");
+        artwork.moveToTrash();
+        artwork.markImageProcessed("raw/1.png", "thumb/1.avif", null, "original/1.avif", true);
+
+        artwork.restore();
+
+        assertThat(artwork.getStatus()).isEqualTo(ArtworkStatus.READY);
+    }
+
     @Test
     void 알_수_없는_이미지_키_콜백은_무시된다() {
         Artwork artwork = artworkWith("raw/1.png");

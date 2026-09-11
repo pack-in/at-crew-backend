@@ -410,12 +410,37 @@ public class Artwork implements Persistable<String> {
         this.deletedAt = Instant.now();
     }
 
+    /**
+     * 휴지통에서 되돌린다(이슈 #146).
+     *
+     * <p>상태는 삭제 전 값을 스냅샷으로 들고 있다가 되돌리는 대신 <b>이미지의 현재 상태로 다시 계산한다</b>.
+     * 휴지통에 있는 동안에도 Worker 콜백은 이미지 행을 계속 갱신하므로(상태만 덮어쓰지 않을 뿐,
+     * {@link #markImageProcessed} 참고) 삭제 시점 스냅샷은 낡은 값이 될 수 있다 — PROCESSING일 때 버린
+     * 작품이 그사이 전부 처리됐는데도 다시 PROCESSING으로 되살아나는 식이다.
+     *
+     * <p>예전에는 삭제 전 상태와 무관하게 항상 READY로 만들었다. 이미지가 아직 처리되지 않았거나 전량
+     * 실패한 작품이 정상 공개 상태가 되어 피드·검색에 깨진 채로 노출됐다.
+     */
     public void restore() {
         assertDeleted();
-        this.status = ArtworkStatus.READY;
+        this.status = resolveStatusFromImages();
         this.visibility = this.visibilityBeforeDelete != null ? this.visibilityBeforeDelete : Visibility.PRIVATE;
         this.visibilityBeforeDelete = null;
         this.deletedAt = null;
+    }
+
+    /**
+     * 이미지 처리 현황만 보고 작품 상태를 정한다 — {@link #markImageProcessed}의 전환 규칙과 같은 판정이라
+     * 두 곳이 어긋나지 않도록 여기로 모았다.
+     *
+     * <p>이미지가 하나도 없는 작품은 업로드 경로상 만들어질 수 없지만, 그 경우 PROCESSING으로 두면
+     * 아무도 끝내주지 않아 고착되므로 FAILED로 본다.
+     */
+    private ArtworkStatus resolveStatusFromImages() {
+        if (images.stream().anyMatch(ArtworkImage::isPending)) {
+            return ArtworkStatus.PROCESSING;
+        }
+        return images.stream().anyMatch(ArtworkImage::isDone) ? ArtworkStatus.READY : ArtworkStatus.FAILED;
     }
 
     public void markImageProcessed(String originalKey, String thumbKey,
@@ -437,15 +462,9 @@ public class Artwork implements Persistable<String> {
         if (status == ArtworkStatus.DELETED) {
             return;
         }
-        // 처리 중인 이미지가 없고 하나라도 성공한 경우 READY로 전환 (부분 실패 허용)
-        boolean noneProcessing = images.stream().noneMatch(ArtworkImage::isPending);
-        boolean anyDone = images.stream().anyMatch(ArtworkImage::isDone);
-        if (noneProcessing && anyDone) {
-            this.status = ArtworkStatus.READY;
-        } else if (noneProcessing) {
-            // 전량 실패 — 재시도 스케줄러는 PENDING만 다루므로 여기서 끝내지 않으면 PROCESSING에 영원히 남는다.
-            this.status = ArtworkStatus.FAILED;
-        }
+        // 처리 중인 이미지가 없고 하나라도 성공하면 READY(부분 실패 허용), 전량 실패면 FAILED로 끝낸다 —
+        // 재시도 스케줄러는 PENDING만 다루므로 끝내지 않으면 PROCESSING에 영원히 남는다.
+        this.status = resolveStatusFromImages();
     }
 
     // 뷰어별 접근 판정 — 공개 여부는 "피드 공개 여부 × 라이브 포트폴리오 편입 여부" 2요소로 계산한다
