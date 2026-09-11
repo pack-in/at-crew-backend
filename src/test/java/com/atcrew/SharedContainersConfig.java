@@ -25,6 +25,11 @@ public class SharedContainersConfig {
     public static ElasticsearchContainer elasticsearch = new ElasticsearchContainer(
             "docker.elastic.co/elasticsearch/elasticsearch:9.2.8")
             .withEnv("xpack.security.enabled", "false")
+            // 힙을 고정하지 않으면 ES가 호스트 메모리를 보고 절반가량을 잡으려 든다. CI 러너는
+            // ubuntu-latest(2코어·7GB)라 Gradle 데몬 2GB·테스트 JVM 2GB와 겹치면 전체가 메모리를
+            // 다투게 되고, 그 결과가 컨텍스트 로딩 실패와 폴링 타임아웃이다(2026-09-11 배포 CI 35개 실패).
+            // 테스트 색인은 문서 수십 건 수준이라 512MB로 충분하다.
+            .withEnv("ES_JAVA_OPTS", "-Xms512m -Xmx512m")
             // 기본 시작 대기 타임아웃이 이 환경에서 ES 완전 기동에 부족해 늘림 (ContainerLaunchException 방지)
             .withStartupTimeout(Duration.ofMinutes(3));
 
