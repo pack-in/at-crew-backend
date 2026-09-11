@@ -84,6 +84,7 @@ class SecurityConfig {
                                     "/api/auth/email/login",
                                     "/api/auth/email/register",
                                     "/api/auth/email/password-reset/request",
+                                    "/api/auth/email/password-reset/verify",
                                     "/api/auth/email/password-reset/confirm",
                                     "/api/auth/google/login",
                                     "/api/auth/google/register",

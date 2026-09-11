@@ -14,6 +14,10 @@ public interface PasswordResetTokenRepository extends JpaRepository<PasswordRese
     // (RefreshTokenRepository.findByTokenValueAndExpiresAtAfter와 동일 패턴).
     Optional<PasswordResetToken> findByTokenHashAndExpiresAtAfter(String tokenHash, Instant now);
 
+    // 코드 검증(verify) 단계 — 요청 시 deleteAllByMemberId로 이전 행을 지우므로 회원당 활성 행은
+    // 최대 1개다. PENDING·VERIFIED 상태 모두 이 조회로 찾은 뒤 verifiedAt으로 분기한다.
+    Optional<PasswordResetToken> findByMemberIdAndExpiresAtAfter(String memberId, Instant now);
+
     // Mongo findAndRemove 대체 — 영향 행 수 1을 가져가는 요청만 토큰을 소비한다. 동시 confirm 요청이
     // 먼저 삭제했다면 0이 반환되어 재사용 시도로 판별된다(RefreshTokenRepository.deleteByIdReturningCount와 동일).
     @Modifying(clearAutomatically = true, flushAutomatically = true)

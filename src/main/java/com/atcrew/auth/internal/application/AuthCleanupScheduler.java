@@ -1,6 +1,7 @@
 package com.atcrew.auth.internal.application;
 
 import com.atcrew.auth.internal.persistence.LoginAttemptRepository;
+import com.atcrew.auth.internal.persistence.PasswordReauthTokenRepository;
 import com.atcrew.auth.internal.persistence.PasswordResetTokenRepository;
 import com.atcrew.auth.internal.persistence.RefreshTokenRepository;
 import org.slf4j.Logger;
@@ -26,13 +27,16 @@ class AuthCleanupScheduler {
     private final RefreshTokenRepository refreshTokenRepository;
     private final LoginAttemptRepository loginAttemptRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
+    private final PasswordReauthTokenRepository passwordReauthTokenRepository;
 
     AuthCleanupScheduler(RefreshTokenRepository refreshTokenRepository,
                          LoginAttemptRepository loginAttemptRepository,
-                         PasswordResetTokenRepository passwordResetTokenRepository) {
+                         PasswordResetTokenRepository passwordResetTokenRepository,
+                         PasswordReauthTokenRepository passwordReauthTokenRepository) {
         this.refreshTokenRepository = refreshTokenRepository;
         this.loginAttemptRepository = loginAttemptRepository;
         this.passwordResetTokenRepository = passwordResetTokenRepository;
+        this.passwordReauthTokenRepository = passwordReauthTokenRepository;
     }
 
     @Scheduled(fixedDelay = 3_600_000)
@@ -43,10 +47,11 @@ class AuthCleanupScheduler {
         int expiredAttempts = loginAttemptRepository
                 .deleteExpired(now.minusSeconds(LoginAttemptLimiter.WINDOW_SECONDS));
         int expiredResetTokens = passwordResetTokenRepository.deleteExpired(now);
+        int expiredReauthTokens = passwordReauthTokenRepository.deleteExpired(now);
 
-        if (expiredTokens > 0 || expiredAttempts > 0 || expiredResetTokens > 0) {
-            log.info("만료 데이터 정리: refreshTokens={} loginAttempts={} passwordResetTokens={}",
-                    expiredTokens, expiredAttempts, expiredResetTokens);
+        if (expiredTokens > 0 || expiredAttempts > 0 || expiredResetTokens > 0 || expiredReauthTokens > 0) {
+            log.info("만료 데이터 정리: refreshTokens={} loginAttempts={} passwordResetTokens={} passwordReauthTokens={}",
+                    expiredTokens, expiredAttempts, expiredResetTokens, expiredReauthTokens);
         }
     }
 }

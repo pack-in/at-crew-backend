@@ -200,23 +200,35 @@ class AuthControllerValidationTest {
                 .andDo(document("auth/validation/logout-blank-token"));
     }
 
+    // ─── POST /api/auth/email/password-change/verify ───────────────────
+
+    @Test
+    void 비밀번호_변경_재인증_현재_비밀번호_blank_400() throws Exception {
+        mockMvc.perform(post("/api/auth/email/password-change/verify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("currentPassword", ""))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("auth/validation/password-change-verify-blank-current"));
+    }
+
     // ─── POST /api/auth/email/password-change ─────────────────────────
 
     @Test
-    void 비밀번호_변경_현재_비밀번호_blank_400() throws Exception {
+    void 비밀번호_변경_재인증토큰_blank_400() throws Exception {
         mockMvc.perform(post("/api/auth/email/password-change")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(passwordChangeBody("", "NewPass1!", "NewPass1!")))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
-                .andDo(document("auth/validation/password-change-blank-current"));
+                .andDo(document("auth/validation/password-change-blank-reauth-token"));
     }
 
     @Test
     void 비밀번호_변경_새_비밀번호_정책_위반_400() throws Exception {
         mockMvc.perform(post("/api/auth/email/password-change")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(passwordChangeBody("OldPass1!", "short", "short")))
+                        .content(passwordChangeBody("reauth-token", "short", "short")))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
                 .andDo(document("auth/validation/password-change-invalid-policy"));
@@ -226,7 +238,7 @@ class AuthControllerValidationTest {
     void 비밀번호_변경_확인값_불일치_400() throws Exception {
         mockMvc.perform(post("/api/auth/email/password-change")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(passwordChangeBody("OldPass1!", "NewPass1!", "Different1!")))
+                        .content(passwordChangeBody("reauth-token", "NewPass1!", "Different1!")))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
                 .andDo(document("auth/validation/password-change-confirm-mismatch"));
@@ -237,7 +249,7 @@ class AuthControllerValidationTest {
         mockMvc.perform(post("/api/auth/email/password-change")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "currentPassword", "OldPass1!",
+                                "reauthToken", "reauth-token",
                                 "newPassword", "NewPass1!",
                                 "newPasswordConfirm", "NewPass1!",
                                 "refreshToken", ""))))
@@ -286,20 +298,40 @@ class AuthControllerValidationTest {
                 .andDo(document("auth/validation/password-reset-confirm-mismatch"));
     }
 
+    @Test
+    void 비밀번호_재설정_코드검증_email_형식_오류_400() throws Exception {
+        mockMvc.perform(post("/api/auth/email/password-reset/verify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("email", "not-an-email", "code", "K4P7XM"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("auth/validation/password-reset-verify-invalid-email"));
+    }
+
+    @Test
+    void 비밀번호_재설정_코드검증_코드_길이_오류_400() throws Exception {
+        mockMvc.perform(post("/api/auth/email/password-reset/verify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("email", "user@test.com", "code", "SHORT"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                .andDo(document("auth/validation/password-reset-verify-invalid-code-length"));
+    }
+
     // ─── 헬퍼 ─────────────────────────────────────────────────────────
 
-    private String passwordChangeBody(String current, String next, String confirm) throws Exception {
+    private String passwordChangeBody(String reauthToken, String next, String confirm) throws Exception {
         return objectMapper.writeValueAsString(Map.of(
-                "currentPassword", current,
+                "reauthToken", reauthToken,
                 "newPassword", next,
                 "newPasswordConfirm", confirm,
                 "refreshToken", "refresh.jwt"
         ));
     }
 
-    private String passwordResetConfirmBody(String token, String next, String confirm) throws Exception {
+    private String passwordResetConfirmBody(String resetToken, String next, String confirm) throws Exception {
         return objectMapper.writeValueAsString(Map.of(
-                "token", token,
+                "resetToken", resetToken,
                 "newPassword", next,
                 "newPasswordConfirm", confirm
         ));

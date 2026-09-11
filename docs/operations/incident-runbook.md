@@ -49,6 +49,23 @@ EOF
 > `<인스턴스 ID>`·`<GRAFANA_URL>`은 실제 값을 적지 않는다(공개 저장소). 각각 저장소 Secret
 > `APP_INSTANCE_ID`, `GRAFANA_URL`을 참조한다.
 
+### 손으로 인프라를 건드릴 때 — 먼저 알람을 끈다
+
+복구 작업 자체가 재시작·순단을 만들어 알람을 더 울린다. 그 소음 속에서 진짜 신호를 놓친다.
+
+```bash
+deploy/observability/silence.sh 15m "NAT 인스턴스 교체"   # ID를 출력한다
+# ... 작업 ...
+deploy/observability/silence.sh --end <silence ID>        # 끝나면 바로 해제한다
+```
+
+**끄는 것은 알람이지 문제가 아니다.** 만료(위 예시는 15분)가 지나면 자동으로 풀리므로 `--end`를
+잊어도 영구히 눈이 머는 일은 없지만, 작업이 끝났으면 바로 푼다 — 억제된 동안 새로 생긴 장애는
+보이지 않는다.
+
+자격증명이 없다는 에러가 나면 스크립트가 만드는 방법을 출력한다. 값은 CI가 쓰는 저장소 Secret
+`GRAFANA_URL`·`GRAFANA_API_KEY`와 같다.
+
 ---
 
 ## P1

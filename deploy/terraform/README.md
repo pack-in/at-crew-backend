@@ -1,7 +1,7 @@
 # Terraform — at-crew 인프라 보안 강화 (PA-03~05, PA-10)
 
 `docs/design/infra-security-hardening-design.md`, `plans/260901-infra-upgrade/`(개인 문서)
-참고. 기존 기본 VPC(`vpc-9f11ccf4`, laiteu와 공유)는 건드리지 않고 완전히 분리된 신규 VPC를
+참고. 기존 기본 VPC(laiteu와 공유하는 계정 기본 VPC)는 건드리지 않고 완전히 분리된 신규 VPC를
 만든다.
 
 ## 포함된 것
@@ -13,7 +13,7 @@
 
 ## 포함되지 않은 것 (권한 부족으로 적용 불가)
 
-2026-09-01 기준 `at-crew-be` IAM 사용자(`arn:aws:iam::820010786587:user/at-crew-be`) 권한을
+2026-09-01 기준 배포용 IAM 사용자(`at-crew-be`) 권한을
 `--dry-run`/실제 조회로 확인한 결과:
 
 | 필요한 권한 | 상태 | 막힌 작업 |

@@ -62,6 +62,8 @@ aws ssm start-session --target <인스턴스 ID>     # session-manager-plugin �
 - `bootstrap.sh` — 새 호스트에 관측 에이전트와 백업 타이머를 설치한다
 - `backup.sh`, `systemd/` — MariaDB 일일 백업 스크립트와 타이머 유닛
 - `deploy.sh` — 로컬에서 빌드→Docker Hub 푸시→앱 서버 재배포까지 한 번에
+- `observability/silence.sh` — 손으로 인프라를 건드리는 동안 알람을 억제한다. 배포 중 억제는
+  CI가 알아서 하지만(`deploy.yml`), 로컬에서 `terraform apply` 같은 걸 돌릴 때는 이걸 쓴다
 - `terraform/app-launch-template.tf` — **앱 서버 재생성용 시작 템플릿.** 아래 "최초 1회 설정"을
   user_data로 자동화한 것이다. 장애 시에는 손으로 하지 말고 이걸 쓴다
 

@@ -148,7 +148,7 @@ record WorkDuration(Integer months, Integer days, Integer hours, Integer minutes
               ↓ (모든 이미지 콜백 수신, 하나라도 DONE)
            READY
               ↓ (deleteArtwork)
-           DELETED   ←→ (restoreArtworks) → READY
+           DELETED   ──(restoreArtworks)──▶ 이미지 현황으로 재계산 (PROCESSING/READY/FAILED)
               ↓ (permanentlyDeleteArtworks)
            [DB에서 삭제]
 
@@ -677,7 +677,10 @@ R2는 Cloudflare R2 (S3 호환). AWS SDK S3 v2를 사용하되 `Region.of("auto"
   `visibility`를 입력받지 않으므로 `LINK_ONLY`를 신규 생성할 경로 자체가 없다(2026-08-13 PA-05로
   `UNSUPPORTED_VISIBILITY` 400 가드와 함께 구 `PATCH /visibility` 제거).
 - 커뮤니티 피드·검색 색인은 `PUBLIC`만 대상으로 한다(포트폴리오 한정 공개는 노출하지 않음).
-- 휴지통 이동 시 강제 PRIVATE으로 변경. 복구 시 이전 상태로 복원.
+- 휴지통 이동 시 강제 PRIVATE으로 변경. 복구 시 공개 범위는 이전 값으로 복원한다.
+- 복구 시 **작품 상태는 삭제 전 값이 아니라 이미지 현황으로 다시 계산한다**(이슈 #146). 휴지통에 있는
+  동안에도 Worker 콜백이 이미지 행을 갱신하므로 삭제 시점 스냅샷은 낡은 값이 될 수 있다. 예전에는
+  무조건 READY라 이미지가 아직 없거나 전량 실패한 작품이 공개 상태로 살아났다.
 - 탈퇴 이벤트 수신 시 모든 작품 강제 PRIVATE (`forcePrivate()`, 상태 무관).
 - `changeVisibility()`는 `READY` 상태만 허용. `forcePrivate()`는 상태 무관.
 

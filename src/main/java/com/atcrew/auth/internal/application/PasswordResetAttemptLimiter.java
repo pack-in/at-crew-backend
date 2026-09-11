@@ -23,6 +23,12 @@ class PasswordResetAttemptLimiter {
     private static final int EMAIL_LIMIT = 3;
     private static final int WINDOW_SECONDS = 300; // 5분 (docs/design/auth-email-custom-redesign.md §7.3)
 
+    // 코드 오답 시도 제한(이슈 #151) — 6자리 코드(32^6 조합)는 시도 횟수를 제한하지 않으면 TTL(10분) 안에
+    // 무차별 대입이 시도될 수 있다. 윈도우를 코드 TTL과 동일하게(600초) 잡아 코드 하나의 생애주기 전체를
+    // 덮는다 — LoginAttemptLimiter.WINDOW_SECONDS와 같은 값이라 AuthCleanupScheduler가 추가 정리 없이 커버한다.
+    private static final int VERIFY_ATTEMPT_LIMIT = 5;
+    private static final int VERIFY_WINDOW_SECONDS = 600;
+
     private final LoginAttemptRepository loginAttemptRepository;
 
     PasswordResetAttemptLimiter(LoginAttemptRepository loginAttemptRepository) {
@@ -45,5 +51,22 @@ class PasswordResetAttemptLimiter {
     void recordAttempt(String email) {
         Instant now = Instant.now();
         loginAttemptRepository.increment("pwreset:" + email, now, now.minusSeconds(WINDOW_SECONDS));
+    }
+
+    @Transactional(readOnly = true)
+    void checkVerifyBlocked(String email) {
+        Instant windowStart = Instant.now().minusSeconds(VERIFY_WINDOW_SECONDS);
+        Integer count = loginAttemptRepository
+                .findFailCountWithinWindow("pwverify:" + email, windowStart).orElse(null);
+        if (count != null && count >= VERIFY_ATTEMPT_LIMIT) {
+            log.warn("비밀번호 재설정 코드 검증 차단: email={}", LogMask.email(email));
+            throw new AuthException(AuthErrorCode.TOO_MANY_ATTEMPTS);
+        }
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    void recordVerifyFailure(String email) {
+        Instant now = Instant.now();
+        loginAttemptRepository.increment("pwverify:" + email, now, now.minusSeconds(VERIFY_WINDOW_SECONDS));
     }
 }
