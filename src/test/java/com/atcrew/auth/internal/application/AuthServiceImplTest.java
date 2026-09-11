@@ -4,12 +4,14 @@ import com.atcrew.auth.AuthInfo;
 import com.atcrew.auth.EmailLoginCommand;
 import com.atcrew.auth.EmailRegisterCommand;
 import com.atcrew.auth.GoogleRegisterCommand;
+import com.atcrew.auth.internal.domain.PasswordReauthToken;
 import com.atcrew.auth.internal.domain.PasswordResetToken;
 import com.atcrew.auth.internal.domain.RefreshToken;
 import com.atcrew.auth.internal.exception.AuthErrorCode;
 import com.atcrew.auth.internal.exception.AuthException;
 import com.atcrew.auth.internal.infra.firebase.FirebaseUser;
 import com.atcrew.auth.internal.infra.firebase.FirebaseVerifier;
+import com.atcrew.auth.internal.persistence.PasswordReauthTokenRepository;
 import com.atcrew.auth.internal.persistence.PasswordResetTokenRepository;
 import com.atcrew.auth.internal.persistence.RefreshTokenRepository;
 import com.atcrew.common.exception.DomainException;
@@ -47,6 +49,8 @@ class AuthServiceImplTest {
     LoginAttemptLimiter loginAttemptLimiter;
     PasswordResetTokenRepository passwordResetTokenRepository;
     PasswordResetAttemptLimiter passwordResetAttemptLimiter;
+    PasswordReauthTokenRepository passwordReauthTokenRepository;
+    PasswordChangeAttemptLimiter passwordChangeAttemptLimiter;
     MailSender mailSender;
     AuthServiceImpl authService;
 
@@ -56,7 +60,7 @@ class AuthServiceImplTest {
     static final String MEMBER_ID = "member-001";
     static final String ACCESS_TOKEN = "access.jwt";
     static final String REFRESH_TOKEN = "refresh.jwt";
-    static final String FRONTEND_BASE_URL = "https://at-crew.com";
+    static final String RESET_CODE_PEPPER = "test-pepper";
 
     @BeforeEach
     void setUp() {
@@ -67,10 +71,13 @@ class AuthServiceImplTest {
         loginAttemptLimiter = mock(LoginAttemptLimiter.class);
         passwordResetTokenRepository = mock(PasswordResetTokenRepository.class);
         passwordResetAttemptLimiter = mock(PasswordResetAttemptLimiter.class);
+        passwordReauthTokenRepository = mock(PasswordReauthTokenRepository.class);
+        passwordChangeAttemptLimiter = mock(PasswordChangeAttemptLimiter.class);
         mailSender = mock(MailSender.class);
         authService = new AuthServiceImpl(firebaseVerifier, memberService, jwtProvider,
                 refreshTokenRepository, loginAttemptLimiter, passwordResetTokenRepository,
-                passwordResetAttemptLimiter, mailSender, FRONTEND_BASE_URL);
+                passwordResetAttemptLimiter, passwordReauthTokenRepository, passwordChangeAttemptLimiter,
+                mailSender, RESET_CODE_PEPPER);
 
         when(jwtProvider.generateAccessToken(anyString(), anyString())).thenReturn(ACCESS_TOKEN);
         when(jwtProvider.generateRefreshToken(anyString())).thenReturn(REFRESH_TOKEN);
@@ -313,6 +320,7 @@ class AuthServiceImplTest {
         authService.logout(MEMBER_ID, REFRESH_TOKEN);
 
         verify(refreshTokenRepository).deleteByIdReturningCount(stored.getId());
+        verify(passwordReauthTokenRepository).deleteAllByMemberId(MEMBER_ID);
     }
 
     @Test
@@ -337,12 +345,83 @@ class AuthServiceImplTest {
 
     // ─── 비밀번호 변경 ────────────────────────────────────────────────
 
+    // ─── 비밀번호 변경 1단계(재인증) ────────────────────────────────────
+
     @Test
-    void 비밀번호_변경_성공_시_현재_세션_제외_나머지_refresh_토큰_폐기() {
+    void 재인증_성공_시_재인증토큰_발급() {
         when(memberService.findById(MEMBER_ID)).thenReturn(memberInfo(AuthProvider.EMAIL));
         when(memberService.verifyPassword(EMAIL, PASSWORD)).thenReturn(PasswordVerification.matched(MEMBER_ID));
 
-        authService.changePassword(MEMBER_ID, PASSWORD, "NewPass1!", REFRESH_TOKEN);
+        String reauthToken = authService.verifyCurrentPasswordForChange(MEMBER_ID, PASSWORD);
+
+        assertThat(reauthToken).isNotBlank();
+        verify(passwordReauthTokenRepository).deleteAllByMemberId(MEMBER_ID);
+        verify(passwordReauthTokenRepository).save(any());
+        verify(passwordChangeAttemptLimiter, never()).recordFailure(anyString());
+    }
+
+    @Test
+    void 재인증_현재_비밀번호_불일치_시_거부_및_실패기록() {
+        when(memberService.findById(MEMBER_ID)).thenReturn(memberInfo(AuthProvider.EMAIL));
+        when(memberService.verifyPassword(EMAIL, PASSWORD)).thenReturn(PasswordVerification.mismatched());
+
+        assertThatThrownBy(() -> authService.verifyCurrentPasswordForChange(MEMBER_ID, PASSWORD))
+                .isInstanceOf(AuthException.class)
+                .satisfies(e -> assertThat(((AuthException) e).getCode())
+                        .isEqualTo(AuthErrorCode.CURRENT_PASSWORD_MISMATCH.name()));
+
+        verify(passwordChangeAttemptLimiter).recordFailure(MEMBER_ID);
+        verify(passwordReauthTokenRepository, never()).save(any());
+    }
+
+    @Test
+    void GOOGLE_계정은_재인증_불가() {
+        when(memberService.findById(MEMBER_ID)).thenReturn(memberInfo(AuthProvider.GOOGLE));
+
+        assertThatThrownBy(() -> authService.verifyCurrentPasswordForChange(MEMBER_ID, PASSWORD))
+                .isInstanceOf(AuthException.class)
+                .satisfies(e -> assertThat(((AuthException) e).getCode())
+                        .isEqualTo(AuthErrorCode.PASSWORD_CHANGE_NOT_SUPPORTED.name()));
+
+        verify(memberService, never()).verifyPassword(anyString(), anyString());
+    }
+
+    @Test
+    void 마이그레이션_회원_재인증_428() {
+        when(memberService.findById(MEMBER_ID)).thenReturn(memberInfo(AuthProvider.EMAIL));
+        when(memberService.verifyPassword(EMAIL, PASSWORD)).thenReturn(PasswordVerification.notSet());
+
+        assertThatThrownBy(() -> authService.verifyCurrentPasswordForChange(MEMBER_ID, PASSWORD))
+                .isInstanceOf(AuthException.class)
+                .satisfies(e -> assertThat(((AuthException) e).getCode())
+                        .isEqualTo(AuthErrorCode.PASSWORD_RESET_REQUIRED.name()));
+
+        verify(passwordReauthTokenRepository, never()).save(any());
+    }
+
+    @Test
+    void 재인증_시도_횟수_초과시_전파() {
+        doThrow(new AuthException(AuthErrorCode.TOO_MANY_ATTEMPTS))
+                .when(passwordChangeAttemptLimiter).checkBlocked(MEMBER_ID);
+
+        assertThatThrownBy(() -> authService.verifyCurrentPasswordForChange(MEMBER_ID, PASSWORD))
+                .isInstanceOf(AuthException.class)
+                .satisfies(e -> assertThat(((AuthException) e).getCode())
+                        .isEqualTo(AuthErrorCode.TOO_MANY_ATTEMPTS.name()));
+
+        verify(memberService, never()).findById(anyString());
+    }
+
+    // ─── 비밀번호 변경 2단계(확정) ──────────────────────────────────────
+
+    @Test
+    void 변경_확정_성공_시_현재_세션_제외_나머지_refresh_토큰_폐기() {
+        PasswordReauthToken stored = PasswordReauthToken.of(MEMBER_ID, "hash", Instant.now().plusSeconds(300));
+        when(passwordReauthTokenRepository.findByMemberIdAndTokenHashAndExpiresAtAfter(eq(MEMBER_ID), anyString(), any()))
+                .thenReturn(Optional.of(stored));
+        when(passwordReauthTokenRepository.deleteByIdReturningCount(stored.getId())).thenReturn(1);
+
+        authService.changePassword(MEMBER_ID, "reauth-token", "NewPass1!", REFRESH_TOKEN);
 
         verify(memberService).changePassword(MEMBER_ID, "NewPass1!");
         verify(refreshTokenRepository).deleteAllByMemberIdExceptTokenValue(MEMBER_ID, REFRESH_TOKEN);
@@ -350,40 +429,29 @@ class AuthServiceImplTest {
     }
 
     @Test
-    void 현재_비밀번호_불일치_시_변경_거부() {
-        when(memberService.findById(MEMBER_ID)).thenReturn(memberInfo(AuthProvider.EMAIL));
-        when(memberService.verifyPassword(EMAIL, PASSWORD)).thenReturn(PasswordVerification.mismatched());
+    void 변경_확정_재인증토큰_없거나_만료시_401() {
+        when(passwordReauthTokenRepository.findByMemberIdAndTokenHashAndExpiresAtAfter(eq(MEMBER_ID), anyString(), any()))
+                .thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> authService.changePassword(MEMBER_ID, PASSWORD, "NewPass1!", REFRESH_TOKEN))
+        assertThatThrownBy(() -> authService.changePassword(MEMBER_ID, "reauth-token", "NewPass1!", REFRESH_TOKEN))
                 .isInstanceOf(AuthException.class)
                 .satisfies(e -> assertThat(((AuthException) e).getCode())
-                        .isEqualTo(AuthErrorCode.CURRENT_PASSWORD_MISMATCH.name()));
+                        .isEqualTo(AuthErrorCode.INVALID_PASSWORD_REAUTH_TOKEN.name()));
 
         verify(memberService, never()).changePassword(anyString(), anyString());
     }
 
     @Test
-    void GOOGLE_계정은_비밀번호_변경_불가() {
-        when(memberService.findById(MEMBER_ID)).thenReturn(memberInfo(AuthProvider.GOOGLE));
+    void 변경_확정_동시_재사용시_401() {
+        PasswordReauthToken stored = PasswordReauthToken.of(MEMBER_ID, "hash", Instant.now().plusSeconds(300));
+        when(passwordReauthTokenRepository.findByMemberIdAndTokenHashAndExpiresAtAfter(eq(MEMBER_ID), anyString(), any()))
+                .thenReturn(Optional.of(stored));
+        when(passwordReauthTokenRepository.deleteByIdReturningCount(stored.getId())).thenReturn(0);
 
-        assertThatThrownBy(() -> authService.changePassword(MEMBER_ID, PASSWORD, "NewPass1!", REFRESH_TOKEN))
+        assertThatThrownBy(() -> authService.changePassword(MEMBER_ID, "reauth-token", "NewPass1!", REFRESH_TOKEN))
                 .isInstanceOf(AuthException.class)
                 .satisfies(e -> assertThat(((AuthException) e).getCode())
-                        .isEqualTo(AuthErrorCode.PASSWORD_CHANGE_NOT_SUPPORTED.name()));
-
-        verify(memberService, never()).verifyPassword(anyString(), anyString());
-        verify(memberService, never()).changePassword(anyString(), anyString());
-    }
-
-    @Test
-    void 마이그레이션_회원_비밀번호_변경_428() {
-        when(memberService.findById(MEMBER_ID)).thenReturn(memberInfo(AuthProvider.EMAIL));
-        when(memberService.verifyPassword(EMAIL, PASSWORD)).thenReturn(PasswordVerification.notSet());
-
-        assertThatThrownBy(() -> authService.changePassword(MEMBER_ID, PASSWORD, "NewPass1!", REFRESH_TOKEN))
-                .isInstanceOf(AuthException.class)
-                .satisfies(e -> assertThat(((AuthException) e).getCode())
-                        .isEqualTo(AuthErrorCode.PASSWORD_RESET_REQUIRED.name()));
+                        .isEqualTo(AuthErrorCode.INVALID_PASSWORD_REAUTH_TOKEN.name()));
 
         verify(memberService, never()).changePassword(anyString(), anyString());
     }
@@ -401,7 +469,7 @@ class AuthServiceImplTest {
         verify(passwordResetAttemptLimiter).recordAttempt(EMAIL);
         verify(passwordResetTokenRepository).deleteAllByMemberId(MEMBER_ID);
         verify(passwordResetTokenRepository).save(any());
-        verify(mailSender).send(eq(EMAIL), anyString(), contains(FRONTEND_BASE_URL + "/reset-password?token="));
+        verify(mailSender).send(eq(EMAIL), eq("비밀번호 재설정 코드"), anyString());
         // GOOGLE 계정 조회는 EMAIL 계정이 있으면 시도하지 않는다
         verify(memberService, never()).findActiveByLoginEmailAndProviderOrEmpty(EMAIL, AuthProvider.GOOGLE);
     }
@@ -446,7 +514,7 @@ class AuthServiceImplTest {
 
     @Test
     void 재설정_확정_성공_시_비밀번호변경_및_refresh토큰_전체폐기() {
-        PasswordResetToken stored = PasswordResetToken.of(MEMBER_ID, "hash", Instant.now().plusSeconds(3600));
+        PasswordResetToken stored = verifiedResetToken();
         when(passwordResetTokenRepository.findByTokenHashAndExpiresAtAfter(anyString(), any()))
                 .thenReturn(Optional.of(stored));
         when(passwordResetTokenRepository.deleteByIdReturningCount(stored.getId())).thenReturn(1);
@@ -471,9 +539,25 @@ class AuthServiceImplTest {
     }
 
     @Test
+    void 재설정_확정_검증되지_않은_코드_행이면_401() {
+        // verify를 거치지 않은 PENDING 행(코드 해시)을 confirm에 들이미는 경우 — 방어적으로 거른다.
+        PasswordResetToken stored = PasswordResetToken.of(MEMBER_ID, "hash", Instant.now().plusSeconds(600));
+        when(passwordResetTokenRepository.findByTokenHashAndExpiresAtAfter(anyString(), any()))
+                .thenReturn(Optional.of(stored));
+
+        assertThatThrownBy(() -> authService.confirmPasswordReset("raw-token", "NewPass1!"))
+                .isInstanceOf(AuthException.class)
+                .satisfies(e -> assertThat(((AuthException) e).getCode())
+                        .isEqualTo(AuthErrorCode.INVALID_PASSWORD_RESET_TOKEN.name()));
+
+        verify(passwordResetTokenRepository, never()).deleteByIdReturningCount(anyString());
+        verify(memberService, never()).changePassword(anyString(), anyString());
+    }
+
+    @Test
     void 재설정_확정_동시_재사용시_401() {
         // §3.3.2와 동일한 findAndDelete 패턴 — 조회는 성공했으나 DELETE 영향 행 수 0이면 이미 소비된 토큰
-        PasswordResetToken stored = PasswordResetToken.of(MEMBER_ID, "hash", Instant.now().plusSeconds(3600));
+        PasswordResetToken stored = verifiedResetToken();
         when(passwordResetTokenRepository.findByTokenHashAndExpiresAtAfter(anyString(), any()))
                 .thenReturn(Optional.of(stored));
         when(passwordResetTokenRepository.deleteByIdReturningCount(stored.getId())).thenReturn(0);
@@ -484,6 +568,83 @@ class AuthServiceImplTest {
                         .isEqualTo(AuthErrorCode.INVALID_PASSWORD_RESET_TOKEN.name()));
 
         verify(memberService, never()).changePassword(anyString(), anyString());
+    }
+
+    // ─── 비밀번호 재설정 코드 검증 ─────────────────────────────────────
+
+    @Test
+    void 재설정_코드_검증_성공시_세션토큰_발급() {
+        when(memberService.findActiveByLoginEmailAndProviderOrEmpty(EMAIL, AuthProvider.EMAIL))
+                .thenReturn(Optional.of(memberInfo(AuthProvider.EMAIL)));
+        PasswordResetToken stored = PasswordResetToken.of(MEMBER_ID, resetCodeHash("K4P7XM"), Instant.now().plusSeconds(600));
+        when(passwordResetTokenRepository.findByMemberIdAndExpiresAtAfter(eq(MEMBER_ID), any()))
+                .thenReturn(Optional.of(stored));
+
+        String sessionToken = authService.verifyPasswordResetCode(EMAIL, "K4P7XM");
+
+        assertThat(sessionToken).isNotBlank();
+        assertThat(stored.isVerified()).isTrue();
+        verify(passwordResetTokenRepository).save(stored);
+        verify(passwordResetAttemptLimiter, never()).recordVerifyFailure(anyString());
+    }
+
+    @Test
+    void 재설정_코드_검증_오답이면_401_및_실패기록() {
+        when(memberService.findActiveByLoginEmailAndProviderOrEmpty(EMAIL, AuthProvider.EMAIL))
+                .thenReturn(Optional.of(memberInfo(AuthProvider.EMAIL)));
+        PasswordResetToken stored = PasswordResetToken.of(MEMBER_ID, resetCodeHash("K4P7XM"), Instant.now().plusSeconds(600));
+        when(passwordResetTokenRepository.findByMemberIdAndExpiresAtAfter(eq(MEMBER_ID), any()))
+                .thenReturn(Optional.of(stored));
+
+        assertThatThrownBy(() -> authService.verifyPasswordResetCode(EMAIL, "WRONG1"))
+                .isInstanceOf(AuthException.class)
+                .satisfies(e -> assertThat(((AuthException) e).getCode())
+                        .isEqualTo(AuthErrorCode.INVALID_RESET_CODE.name()));
+
+        verify(passwordResetAttemptLimiter).recordVerifyFailure(EMAIL);
+        verify(passwordResetTokenRepository, never()).save(any());
+    }
+
+    @Test
+    void 재설정_코드_검증_만료또는_없으면_410() {
+        when(memberService.findActiveByLoginEmailAndProviderOrEmpty(EMAIL, AuthProvider.EMAIL))
+                .thenReturn(Optional.of(memberInfo(AuthProvider.EMAIL)));
+        when(passwordResetTokenRepository.findByMemberIdAndExpiresAtAfter(eq(MEMBER_ID), any()))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.verifyPasswordResetCode(EMAIL, "K4P7XM"))
+                .isInstanceOf(AuthException.class)
+                .satisfies(e -> assertThat(((AuthException) e).getCode())
+                        .isEqualTo(AuthErrorCode.RESET_CODE_EXPIRED.name()));
+    }
+
+    @Test
+    void 재설정_코드_검증_이미_사용된_코드면_409() {
+        when(memberService.findActiveByLoginEmailAndProviderOrEmpty(EMAIL, AuthProvider.EMAIL))
+                .thenReturn(Optional.of(memberInfo(AuthProvider.EMAIL)));
+        PasswordResetToken stored = verifiedResetToken();
+        when(passwordResetTokenRepository.findByMemberIdAndExpiresAtAfter(eq(MEMBER_ID), any()))
+                .thenReturn(Optional.of(stored));
+
+        assertThatThrownBy(() -> authService.verifyPasswordResetCode(EMAIL, "K4P7XM"))
+                .isInstanceOf(AuthException.class)
+                .satisfies(e -> assertThat(((AuthException) e).getCode())
+                        .isEqualTo(AuthErrorCode.RESET_CODE_ALREADY_USED.name()));
+
+        verify(passwordResetAttemptLimiter, never()).recordVerifyFailure(anyString());
+    }
+
+    @Test
+    void 재설정_코드_검증_시도_횟수_초과시_전파() {
+        doThrow(new AuthException(AuthErrorCode.TOO_MANY_ATTEMPTS))
+                .when(passwordResetAttemptLimiter).checkVerifyBlocked(EMAIL);
+
+        assertThatThrownBy(() -> authService.verifyPasswordResetCode(EMAIL, "K4P7XM"))
+                .isInstanceOf(AuthException.class)
+                .satisfies(e -> assertThat(((AuthException) e).getCode())
+                        .isEqualTo(AuthErrorCode.TOO_MANY_ATTEMPTS.name()));
+
+        verify(memberService, never()).findActiveByLoginEmailAndProviderOrEmpty(anyString(), any());
     }
 
     // ─── 헬퍼 ─────────────────────────────────────────────────────────
@@ -511,5 +672,24 @@ class AuthServiceImplTest {
         } catch (AuthException e) {
             return e;
         }
+    }
+
+    // AuthServiceImpl.hmacSha256Hex와 동일 알고리즘 — 테스트에서 검증용 코드 해시를 미리 계산한다.
+    private static String resetCodeHash(String code) {
+        try {
+            javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
+            mac.init(new javax.crypto.spec.SecretKeySpec(
+                    RESET_CODE_PEPPER.getBytes(java.nio.charset.StandardCharsets.UTF_8), "HmacSHA256"));
+            return java.util.HexFormat.of().formatHex(mac.doFinal(code.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    // verify를 이미 통과해 세션 토큰 해시로 전이된(VERIFIED) 상태의 행.
+    private PasswordResetToken verifiedResetToken() {
+        PasswordResetToken token = PasswordResetToken.of(MEMBER_ID, resetCodeHash("K4P7XM"), Instant.now().plusSeconds(600));
+        token.markVerified("session-token-hash", Instant.now().plusSeconds(300));
+        return token;
     }
 }

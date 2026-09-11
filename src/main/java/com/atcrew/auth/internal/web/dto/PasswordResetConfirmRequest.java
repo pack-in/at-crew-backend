@@ -6,8 +6,8 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 
 public record PasswordResetConfirmRequest(
-        @NotBlank(message = "재설정 토큰이 필요해요")
-        String token,
+        @NotBlank(message = "재설정 세션이 필요해요")
+        String resetToken,
 
         // 정책은 이메일 회원가입(EmailRegisterRequest)과 동일하게 유지한다.
         @NotBlank(message = "새 비밀번호를 입력해주세요")

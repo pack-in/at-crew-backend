@@ -28,6 +28,10 @@ mail:
     api-key: ${RESEND_API_KEY}
     from-address: ${MAIL_FROM_ADDRESS}
 
+auth:
+  password-reset:
+    code-pepper: ${PASSWORD_RESET_CODE_PEPPER}
+
 # application.yml의 dummy/dev 기본값이 prod에서 조용히 쓰이는 걸 막는다 — 값이 비어 있으면
 # 기동 자체가 실패해야 한다(jwt.secret/cors.allowed-origins/firebase.credentials-path와 동일 원칙,
 # 2026-08-12 — 이전까지는 이 4개만 fail-fast가 없어 값 누락 시 "dev-internal-secret"/"dummy-*"로
