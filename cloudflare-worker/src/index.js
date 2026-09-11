@@ -41,6 +41,9 @@ const DEFAULT_TIER = "ORIGINAL";
 // 최종 방어선이라, 서버 검증이 있어도 남겨둔다.
 const MAX_ORIGINAL_BYTES = 100 * 1024 * 1024;
 
+// 실패 사유 문자열 상한. 서버가 로그 한 줄로 남기므로 스택까지 실어 보낼 이유가 없다.
+const FAILURE_REASON_MAX = 300;
+
 export default {
   async fetch(request, env, ctx) {
     if (request.method !== "POST") {
@@ -139,6 +142,9 @@ async function processOne(env, ownerType, ownerId, imageKey, sourceUrl, variantP
       thumbAdultKey: null,
       originalAvifKey: null,
       status: "FAILED",
+      // 서버 로그에 남길 실패 사유. Worker 로그는 tail 중이 아니면 흘러가 버려서, 나중에 "왜 실패했나"를
+      // 되짚을 수 있는 곳이 서버 로그뿐이다(용량 초과·면적 초과·원본 없음 등이 여기서 갈린다).
+      failureReason: String(err && err.message ? err.message : err).slice(0, FAILURE_REASON_MAX),
     });
   }
 }
@@ -149,9 +155,17 @@ async function processOne(env, ownerType, ownerId, imageKey, sourceUrl, variantP
 async function transform(sourceUrl, imageOptions) {
   const res = await fetch(sourceUrl, { cf: { image: imageOptions } });
   if (!res.ok) {
-    // Images는 실패 사유를 이 헤더에 담아준다(형식 미지원, 면적 초과 등).
+    // Images는 실패 사유를 이 헤더에 담아준다(형식 미지원, 면적 100MP 초과 등).
+    // 헤더가 비어 있는 경우를 대비해 본문 앞부분도 함께 싣는다 — 어떤 변환이 죽었는지 구분하려면
+    // 요청한 옵션도 필요하다.
     const reason = res.headers.get("cf-resized") || res.headers.get("cf-images-error") || "";
-    throw new Error(`변환 실패: status=${res.status} ${reason}`);
+    let body = "";
+    try {
+      body = (await res.text()).slice(0, 200);
+    } catch {
+      /* 본문을 못 읽어도 사유 없이 진행한다 */
+    }
+    throw new Error(`변환 실패: status=${res.status} opts=${JSON.stringify(imageOptions)} ${reason} ${body}`.trim());
   }
   return res;
 }
