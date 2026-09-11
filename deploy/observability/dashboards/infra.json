@@ -418,6 +418,108 @@
         "overrides": []
       },
       "options": {}
+    },
+    {
+      "id": 23,
+      "title": "마지막 이미지 백업 이후 경과",
+      "type": "stat",
+      "gridPos": {
+        "h": 5,
+        "w": 8,
+        "x": 0,
+        "y": 19
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROM_UID__"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "time() - max(atcrew_image_backup_last_success_timestamp)",
+          "legendFormat": "경과",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "__PROM_UID__"
+          },
+          "editorMode": "code",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 86400
+              },
+              {
+                "color": "red",
+                "value": 93600
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "area",
+        "textMode": "auto"
+      },
+      "description": "26시간(93600초)을 넘으면 P2. R2에는 오브젝트 버저닝이 없어서, 이 값이 계속 커지는 동안 새로 올라온 이미지에는 사본이 없다."
+    },
+    {
+      "id": 24,
+      "title": "이미지 백업 복사 객체 수",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 5,
+        "w": 8,
+        "x": 8,
+        "y": 19
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROM_UID__"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(atcrew_image_backup_copied_objects)",
+          "legendFormat": "복사",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "__PROM_UID__"
+          },
+          "editorMode": "code",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {},
+      "description": "마지막 실행에서 새로 복사한 객체 수. 업로드가 있는데 계속 0이면 동기화가 원본을 못 읽고 있다는 신호다(토큰 권한 확인)."
     }
   ]
 }

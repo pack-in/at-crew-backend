@@ -59,8 +59,9 @@ aws ssm start-session --target <인스턴스 ID>     # session-manager-plugin �
 - `nginx/api.at-crew.com.conf` — 앱 서버에 설치할 nginx 리버스 프록시 설정
 - `.env.example` — 앱 서버 `.env` 템플릿(실제 값은 채워서 `.env`로 저장, git에 커밋 금지)
 - `ssm-run.sh` — 앱 서버에서 원격 명령을 실행한다(SSH 대체). 자동·수동 배포가 공용으로 쓴다
-- `bootstrap.sh` — 새 호스트에 관측 에이전트와 백업 타이머를 설치한다
-- `backup.sh`, `systemd/` — MariaDB 일일 백업 스크립트와 타이머 유닛
+- `bootstrap.sh` — 새 호스트에 관측 에이전트·백업 타이머·age를 설치한다
+- `backup.sh`, `systemd/` — MariaDB 일일 백업 스크립트와 타이머 유닛. 덤프는 age로 암호화해 올린다
+- `r2-image-backup.sh` — R2 이미지 일일 백업(원본 버킷 → 백업 버킷 복사)
 - `deploy.sh` — 로컬에서 빌드→Docker Hub 푸시→앱 서버 재배포까지 한 번에
 - `terraform/app-launch-template.tf` — **앱 서버 재생성용 시작 템플릿.** 아래 "최초 1회 설정"을
   user_data로 자동화한 것이다. 장애 시에는 손으로 하지 말고 이걸 쓴다
@@ -139,6 +140,8 @@ systemd 유닛이다.
 |---|---|---|
 | 관측 에이전트 | `docker-compose.observability.yml`(Alloy) | 메트릭·로그 수집이 끊긴다. `[P1] 앱 메트릭 수집 불가`가 계속 울리는데 서비스는 멀쩡한 상태가 된다 |
 | DB 백업 | `systemd/atcrew-backup.{service,timer}` | 백업이 조용히 멈춘다. 관측도 함께 죽어 있으면 백업 감시 알람마저 울리지 않는다 |
+| R2 이미지 백업 | `systemd/atcrew-image-backup.{service,timer}` | 이미지 사본이 안 쌓인다. R2에는 버저닝이 없어 원본이 지워지면 되돌릴 수단이 사라진다 |
+| 덤프 암호화 도구 | `/usr/local/bin/age` | `backup.sh`가 즉시 멈춰 백업이 아예 안 된다 |
 | 스왑 | `/swapfile` + `/etc/fstab` | 메모리 완충이 없어 OOM 킬러가 곧바로 돈다. 앱·MariaDB·Elasticsearch가 한 인스턴스를 나눠 쓰므로 한 컨테이너의 폭주가 다른 컨테이너를 죽인다(이슈 #116) |
 
 앱을 새 인스턴스에 올린 직후 **`./bootstrap.sh`를 실행하면 둘 다 설치·기동된다.** 멱등하므로 이미
@@ -150,11 +153,14 @@ cd ~/at-crew-backend/deploy && ./bootstrap.sh
 
 이전 완료 체크리스트:
 
-- [ ] `./bootstrap.sh` 실행 — 스왑 구성 + Alloy 기동 + 백업 타이머 등록
+- [ ] `./bootstrap.sh` 실행 — age 설치 + 스왑 구성 + Alloy 기동 + 백업 타이머 2개 등록
 - [ ] 스왑 확인 — `swapon --show`에 `/swapfile`이 보일 것. **`/dev/zram0`만 있으면 안 된다** —
       zram은 RAM을 압축해 쓰는 것이라 OOM 완충이 되지 못한다(Amazon Linux 2023 기본값)
 - [ ] 1분 뒤 수집 확인 — `curl -s http://127.0.0.1:12345/metrics | grep prometheus_remote_storage_samples_total`이 증가하고 `samples_failed_total`이 0
 - [ ] 백업 1회 수동 검증 — `sudo systemctl start atcrew-backup.service` 후 `journalctl -u atcrew-backup.service -n 20`
+- [ ] 이미지 백업 1회 수동 검증 — `sudo systemctl start atcrew-image-backup.service` 후 `journalctl -u atcrew-image-backup.service -n 20`
+- [ ] **복호화 확인** — 올라간 덤프를 개인키로 실제로 풀어 본다. 암호화만 되고 복호화가 안 되는
+      상태는 백업 감시 알람에 정상으로 잡힌다(`scripts/baseline/restore-drill.sh --age-key`)
 - [ ] **`APP_INSTANCE_ID` 저장소 Secret을 새 인스턴스 ID로 갱신** — 갱신하지 않으면 다음 main
       병합에서 자동 배포가 없어진 인스턴스로 SSM 명령을 보내 실패한다
 - [ ] 새 인스턴스에 `AmazonSSMManagedInstanceCore` 인스턴스 프로파일이 붙어 있는지 확인 —

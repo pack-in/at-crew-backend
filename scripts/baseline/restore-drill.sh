@@ -6,10 +6,16 @@
 # 복원되지 않는 백업은 백업이 아니므로, 시간을 재는 것보다 절차가 실제로 동작하는지 확인하는 게 목적이다.
 #
 # 실행:
-#   ./scripts/baseline/restore-drill.sh --env-file <R2 자격증명이 있는 env 파일> [--expect <tsv>] [--keep]
+#   ./scripts/baseline/restore-drill.sh --env-file <R2 자격증명이 있는 env 파일> \
+#       [--age-key <개인키 파일>] [--expect <tsv>] [--keep]
 #
 # --env-file 이 읽는 키: R2_ENDPOINT, R2_BACKUP_BUCKET, R2_BACKUP_ACCESS_KEY, R2_BACKUP_SECRET_KEY
 #   (값은 EC2 #1의 deploy/.env에만 있다. 이 저장소에 커밋하지 않는다)
+# --age-key 는 덤프 복호화용 age 개인키 파일(AGE-SECRET-KEY-1... 한 줄). 2026-09-10부터 덤프가
+#   암호화돼 올라가므로 `.age`로 끝나는 덤프를 복원하려면 반드시 필요하다. 개인키가 어디 있는지는
+#   docs/operations/incident-runbook.md "DB 복원"에 적혀 있다. 이 저장소에 커밋하지 않는다.
+#   **복호화가 되는지 확인하는 것이 이 훈련의 절반이다** — 암호화만 되고 복호화가 안 되는 상태는
+#   백업 감시 알람에 정상으로 잡힌다.
 # --expect 는 `테이블명<TAB>행수` 형식의 TSV. 원본과 복원본의 행 수를 대조한다.
 #
 # 실서버에서 실행하지 않는다. 로컬 도커에만 붙는다.
@@ -18,10 +24,11 @@
 
 set -euo pipefail
 
-ENV_FILE=""; EXPECT=""; KEEP=0
+ENV_FILE=""; EXPECT=""; KEEP=0; AGE_KEY=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --env-file) ENV_FILE="$2"; shift 2 ;;
+    --age-key)  AGE_KEY="$2";  shift 2 ;;
     --expect)   EXPECT="$2";   shift 2 ;;
     --keep)     KEEP=1;        shift ;;
     *) echo "알 수 없는 인자: $1" >&2; exit 2 ;;
@@ -64,8 +71,10 @@ KEY="$(aws s3api list-objects-v2 --bucket "$BUCKET" --prefix db-backups/ --endpo
 mark "R2 최신 덤프 조회"
 
 # ── 2. 내려받기 ───────────────────────────────────────────────
-aws s3 cp "s3://$BUCKET/$KEY" "$WORK/dump.sql.gz" --endpoint-url "$R2_ENDPOINT" --only-show-errors
-DUMP_BYTES=$(wc -c < "$WORK/dump.sql.gz" | tr -d " ")
+# 파일명은 R2의 key를 그대로 따라간다 — `.age`인지 아닌지로 복호화 여부가 갈린다.
+LOCAL="$WORK/$(basename "$KEY")"
+aws s3 cp "s3://$BUCKET/$KEY" "$LOCAL" --endpoint-url "$R2_ENDPOINT" --only-show-errors
+DUMP_BYTES=$(wc -c < "$LOCAL" | tr -d " ")
 mark "덤프 내려받기"
 
 # ── 3. 빈 MariaDB 기동 ────────────────────────────────────────
@@ -79,8 +88,20 @@ until docker exec "$CONTAINER" healthcheck.sh --connect --innodb_initialized >/d
 mark "MariaDB 컨테이너 기동~접속 가능"
 
 # ── 4. 복원 ───────────────────────────────────────────────────
-gunzip -c "$WORK/dump.sql.gz" | docker exec -i -e MYSQL_PWD="$PW" "$CONTAINER" mariadb -u root atcrew
-mark "덤프 복원"
+# 2026-09-10 이전 덤프는 평문이라 그대로 풀린다. 보관기간(30일)이 지나 전부 `.age`로 바뀌면
+# 이 분기는 지워도 된다.
+if [ "${LOCAL%.age}" != "$LOCAL" ]; then
+  [ -n "$AGE_KEY" ] && [ -f "$AGE_KEY" ] \
+    || { echo "암호화된 덤프($KEY)를 받았는데 --age-key 가 없다" >&2; exit 1; }
+  command -v age >/dev/null || { echo "age가 설치돼 있지 않다" >&2; exit 1; }
+  ENCRYPTED="예"
+  age -d -i "$AGE_KEY" "$LOCAL" | gunzip -c \
+    | docker exec -i -e MYSQL_PWD="$PW" "$CONTAINER" mariadb -u root atcrew
+else
+  ENCRYPTED="아니오(암호화 도입 이전 덤프)"
+  gunzip -c "$LOCAL" | docker exec -i -e MYSQL_PWD="$PW" "$CONTAINER" mariadb -u root atcrew
+fi
+mark "덤프 복호화·복원"
 
 sqlq() { docker exec -e MYSQL_PWD="$PW" "$CONTAINER" mariadb -u root -N -B -e "$1" atcrew 2>/dev/null; }
 
@@ -105,6 +126,7 @@ echo "| 항목 | 값 |"
 echo "|---|---|"
 echo "| 덤프 객체 | \`$KEY\` |"
 echo "| 덤프 크기 | $DUMP_BYTES B |"
+echo "| 암호화 | $ENCRYPTED |"
 echo "| 복원된 테이블 수 | $(wc -l < "$WORK/actual.tsv" | tr -d ' ') |"
 echo "| 복원된 총 행 수 | $(awk -F'\t' '{s+=$2} END{print s+0}' "$WORK/actual.tsv") |"
 echo "| Flyway 마이그레이션 이력 | $(sqlq 'SELECT COUNT(*) FROM flyway_schema_history') 건 (마지막 적용 버전 $(sqlq 'SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1')) |"
