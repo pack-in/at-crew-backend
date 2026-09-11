@@ -25,6 +25,6 @@ class MediaInternalController {
         if (!MessageDigest.isEqual(internalSecret.getBytes(StandardCharsets.UTF_8), secret.getBytes(StandardCharsets.UTF_8)))
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Internal secret is invalid");
         callbackService.process(request.ownerType(), request.ownerId(), request.imageKey(), request.thumbKey(),
-                request.thumbAdultKey(), request.originalAvifKey(), request.status());
+                request.thumbAdultKey(), request.originalAvifKey(), request.status(), request.failureReason());
     }
 }
