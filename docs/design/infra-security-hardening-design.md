@@ -35,7 +35,7 @@
 | D6 | ~~DB는 RDS 대신 자체관리 MariaDB 반동기(semi-sync) Replica.~~ **2026-09-03 대체**: `docs/design/ha-expansion-path.md`로 대체됨 — self-hosted Replica는 만들지 않고, HA가 필요해지는 시점에 RDS Multi-AZ를 바로 켠다(`ha_enabled` 토글). 이유는 자동 페일오버 하나(§3.2 참고) | (원래 근거, 이제 미적용) 추가 컴퓨팅 비용은 여전히 없음(EC2#2 종료로 절감된 예산 안에서 신규 인스턴스 1대), D12와 아키텍처 일관성 유지 |
 | D7 | ~~DB 승격(failover)은 자동화하지 않고 감지·알림만 자동화한다. 승격은 사람이 스크립트로 실행~~ **2026-09-03 대체**: RDS Multi-AZ는 AWS가 60~120초 안에 자동 전환한다 — 이 결정 자체가 불필요해짐(`docs/design/ha-expansion-path.md` §3.2) | (원래 근거, 이제 미적용) 소규모 팀이 자체 제작한 자동 페일오버는 replica lag를 장애로 오인해 split-brain을 일으키는 사고가 흔하다 |
 | D8 | DB 엔드포인트는 Route53 Private Hosted Zone으로 추상화한다 | 승격 시 앱 재배포 없이 DNS 레코드 변경만으로 전환. RDS 전환 절차(`ha-expansion-path.md` §6)는 `.env`의 `MARIADB_HOST` 직접 변경을 쓰지만, 이 존 자체는 다른 내부 DNS 용도로 계속 유효 |
-| D9 | Cloudflare WAF 관리형 룰을 켠다(AWS WAF 대신) | 이미 쓰는 Cloudflare 위에 켜기만 하면 되고 Free 플랜으로 충분. **2026-09-03 보류**: 이 Managed Ruleset이 실제로는 Free 플랜 entitlement 밖이라 apply 실패(Pro $20/월 필요) — Pro 업그레이드 안 하기로 해서 `waf_enabled=false` 유지 |
+| D9 | Cloudflare WAF 관리형 룰을 켠다(AWS WAF 대신) | 이미 쓰는 Cloudflare 위에 켜기만 하면 된다. **2026-09-03 적용 완료(#139)**: 처음 쓰려던 Cloudflare Managed Ruleset은 Free 플랜 entitlement 밖이라 `not entitled to execute this managed ruleset`으로 apply가 실패했다(Pro $20/월 필요). Pro로 올리는 대신 **Free 플랜에서 실행 가능한 유일한 관리형 룰셋(Cloudflare Managed Free Ruleset)으로 교체해 적용**했고 `waf_enabled` 기본값을 `true`로 뒀다. OWASP CRS는 유료 전용이라 포함하지 않았다. 실제 룰셋 ID와 플랜 상향 시 교체 경로는 `deploy/terraform/cloudflare-waf.tf` 참고 |
 | D10 | 보안그룹(인스턴스 단위)+NACL(서브넷 단위) 이중 방어를 건다 | 추가 비용 없이 방어 계층을 하나 더 얻는다 |
 | D11 | RDS Multi-AZ 전환은 이번 범위에서 제외한다 | 월 $100~150+ 대비 현재 트래픽 규모에서 우선순위가 낮다. **2026-09-03**: 재평가 완료 — `docs/design/ha-expansion-path.md`가 정식 전환 트리거·절차를 정의(실사용자 0명 확인, 트리거 도달 시 `ha_enabled=true`) |
 | D12 | **2026-09-02 추가**: blue-green 전환(PH-07) 시 MariaDB도 앱과 함께 새 VPC로 이전한다. 기존 EC2#1에 남겨두고 VPC Peering으로 연결하는 안은 채택하지 않는다 | 실제 apply 직후 발견 — 기존 `docker-compose.app.yml`의 MariaDB는 호스트에 포트를 노출하지 않아(같은 호스트의 app 컨테이너만 접근 가능) Peering을 뚫어도 네트워크 도달이 안 됨. 포트를 새로 노출하는 것은 지금까지의 "같은 호스트 안에서만 접근" 방어 원칙과 어긋나고, Peering이라는 영구 구조가 하나 더 생기며, 결국 나중에 한 번 더 옮겨야 하는 임시방편이다. DB까지 한 번에 옮기면 cutover 작업량은 늘지만 그 이후 상태가 더 단순하고 안전하다 |
@@ -85,7 +85,7 @@ graph LR
 |---|---|---|
 | NAT 인스턴스(t4g.nano) | 약 $3~5 | 컴퓨팅+EBS 소액 |
 | Route53 Private Hosted Zone | 약 $0.5 | 존 요금 $0.5 + 쿼리 소액 |
-| Cloudflare WAF(관리형 룰) | $0 | Free 플랜 기본 제공 |
+| Cloudflare WAF(관리형 룰) | $0 | Free 전용 관리형 룰셋 1종. 유료 전용 Managed Ruleset·OWASP CRS는 미포함 |
 | Cloudflare Tunnel | $0 | 사용자 인증 게이팅 없이 순수 프록시 용도라 Zero Trust 좌석 과금 대상 아님 |
 | ALB(미사용) | $0 | 관리형 NAT Gateway+ALB 조합(월 $60~100+) 대비 절감 |
 | DB Replica 컴퓨팅 | $0 | 이슈 #76으로 비는 EC2#2 재사용, 신규 인스턴스 없음 |
