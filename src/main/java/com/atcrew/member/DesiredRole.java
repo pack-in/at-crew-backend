@@ -3,9 +3,10 @@ package com.atcrew.member;
 /**
  * 희망 담당 업무 — 복수 선택 + 직접입력 (기획서 마이페이지_작가-R24 "희망 담당 업무(22+직접입력)").
  *
- * <p>recruit 모듈의 구직글에도 담당 업무가 있지만 값 집합이 서로 다르다(구직글은 artwork.ArtworkRole을
- * 쓰며 작화·식자가 없고 ETC가 있다). 모듈 간 직접 의존 금지 원칙에 따라 member가 자체 정의하며,
- * 두 값 집합의 통일은 별도 과제다.
+ * <p>recruit 모듈의 구직글에도 담당 업무가 있으며 대부분 겹치지만(작화·식자 포함), 완전히 같지는 않다
+ * — artwork.ArtworkRole에는 ETC가 추가로 있고, 1도명암의 상수 이름이 서로 달라(ONE_TONE_SHADING vs
+ * TONE_WORK) 이름 기준 매핑은 여전히 불가능하다. 모듈 간 직접 의존 금지 원칙에 따라 member가 자체
+ * 정의하며, 완전한 통일은 별도 과제다.
  */
 public enum DesiredRole {
     TOTAL_ARTWORK,         // 총작화

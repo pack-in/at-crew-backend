@@ -51,7 +51,7 @@ class JobPostingApiDocTest extends RestDocsIntegrationSupport {
                         relaxedRequestFields(
                                 fieldWithPath("title").description("공고 제목 (최대 200자)"),
                                 fieldWithPath("companyName").description("회사명"),
-                                fieldWithPath("roles").description("모집 역할 목록 — 정본 담당 업무 enum 이름 (TOTAL_ARTWORK·LINEART·COLORING·BACKGROUND 등 ArtworkRole 22종)"),
+                                fieldWithPath("roles").description("모집 역할 목록 — 정본 담당 업무 enum 이름 (TOTAL_ARTWORK·LINEART·COLORING·BACKGROUND 등 ArtworkRole 24종)"),
                                 fieldWithPath("genres").description("모집 장르 목록 — 정본 장르 enum 이름 (FANTASY·ROMANCE_FANTASY·ACTION·BL 등 Genre 29종)"),
                                 fieldWithPath("deadline").description("마감일 (yyyy-MM-dd, null이면 상시모집)"),
                                 fieldWithPath("recruitCount").description("모집 인원"),
