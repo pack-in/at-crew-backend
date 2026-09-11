@@ -129,6 +129,14 @@ class PortfolioMembershipReconcileTests {
     }
 
     // "업데이트순" 정렬 기준은 [수정하기] 시각이라 자동 재계산이 건드리면 안 된다(마이페이지_작가-R37).
+    //
+    // deleteArtwork는 ArtworkChangedEvent를 발행하고 PortfolioArtworkEventListener가 비동기로
+    // reconciler.reconcileArtwork를 이미 호출한다(§ 클래스 주석). 그 완료를 기다리지 않고 바로 아래에서
+    // 같은 메서드를 직접 또 호출하면 두 호출이 같은 Portfolio 행을 동시에 읽어 같은 목표값(0)으로
+    // 갱신하려다 낙관적 락이 깨질 수 있다(둘 다 옛 버전을 들고 있다가 하나만 커밋에 성공) — 실제로 CI에서
+    // 간헐적으로 ObjectOptimisticLockingFailureException을 냈다. 비동기 반영을 먼저 기다려 경쟁을 없앤 뒤
+    // 직접 호출하면, 이 테스트가 원래 확인하려는 "동기 호출이 멱등하고 lastEditedAt을 건드리지 않는다"는
+    // 성질을 경쟁 없이 검증할 수 있다.
     @Test
     void 재계산은_업데이트순_정렬_기준을_건드리지_않는다() {
         String memberId = registerMember();
@@ -138,6 +146,7 @@ class PortfolioMembershipReconcileTests {
         Instant lastEditedAt = portfolioRepository.findById(artistPageId).orElseThrow().getLastEditedAt();
 
         artworkService.deleteArtwork(memberId, trashedArtworkId);
+        awaitItemCount(artistPageId, 0);
         reconciler.reconcileArtwork(trashedArtworkId);
 
         Portfolio reconciled = portfolioRepository.findById(artistPageId).orElseThrow();
@@ -240,6 +249,26 @@ class PortfolioMembershipReconcileTests {
                 "thumb", null, "avif", MediaProcessingStatus.DONE);
         awaitReady(memberId, artworkId);
         return artworkId;
+    }
+
+    /** PortfolioArtworkEventListener의 비동기 반영을 기다린다(§ 재계산은_업데이트순_정렬_기준을_건드리지_않는다 주석). */
+    private void awaitItemCount(String portfolioId, int expected) {
+        Instant deadline = Instant.now().plus(Duration.ofSeconds(45));
+        int actual = -1;
+        while (Instant.now().isBefore(deadline)) {
+            actual = portfolioRepository.findById(portfolioId).orElseThrow().getItemCount();
+            if (actual == expected) {
+                return;
+            }
+            try {
+                Thread.sleep(200);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(e);
+            }
+        }
+        throw new AssertionError("구성 개수 재계산 대기 시간 초과: portfolioId=" + portfolioId
+                + " expected=" + expected + " actual=" + actual);
     }
 
     /** artwork 리스너는 @ApplicationModuleListener(비동기)라 READY 반영까지 폴링한다. */
