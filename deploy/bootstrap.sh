@@ -82,7 +82,12 @@ echo "[bootstrap] 3/6 백업 지표 디렉토리 준비: $METRIC_DIR"
 # backup.sh가 성공 시각을 여기에 남기고 Alloy의 textfile 컬렉터가 읽어 간다. 디렉토리가 없으면
 # 백업은 돌지만 "언제 성공했는지"가 관측에 안 잡혀 백업 감시 알람이 영원히 NoData가 된다.
 sudo mkdir -p "$METRIC_DIR"
-sudo chown "$(id -un)" "$METRIC_DIR"
+# 소유자를 "실행자"가 아니라 서비스 계정으로 고정한다. 이 스크립트를 ssm-run.sh로 돌리면
+# root로 실행되는데, 그때 `id -un`을 쓰면 디렉토리가 root 소유가 되고 User=ec2-user로 도는
+# 백업 서비스가 지표를 쓰지 못한다(2026-09-11 실제 발생). 증상이 고약하다 — 덤프 생성과
+# R2 업로드는 멀쩡히 끝나고 마지막 지표 기록에서만 죽어서, 서비스는 exit 1인데 백업 파일은
+# 정상이고 알람은 "26시간 미실행"으로 뜬다.
+sudo chown ec2-user "$METRIC_DIR"
 
 echo "[bootstrap] 4/6 스왑 파일 구성"
 # 앱·MariaDB·Elasticsearch가 한 인스턴스 메모리를 나눠 쓰는데 스왑이 없으면 완충 구간 없이
