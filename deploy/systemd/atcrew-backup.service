@@ -11,3 +11,7 @@ Type=oneshot
 User=ec2-user
 WorkingDirectory=/home/ec2-user/at-crew-backend/deploy
 ExecStart=/home/ec2-user/at-crew-backend/deploy/backup.sh
+# oneshot의 기본 시작 타임아웃은 90초다. 지금은 덤프가 작아 문제가 없지만, 데이터가 늘어
+# 덤프·압축·암호화·업로드가 90초를 넘기는 순간부터 systemd가 백업을 중간에 죽인다.
+# 그 실패는 "어느 날부터 백업이 안 되기 시작"하는 형태로 나타나 원인을 짚기 어렵다.
+TimeoutStartSec=0

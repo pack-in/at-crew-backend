@@ -163,6 +163,7 @@ cat /var/lib/node_exporter/textfile_collector/backup.prom
 
 | 알람 | 첫 확인 | 판단 기준 |
 |---|---|---|
+| R2 이미지 백업 26시간 미실행 | `journalctl -u atcrew-image-backup.service --since "-3 days"` → `systemctl list-timers atcrew-image-backup.timer` | 흔한 원인은 토큰 권한이다 — 이 키는 원본·백업 **두 버킷 모두**에 권한이 있어야 한다. 즉시 실행은 `sudo systemctl start atcrew-image-backup.service` |
 | 5xx 증가 | Sentry에서 해당 시각 이슈 → `requestId`로 Loki 조회 | 특정 엔드포인트 집중이면 그 기능 문제, 전방위면 DB·의존성 |
 | p95 지연 2초 초과 | 대시보드 "요청량/지연" → 어떤 엔드포인트인지 | 검색·이미지 업로드가 흔한 원인. DB 커넥션 pending도 함께 본다 |
 | 메일 발송 실패 | Resend 대시보드, `.env`의 `RESEND_API_KEY` 유효성 | 비밀번호 재설정이 막히므로 사용자 문의로 바로 이어진다 |
@@ -269,25 +270,40 @@ docker-compose -f docker-compose.app.yml up -d app
 
 ## DB 복원
 
-백업은 매일 R2 `at-crew-backups/db-backups/atcrew-<UTC타임스탬프>.sql.gz`에 올라간다.
+백업은 매일 R2의 백업 버킷 `db-backups/atcrew-<UTC타임스탬프>.sql.gz.age`에 올라간다.
+버킷 이름은 `.env`의 `R2_BACKUP_BUCKET`에 있다.
+
+**덤프는 age로 암호화돼 있다(2026-09-10부터).** 복호화 개인키는 이 서버에 없다 —
+**보관 위치: 팀 Notion 워크스페이스의 `AT-CREW DB 백업 복호화 키` 항목**
+(정확한 링크는 `docs/operations/secrets-location.md` — 공개 저장소라 여기에 URL을 적지 않는다). 키가 없으면 어떤 백업도 열 수 없으므로
+복원 절차의 첫 단계는 키를 확보하는 것이다.
 
 ```bash
 cd ~/at-crew-backend/deploy
-set -a; PW=$(sed -n 's/^MARIADB_ROOT_PASSWORD=//p' .env | tail -1); set +a
-export AWS_ACCESS_KEY_ID=$(sed -n 's/^R2_ACCESS_KEY=//p' .env | tail -1)
-export AWS_SECRET_ACCESS_KEY=$(sed -n 's/^R2_SECRET_KEY=//p' .env | tail -1)
+PW=$(sed -n 's/^MARIADB_ROOT_PASSWORD=//p' .env | tail -1)
+# 백업 버킷 전용 키를 쓴다. 이미지용 R2_ACCESS_KEY에는 백업 버킷 권한이 없다.
+export AWS_ACCESS_KEY_ID=$(sed -n 's/^R2_BACKUP_ACCESS_KEY=//p' .env | tail -1)
+export AWS_SECRET_ACCESS_KEY=$(sed -n 's/^R2_BACKUP_SECRET_KEY=//p' .env | tail -1)
 export AWS_DEFAULT_REGION=auto
 ENDPOINT=$(sed -n 's/^R2_ENDPOINT=//p' .env | tail -1)
+BUCKET=$(sed -n 's/^R2_BACKUP_BUCKET=//p' .env | tail -1)
 
 # 1) 목록 확인 후 원하는 시점 파일 받기
-aws s3 ls s3://at-crew-backups/db-backups/ --endpoint-url "$ENDPOINT"
-aws s3 cp s3://at-crew-backups/db-backups/<파일명> /tmp/restore.sql.gz --endpoint-url "$ENDPOINT"
+aws s3 ls "s3://$BUCKET/db-backups/" --endpoint-url "$ENDPOINT"
+aws s3 cp "s3://$BUCKET/db-backups/<파일명>" /tmp/restore.sql.gz.age --endpoint-url "$ENDPOINT"
 
-# 2) 앱을 멈춘 상태에서 복원한다 — 복원 중 쓰기가 들어오면 정합성이 깨진다
+# 2) 개인키를 임시로 올린다 (위 보관 위치에서 가져온다)
+install -m 600 /dev/null /tmp/age-key.txt && vi /tmp/age-key.txt   # AGE-SECRET-KEY-1... 한 줄
+
+# 3) 앱을 멈춘 상태에서 복호화·복원한다 — 복원 중 쓰기가 들어오면 정합성이 깨진다
 docker-compose -f docker-compose.app.yml stop app
-gunzip -c /tmp/restore.sql.gz | docker exec -i -e MYSQL_PWD="$PW" deploy-mariadb-1 mariadb -u root atcrew
+age -d -i /tmp/age-key.txt /tmp/restore.sql.gz.age | gunzip -c \
+  | docker exec -i -e MYSQL_PWD="$PW" deploy-mariadb-1 mariadb -u root atcrew
 docker-compose -f docker-compose.app.yml start app
 curl -s http://127.0.0.1:8081/actuator/health/liveness
+
+# 4) 개인키를 반드시 지운다 — 서버에 남기면 암호화한 의미가 사라진다
+shred -u /tmp/age-key.txt 2>/dev/null || rm -f /tmp/age-key.txt
 ```
 
 **소요 시간: 약 25초** (2026-08-27 리허설 실측, 덤프 10KB 기준)
@@ -307,10 +323,14 @@ curl -s http://127.0.0.1:8081/actuator/health/liveness
 
 복원은 해본 적 없으면 신뢰할 수 없다. **prod DB를 건드리지 않고** 임시 컨테이너에 복원해 확인한다.
 
+`scripts/baseline/restore-drill.sh --env-file <env> --age-key <개인키 파일>`이 아래를 자동으로 하고
+소요 시간까지 잰다. 수동으로 할 때는 이렇게 한다.
+
 ```bash
 docker run -d --name restore-drill -e MARIADB_ROOT_PASSWORD=drill -e MARIADB_DATABASE=atcrew mariadb:11.4
 until docker exec restore-drill healthcheck.sh --connect --innodb_initialized; do sleep 2; done
-gunzip -c /tmp/restore.sql.gz | docker exec -i -e MYSQL_PWD=drill restore-drill mariadb -u root atcrew
+age -d -i /tmp/age-key.txt /tmp/restore.sql.gz.age | gunzip -c \
+  | docker exec -i -e MYSQL_PWD=drill restore-drill mariadb -u root atcrew
 
 # 스키마가 prod와 같은 지점까지 복원됐는지 확인 — version은 문자열이라 정렬이 아니라 적용 순서로 본다
 docker exec -e MYSQL_PWD=drill restore-drill mariadb -u root -N -B atcrew \
@@ -321,8 +341,47 @@ docker rm -f restore-drill
 
 2026-08-27 리허설에서는 복원본과 prod가 모두 V33까지 일치했고 테이블 57개가 복구됐다.
 
+**리허설의 절반은 복호화 확인이다.** 암호화만 되고 복호화가 안 되는 상태(개인키 분실, 공개키 교체
+후 옛 키 폐기)는 백업 감시 알람에 정상으로 잡힌다 — 실제로 열어보기 전에는 드러나지 않는다.
+
 주의: 복원은 해당 시점 이후 데이터를 잃는다. 실행 전에 현재 DB를 먼저 덤프해 둔다
 (`deploy/backup.sh` 수동 실행).
+
+---
+
+## R2 이미지 복구
+
+이미지가 지워졌을 때 백업 버킷에서 되돌린다. 사본은 원본과 **같은 key**로 들어 있다.
+
+**R2에는 오브젝트 버저닝이 없다.** 백업 버킷에도 없는 객체는 어디에도 없다 — 복구 수단이 이것뿐이다.
+
+```bash
+cd ~/at-crew-backend/deploy
+export AWS_ACCESS_KEY_ID=$(sed -n 's/^R2_IMAGE_BACKUP_ACCESS_KEY=//p' .env | tail -1)
+export AWS_SECRET_ACCESS_KEY=$(sed -n 's/^R2_IMAGE_BACKUP_SECRET_KEY=//p' .env | tail -1)
+export AWS_DEFAULT_REGION=auto
+ENDPOINT=$(sed -n 's/^R2_ENDPOINT=//p' .env | tail -1)
+SRC=$(sed -n 's/^R2_BUCKET=//p' .env | tail -1)
+BAK=$(sed -n 's/^R2_IMAGE_BACKUP_BUCKET=//p' .env | tail -1)
+
+# 특정 객체 하나만 되돌리기
+aws s3 cp "s3://$BAK/raw/<uuid>.<확장자>" "s3://$SRC/raw/<uuid>.<확장자>" \
+  --endpoint-url "$ENDPOINT" --copy-props metadata-directive
+
+# 전량 되돌리기 — 방향만 뒤집는다. 원본에 이미 있는 객체는 건너뛰므로 살아있는 파일은 안 건드린다
+aws s3 sync "s3://$BAK" "s3://$SRC" --endpoint-url "$ENDPOINT" --no-progress \
+  --copy-props metadata-directive
+```
+
+**`--copy-props metadata-directive`를 빼면 복구가 실패한다.** 기본값은 소스의 태그까지 옮기려고
+`GetObjectTagging`을 부르는데 R2는 태깅을 구현하지 않아 `NotImplemented`가 떨어진다. 장애 상황에서
+이걸로 막히지 않도록 명령에 붙여 두었다.
+
+**어느 방향으로든 `--delete`를 붙이지 않는다.** 붙이면 한쪽에 없는 객체를 다른 쪽에서 지워서,
+복구하려다 남은 것까지 잃는다.
+
+DB와 이미지를 함께 복구할 때는 **DB를 먼저 복원한다.** 이미지를 먼저 되돌려도 그것을 가리키는
+`media_assets` 행이 없으면 화면에 나오지 않는다.
 
 ---
 

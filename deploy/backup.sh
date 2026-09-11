@@ -14,6 +14,10 @@
 #
 # 실행 이력: journalctl -u atcrew-backup.service --since "-7 days"
 #
+# 덤프는 age 공개키로 암호화해서 올린다(2026-09-10). 이 서버에는 공개키만 있고 복호화 개인키는
+# 없다 — EC2가 침해돼도 과거 덤프를 읽을 수 없다. 개인키 위치는 docs/operations/incident-runbook.md
+# "DB 복원"에 적어 둔다. 키를 잃으면 백업 전량이 복구 불능이므로 사본을 두 곳에 둔다.
+#
 # 실패 감지는 이 스크립트가 하지 않는다 — 성공했을 때만 타임스탬프를 갱신하고, "26시간 넘게 갱신이
 # 없으면" 알람을 울리는 쪽(PA-09)이 판단한다. 스크립트가 죽어서 아무 신호도 못 보내는 경우까지
 # 잡으려면 그 방향이어야 한다.
@@ -45,16 +49,21 @@ R2_ENDPOINT="$(read_env R2_ENDPOINT)"
 BACKUP_BUCKET="${R2_BACKUP_BUCKET:-$(read_env R2_BACKUP_BUCKET)}"
 ACCESS_KEY="$(read_env R2_BACKUP_ACCESS_KEY)"
 SECRET_KEY="$(read_env R2_BACKUP_SECRET_KEY)"
+# 암호화 공개키(age1...). 개인키가 아니다 — 이 값이 노출돼도 덤프를 읽는 데는 쓸 수 없다.
+AGE_RECIPIENT="$(read_env AGE_RECIPIENT)"
 
 : "${MARIADB_ROOT_PASSWORD:?[backup] MARIADB_ROOT_PASSWORD 없음}"
 : "${R2_ENDPOINT:?[backup] R2_ENDPOINT 없음}"
 : "${BACKUP_BUCKET:?[backup] R2_BACKUP_BUCKET 없음 — .env에 실제 버킷 이름을 채울 것}"
 : "${ACCESS_KEY:?[backup] R2_BACKUP_ACCESS_KEY 없음 — 백업 버킷 전용 키를 발급해 채울 것}"
 : "${SECRET_KEY:?[backup] R2_BACKUP_SECRET_KEY 없음 — 백업 버킷 전용 키를 발급해 채울 것}"
+: "${AGE_RECIPIENT:?[backup] AGE_RECIPIENT 없음 — 암호화 공개키(age1...)를 채울 것}"
+# 여기서 막지 않으면 파이프 중간에서 죽는데, 그 실패는 로그만 보면 원인을 짚기 어렵다.
+command -v age >/dev/null || { echo "[backup] age가 설치돼 있지 않다 — bootstrap.sh를 먼저 실행할 것" >&2; exit 1; }
 
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 WORK="$(mktemp -d)"
-DUMP="$WORK/atcrew-$STAMP.sql.gz"
+DUMP="$WORK/atcrew-$STAMP.sql.gz.age"
 trap 'rm -rf "$WORK"' EXIT
 
 CONTAINER="$(docker ps --filter 'label=com.docker.compose.service=mariadb' --format '{{.Names}}' | head -1)"
@@ -63,9 +72,11 @@ CONTAINER="$(docker ps --filter 'label=com.docker.compose.service=mariadb' --for
 echo "[backup] 덤프 시작 ($CONTAINER)"
 # --single-transaction: InnoDB를 잠그지 않고 일관된 스냅샷을 뜬다(서비스 중단 없음).
 # --routines/--events: 스토어드 프로시저·이벤트까지 포함.
+# 압축 후 암호화 순서를 지킨다 — 암호문은 압축되지 않으므로 뒤집으면 파일이 커진다.
+# 덤프가 디스크에 평문으로 떨어지는 순간이 없도록 파이프로만 흘린다.
 docker exec -e MYSQL_PWD="$MARIADB_ROOT_PASSWORD" "$CONTAINER" \
   mariadb-dump --single-transaction --quick --routines --events -u root atcrew \
-  | gzip -9 > "$DUMP"
+  | gzip -9 | age -r "$AGE_RECIPIENT" > "$DUMP"
 
 SIZE=$(stat -c%s "$DUMP")
 [ "$SIZE" -gt 1024 ] || { echo "[backup] 덤프가 비정상적으로 작다(${SIZE}B) — 업로드하지 않는다" >&2; exit 1; }

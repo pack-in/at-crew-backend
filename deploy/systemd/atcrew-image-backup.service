@@ -1,0 +1,16 @@
+# R2 이미지 백업(docs/design/observability-design.md §10).
+# DB 백업과 같은 이유로 systemd 타이머를 쓴다 — Amazon Linux 2023에는 cron이 없다.
+[Unit]
+Description=AT-CREW R2 이미지 백업
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=ec2-user
+WorkingDirectory=/home/ec2-user/at-crew-backend/deploy
+ExecStart=/home/ec2-user/at-crew-backend/deploy/r2-image-backup.sh
+# oneshot의 기본 시작 타임아웃은 90초다. 최초 실행은 버킷 전량을 복사하므로 그 안에 끝나지 않고,
+# 타임아웃에 걸리면 동기화가 중간에 잘린 채 실패로 기록된다. 무제한으로 둔다 — 다음 실행은
+# 타이머가 어차피 하루 뒤에 걸리고, 겹치면 systemd가 두 번째 기동을 막는다.
+TimeoutStartSec=0

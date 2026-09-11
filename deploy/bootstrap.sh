@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# 앱 서버 호스트에 "컨테이너 밖에서 도는 것들"을 설치한다 — 관측 에이전트(Alloy)와 백업 타이머.
+# 앱 서버 호스트에 "컨테이너 밖에서 도는 것들"을 설치한다 — 관측 에이전트(Alloy), 백업 타이머
+# 둘(DB 덤프·R2 이미지), 그리고 덤프 암호화에 쓰는 age.
 #
 # 배경: 앱은 docker-compose.app.yml로 배포되지만 Alloy와 백업은 각각 별도 compose 파일과 systemd
 # 유닛이라 앱 배포에 딸려 오지 않는다. 이 분리는 "배포가 실패해도 수집은 계속되게" 하려는 의도인데
@@ -21,13 +22,19 @@ cd "$DEPLOY_DIR"
 
 ENV_FILE="$DEPLOY_DIR/.env"
 METRIC_DIR="/var/lib/node_exporter/textfile_collector"
+# 버전을 고정한다 — latest로 받으면 인스턴스를 새로 만들 때마다 다른 버전이 깔린다.
+# 체크섬은 해당 버전 배포물의 SHA-256이다. **버전을 올리면 이 값도 함께 갱신해야 한다** —
+# 안 고치면 설치가 실패하고 백업이 서지 않는다(조용히 넘어가지 않는 쪽이 안전하다).
+AGE_VERSION="${AGE_VERSION:-v1.3.2}"
+AGE_SHA256_ARM64="6b8dc4333c53a5a57c9e5834e3a48f92605d7154014cd07269ff3327db5d37f4"
+AGE_SHA256_AMD64="cbe24006683f8eb669266162894b9a522a1af52f2665fbc63a4bb032ed26ac10"
 
 fail() { echo "[bootstrap] $1" >&2; exit 1; }
 
 # .env를 source 하지 않는다 — 셸은 값을 명령으로 해석해서 깨진다(backup.sh와 같은 이유).
 read_env() { sed -n "s/^$1=//p" "$ENV_FILE" | tail -1 | sed -e 's/^"//' -e 's/"$//'; }
 
-echo "[bootstrap] 1/5 사전 조건 확인"
+echo "[bootstrap] 1/6 사전 조건 확인"
 [ -f "$ENV_FILE" ] || fail ".env가 없다: $ENV_FILE — .env.example을 복사해 값을 채울 것"
 command -v docker >/dev/null || fail "docker가 없다"
 command -v docker-compose >/dev/null || fail "docker-compose가 없다 (플러그인 아닌 standalone 바이너리)"
@@ -39,19 +46,45 @@ MISSING=""
 for KEY in GRAFANA_CLOUD_PROM_URL GRAFANA_CLOUD_PROM_USER GRAFANA_CLOUD_LOKI_URL \
            GRAFANA_CLOUD_LOKI_USER GRAFANA_CLOUD_TOKEN \
            MARIADB_ROOT_PASSWORD R2_ENDPOINT R2_BACKUP_BUCKET \
-           R2_BACKUP_ACCESS_KEY R2_BACKUP_SECRET_KEY \
+           R2_BACKUP_ACCESS_KEY R2_BACKUP_SECRET_KEY AGE_RECIPIENT \
+           R2_BUCKET R2_IMAGE_BACKUP_BUCKET \
+           R2_IMAGE_BACKUP_ACCESS_KEY R2_IMAGE_BACKUP_SECRET_KEY \
            MYSQL_EXPORTER_DSN; do
   [ -n "$(read_env "$KEY")" ] || MISSING="$MISSING $KEY"
 done
 [ -z "$MISSING" ] || fail ".env에 값이 비어 있다:$MISSING"
 
-echo "[bootstrap] 2/5 백업 지표 디렉토리 준비: $METRIC_DIR"
+echo "[bootstrap] 2/6 백업 암호화 도구(age) 설치"
+# backup.sh가 덤프를 age 공개키로 암호화한다. Amazon Linux 2023의 기본 저장소에는 age 패키지가
+# 없어서 공식 릴리스의 정적 바이너리를 그대로 놓는다(의존성이 없는 단일 실행 파일이다).
+if command -v age >/dev/null; then
+  echo "  - 이미 설치돼 있다: $(age --version 2>&1 | head -1)"
+else
+  case "$(uname -m)" in
+    aarch64) AGE_ARCH=arm64; AGE_SHA256="$AGE_SHA256_ARM64" ;;
+    x86_64)  AGE_ARCH=amd64; AGE_SHA256="$AGE_SHA256_AMD64" ;;
+    *) fail "age 바이너리가 없는 아키텍처다: $(uname -m)" ;;
+  esac
+  AGE_TMP="$(mktemp -d)"
+  # 파이프로 바로 풀지 않는다 — 그러면 검증 전에 내용이 디스크에 풀린다. 받아서, 검증하고, 푼다.
+  curl -fsSL -o "$AGE_TMP/age.tar.gz" \
+    "https://github.com/FiloSottile/age/releases/download/${AGE_VERSION}/age-${AGE_VERSION}-linux-${AGE_ARCH}.tar.gz" \
+    || fail "age 내려받기 실패 — 네트워크(NAT 경유)를 확인할 것"
+  echo "${AGE_SHA256}  ${AGE_TMP}/age.tar.gz" | sha256sum -c - >/dev/null 2>&1 \
+    || fail "age 체크섬 불일치 — 내려받은 파일을 신뢰할 수 없다(기대 ${AGE_SHA256}, 실제 $(sha256sum "$AGE_TMP/age.tar.gz" | awk '{print $1}'))"
+  tar -xzf "$AGE_TMP/age.tar.gz" -C "$AGE_TMP" || fail "age 압축 해제 실패"
+  sudo install -m 0755 "$AGE_TMP/age/age" "$AGE_TMP/age/age-keygen" /usr/local/bin/
+  rm -rf "$AGE_TMP"
+  echo "  - age ${AGE_VERSION} 설치 완료 (체크섬 확인됨)"
+fi
+
+echo "[bootstrap] 3/6 백업 지표 디렉토리 준비: $METRIC_DIR"
 # backup.sh가 성공 시각을 여기에 남기고 Alloy의 textfile 컬렉터가 읽어 간다. 디렉토리가 없으면
 # 백업은 돌지만 "언제 성공했는지"가 관측에 안 잡혀 백업 감시 알람이 영원히 NoData가 된다.
 sudo mkdir -p "$METRIC_DIR"
 sudo chown "$(id -un)" "$METRIC_DIR"
 
-echo "[bootstrap] 3/5 스왑 파일 구성"
+echo "[bootstrap] 4/6 스왑 파일 구성"
 # 앱·MariaDB·Elasticsearch가 한 인스턴스 메모리를 나눠 쓰는데 스왑이 없으면 완충 구간 없이
 # 곧바로 OOM 킬러가 돈다 — 한 컨테이너의 폭주가 다른 컨테이너를 죽인다(이슈 #116).
 # 컨테이너 메모리 상한(docker-compose.app.yml)과 짝을 이루는 호스트 쪽 방어다.
@@ -85,14 +118,15 @@ sudo mkdir -p /etc/sysctl.d
 printf 'vm.swappiness = 10\n' | sudo tee /etc/sysctl.d/99-atcrew-swappiness.conf >/dev/null
 sudo sysctl -q -w vm.swappiness=10
 
-echo "[bootstrap] 4/5 관측 에이전트(Alloy) 기동"
+echo "[bootstrap] 5/6 관측 에이전트(Alloy) 기동"
 docker-compose -f docker-compose.observability.yml up -d
 
-echo "[bootstrap] 5/5 백업 타이머 설치"
-chmod +x "$DEPLOY_DIR/backup.sh"
-sudo cp systemd/atcrew-backup.service systemd/atcrew-backup.timer /etc/systemd/system/
+echo "[bootstrap] 6/6 백업 타이머 설치 (DB 덤프·R2 이미지)"
+chmod +x "$DEPLOY_DIR/backup.sh" "$DEPLOY_DIR/r2-image-backup.sh"
+sudo cp systemd/atcrew-backup.service systemd/atcrew-backup.timer \
+        systemd/atcrew-image-backup.service systemd/atcrew-image-backup.timer /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now atcrew-backup.timer
+sudo systemctl enable --now atcrew-backup.timer atcrew-image-backup.timer
 
 echo
 echo "[bootstrap] 검증"
@@ -118,9 +152,11 @@ else
   fail "디스크 스왑이 활성화되지 않았다 — zram만으로는 OOM 완충이 되지 않는다"
 fi
 
-systemctl list-timers atcrew-backup.timer --all --no-pager | sed -n '2p;3p'
+systemctl list-timers 'atcrew-*backup.timer' --all --no-pager | sed -n '2p;3p;4p'
 
 echo
 echo "[bootstrap] 완료. 남은 확인:"
 echo "  - 수집 전송 확인(1분 뒤): curl -s http://127.0.0.1:12345/metrics | grep prometheus_remote_storage_samples_total"
 echo "  - 백업 즉시 검증: sudo systemctl start atcrew-backup.service && journalctl -u atcrew-backup.service -n 20 --no-pager"
+echo "  - 이미지 백업 즉시 검증: sudo systemctl start atcrew-image-backup.service && journalctl -u atcrew-image-backup.service -n 20 --no-pager"
+echo "  - 덤프가 실제로 복호화되는지: scripts/baseline/restore-drill.sh --env-file <env> --age-key <개인키 파일>"
