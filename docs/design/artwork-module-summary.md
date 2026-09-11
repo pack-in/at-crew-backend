@@ -72,7 +72,7 @@ com.atcrew.artwork.internal/               ← 모듈 외부에서 직접 접근
 | `imageLayoutType` | enum | VERTICAL_SCROLL / HORIZONTAL_SWIPE |
 | `artworkField` | enum | ILLUSTRATION / WEBTOON / PRINT_COMIC / ANIMATION / ETC |
 | `creativeType` | enum | ORIGINAL / SECONDARY / FAN_ART / OC / COMMISSION |
-| `roles` | `List<ArtworkRole>` | 담당업무 (22종, 아래 표 참고) |
+| `roles` | `List<ArtworkRole>` | 담당업무 (24종, 아래 표 참고) |
 | `genres` | `List<Genre>` | 장르 태그 (정본 29종, 자유 입력 불가) |
 | `tags` | `List<String>` | 일반 태그 (최대 7개) |
 | `tools` | `List<String>` | 사용 도구 |
@@ -106,11 +106,12 @@ com.atcrew.artwork.internal/               ← 모듈 외부에서 직접 접근
 | `OC` | OC (오리지널 캐릭터) |
 | `COMMISSION` | 커미션 |
 
-#### ArtworkRole (담당업무 — 22종)
+#### ArtworkRole (담당업무 — 24종)
 
 | 값 | 의미 |
 |----|------|
 | `TOTAL_ARTWORK` | 전체 작화 |
+| `ARTWORK` | 작화 |
 | `ADAPTATION_STORYBOARD` | 각색·콘티 |
 | `STORYBOARD` | 콘티 |
 | `DIRECTION` | 연출 |
@@ -120,8 +121,9 @@ com.atcrew.artwork.internal/               ← 모듈 외부에서 직접 접근
 | `BASE_COLOR` | 밑색 |
 | `TONE_WORK` | 톤 작업 |
 | `POST_PROCESSING` | 후보정 |
+| `PANEL_DECORATION` | 원고꾸미기 |
+| `LETTERING` | 식자 |
 | `FULL_COLOR` | 풀컬러 |
-| `PANEL_DECORATION` | 컷꾸미기 |
 | `THREE_D_MODELING` | 3D 모델링 |
 | `MATERIAL_MAKING` | 소재 제작 |
 | `MATERIAL_PLACEMENT` | 소재 배치 |
@@ -129,7 +131,7 @@ com.atcrew.artwork.internal/               ← 모듈 외부에서 직접 접근
 | `WEBNOVEL_COVER` | 웹소설 표지 |
 | `CHARACTER_DESIGN` | 캐릭터 디자인 |
 | `CHARACTER_SHEET` | 캐릭터 시트 |
-| `TYPOGRAPHY` | 식자 |
+| `TYPOGRAPHY` | 타이포 |
 | `BROADCAST_THUMBNAIL` | 방송 썸네일 |
 | `ETC` | 기타 (직접 입력) |
 

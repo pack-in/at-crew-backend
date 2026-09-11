@@ -364,7 +364,7 @@ laiteu의 커뮤니티 쿼리 성능 이슈(p95 7.3s, `count()+find()` 이중 �
 | 항목 | 프로필(member) | 구직글(recruit) | 매핑 |
 |---|---|---|---|
 | 희망 장르 | `DesiredGenre` 29 | `artwork.Genre` 29 | 상수 이름까지 동일 — 1:1 가능 |
-| 희망 담당 업무 | `DesiredRole` 23 | `artwork.ArtworkRole` 22 | 부분 — 프로필의 작화·식자가 recruit에 없고, recruit의 ETC가 프로필에 없다(직접입력으로 대체) |
+| 희망 담당 업무 | `DesiredRole` 23 | `artwork.ArtworkRole` 24 | 부분 — 작화·식자 차이는 해소됐으나 recruit의 ETC가 프로필에 없고(직접입력으로 대체), 1도명암 상수 이름이 다르다(`ONE_TONE_SHADING` vs `TONE_WORK`) |
 | 선호 피드백 방식 | `FeedbackPreference` 7 (구체적·자율적·직설적·부드러운·한번에·자잘하게·상관없음) | `FeedbackStyle` 4 (상세한·최소한의·실시간·정기적) | **대응값 없음** |
 | 작업 스타일 | `WorkPace` 3 (완성도 중심·속도 우선·작업별 조율) | `WorkStyle` 4 (독립적·협업·체계적·유연) | **대응값 없음** |
 
