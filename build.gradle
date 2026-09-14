@@ -96,6 +96,13 @@ tasks.named('test') {
 	// 글로벌 시간대 전략(docs/design/global-timezone-strategy.md §3.1) — 테스트 JVM은 AtCrewBackendApplication.main()을
 	// 거치지 않아 TimeZone.setDefault(UTC)가 적용되지 않으므로 개발 환경의 로컬 시간대에 결과가 좌우되지 않도록 별도 고정.
 	jvmArgs '-Duser.timezone=UTC'
+
+	// 테스트 JVM 힙. 기본값 512MB는 이 레포에 맞지 않는다 — @ApplicationModuleTest 12개와
+	// @SpringBootTest 8개가 서로 다른 Spring 컨텍스트를 만들고, 캐시된 컨텍스트마다
+	// EntityManagerFactory·Hibernate 메타데이터·Modulith 이벤트 레지스트리를 물고 있어
+	// 십수 개가 동시에 살아 있다. 512MB로는 GC에 시간을 다 쓰다가 폴링 대기가 타임아웃한다
+	// (2026-09-11 배포 CI: 정상 8~9분인 스위트가 26분 30초 만에 35개 실패, 전부 컨텍스트 로딩 실패).
+	maxHeapSize = '2g'
 }
 
 // Stripe sandbox 실호출 테스트(plans/260813-stripe-billing PA-14). 키가 없으면 각 테스트가 스스로 skip한다.
