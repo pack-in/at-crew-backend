@@ -35,5 +35,10 @@ public class SharedContainersConfig {
 
     @Container
     @ServiceConnection
-    public static MariaDBContainer<?> mariadb = new MariaDBContainer<>("mariadb:11.4");
+    public static MariaDBContainer<?> mariadb = new MariaDBContainer<>("mariadb:11.4")
+            // 기본 max_connections(151)는 이 레포의 테스트 구성에 부족하다. 컨텍스트마다 HikariCP 풀이
+            // 따로 생기고 캐시된 컨텍스트가 십수 개라, 풀 크기를 5로 줄여도(test application.yml)
+            // Flyway·Modulith 레지스트리 몫까지 겹치면 한계에 가까워진다. 커넥션 하나당 메모리는
+            // 수백 KB 수준이라 여유를 크게 두는 편이 안전하다.
+            .withCommand("--max-connections=500");
 }
