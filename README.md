@@ -15,7 +15,7 @@
 |---|---|
 | 언어와 프레임워크 | Java 21, Spring Boot 4, Spring Modulith, Gradle |
 | 데이터 | MariaDB(JPA/Hibernate), Flyway, Elasticsearch |
-| 인증 | 자체 이메일 인증(JWT) + Firebase(Google 로그인) |
+| 인증 | 자체 이메일 인증(JWT) + Google 직접 연동(OAuth ID Token) |
 | 외부 연동 | Stripe(결제/구독), Cloudflare R2 + Worker(이미지 파이프라인), Resend(메일) |
 | 테스트 | JUnit 5, Testcontainers, MockMvc + Spring REST Docs |
 | 인프라 | Docker Compose on EC2(프라이빗 서브넷), nginx, Cloudflare Tunnel, AWS SSM, GitHub Actions |

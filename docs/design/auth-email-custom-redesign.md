@@ -2,7 +2,7 @@
 
 > 작성일: 2026-06-12 (rev.2 — 동일자 개정)
 > 상태: 설계안 (구현 전)
-> 범위: 이메일 로그인·회원가입을 Firebase 의존에서 자체 인증(BCrypt)으로 전환. Google 로그인은 Firebase ID Token 방식 유지.
+> 범위: 이메일 로그인·회원가입을 Firebase 의존에서 자체 인증(BCrypt)으로 전환. Google 로그인은 Google ID Token 직접 검증 방식(Firebase 미사용)으로 이후 별도 작업에서 전환됨.
 
 > **rev.2 개정 요약**
 > 1. §5 결정 번복 — 에러 구분 노출(Figma 우선) → **보안 우선 통합 401**로 복구. 피그마의 구체적 에러 메시지는 "피그마가 아직 반영 못 한 것"으로 확인됨.
@@ -445,6 +445,12 @@ record GoogleUser(String email, boolean emailVerified) {}
 - `extractProvider`에서 `"password"` 분기 **제거** — `"google.com"`이 아니면 `UNSUPPORTED_AUTH_PROVIDER`. 이로써 Firebase 이메일 계정 토큰으로 로그인하는 우회 경로를 차단.
 - `FirebaseConfig`/`FirebaseFallbackConfig`는 유지 (Google 로그인이 계속 Firebase Admin SDK를 사용).
 - rename은 선택 사항이나, "Firebase = Google 로그인 인프라"라는 축소된 역할을 이름에 반영하는 것을 권장.
+
+> **정정(2026-09-11).** 위 "Firebase는 Google 로그인 인프라로 유지" 전제도 이후 별도 작업(이슈 #170)에서
+> 사라졌다. Google 로그인도 Firebase Admin SDK 없이 `GoogleIdTokenVerifier`로 직접 검증하는 방식으로
+> 전환됐다 — `FirebaseVerifier`/`FirebaseConfig`/`FirebaseFallbackConfig`는 삭제됐고,
+> `auth.internal.infra.google.GoogleTokenVerifierPort`로 대체됐다. 이 절의 나머지 내용은 당시
+> 설계 논의 기록으로만 남긴다.
 
 ### 4.4 LoginAttemptLimiter (auth.internal)
 
