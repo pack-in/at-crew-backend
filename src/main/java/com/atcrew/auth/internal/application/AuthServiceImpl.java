@@ -133,7 +133,16 @@ class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public AuthInfo loginWithGoogle(String googleIdToken) {
-        GoogleUser googleUser = googleTokenVerifierPort.verify(googleIdToken);
+        // 위조·만료 토큰 반복 전송 방지 — 이메일을 모르는 시점이라 IP 카운터만 사용
+        loginAttemptLimiter.checkIpBlocked();
+
+        GoogleUser googleUser;
+        try {
+            googleUser = googleTokenVerifierPort.verify(googleIdToken);
+        } catch (RuntimeException e) {
+            loginAttemptLimiter.recordIpFailure();
+            throw e;
+        }
         String email = googleUser.email();
 
         // Google 토큰이 이메일 소유를 증명 → 404 노출은 enumeration 아님 (§1.2)
@@ -177,7 +186,16 @@ class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public AuthInfo registerWithGoogle(GoogleRegisterCommand command) {
-        GoogleUser googleUser = googleTokenVerifierPort.verify(command.googleIdToken());
+        // 위조·만료 토큰 반복 전송 방지 — 이메일을 모르는 시점이라 IP 카운터만 사용
+        loginAttemptLimiter.checkIpBlocked();
+
+        GoogleUser googleUser;
+        try {
+            googleUser = googleTokenVerifierPort.verify(command.googleIdToken());
+        } catch (RuntimeException e) {
+            loginAttemptLimiter.recordIpFailure();
+            throw e;
+        }
         String email = googleUser.email();
 
         RegisterMemberCommand memberCommand = new RegisterMemberCommand(

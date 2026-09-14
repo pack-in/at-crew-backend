@@ -164,6 +164,7 @@ class AuthController {
     @ApiResponse(responseCode = "200", description = "로그인 성공")
     @ApiResponse(responseCode = "401", description = "Google 토큰 검증 실패(INVALID_GOOGLE_TOKEN)")
     @ApiResponse(responseCode = "404", description = "미가입 계정 (가입 화면으로 이동)")
+    @ApiResponse(responseCode = "429", description = "동일 IP의 토큰 검증 실패 횟수 초과(TOO_MANY_ATTEMPTS)")
     @PostMapping("/google/login")
     public com.atcrew.common.response.ApiResponse<AuthInfo> googleLogin(
             @RequestBody @Valid GoogleLoginRequest request) {
@@ -176,6 +177,7 @@ class AuthController {
     @ApiResponse(responseCode = "400", description = "주 사용 언어 미선택(PRIMARY_LANGUAGE_REQUIRED)")
     @ApiResponse(responseCode = "401", description = "Google 토큰 검증 실패(INVALID_GOOGLE_TOKEN)")
     @ApiResponse(responseCode = "409", description = "이미 가입된 Google 계정")
+    @ApiResponse(responseCode = "429", description = "동일 IP의 토큰 검증 실패 횟수 초과(TOO_MANY_ATTEMPTS)")
     @ResponseStatus(HttpStatus.CREATED)
     @PostMapping("/google/register")
     public com.atcrew.common.response.ApiResponse<AuthInfo> googleRegister(

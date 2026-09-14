@@ -186,6 +186,34 @@ class AuthServiceImplTest {
                 .isInstanceOf(AuthException.class)
                 .satisfies(e -> assertThat(((AuthException) e).getCode())
                         .isEqualTo(AuthErrorCode.INVALID_GOOGLE_TOKEN.name()));
+
+        // 위조 토큰 반복 전송 방지 — IP 카운터 누적 후 원래 예외 전파
+        verify(loginAttemptLimiter).recordIpFailure();
+    }
+
+    @Test
+    void Google_로그인_성공_시_IP_카운터를_누적하지_않는다() {
+        when(googleTokenVerifierPort.verify(TOKEN)).thenReturn(new GoogleUser(EMAIL, AuthProvider.GOOGLE, true));
+        when(memberService.findByLoginEmailAndProvider(EMAIL, AuthProvider.GOOGLE)).thenReturn(memberInfo(AuthProvider.GOOGLE));
+        when(memberService.recordLogin(MEMBER_ID)).thenReturn(memberInfo(AuthProvider.GOOGLE));
+
+        authService.loginWithGoogle(TOKEN);
+
+        verify(loginAttemptLimiter).checkIpBlocked();
+        verify(loginAttemptLimiter, never()).recordIpFailure();
+    }
+
+    @Test
+    void Google_로그인_IP_Rate_limit_초과_시_토큰_검증_전에_429() {
+        doThrow(new AuthException(AuthErrorCode.TOO_MANY_ATTEMPTS))
+                .when(loginAttemptLimiter).checkIpBlocked();
+
+        assertThatThrownBy(() -> authService.loginWithGoogle(TOKEN))
+                .isInstanceOf(AuthException.class)
+                .satisfies(e -> assertThat(((AuthException) e).getCode())
+                        .isEqualTo(AuthErrorCode.TOO_MANY_ATTEMPTS.name()));
+
+        verify(googleTokenVerifierPort, never()).verify(anyString());
     }
 
     // ─── 이메일 회원가입 ──────────────────────────────────────────────
@@ -229,6 +257,36 @@ class AuthServiceImplTest {
         assertThat(result.isNewUser()).isTrue();
         verify(memberService).register(argThat(cmd ->
                 cmd.authProvider() == AuthProvider.GOOGLE && cmd.rawPassword() == null));
+        verify(loginAttemptLimiter).checkIpBlocked();
+        verify(loginAttemptLimiter, never()).recordIpFailure();
+    }
+
+    @Test
+    void Google_회원가입_토큰_오류_시_IP_카운터_누적() {
+        when(googleTokenVerifierPort.verify(TOKEN)).thenThrow(new AuthException(AuthErrorCode.INVALID_GOOGLE_TOKEN));
+
+        assertThatThrownBy(() -> authService.registerWithGoogle(
+                new GoogleRegisterCommand(TOKEN, "홍길동", true, true, true, false, "Asia/Seoul", "KR", Language.KO)))
+                .isInstanceOf(AuthException.class)
+                .satisfies(e -> assertThat(((AuthException) e).getCode())
+                        .isEqualTo(AuthErrorCode.INVALID_GOOGLE_TOKEN.name()));
+
+        verify(loginAttemptLimiter).recordIpFailure();
+        verify(memberService, never()).register(any());
+    }
+
+    @Test
+    void Google_회원가입_IP_Rate_limit_초과_시_토큰_검증_전에_429() {
+        doThrow(new AuthException(AuthErrorCode.TOO_MANY_ATTEMPTS))
+                .when(loginAttemptLimiter).checkIpBlocked();
+
+        assertThatThrownBy(() -> authService.registerWithGoogle(
+                new GoogleRegisterCommand(TOKEN, "홍길동", true, true, true, false, "Asia/Seoul", "KR", Language.KO)))
+                .isInstanceOf(AuthException.class)
+                .satisfies(e -> assertThat(((AuthException) e).getCode())
+                        .isEqualTo(AuthErrorCode.TOO_MANY_ATTEMPTS.name()));
+
+        verify(googleTokenVerifierPort, never()).verify(anyString());
     }
 
     // ─── Refresh Token 흐름 ───────────────────────────────────────────
