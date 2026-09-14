@@ -78,11 +78,13 @@ POST /api/auth/google/login
 | 401 | `INVALID_GOOGLE_TOKEN` | Google 토큰 검증 실패 — "로그인에 실패했어요" 등 일반 안내, 재시도 유도 |
 | 404 | `MEMBER_NOT_REGISTERED` | **미가입 계정** — 같은 `googleIdToken`을 들고 회원가입 화면(§3)으로 이동시킨다 |
 | 503 | `GOOGLE_LOGIN_NOT_CONFIGURED` | 서버에 Google Client ID가 설정되지 않은 상태 — "Google 로그인을 준비 중이에요" 안내(dev 환경에서 Client ID 미배포 시 발생 가능) |
+| 429 | `TOO_MANY_ATTEMPTS` | 같은 IP에서 토큰 검증 실패가 반복됨(10분 내 30회) — "잠시 후 다시 시도해주세요" 안내, 재시도 버튼 비활성화 권장 |
 
 - Google 토큰이 곧 이메일 소유 증명이라, 이메일 로그인과 달리 미가입 여부를 404로 그대로
   노출해도 계정 존재 열거(enumeration) 문제가 되지 않는다(백엔드 판단, 변경 요청 대상 아님).
-- 이메일 로그인과 달리 **로그인 시도 횟수 제한(429 `TOO_MANY_ATTEMPTS`)은 적용되지 않는다** —
-  현재 코드 기준으로 Google 로그인 엔드포인트는 별도 rate limit이 없다.
+- 이메일 로그인의 이메일 단위 카운터(5회/10분)는 Google 로그인에 없다 — 토큰 검증 전에는
+  이메일을 알 수 없기 때문이다. 대신 IP 단위 카운터(10분 내 30회)가 로그인·회원가입 양쪽에
+  적용된다.
 
 ## 3. Google 회원가입
 
@@ -120,6 +122,7 @@ POST /api/auth/google/register
 | 401 | `INVALID_GOOGLE_TOKEN` | Google 토큰 검증 실패 — §1부터 다시 진행(구글 로그인 버튼 재클릭) |
 | 409 | `DUPLICATE_EMAIL`(메시지: "이미 가입된 이메일입니다") | 이미 가입된 계정 — 로그인 화면으로 유도 |
 | 503 | `GOOGLE_LOGIN_NOT_CONFIGURED` | §2와 동일 |
+| 429 | `TOO_MANY_ATTEMPTS` | §2와 동일 |
 
 - 그 외 `@Valid` 검증 실패(빈 이름·형식 오류 등)는 공통 `COMMON_INVALID_INPUT` 400으로 온다.
 
