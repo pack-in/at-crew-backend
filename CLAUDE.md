@@ -49,6 +49,7 @@
 | [docs/design/portfolio-snapshot-spec.md](docs/design/portfolio-snapshot-spec.md) | 포트폴리오 고정형(SNAPSHOT) 스냅샷 정책 기능 명세서 발췌(2026-08-12, Notion 원본) — xlsx보다 최신 소스, 상충 시 이 문서 우선 |
 | [docs/design/billing-module-design.md](docs/design/billing-module-design.md) | billing 모듈 설계 — Stripe 직결 결제/구독(Checkout·Customer Portal·웹훅), USD 단일 통화, entitlement 원장, 플랜 게이팅 |
 | [docs/design/billing-frontend-integration.md](docs/design/billing-frontend-integration.md) | 결제/구독 프론트 연동 요청서 — 카탈로그 렌더링, Checkout 리다이렉트, 복귀 페이지 폴링, Portal 위임, 403 기반 게이팅 모달 |
+| [docs/design/google-login-frontend-integration.md](docs/design/google-login-frontend-integration.md) | Google 로그인 프론트 연동 요청서 — Firebase JS SDK 제거, Google Identity Services(GIS)로 ID Token 직접 발급, 로그인/회원가입 API 계약, 에러코드별 처리 가이드 |
 | [docs/design/settings-i18n-design.md](docs/design/settings-i18n-design.md) | 설정 API 전체(로그아웃·비밀번호 변경·마케팅 동의·성인 콘텐츠 토글)·이메일 발송 인프라(Resend)·i18n 필드·언어 세그먼트 설계 |
 | [docs/design/media-module-design.md](docs/design/media-module-design.md) | media 모듈 설계 — artwork에 내장돼 있던 Presigned URL 발급·Worker 트리거·webhook·재시도·고아파일 정리를 범용 모듈로 추출, artwork·recruit이 공용 소비 |
 | [docs/design/global-country-plan-design.md](docs/design/global-country-plan-design.md) | 거주 국가(Member.countryCode) 설계 — Phase 1. Pro 플랜 노출국가(Artwork.targetCountryCodes)는 로드맵 5순위(결제/구독) 도달 후 Phase 2로 보류 |
