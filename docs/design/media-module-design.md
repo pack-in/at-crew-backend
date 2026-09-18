@@ -266,6 +266,15 @@ Body: {
 
 ## 7. Worker 트리거 / 재시도 / 정리
 
+작품 이미지를 예로 든 전체 흐름이다. presign 발급부터 콜백 반영, 재시도까지 한 장에 담았다.
+트리거가 호출자 트랜잭션 커밋 전에 출발하는 문제는 [#174](https://github.com/pack-in/at-crew-backend/issues/174)에서 다룬다.
+
+![작품 이미지 업로드 파이프라인](../assets/artwork-upload.svg)
+
+원본은 [`docs/assets/artwork-upload.sequence.json`](../assets/artwork-upload.sequence.json)(archify IR)이다.
+고친 뒤 `python3 scripts/diagrams/build.py artwork-upload`로 SVG를 다시 만든다. 그림에 적힌 코드 식별자가
+바뀌면 `DiagramConsistencyTests`가 빌드를 실패시킨다.
+
 ### 7.1 Worker 트리거
 
 ```java
