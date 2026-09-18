@@ -46,10 +46,14 @@ public class MediaCallbackService {
             log.warn("이미지 변환 실패: ownerType={} ownerId={} imageKey={} reason={}",
                     ownerType, ownerId, imageKey, failureReason != null ? failureReason : "(사유 미제공)");
         }
-        assets.findByOwnerTypeAndOwnerIdAndOriginalKey(ownerType, ownerId, imageKey).ifPresent(asset -> {
+        assets.findByOwnerTypeAndOwnerIdAndOriginalKey(ownerType, ownerId, imageKey).ifPresentOrElse(asset -> {
             asset.markProcessed(thumbKey, thumbAdultKey, originalAvifKey, status);
             events.publishEvent(new MediaAssetProcessedEvent(ownerType, ownerId, imageKey, thumbKey, thumbAdultKey,
                     originalAvifKey, status));
-        });
+        },
+        // 트리거는 커밋 뒤에만 나가므로(#174) 정상 흐름에서는 일어나지 않는다. 이미지 교체·소유자 삭제 뒤 늦게
+        // 도착한 옛 콜백이거나, Worker가 받은 키와 서버 기록이 어긋난 경우다. 예전에는 흔적 없이 버려졌다.
+        () -> log.warn("콜백 대상 자산 없음 — 무시: ownerType={} ownerId={} imageKey={} status={}",
+                ownerType, ownerId, imageKey, status));
     }
 }

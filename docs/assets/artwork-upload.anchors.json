@@ -13,10 +13,6 @@
       "path": "src/main/java/com/atcrew/artwork"
     },
     {
-      "text": "uploadArtwork",
-      "path": "src/main/java/com/atcrew/artwork"
-    },
-    {
       "text": "markImageProcessed",
       "path": "src/main/java/com/atcrew/artwork"
     },
@@ -54,6 +50,10 @@
     },
     {
       "text": "ImageRetryScheduler",
+      "path": "src/main/java/com/atcrew/media"
+    },
+    {
+      "text": "afterCommit",
       "path": "src/main/java/com/atcrew/media"
     }
   ]
