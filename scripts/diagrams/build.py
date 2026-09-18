@@ -25,7 +25,7 @@ CHROME_BIN 환경변수로 경로를 지정할 수 있고, 없으면 아래 CHRO
 archify 대상에는 Node 22 이상도 필요하다. archify 자체는 archify.lock.json에 고정된 릴리스를
 처음 실행할 때 build/archify-<버전>/ 에 받아 해시를 확인한 뒤 쓴다.
 
-다이어그램을 고친 뒤에는 이 스크립트로 SVG를 다시 만들고 ./gradlew test 로 확인한다.
+다이어그램을 고친 뒤에는 이 스크립트로 SVG를 다시 만들고 ./gradlew diagramTest 로 확인한다(./gradlew build에도 포함).
 DiagramConsistencyTests가 세 가지를 검사한다.
   - modules.mmd의 화살표가 Spring Modulith가 계산한 모듈 의존과 같은지
   - archify SVG가 지금의 IR·archify 버전으로 만들어졌는지(data-source-sha256)
