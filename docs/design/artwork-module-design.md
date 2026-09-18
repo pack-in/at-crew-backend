@@ -154,10 +154,11 @@ public class ArtworkImage {
 ```
 업로드 완료 → processingStatus = PENDING
 Worker 변환 완료 → processingStatus = DONE, thumbKey/originalAvifKey 채워짐
-Worker 실패 → processingStatus = FAILED (재시도 큐 진입)
+Worker 실패 → processingStatus = FAILED (재시도 대상 아님 — 재시도는 콜백이 오지 않은 PENDING만 다룬다)
 ```
 
-`Artwork.status = READY` 조건: 모든 `ArtworkImage.processingStatus == DONE`
+`Artwork.status` 판정: PENDING이 없고 DONE이 1장 이상이면 READY(부분 실패 허용), PENDING이 없고 DONE이 0장이면
+FAILED, PENDING이 남아 있으면 PROCESSING(`Artwork.resolveStatusFromImages`, §8.1)
 
 ### 2.3 Material (Artwork 내 embedded)
 
@@ -330,19 +331,19 @@ ArtworkStatus  : PROCESSING / READY / FAILED / DELETED
    Artwork 저장 (status=PROCESSING, 모든 image.processingStatus=PENDING)
    artworkId 반환
 
-6. R2 Event Notification (또는 서버에서 Worker 직접 호출)
-   → Cloudflare Worker 트리거 (imageKey 목록 전달)
+6. 서버(media 모듈) — 트랜잭션 커밋 뒤 Cloudflare Worker 트리거(ownerType·ownerId·imageKeys·variantProfile)
+   (afterCommit, #174. 콜백 유실 시 ImageRetryScheduler가 10분 넘은 PENDING을 다시 트리거한다)
 
 7. Cloudflare Worker (이미지별 처리)
-   원본 다운로드 (R2 private 버킷)
-   → avif 변환 → processed/uuid.avif 저장
-   → 3:4 크롭 + 294px 리사이즈 → thumb/uuid.avif 저장
-   → ageRating=ADULT인 경우 blur(20) → thumb_adult/uuid.avif 저장
-   → POST /internal/artwork/images/processed (서버 내부 webhook)
+   원본 크기를 R2 head로 확인 → cf.image fetch로 변환
+   → original/….avif, thumb/….avif 저장
+   → 작품은 variantProfile=STANDARD_WITH_ADULT_BLUR라 블러 썸네일 thumb-adult/….avif도 저장
+   → POST /internal/media/images/processed (X-Internal-Secret)
 
-8. 서버 (ArtworkController 내부 엔드포인트)
-   해당 ArtworkImage.processingStatus = DONE, key 업데이트
-   모든 이미지 DONE → Artwork.status = READY
+8. 서버
+   MediaCallbackService가 media_assets 상태 갱신 → MediaAssetProcessedEvent 발행
+   → ArtworkMediaEventListener가 작품 행을 잠그고(findByIdForUpdate) markImageProcessed
+   → PENDING이 남지 않았으면 상태 재계산: DONE 1장 이상 READY, 전부 실패 FAILED (§8.1)
 
 9. 클라이언트 (폴링 or SSE)
    GET /api/artworks/{artworkId}/status
@@ -442,7 +443,7 @@ GET /api/community/artworks
 POST /api/trash/artworks/restore
 { "artworkIds": ["id1", "id2"] }
 
-→ Artwork.status = READY
+→ Artwork.status = 이미지 처리 현황으로 재계산(READY·PROCESSING·FAILED, §8.1)
 → Artwork.visibility = visibilityBeforeDelete (스냅샷 복원)
 → deletedAt = null
 
@@ -536,22 +537,24 @@ public void onMemberDeactivated(MemberDeactivatedEvent event) {
 
 ### 8.1 Artwork.status
 
-```
-[업로드 완료]
-     ↓
-PROCESSING ──(모든 이미지 Worker 처리 완료, 하나라도 성공)──▶ READY
-     └────────(모든 이미지 Worker 처리 완료, 전부 실패)────▶ FAILED
-                                                 ↓
-                                           (삭제 요청)
-                                                 ↓
-                                             DELETED
-                                                 ↓
-                                           (복구 요청)
-                                                 ↓
-                                        READY (visibility 복원)
-```
+![작품 상태 전이](../assets/artwork-status.svg)
 
-### 8.2 Artwork.visibility (READY 상태에서만 변경 가능, 노출 위치 조합에서 계산)
+- 상태는 이미지 처리 현황으로 계산한다(`resolveStatusFromImages`). PENDING이 있으면 PROCESSING, 없고 DONE이
+  한 장이라도 있으면 READY(부분 실패 허용), 둘 다 아니면 FAILED다. `restore`도 같은 규칙으로 다시 계산하므로
+  READY가 아니라 PROCESSING이나 FAILED로 돌아갈 수 있다.
+- 휴지통 이동은 PROCESSING·FAILED에서도 된다(그림은 READY에서만 그렸다). 휴지통에 있는 동안 도착한 콜백은
+  이미지만 갱신하고 작품 상태는 바꾸지 않는다.
+- `ImageRetryScheduler`는 Worker를 다시 부를 뿐 작품 상태를 바꾸지 않는다. 콜백이 서버에 닿지 않는 동안 작품은
+  PROCESSING에 머무는데, 이는 의도된 동작이다. 재시도가 유일한 자동 복구 수단이고, PENDING 잔량 알람(P2)이 장애를
+  드러낸다. 원본·용량 문제는 Worker가 FAILED 콜백을 보내 FAILED로 끝난다.
+- 휴지통 보관 기간(기본 1년, 설정 `artwork.trash.retention`)이 지나면 `TrashPurgeScheduler`가 1시간마다 최대 100건씩
+  자동 영구 삭제한다([#178](https://github.com/pack-in/at-crew-backend/issues/178)). 사용자 영구 삭제와 같은 `ArtworkPurger`를
+  거치므로 고정형 스냅샷 보존·R2 정리·포트폴리오 구성 정리가 똑같이 적용된다.
+
+원본은 [`docs/assets/artwork-status.lifecycle.json`](../assets/artwork-status.lifecycle.json)(archify IR)이다.
+고친 뒤 `python3 scripts/diagrams/build.py artwork-status`로 SVG를 다시 만든다.
+
+### 8.2 Artwork.visibility (DELETED가 아니면 변경 가능 — PROCESSING·FAILED에서도 된다. 노출 위치 조합에서 계산)
 
 ```
 PUBLIC ◀──▶ PRIVATE   (피드 공개 ON/OFF 2값, 자유롭게 전환)

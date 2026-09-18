@@ -1,0 +1,155 @@
+{
+  "schema_version": 1,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "작품 상태 전이 (ArtworkStatus)",
+    "quality_profile": "showcase",
+    "legend": {
+      "entries": {
+        "start": {
+          "label": "시작"
+        },
+        "active": {
+          "label": "처리 중"
+        },
+        "success": {
+          "label": "정상"
+        },
+        "waiting": {
+          "label": "휴지통"
+        },
+        "failure": {
+          "label": "실패"
+        },
+        "neutral": {
+          "label": "종료"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "main",
+      "label": "작품 상태"
+    },
+    {
+      "id": "failure",
+      "label": "전량 실패"
+    },
+    {
+      "id": "terminal",
+      "label": "종료"
+    }
+  ],
+  "states": [
+    {
+      "id": "upload",
+      "type": "start",
+      "label": "업로드",
+      "sublabel": "uploadArtwork",
+      "lane": "main",
+      "col": 0
+    },
+    {
+      "id": "processing",
+      "type": "active",
+      "label": "PROCESSING",
+      "sublabel": "PENDING 1장 이상",
+      "lane": "main",
+      "col": 1
+    },
+    {
+      "id": "ready",
+      "type": "success",
+      "label": "READY",
+      "sublabel": "DONE 1장 이상",
+      "lane": "main",
+      "col": 2
+    },
+    {
+      "id": "deleted",
+      "type": "waiting",
+      "label": "DELETED",
+      "sublabel": "moveToTrash",
+      "lane": "main",
+      "col": 3
+    },
+    {
+      "id": "purged",
+      "type": "neutral",
+      "label": "영구 삭제",
+      "sublabel": "사용자 요청 · 1년 경과",
+      "lane": "terminal",
+      "col": 1
+    },
+    {
+      "id": "failed",
+      "type": "failure",
+      "label": "FAILED",
+      "sublabel": "DONE 0장",
+      "lane": "failure",
+      "col": 0
+    }
+  ],
+  "transitions": [
+    {
+      "from": "upload",
+      "to": "processing",
+      "variant": "emphasis"
+    },
+    {
+      "from": "processing",
+      "to": "ready",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left",
+      "route": "straight"
+    },
+    {
+      "from": "processing",
+      "to": "failed",
+      "label": "전량 실패",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "from": "failed",
+      "to": "processing",
+      "label": "이미지 교체",
+      "variant": "dashed",
+      "fromSide": "left",
+      "toSide": "bottom",
+      "labelDx": -30
+    },
+    {
+      "from": "ready",
+      "to": "processing",
+      "label": "이미지 교체",
+      "variant": "dashed",
+      "route": "top-channel"
+    },
+    {
+      "from": "ready",
+      "to": "deleted",
+      "variant": "default"
+    },
+    {
+      "from": "deleted",
+      "to": "ready",
+      "label": "restore",
+      "variant": "dashed",
+      "route": "bottom-channel"
+    },
+    {
+      "from": "deleted",
+      "to": "purged",
+      "variant": "security",
+      "label": "TrashPurgeScheduler",
+      "labelAt": [
+        556,
+        300
+      ]
+    }
+  ]
+}

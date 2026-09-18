@@ -1,14 +1,16 @@
 # 관측·알람(Observability) 설계
 
 > 작성일: 2026-08-23
-> 상태: 설계 확정 (구현 착수 전)
+> 상태: 설계 확정 후 구현됨. §9(배포 안전장치)는 2026-09-18 `deploy.yml` 기준으로 갱신
 > 범위: prod 운영 감시 — 가용성·에러·성능·리소스·비즈니스 지표 수집, Discord 알람, 중앙 로그,
 > 배포 안전장치(헬스체크·조건부 자동 롤백), MariaDB 백업과 백업 실패 감지
 > 계획 문서: `plans/260823-observability/`(개인 문서, 커밋 안 함)
 
 ---
 
-## 0. 배경 — 지금 상태
+## 0. 배경 — 설계 착수 시점(2026-08-23)의 상태
+
+아래 표는 설계를 시작할 때의 기록이다. 지금 상태는 각 절과 코드를 본다.
 
 실사용자를 받기 직전 시점에 관측 자산이 사실상 없다.
 
@@ -209,15 +211,26 @@ Stripe 웹훅 **처리 실패**는 따로 세지 않는다 — 서명 검증 실
 
 ## 9. 배포 안전장치
 
-`.github/workflows/deploy.yml` 확장:
+![프로덕션 배포 파이프라인](../assets/deploy.svg)
 
-1. 배포 시작 → Grafana silence(10분) 생성.
-2. 컨테이너 재기동 후 **헬스체크 폴링** — `/actuator/health/liveness`가 UP이 될 때까지 최대 3분 대기.
-3. 실패 시 분기 (D13):
-   - 이번 배포에 `src/main/resources/db/migration/` 신규 파일이 **없으면** → 직전 성공 SHA 이미지로 자동 롤백 후 재검증.
-   - **있으면** → 롤백하지 않고 P1 알람. 스키마가 전진한 뒤 구버전 앱은 `ddl-auto: validate`에서 다시 죽는다.
-4. 성공·실패·롤백 **세 경우 모두** Discord 통지.
-5. silence 해제(`if: always()`).
+`.github/workflows/deploy.yml`(main push) 기준 흐름이다. 원본은
+[`docs/assets/deploy.workflow.json`](../assets/deploy.workflow.json)(archify IR)이고, 고친 뒤
+`python3 scripts/diagrams/build.py deploy`로 SVG를 다시 만든다.
+
+1. 빌드·테스트 → 이미지 푸시(커밋 SHA와 `latest`) → SSM 연결 확인.
+2. deploy/ 동기화 — 배포 커밋 기준으로 서버의 `deploy/`를 맞추고, nginx 설정이 바뀌었으면 `nginx -t` 통과 후 reload.
+3. 배포 직전에 **실행 중이던** app 이미지를 기록(롤백 대상) → Grafana silence(10분) 생성 → 컨테이너 교체(`up -d`).
+   Flyway는 별도 단계 없이 앱이 기동하며 적용한다.
+4. **헬스체크 폴링** — `/actuator/health/liveness`가 UP이 될 때까지 최대 3분(5초 × 36회).
+5. 헬스체크 실패 시 분기 (D13):
+   - 이번 배포에 **새로 추가된** 마이그레이션 파일이 없으면(`--diff-filter=A`) → 기록해 둔 이미지로 자동 롤백 후 재검증.
+     기존 마이그레이션 파일을 **수정**한 배포는 "없음"으로 판정된다.
+   - 있으면 → 롤백하지 않고 P1 알람. 스키마가 전진한 뒤 구버전 앱은 `ddl-auto: validate`에서 다시 죽는다.
+   - 롤백은 DB 스키마, deploy/ 동기화로 바뀐 nginx 설정, 이미 푸시된 `latest` 태그를 되돌리지 않는다.
+6. 이미지 정리 → silence 해제(`if: always()`) → Discord 통지(`if: always()`).
+   분류는 `deploy/deploy-notify.sh`가 한다([#177](https://github.com/pack-in/at-crew-backend/issues/177)).
+   헬스체크까지 가지 못한 배포는 서버를 건드렸는지로 가른다 — 동기화 전에 멈췄으면 P2 "배포 중단 — 서버 변경 없음",
+   동기화·교체 도중이나 이후에 멈췄으면 P1이다. 통지별 대응은 `docs/operations/incident-runbook.md` §배포 실패·롤백.
 
 ## 10. 백업
 
@@ -238,7 +251,7 @@ Stripe 웹훅 **처리 실패**는 따로 세지 않는다 — 서명 검증 실
 ### 10.2. R2 이미지
 
 - 일 1회(19:00 UTC, DB 덤프와 어긋나게) 원본 버킷 → 백업 버킷 `aws s3 sync`. 서버측 복사라 EC2를 거치지 않는다.
-- **`--copy-props metadata-directive`가 필수다.** 기본값은 태그까지 옮기려 `GetObjectTagging`을 부르는데 R2는 태깅 미구현이라 복사가 실패한다. 복구(역방향) 명령도 마찬가지다.
+- **`--copy-props`를 쓰지 않고 멀티파트 임계값을 5GB로 올린다.** R2는 객체 태깅 미구현이다. `--copy-props none`·`metadata-directive`는 모든 복사에 `x-amz-tagging-directive: REPLACE`를 붙여 전부 실패하고(2026-09-17 장애), 기본값은 멀티파트 복사(8MB 이상)에서 `GetObjectTagging`을 불러 실패한다. 기본값 + 임계값 상향이면 모든 복사가 태깅 호출 없는 단일 CopyObject가 되고 Content-Type도 복사된다. 복구(역방향) 명령도 마찬가지다.
 - **`--delete`를 쓰지 않는다.** 원본의 삭제를 따라가면 막으려던 사고가 백업까지 전파된다.
 - **백업 버킷에 수명주기 만료를 걸지 않는다.** 이미지는 한 번 복사되면 다시 복사되지 않아서, "생성 후 N일"로 만료시키면 원본이 살아 있는 이미지의 백업까지 사라진다. DB 덤프와 정반대다.
 - `atcrew_image_backup_last_success_timestamp`가 26시간 이상 갱신되지 않으면 P2.

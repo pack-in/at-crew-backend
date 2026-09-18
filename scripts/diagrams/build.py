@@ -1,24 +1,37 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""README 다이어그램 생성기.
+"""README·설계 문서 다이어그램 생성기.
 
-docs/assets/ 아래 SVG 두 개를 만든다.
+docs/assets/ 아래 SVG를 만든다.
 
-  architecture.svg  이 스크립트가 좌표를 직접 계산해 그린다.
+  architecture.svg, infra.svg, infra-ha.svg
+                    이 스크립트가 좌표를 직접 계산해 그린다.
   modules.svg       docs/assets/modules.mmd 를 mermaid로 렌더한 결과다.
+  <이름>.svg        docs/assets/<이름>.<타입>.json (archify IR)을 archify로 렌더한 결과다.
+                    타입은 architecture | workflow | sequence | dataflow | lifecycle.
 
 왜 SVG를 커밋해 두는가 — README를 GitHub 밖 뷰어에서 열면 mermaid 코드펜스가
 차트가 아니라 소스 그대로 보이고, <picture>/<img> 태그는 코드 블록으로 노출된다.
 미리 렌더해 두고 마크다운 이미지 문법으로 넣으면 렌더러를 가리지 않는다.
 
 사용법:
-    python3 scripts/diagrams/build.py            # 둘 다
-    python3 scripts/diagrams/build.py modules    # 하나만
+    python3 scripts/diagrams/build.py                  # 전부
+    python3 scripts/diagrams/build.py modules          # 하나만
+    python3 scripts/diagrams/build.py artwork-upload   # archify 대상은 IR 파일 이름으로
 
-modules 렌더에는 Chrome이 필요하다(mermaid가 텍스트 폭을 재려면 실제 레이아웃 엔진이
-있어야 해서 jsdom으로는 대체되지 않는다). CHROME_BIN 환경변수로 경로를 지정할 수 있고,
-없으면 아래 CHROME_CANDIDATES를 순서대로 찾는다.
+modules와 archify 대상에는 Chrome이 필요하다(mermaid가 텍스트 폭을 재려면 실제 레이아웃
+엔진이 있어야 해서 jsdom으로는 대체되지 않고, archify SVG는 뷰어의 export로만 나온다).
+CHROME_BIN 환경변수로 경로를 지정할 수 있고, 없으면 아래 CHROME_CANDIDATES를 순서대로 찾는다.
+archify 대상에는 Node 22 이상도 필요하다. archify 자체는 archify.lock.json에 고정된 릴리스를
+처음 실행할 때 build/archify-<버전>/ 에 받아 해시를 확인한 뒤 쓴다.
+
+다이어그램을 고친 뒤에는 이 스크립트로 SVG를 다시 만들고 ./gradlew diagramTest 로 확인한다(./gradlew build에도 포함).
+DiagramConsistencyTests가 세 가지를 검사한다.
+  - modules.mmd의 화살표가 Spring Modulith가 계산한 모듈 의존과 같은지
+  - archify SVG가 지금의 IR·archify 버전으로 만들어졌는지(data-source-sha256)
+  - IR에 적힌 코드 식별자(<이름>.anchors.json)가 아직 코드에 있는지
 """
+import hashlib
 import html
 import json
 import os
@@ -27,6 +40,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.request
+import zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ASSETS = os.path.join(ROOT, "docs", "assets")
@@ -440,10 +455,136 @@ def render_mermaid(mmd_path, out_path):
     return out_path
 
 
+# --------------------------------------------------------------------- archify
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ARCHIFY_TYPES = ("architecture", "workflow", "sequence", "dataflow", "lifecycle")
+
+
+def archify_targets():
+    """docs/assets/<이름>.<타입>.json 을 찾아 {이름: (타입, IR 경로)}로 돌려준다."""
+    found = {}
+    for fname in sorted(os.listdir(ASSETS)):
+        m = re.fullmatch(r"(.+)\.(%s)\.json" % "|".join(ARCHIFY_TYPES), fname)
+        if m:
+            found[m.group(1)] = (m.group(2), os.path.join(ASSETS, fname))
+    return found
+
+
+def archify_lock():
+    with open(os.path.join(HERE, "archify.lock.json"), encoding="utf-8") as f:
+        return json.load(f)
+
+
+def source_sha256(version, ir_path):
+    """SVG에 새기는 원본 해시. DiagramConsistencyTests가 같은 식으로 다시 계산해 비교한다.
+
+    archify 버전을 함께 넣어, 버전만 올리고 SVG를 다시 만들지 않은 상태도 잡히게 한다.
+    줄바꿈은 LF로 맞춘다 — 체크아웃 환경에 따라 CRLF가 되어도 같은 값이 나와야 한다.
+    """
+    with open(ir_path, "rb") as f:
+        ir = f.read().replace(b"\r\n", b"\n")
+    return hashlib.sha256(version.encode() + b"\n" + ir).hexdigest()
+
+
+def _require_node():
+    node = shutil.which("node")
+    if not node:
+        sys.exit("node를 찾지 못했다. archify 대상에는 Node 22 이상이 필요하다.")
+    out = subprocess.run([node, "--version"], capture_output=True, text=True).stdout.strip()
+    major = int(re.match(r"v(\d+)", out).group(1))
+    if major < 22:
+        sys.exit(f"Node {out}은 너무 낮다. archify_export.mjs가 전역 WebSocket을 쓰므로 22 이상이 필요하다.")
+    return node
+
+
+def ensure_archify():
+    """고정된 archify 릴리스를 build/ 아래에 준비하고 CLI 경로를 돌려준다.
+
+    zip 해시가 lock과 다르면 풀기 전에 멈춘다. 캐시는 푼 뒤 남기는 해시 표식으로 확인한다.
+    """
+    lock = archify_lock()
+    home = os.path.join(ROOT, "build", f"archify-{lock['version']}")
+    cli = os.path.join(home, "archify", "bin", "archify.mjs")
+    marker = os.path.join(home, ".sha256")
+    if os.path.exists(cli) and os.path.exists(marker):
+        with open(marker, encoding="utf-8") as f:
+            if f.read().strip() == lock["sha256"]:
+                return cli
+
+    print(f"archify {lock['version']} 받는 중: {lock['url']}")
+    with urllib.request.urlopen(lock["url"], timeout=60) as r:
+        data = r.read()
+    actual = hashlib.sha256(data).hexdigest()
+    if actual != lock["sha256"]:
+        sys.exit(f"archify zip 해시가 lock과 다르다. 기대 {lock['sha256']}, 실제 {actual}. "
+                 "릴리스가 바뀌었을 수 있으니 확인 전까지 쓰지 않는다.")
+
+    shutil.rmtree(home, ignore_errors=True)
+    os.makedirs(home)
+    with tempfile.TemporaryDirectory() as tmp:
+        zpath = os.path.join(tmp, "archify.zip")
+        with open(zpath, "wb") as f:
+            f.write(data)
+        with zipfile.ZipFile(zpath) as z:
+            z.extractall(home)
+    if not os.path.exists(cli):
+        sys.exit(f"archify zip에서 {os.path.relpath(cli, home)}를 찾지 못했다. 릴리스 구성이 바뀌었는지 확인한다.")
+    with open(marker, "w", encoding="utf-8") as f:
+        f.write(lock["sha256"])
+    return cli
+
+
+def _run_archify(node, cli, args):
+    env = dict(os.environ, ARCHIFY_UPDATE_CHECK_DISABLED="1")
+    proc = subprocess.run([node, cli, *args, "--json"], capture_output=True, text=True, env=env, timeout=180)
+    try:
+        return json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        sys.exit(f"archify {args[0]} 출력을 해석하지 못했다.\n{proc.stdout}\n{proc.stderr}")
+
+
+def build_archify(name, kind, ir_path):
+    node = _require_node()
+    cli = ensure_archify()
+    rel = os.path.relpath(ir_path, ROOT)
+
+    result = _run_archify(node, cli, ["validate", kind, ir_path, "--quality", "showcase"])
+    if not result.get("ok"):
+        lines = [f"- {d.get('code')}: {d.get('message')}" for d in result.get("diagnostics", [])]
+        sys.exit(f"{rel} 검증 실패: {result.get('error')}\n" + "\n".join(lines))
+
+    out_path = os.path.join(ASSETS, f"{name}.svg")
+    with tempfile.TemporaryDirectory() as tmp:
+        page = os.path.join(tmp, f"{name}.html")
+        delivered = _run_archify(node, cli, ["deliver", kind, ir_path, page, "--quality", "showcase"])
+        if not delivered.get("ok"):
+            sys.exit(f"{rel} deliver 실패: {delivered.get('error')}")
+
+        exported = os.path.join(tmp, f"{name}.svg")
+        env = dict(os.environ, CHROME_BIN=_find_chrome())
+        proc = subprocess.run([node, os.path.join(HERE, "archify_export.mjs"), page, exported],
+                              capture_output=True, text=True, env=env, timeout=120)
+        if proc.returncode != 0:
+            sys.exit(f"{rel} SVG 추출 실패: {proc.stderr.strip()}")
+        with open(exported, encoding="utf-8") as f:
+            svg = f.read()
+
+    digest = source_sha256(archify_lock()["version"], ir_path)
+    svg, n = re.subn(r"<svg\b", f'<svg data-source-sha256="{digest}"', svg, count=1)
+    if n != 1:
+        sys.exit(f"{rel} 추출 결과에서 <svg> 요소를 찾지 못했다.")
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(svg)
+    return out_path
+
+
 # ------------------------------------------------------------------------ main
 
 def main():
-    known = ("architecture", "infra", "infra-ha", "modules")
+    archify = archify_targets()
+    fixed = ("architecture", "infra", "infra-ha", "modules")
+    known = fixed + tuple(archify)
     targets = sys.argv[1:] or list(known)
     unknown = [t for t in targets if t not in known]
     if unknown:
@@ -467,6 +608,11 @@ def main():
         p = render_mermaid(os.path.join(ASSETS, "modules.mmd"),
                            os.path.join(ASSETS, "modules.svg"))
         print(f"생성 {os.path.relpath(p, ROOT)} ({os.path.getsize(p)} bytes)")
+
+    for name, (kind, ir_path) in archify.items():
+        if name in targets:
+            p = build_archify(name, kind, ir_path)
+            print(f"생성 {os.path.relpath(p, ROOT)} ({os.path.getsize(p)} bytes)")
 
 
 if __name__ == "__main__":

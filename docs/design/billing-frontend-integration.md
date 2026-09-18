@@ -114,6 +114,8 @@ POST /api/billing/portal-sessions
 |-----|------|------|
 | 팀원모집글 생성 / 구인글 제출 / 끌어올리기 | `ENTITLEMENT_REQUIRED` | "게시 권한이 필요해요" + [취소]/[요금제 바로가기] |
 | 작품 업로드 · 휴지통 복구 | `STARTER_ARTWORK_LIMIT_EXCEEDED` | 스타터 4개 제한 안내 + 프로 전환 유도 |
+| 작품 업로드 · 수정에서 언어 2개 이상 선택 | `MULTI_LANGUAGE_REQUIRES_PRO` | "다중 언어 노출은 유료 기능이에요" + 프로 전환 유도 |
+| 공유 포트폴리오 생성 · 수정 | `PRO_PLAN_REQUIRED` | "포트폴리오 생성 및 추가는 유료 기능이에요" + 프로 전환 유도 |
 
 **⚠️ MVP 기간 중 팀원모집글·구인글·끌어올리기는 사실상 막혀 있다(PH-08).** 단건 상품 3종 판매를
 중단했지만 게이팅은 그대로 둬서, `ENTITLEMENT_REQUIRED` 모달의 "[요금제 바로가기]"를 눌러도 살 수 있는

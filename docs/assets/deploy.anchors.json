@@ -1,0 +1,44 @@
+{
+  "anchors": [
+    {
+      "text": "deploy-prod",
+      "path": ".github/workflows/deploy.yml"
+    },
+    {
+      "text": "./gradlew build",
+      "path": ".github/workflows/deploy.yml"
+    },
+    {
+      "text": "deploy/ 동기화",
+      "path": ".github/workflows/deploy.yml"
+    },
+    {
+      "text": "nginx -t",
+      "path": ".github/workflows/deploy.yml"
+    },
+    {
+      "text": "up -d",
+      "path": ".github/workflows/deploy.yml"
+    },
+    {
+      "text": "liveness",
+      "path": ".github/workflows/deploy.yml"
+    },
+    {
+      "text": "직전 이미지로 롤백",
+      "path": ".github/workflows/deploy.yml"
+    },
+    {
+      "text": "마이그레이션",
+      "path": ".github/workflows/deploy.yml"
+    },
+    {
+      "text": "배포 성공",
+      "path": "deploy/deploy-notify.sh"
+    },
+    {
+      "text": "SSM",
+      "path": ".github/workflows/deploy.yml"
+    }
+  ]
+}

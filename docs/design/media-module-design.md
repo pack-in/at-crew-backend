@@ -1,7 +1,7 @@
 # media 모듈 설계
 
 > 작성일: 2026-08-03
-> 상태: 설계 확정, 구현 전
+> 상태: 구현 완료(#43, 2026-08-04)
 > 배경: recruit 게시글 이미지 업로드(§7 게이팅 스텁 해소) 작업 중, artwork 모듈에 내장된
 > "Presigned URL 발급 → R2 업로드 → Cloudflare Worker 비동기 변환 → webhook 콜백 → 재시도" 파이프라인을
 > recruit이 필요로 하면서 나온 결정. artwork의 `internal` 서브패키지(Worker 트리거, webhook, 재시도
@@ -114,7 +114,7 @@ public enum MediaProcessingStatus { PENDING, DONE, FAILED }
 | 등급 | 대상 | 원본 변환 파라미터 |
 |---|---|---|
 | `WEB` | 스타터 플랜 작품, recruit 이미지 전부 | 가로 폭 1280px 상한(`fit: scale-down`), AVIF q72 |
-| `ORIGINAL` | 프로 플랜 작품 | 가로 폭 2560px 상한, AVIF q85 |
+| `ORIGINAL` | 프로 플랜 작품 | 해상도 상한 없음, AVIF q95 (근거는 아래 "raw 원본은 변환 성공 후 삭제한다" 항목) |
 
 - 상한은 **긴 변이 아니라 가로 폭** 기준이다. 웹툰 원고는 세로로 길어서 긴 변으로 제한하면 원고가 뭉개진다.
 - `fit: scale-down`이라 상한보다 작은 원본은 확대하지 않는다.
@@ -266,6 +266,15 @@ Body: {
 
 ## 7. Worker 트리거 / 재시도 / 정리
 
+작품 이미지를 예로 든 전체 흐름이다. presign 발급부터 콜백 반영, 재시도까지 한 장에 담았다.
+Worker 트리거는 호출자 트랜잭션이 커밋된 뒤에만 나간다([#174](https://github.com/pack-in/at-crew-backend/issues/174)). 예전에는 커밋 전에 나가서 콜백이 커밋보다 먼저 오면 버려지고, 롤백돼도 외부 변환이 진행됐다.
+
+![작품 이미지 업로드 파이프라인](../assets/artwork-upload.svg)
+
+원본은 [`docs/assets/artwork-upload.sequence.json`](../assets/artwork-upload.sequence.json)(archify IR)이다.
+고친 뒤 `python3 scripts/diagrams/build.py artwork-upload`로 SVG를 다시 만든다. 그림에 적힌 코드 식별자가
+바뀌면 `DiagramConsistencyTests`가 빌드를 실패시킨다.
+
 ### 7.1 Worker 트리거
 
 ```java
@@ -275,6 +284,9 @@ void triggerAsync(MediaOwnerType ownerType, String ownerId, List<String> imageKe
     storagePort.triggerWorker(ownerType, ownerId, imageKeys, variantProfile, qualityTier);
 }
 ```
+
+`registerAndTriggerProcessing`은 이 메서드를 바로 부르지 않고 호출자 트랜잭션의 `afterCommit`에 등록한다(#174).
+외부 호출은 되돌릴 수 없으므로 자산 행이 커밋된 뒤에만 보낸다. 트랜잭션 밖(재시도 스케줄러)에서는 바로 부른다.
 
 `R2StorageAdapter.triggerWorker`의 요청 바디가 `{"artworkId":..., "imageKeys":[...]}`에서
 `{"ownerType":..., "ownerId":..., "imageKeys":[...], "variantProfile":..., "qualityTier":...}`로 바뀐다 —
@@ -353,7 +365,8 @@ media → artwork/recruit 방향 참조 없음 (ownerId는 불투명 문자열, 
 
 ### 9.2 리포지토리 밖 작업 (Orca 워커가 끝낼 수 없음, 별도 조율 필요)
 
-Cloudflare Worker 스크립트(이 레포에 없음, `cloudflare.r2.workerTriggerUrl`이 가리키는 외부 배포물)가
+Cloudflare Worker 스크립트(작성 당시에는 이 레포에 없었고 #44부터 `cloudflare-worker/`에 있다,
+`cloudflare.r2.workerTriggerUrl`이 가리키는 배포물)가
 현재 트리거 요청의 `artworkId` 필드와 콜백 응답의 `artworkId` 필드를 가정하고 있다. `ownerType`/`ownerId`로
 바뀌면 Worker 스크립트도 함께 바뀌어야 한다. **recruit 이미지 처리는 Worker가 새 형식을 받아들이기 전까지는
 아예 작동할 수 없다** — recruit은 Worker 입장에서 완전히 새로운 owner 타입이라, 우회할 방법 자체가 없다.
@@ -455,7 +468,7 @@ API 브레이킹 체인지가 아니다. 클라이언트가 요청에 넣는 값
   중이던 작품이 신·구 webhook 어느 경로로도 콜백을 매칭 못 하던 문제 → `V12__backfill_media_assets_
   from_pending_artwork_images.sql`로 `artwork_images.processing_status='PENDING'` 행을 media_assets에
   백필(빈 DB에서는 no-op).
-- (범위 밖으로 확정, 2026-08-04) 동일 게시글/작품에 대한 webhook 2건이 동시에 처리되면 READY 전환을
-  둘 다 놓칠 수 있는 경쟁 조건(read-then-write, 락 없음)이 artwork·recruit 리스너 모두에 있다. 이건
-  media 모듈 도입으로 생긴 회귀가 아니라 원래 artwork 콜백 처리부터 있던 노출 수준과 동일하다 —
-  이미지 처리 전반의 락킹 재설계가 필요한 별도 과제라 이번 스코프에서 다루지 않는다.
+- (해결, 2026-08-07) 동일 게시글/작품에 대한 webhook 2건이 동시에 처리되면 READY 전환을 둘 다 놓칠 수
+  있는 경쟁 조건(read-then-write)이 artwork·recruit 리스너 모두에 있었다. 2026-08-04에는 범위 밖으로
+  미뤘으나, a4df747에서 두 리스너가 부모 행을 `findByIdForUpdate`(`PESSIMISTIC_WRITE`)로 잠근 뒤 판정하도록
+  바꿔 직렬화했다(`ArtworkMediaEventListener`, `RecruitMediaEventListener`).

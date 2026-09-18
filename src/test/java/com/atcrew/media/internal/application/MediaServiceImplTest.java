@@ -6,6 +6,8 @@ import com.atcrew.media.internal.infra.storage.ArtworkStoragePort;
 import com.atcrew.media.internal.persistence.MediaAssetRepository;
 import com.atcrew.media.internal.persistence.OrphanedMediaKeyRepository;
 import org.junit.jupiter.api.Test;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import java.util.List;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -61,5 +63,51 @@ class MediaServiceImplTest {
     @Test void presignRejectsFileSizesOverLimit() {
         assertThatIllegalArgumentException().isThrownBy(() -> service.generatePresignedUrls(1, List.of("image/jpeg"),
                 List.of(MediaConstraints.MAX_ORIGINAL_BYTES + 1)));
+    }
+
+    // 트랜잭션 안에서 불리면 Worker 호출은 커밋 뒤로 미룬다(#174). 커밋 전에 나가면 콜백이 커밋보다 먼저 와서
+    // 버려지거나, 롤백 뒤에도 외부 변환이 진행돼 고아 파일이 남는다.
+    @Test void 트랜잭션_안에서는_커밋된_뒤에만_worker를_트리거한다() {
+        inTransaction(() -> {
+            service.registerAndTriggerProcessing(MediaOwnerType.ARTWORK, "artwork-1", List.of("raw/1.jpg"),
+                    MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.WEB);
+            verifyNoInteractions(worker);
+
+            TransactionSynchronizationManager.getSynchronizations().forEach(TransactionSynchronization::afterCommit);
+        });
+        verify(worker).triggerAsync(MediaOwnerType.ARTWORK, "artwork-1", List.of("raw/1.jpg"),
+                MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.WEB);
+    }
+
+    @Test void 트랜잭션이_롤백되면_worker를_트리거하지_않는다() {
+        inTransaction(() -> {
+            service.registerAndTriggerProcessing(MediaOwnerType.ARTWORK, "artwork-1", List.of("raw/1.jpg"),
+                    MediaVariantProfile.STANDARD, MediaQualityTier.WEB);
+            TransactionSynchronizationManager.getSynchronizations()
+                    .forEach(sync -> sync.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK));
+        });
+        verifyNoInteractions(worker);
+    }
+
+    @Test void 교체도_커밋된_뒤_한_번만_트리거한다() {
+        when(assets.findByOwnerTypeAndOwnerIdOrderByOrdinalAsc(MediaOwnerType.JOB_POSTING, "posting-1")).thenReturn(List.of());
+        inTransaction(() -> {
+            service.replaceAndTriggerProcessing(MediaOwnerType.JOB_POSTING, "posting-1", List.of("raw/2.jpg"),
+                    MediaVariantProfile.STANDARD, MediaQualityTier.WEB);
+            verifyNoInteractions(worker);
+            TransactionSynchronizationManager.getSynchronizations().forEach(TransactionSynchronization::afterCommit);
+        });
+        verify(worker, times(1)).triggerAsync(MediaOwnerType.JOB_POSTING, "posting-1", List.of("raw/2.jpg"),
+                MediaVariantProfile.STANDARD, MediaQualityTier.WEB);
+    }
+
+    /** 실제 트랜잭션 매니저 없이 동기화만 켜서 afterCommit·afterCompletion을 직접 부른다. */
+    private static void inTransaction(Runnable body) {
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            body.run();
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
     }
 }

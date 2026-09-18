@@ -9,6 +9,8 @@ import com.atcrew.media.internal.persistence.MediaAssetRepository;
 import com.atcrew.media.internal.persistence.OrphanedMediaKeyRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import java.util.List;
 import java.util.Set;
 
@@ -32,7 +34,29 @@ class MediaServiceImpl implements MediaService {
             List<String> imageKeys, MediaVariantProfile variantProfile, MediaQualityTier qualityTier) {
         validate(ownerType, ownerId, imageKeys, variantProfile, qualityTier);
         for (int i = 0; i < imageKeys.size(); i++) assets.save(MediaAsset.pending(ownerType, ownerId, i, imageKeys.get(i), variantProfile, qualityTier));
-        worker.triggerAsync(ownerType, ownerId, imageKeys, variantProfile, qualityTier);
+        triggerAfterCommit(ownerType, ownerId, imageKeys, variantProfile, qualityTier);
+    }
+
+    /**
+     * Worker 호출을 호출자 트랜잭션이 커밋된 뒤로 미룬다(#174).
+     *
+     * <p>예전에는 트랜잭션 안에서 바로 {@code @Async} 트리거를 보냈다. 콜백이 커밋보다 먼저 오면 자산 행이 아직
+     * 보이지 않아 콜백이 버려지고(재시도 스케줄러가 10~15분 뒤에야 되살린다), 트리거 뒤 롤백되면 존재하지 않는
+     * 소유자의 이미지를 변환해 R2에 고아 파일이 남았다. 외부 호출은 되돌릴 수 없으므로 커밋이 확정된 뒤에만 보낸다.
+     *
+     * <p>트랜잭션 밖에서 불리면(재시도 스케줄러 경로와 같은 상황) 바로 보낸다.
+     */
+    private void triggerAfterCommit(MediaOwnerType ownerType, String ownerId, List<String> imageKeys,
+                                    MediaVariantProfile variantProfile, MediaQualityTier qualityTier) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            worker.triggerAsync(ownerType, ownerId, imageKeys, variantProfile, qualityTier);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override public void afterCommit() {
+                worker.triggerAsync(ownerType, ownerId, imageKeys, variantProfile, qualityTier);
+            }
+        });
     }
     @Override @Transactional public void replaceAndTriggerProcessing(MediaOwnerType ownerType, String ownerId,
             List<String> newImageKeys, MediaVariantProfile variantProfile, MediaQualityTier qualityTier) {
