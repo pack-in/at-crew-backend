@@ -67,13 +67,24 @@ echo "[image-backup] 동기화 시작: $SOURCE_BUCKET -> $BACKUP_BUCKET"
 # 백업 버킷에는 수명주기 만료 규칙을 걸지 않는다. 이미지는 한 번 복사되면 다시 복사되지 않아서,
 # "생성 후 N일" 기준으로 만료시키면 원본이 멀쩡한 이미지의 백업까지 사라진다. DB 덤프와 정반대다.
 #
-# --copy-props metadata-directive: 메타데이터(Content-Type 등)는 복사하고 **태그는 건드리지 않는다.**
-# 기본값(default)은 소스의 태그도 옮기려고 GetObjectTagging을 호출하는데, R2는 객체 태깅을
-# 구현하지 않아 `NotImplemented`로 복사가 통째로 실패한다(2026-09-11 실측 — 큰 객체에서 먼저 터진다).
-# Content-Type이 빠지면 복구할 때 브라우저가 이미지를 제대로 렌더링하지 못하므로 none은 쓰지 않는다.
+# R2는 객체 태깅을 구현하지 않는다. aws CLI의 --copy-props는 세 모드 모두 태깅을 건드려서 그대로는 못 쓴다.
+#   - none / metadata-directive: 모든 CopyObject에 `x-amz-tagging-directive: REPLACE`를 붙인다 →
+#     R2가 `NotImplemented`로 거부해 한 건도 복사되지 않는다(2026-09-17 실제 장애 — 새 객체가 없던
+#     날은 복사 0건으로 "성공"해서 드러나지 않았다).
+#   - default: 단일 CopyObject는 태깅 헤더 없이 보내고 메타데이터(Content-Type 등)도 서버가 그대로
+#     복사한다. 그러나 멀티파트 복사(기본 임계값 8MB 이상)에서는 태그를 옮기려 GetObjectTagging을
+#     불러 같은 이유로 실패한다(2026-09-11 실측).
+# 그래서 default를 쓰되 멀티파트 임계값을 5GB(단일 CopyObject 상한)로 올려 모든 복사를 단일
+# CopyObject로 만든다. 이 설정은 ~/.aws/config를 건드리지 않도록 이번 실행 전용 파일로 준다.
+cat > "$WORK/aws-config" <<'CFG'
+[default]
+s3 =
+  multipart_threshold = 5GB
+CFG
+export AWS_CONFIG_FILE="$WORK/aws-config"
+
 aws s3 sync "s3://$SOURCE_BUCKET" "s3://$BACKUP_BUCKET" \
-  --endpoint-url "$R2_ENDPOINT" --no-progress \
-  --copy-props metadata-directive > "$WORK/sync.log"
+  --endpoint-url "$R2_ENDPOINT" --no-progress > "$WORK/sync.log"
 
 COPIED=$(grep -c '^copy:' "$WORK/sync.log" || true)
 echo "[image-backup] 새로 복사한 객체: ${COPIED}개"

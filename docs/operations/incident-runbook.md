@@ -163,7 +163,7 @@ cat /var/lib/node_exporter/textfile_collector/backup.prom
 
 | 알람 | 첫 확인 | 판단 기준 |
 |---|---|---|
-| R2 이미지 백업 26시간 미실행 | `journalctl -u atcrew-image-backup.service --since "-3 days"` → `systemctl list-timers atcrew-image-backup.timer` | 흔한 원인은 토큰 권한이다 — 이 키는 원본·백업 **두 버킷 모두**에 권한이 있어야 한다. 즉시 실행은 `sudo systemctl start atcrew-image-backup.service` |
+| R2 이미지 백업 26시간 미실행 | `journalctl -u atcrew-image-backup.service --since "-3 days"` → `systemctl list-timers atcrew-image-backup.timer` | 흔한 원인은 토큰 권한이다 — 이 키는 원본·백업 **두 버킷 모두**에 권한이 있어야 한다. 로그에 `NotImplemented`가 보이면 R2 미구현 헤더(태깅 등)를 보낸 것이다 — "R2 이미지 복구" 절의 설명 참고. 즉시 실행은 `sudo systemctl start atcrew-image-backup.service` |
 | 5xx 증가 | Sentry에서 해당 시각 이슈 → `requestId`로 Loki 조회 | 특정 엔드포인트 집중이면 그 기능 문제, 전방위면 DB·의존성 |
 | p95 지연 2초 초과 | 대시보드 "요청량/지연" → 어떤 엔드포인트인지 | 검색·이미지 업로드가 흔한 원인. DB 커넥션 pending도 함께 본다 |
 | 메일 발송 실패 | Resend 대시보드, `.env`의 `RESEND_API_KEY` 유효성 | 비밀번호 재설정이 막히므로 사용자 문의로 바로 이어진다 |
@@ -371,22 +371,28 @@ cd ~/at-crew-backend/deploy
 export AWS_ACCESS_KEY_ID=$(sed -n 's/^R2_IMAGE_BACKUP_ACCESS_KEY=//p' .env | tail -1)
 export AWS_SECRET_ACCESS_KEY=$(sed -n 's/^R2_IMAGE_BACKUP_SECRET_KEY=//p' .env | tail -1)
 export AWS_DEFAULT_REGION=auto
+export AWS_REQUEST_CHECKSUM_CALCULATION=when_required AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
+# 모든 복사를 단일 CopyObject로 만든다 — 아래 설명 참고
+printf '[default]\ns3 =\n  multipart_threshold = 5GB\n' > /tmp/r2-restore-aws-config
+export AWS_CONFIG_FILE=/tmp/r2-restore-aws-config
 ENDPOINT=$(sed -n 's/^R2_ENDPOINT=//p' .env | tail -1)
 SRC=$(sed -n 's/^R2_BUCKET=//p' .env | tail -1)
 BAK=$(sed -n 's/^R2_IMAGE_BACKUP_BUCKET=//p' .env | tail -1)
 
 # 특정 객체 하나만 되돌리기
 aws s3 cp "s3://$BAK/raw/<uuid>.<확장자>" "s3://$SRC/raw/<uuid>.<확장자>" \
-  --endpoint-url "$ENDPOINT" --copy-props metadata-directive
+  --endpoint-url "$ENDPOINT"
 
 # 전량 되돌리기 — 방향만 뒤집는다. 원본에 이미 있는 객체는 건너뛰므로 살아있는 파일은 안 건드린다
-aws s3 sync "s3://$BAK" "s3://$SRC" --endpoint-url "$ENDPOINT" --no-progress \
-  --copy-props metadata-directive
+aws s3 sync "s3://$BAK" "s3://$SRC" --endpoint-url "$ENDPOINT" --no-progress
 ```
 
-**`--copy-props metadata-directive`를 빼면 복구가 실패한다.** 기본값은 소스의 태그까지 옮기려고
-`GetObjectTagging`을 부르는데 R2는 태깅을 구현하지 않아 `NotImplemented`가 떨어진다. 장애 상황에서
-이걸로 막히지 않도록 명령에 붙여 두었다.
+**`AWS_CONFIG_FILE`(멀티파트 임계값 5GB)을 빼면 큰 이미지의 복구가 실패하고, `--copy-props`를 붙이면
+전부 실패한다.** R2는 객체 태깅을 구현하지 않는데 aws CLI는 두 경우 모두 태깅을 건드린다.
+`--copy-props none`·`metadata-directive`는 모든 복사에 `x-amz-tagging-directive: REPLACE`를 붙이고,
+기본값은 멀티파트 복사(8MB 이상)에서 `GetObjectTagging`을 부른다 — 어느 쪽이든 `NotImplemented`다.
+기본값 + 임계값 상향이면 태깅 호출이 없고 Content-Type도 그대로 복사된다(2026-09-18 서버에서 8.3MB
+객체로 확인). 백업 스크립트(`deploy/r2-image-backup.sh`)와 같은 설정이다.
 
 **어느 방향으로든 `--delete`를 붙이지 않는다.** 붙이면 한쪽에 없는 객체를 다른 쪽에서 지워서,
 복구하려다 남은 것까지 잃는다.

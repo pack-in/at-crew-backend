@@ -251,7 +251,7 @@ Stripe 웹훅 **처리 실패**는 따로 세지 않는다 — 서명 검증 실
 ### 10.2. R2 이미지
 
 - 일 1회(19:00 UTC, DB 덤프와 어긋나게) 원본 버킷 → 백업 버킷 `aws s3 sync`. 서버측 복사라 EC2를 거치지 않는다.
-- **`--copy-props metadata-directive`가 필수다.** 기본값은 태그까지 옮기려 `GetObjectTagging`을 부르는데 R2는 태깅 미구현이라 복사가 실패한다. 복구(역방향) 명령도 마찬가지다.
+- **`--copy-props`를 쓰지 않고 멀티파트 임계값을 5GB로 올린다.** R2는 객체 태깅 미구현이다. `--copy-props none`·`metadata-directive`는 모든 복사에 `x-amz-tagging-directive: REPLACE`를 붙여 전부 실패하고(2026-09-17 장애), 기본값은 멀티파트 복사(8MB 이상)에서 `GetObjectTagging`을 불러 실패한다. 기본값 + 임계값 상향이면 모든 복사가 태깅 호출 없는 단일 CopyObject가 되고 Content-Type도 복사된다. 복구(역방향) 명령도 마찬가지다.
 - **`--delete`를 쓰지 않는다.** 원본의 삭제를 따라가면 막으려던 사고가 백업까지 전파된다.
 - **백업 버킷에 수명주기 만료를 걸지 않는다.** 이미지는 한 번 복사되면 다시 복사되지 않아서, "생성 후 N일"로 만료시키면 원본이 살아 있는 이미지의 백업까지 사라진다. DB 덤프와 정반대다.
 - `atcrew_image_backup_last_success_timestamp`가 26시간 이상 갱신되지 않으면 P2.
