@@ -78,7 +78,7 @@
       "id": "purged",
       "type": "neutral",
       "label": "영구 삭제",
-      "sublabel": "사용자 요청만",
+      "sublabel": "사용자 요청 · 1년 경과",
       "lane": "terminal",
       "col": 1
     },
@@ -144,7 +144,12 @@
     {
       "from": "deleted",
       "to": "purged",
-      "variant": "security"
+      "variant": "security",
+      "label": "TrashPurgeScheduler",
+      "labelAt": [
+        556,
+        300
+      ]
     }
   ]
 }

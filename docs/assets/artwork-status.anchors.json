@@ -31,6 +31,10 @@
     {
       "text": "restore",
       "path": "src/main/java/com/atcrew/artwork"
+    },
+    {
+      "text": "TrashPurgeScheduler",
+      "path": "src/main/java/com/atcrew/artwork"
     }
   ]
 }
