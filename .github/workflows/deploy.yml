@@ -112,13 +112,13 @@ jobs:
           set -e
           cd /home/ec2-user/at-crew-backend
           sudo -u ec2-user git fetch origin ${{ github.sha }} --depth=1 -q
-          BEFORE=\$(md5sum deploy/nginx/api.at-crew.com.conf | cut -d' ' -f1)
           sudo -u ec2-user git checkout -f ${{ github.sha }} -- deploy/
-          AFTER=\$(md5sum deploy/nginx/api.at-crew.com.conf | cut -d' ' -f1)
           echo "동기화 완료: \$(sudo -u ec2-user git log -1 --format=%h ${{ github.sha }})"
           # nginx는 한 프로세스가 한 설정을 읽는다 — 443 블록이 깨지면 80까지 같이 죽는다.
           # 반드시 -t로 검증한 뒤에만 reload하고, 검증에 실패하면 배포를 멈춘다.
-          if [ "\$BEFORE" != "\$AFTER" ]; then
+          # 변경 판정은 레포 파일과 실제로 적용된 /etc 파일을 비교한다. 체크아웃 전후 레포 파일끼리 비교하면
+          # 검증 실패로 /etc를 되돌린 뒤 재실행했을 때 "변경 없음"으로 건너뛰어 새 설정이 영영 반영되지 않는다.
+          if ! sudo cmp -s deploy/nginx/api.at-crew.com.conf /etc/nginx/conf.d/api.at-crew.com.conf; then
             echo "nginx 설정이 바뀌었다 — 검증 후 reload"
             # 새 설정을 먼저 제자리에 놓아야 nginx -t가 전체 구성으로 검증한다. 검증에 실패하면 원래 파일로
             # 되돌린다 — 그대로 두면 다음 재부팅·재시작 때 nginx가 뜨지 못해 80·443이 함께 내려간다.

@@ -26,6 +26,7 @@ import org.springframework.modulith.test.PublishedEvents;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.stream.IntStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -37,6 +38,7 @@ import java.util.function.BooleanSupplier;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
@@ -364,17 +366,22 @@ class ArtworkModuleTests {
                 .contains("raw/ct.png", "raw/custom-thumb.png");
     }
 
-    // 자료 첨부도 presign으로 올린 R2 파일이다 — 영구 삭제 키 목록에서 빠지면 R2에 영구히 남는다.
+    // 영구 삭제 이벤트는 작품의 R2 key 전체를 싣고 이벤트 레지스트리(EVENT_PUBLICATION.SERIALIZED_EVENT)에 저장된다.
+    // V13의 VARCHAR(4000)이면 처리된 이미지가 많은 작품에서 'Data too long'으로 영구 삭제 전체가 롤백됐다(V40).
     @Test
-    void 영구삭제_이벤트는_자료_첨부_키까지_담는다(PublishedEvents events) {
+    void 이미지가_많은_작품도_영구삭제된다() {
         String memberId = registerAuthor();
-        ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, baseUploadCommand(List.of("raw/m.png"),
-                List.of(new MaterialData("소재", List.of(), List.of(), List.of("raw/material-1.png"), List.of()))));
+        List<String> keys = IntStream.range(0, 15)
+                .mapToObj(i -> "raw/" + "long-image-name-to-grow-the-serialized-event-".repeat(2) + i + ".png")
+                .toList();
+        ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, baseUploadCommand(keys, List.of()));
+        keys.forEach(key -> processImage(uploaded.id(), key, MediaProcessingStatus.DONE));
+        awaitReady(memberId, uploaded.id());
         artworkService.deleteArtwork(memberId, uploaded.id());
 
-        artworkService.permanentlyDeleteArtworks(memberId, List.of(uploaded.id()));
-
-        assertThat(deletedImageKeysOf(events, uploaded.id())).contains("raw/m.png", "raw/material-1.png");
+        assertThatNoException().isThrownBy(() ->
+                artworkService.permanentlyDeleteArtworks(memberId, List.of(uploaded.id())));
+        assertThat(statusInDb(uploaded.id())).isNull();
     }
 
     // 휴지통 보관 기간(기본 1년) 만료 자동 영구 삭제(#178). 사용자 영구 삭제와 같은 경로를 거쳐야

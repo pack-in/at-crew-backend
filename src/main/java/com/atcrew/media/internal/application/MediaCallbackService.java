@@ -1,11 +1,8 @@
 package com.atcrew.media.internal.application;
 
 import com.atcrew.media.*;
-import com.atcrew.media.internal.domain.OrphanedMediaKey;
 import com.atcrew.media.internal.persistence.MediaAssetRepository;
-import com.atcrew.media.internal.persistence.OrphanedMediaKeyRepository;
-import java.util.List;
-import java.util.stream.Stream;
+import java.util.Arrays;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
@@ -17,9 +14,9 @@ public class MediaCallbackService {
     private static final Logger log = LoggerFactory.getLogger(MediaCallbackService.class);
     private final MediaAssetRepository assets;
     private final ApplicationEventPublisher events;
-    private final OrphanedMediaKeyRepository orphans;
-    public MediaCallbackService(MediaAssetRepository assets, ApplicationEventPublisher events, OrphanedMediaKeyRepository orphans) {
-        this.assets = assets; this.events = events; this.orphans = orphans;
+    private final MediaService mediaService;
+    public MediaCallbackService(MediaAssetRepository assets, ApplicationEventPublisher events, MediaService mediaService) {
+        this.assets = assets; this.events = events; this.mediaService = mediaService;
     }
 
     /**
@@ -67,12 +64,8 @@ public class MediaCallbackService {
 
     private void orphanDerivedKeys(MediaOwnerType ownerType, String ownerId, String imageKey, MediaProcessingStatus status,
                                    String thumbKey, String thumbAdultKey, String originalAvifKey) {
-        List<String> derived = Stream.of(thumbKey, thumbAdultKey, originalAvifKey)
-                .filter(k -> k != null && !k.isBlank()).toList();
-        log.warn("콜백 대상 자산 없음 — 변형본 {}개를 고아 정리 대상에 넣고 무시: ownerType={} ownerId={} imageKey={} status={}",
-                derived.size(), ownerType, ownerId, imageKey, status);
-        if (!derived.isEmpty()) {
-            orphans.save(OrphanedMediaKey.ofKeys(derived));
-        }
+        log.warn("콜백 대상 자산 없음 — 변형본을 고아 정리 대상에 넣고 무시: ownerType={} ownerId={} imageKey={} status={}",
+                ownerType, ownerId, imageKey, status);
+        mediaService.markOrphaned(Arrays.asList(thumbKey, thumbAdultKey, originalAvifKey));
     }
 }

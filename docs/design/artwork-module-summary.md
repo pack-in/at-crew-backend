@@ -549,16 +549,18 @@ onMemberDeactivated() [동기, @EventListener]
 
 ### ArtworkPermanentlyDeletedEvent 발행 (비동기)
 
-영구 삭제 후 R2 파일 정리를 비동기로 처리.
+영구 삭제 후 R2 파일 정리를 **트랜잭션 커밋 뒤에** 비동기로 처리한다. 롤백되면 파일을 지우지 않는다.
 
 ```
-permanentlyDeleteArtworks()
-  → artworkRepository.deleteAll()
-  → eventPublisher.publishEvent(ArtworkPermanentlyDeletedEvent)
+permanentlyDeleteArtworks() / TrashPurgeScheduler
+  → ArtworkPurger.purge()  (호출자 트랜잭션 필수)
+      → artworkRepository.deleteAll()
+      → publishEvent(ArtworkPermanentlyDeletedEvent)  — key: 이미지 4종 + 지정 썸네일(자료 첨부는 제외, #190)
 
-onPermanentlyDeleted() [@Async, @EventListener]
-  → storagePort.deleteFiles(allImageKeys)
-  → 실패 시 orphanedRepo.save(OrphanedImageKey.ofKeys(keys))
+onPermanentlyDeleted() [@Async, @TransactionalEventListener(AFTER_COMMIT)]
+  → 스냅샷 보존 key 제외 후 mediaService.deleteFiles()
+  → 실패 시 mediaService.markOrphaned()
+  → mediaService.deleteAssetsForOwner()  (지운 행의 key도 고아 큐로)
 ```
 
 ---

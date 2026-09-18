@@ -8,7 +8,6 @@ import com.atcrew.artwork.AgeRating;
 import com.atcrew.artwork.ArtworkField;
 import com.atcrew.artwork.ArtworkImageInfo;
 import com.atcrew.artwork.ImageProcessingStatus;
-import com.atcrew.artwork.MaterialInfo;
 import com.atcrew.portfolio.ReflectionType;
 import com.atcrew.portfolio.internal.domain.Portfolio;
 import com.atcrew.portfolio.internal.domain.PortfolioItemSnapshot;
@@ -60,23 +59,6 @@ class SnapshotRetainedMediaKeyProviderTests {
 
         assertThat(retained)
                 .containsExactlyInAnyOrder("raw/a.png", "thumb/a.avif", "thumb-adult/a.avif", "raw/a.avif");
-    }
-
-    // 스냅샷은 자료(첨부 포함)도 그대로 보여 준다 — 원본 영구 삭제 후보에 첨부 키가 들어오면 보존해야 한다.
-    @Test
-    void 스냅샷이_보여_주는_자료_첨부_키도_보존_대상으로_돌려준다() {
-        String portfolioId = givenSnapshotPortfolio();
-        ArtworkSnapshotPayload payload = new ArtworkSnapshotPayload(
-                List.of(new ArtworkImageInfo("raw/d.png", "thumb/d.avif", null, null, ImageProcessingStatus.DONE)),
-                List.of(new MaterialInfo("소재", List.of(), List.of(), List.of("raw/att-1.png"), List.of())),
-                List.of(), List.of(), List.of(), List.of(), List.of(), "본문", 0);
-        snapshotRepository.save(PortfolioItemSnapshot.of(portfolioId, 0, UUID.randomUUID().toString(), "작품",
-                "thumb/d.avif", null, AgeRating.ALL, ArtworkField.ILLUSTRATION, Instant.now(),
-                jsonMapper.writeValueAsString(payload)));
-
-        var retained = provider.retainedKeys(List.of("raw/d.png", "thumb/d.avif", "raw/att-1.png", "raw/att-other.png"));
-
-        assertThat(retained).containsExactlyInAnyOrder("raw/d.png", "thumb/d.avif", "raw/att-1.png");
     }
 
     @Test

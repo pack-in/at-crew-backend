@@ -40,10 +40,11 @@ class ArtworkPurger {
     }
 
     /**
-     * 영구 삭제 대상 R2 key 전체 — 이미지 4종, <b>사용자 지정 썸네일 key</b>, <b>자료 첨부 key</b>를 포함한다.
+     * 영구 삭제 대상 R2 key 전체 — 이미지 4종에 <b>사용자 지정 썸네일 key</b>까지 포함한다.
      *
-     * <p>자료 첨부({@code Material.attachmentKeys})도 presign으로 올린 R2 파일이다. 빠지면 영구 삭제 뒤에도 R2에
-     * 남는다. 고정형 스냅샷이 자료를 그대로 보여 주므로 보존 판정도 첨부 key를 함께 본다(SnapshotRetainedMediaKeyProvider).
+     * <p>자료 첨부 key({@code Material.attachmentKeys})는 <b>일부러 넣지 않는다.</b> 클라이언트가 보낸 값을 소유 검증 없이
+     * 저장하므로, 다른 사용자의 key(공개 API에 노출된다)를 첨부로 넣고 영구 삭제하면 남의 파일이 지워진다. 첨부 파일은
+     * 소유 검증이 생길 때까지 R2에 남는다(누수를 감수한다). 사용자 지정 썸네일 key에도 같은 검증 공백이 있다(#190).
      *
      * <p>지정 썸네일은 이미지 처리 대상이 아니라 media_assets에 행이 없어, 여기서 빠지면 어디서도
      * 지워지지 않고 R2에 남는다. 더 중요한 것은 고정형 스냅샷 보존 판정이 이 key로 스냅샷을 찾는다는
@@ -58,10 +59,7 @@ class ArtworkPurger {
                         img.getThumbAdultKey(),
                         img.getOriginalAvifKey()
                 ));
-        Stream<String> attachmentKeys = artwork.getMaterials().stream()
-                .flatMap(m -> m.getAttachmentKeys() == null ? Stream.empty() : m.getAttachmentKeys().stream());
-        return Stream.of(imageKeys, Stream.of(artwork.getThumbnailKey()), attachmentKeys)
-                .flatMap(s -> s)
+        return Stream.concat(imageKeys, Stream.of(artwork.getThumbnailKey()))
                 .filter(k -> k != null && !k.isBlank())
                 .distinct()
                 .toList();

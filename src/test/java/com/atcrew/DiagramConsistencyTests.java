@@ -43,8 +43,6 @@ class DiagramConsistencyTests {
     private static final String COMMON = "common";
     /** scripts/diagrams/build.py의 MERMAID_SOURCE_TAG와 같은 값. */
     private static final String MERMAID_SOURCE_TAG = "mermaid";
-    private static final Pattern BLOCK_COMMENT = Pattern.compile("/\\*.*?\\*/", Pattern.DOTALL);
-    private static final Pattern LINE_COMMENT = Pattern.compile("(^|\\s)//.*$", Pattern.MULTILINE);
     private static final Pattern HASH_COMMENT_LINE = Pattern.compile("^\\s*#.*$", Pattern.MULTILINE);
 
     private static final Pattern IR_FILE =
@@ -89,6 +87,10 @@ class DiagramConsistencyTests {
         String java = "class A {\n  // TrashPurgeScheduler가 지운다\n  /* moveToTrash 참고 */\n  String url = \"https://x\";\n}";
         assertThat(withoutComments(Path.of("A.java"), java))
                 .doesNotContain("TrashPurgeScheduler").doesNotContain("moveToTrash").contains("https://x");
+        // 문자열 안의 /*·// 는 주석이 아니다 — 여기서 주석으로 보면 뒤의 코드가 통째로 지워진다.
+        String withGlobs = "String a = \"/api/**\"; String b = \"image/*\";\nString c = \"https://x\"; void keepMe() {}\n/** 끝 */";
+        assertThat(withoutComments(Path.of("B.java"), withGlobs))
+                .contains("/api/**").contains("image/*").contains("https://x").contains("keepMe").doesNotContain("끝");
         String yaml = "      # nginx -t로 검증한다\n      - name: 헬스체크\n        run: curl liveness\n";
         assertThat(withoutComments(Path.of("deploy.yml"), yaml))
                 .doesNotContain("nginx -t").contains("헬스체크").contains("liveness");
@@ -234,16 +236,60 @@ class DiagramConsistencyTests {
     /**
      * 주석을 뺀 본문. 식별자가 주석에만 남아 있어도 앵커가 통과하면, 코드에서 사라진 요소를 그림이 계속 보여 준다.
      * 확장자로 주석 문법을 고른다 — 모르는 형식은 그대로 둔다.
+     *
+     * <p>한계: YAML·셸은 줄 전체가 주석인 경우만 지운다. 줄 끝 주석({@code cmd # ...})은 따옴표 안의 {@code #}과
+     * 구분하려면 셸 문법 해석이 필요해서 남겨 둔다.
      */
     static String withoutComments(Path file, String text) {
         String name = file.getFileName().toString();
         if (name.matches(".*\\.(java|kt|js|mjs|ts)$")) {
-            return LINE_COMMENT.matcher(BLOCK_COMMENT.matcher(text).replaceAll("")).replaceAll("$1");
+            return withoutCStyleComments(text);
         }
         if (name.matches(".*\\.(ya?ml|sh|py|conf|toml)$")) {
             return HASH_COMMENT_LINE.matcher(text).replaceAll("");
         }
         return text;
+    }
+
+    /**
+     * {@code //}·{@code /* *}{@code /} 주석을 지운다. 문자열 리터럴({@code " ' `}) 안은 건드리지 않는다 — 정규식으로 지우면
+     * {@code "/api/**"}의 {@code /*}부터 다음 주석 끝까지 코드가 통째로 사라져 앵커가 거짓으로 실패한다.
+     */
+    static String withoutCStyleComments(String text) {
+        StringBuilder out = new StringBuilder(text.length());
+        char quote = 0;
+        int i = 0;
+        while (i < text.length()) {
+            char c = text.charAt(i);
+            char next = i + 1 < text.length() ? text.charAt(i + 1) : 0;
+            if (quote != 0) {
+                out.append(c);
+                if (c == '\\' && next != 0) {
+                    out.append(next);
+                    i += 2;
+                    continue;
+                }
+                if (c == quote) {
+                    quote = 0;
+                }
+                i++;
+            } else if (c == '"' || c == '\'' || c == '`') {
+                quote = c;
+                out.append(c);
+                i++;
+            } else if (c == '/' && next == '/') {
+                while (i < text.length() && text.charAt(i) != '\n') {
+                    i++;
+                }
+            } else if (c == '/' && next == '*') {
+                int end = text.indexOf("*/", i + 2);
+                i = end < 0 ? text.length() : end + 2;
+            } else {
+                out.append(c);
+                i++;
+            }
+        }
+        return out.toString();
     }
 
     private static String readText(Path file) {

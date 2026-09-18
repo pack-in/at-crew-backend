@@ -76,7 +76,7 @@ class MediaServiceImpl implements MediaService {
         var previous = assets.findByOwnerTypeAndOwnerIdOrderByOrdinalAsc(ownerType, ownerId);
         // 아직 처리되지 않은 자산은 thumb/avif key가 null이라 List.of로 묶으면 NPE가 난다 — Stream.of로 받아 걸러낸다.
         var oldKeys = previous.stream().flatMap(a -> java.util.stream.Stream.of(a.getOriginalKey(), a.getThumbKey(), a.getThumbAdultKey(), a.getOriginalAvifKey())).filter(k -> k != null && !k.isBlank()).toList();
-        if (!oldKeys.isEmpty()) orphans.save(OrphanedMediaKey.ofKeys(oldKeys));
+        markOrphaned(oldKeys);
         // 삭제를 flush로 먼저 확정한 뒤 새 행을 넣는다 — 같은 flush에 묶이면 Hibernate가 INSERT를 DELETE보다
         // 먼저 실행해 uk_ma_owner_order와 충돌한다(설계 §2.1이 artwork에서 그대로 옮겨오라고 명시한 2단계 패턴).
         assets.deleteAll(previous);
@@ -87,10 +87,19 @@ class MediaServiceImpl implements MediaService {
         return assets.findByOwnerTypeAndOwnerIdOrderByOrdinalAsc(ownerType, ownerId).stream()
                 .map(a -> new MediaAssetInfo(a.getOriginalKey(), a.getThumbKey(), a.getThumbAdultKey(), a.getOriginalAvifKey(), a.getProcessingStatus())).toList();
     }
+    /**
+     * 자산 행을 지우면 그 행이 가리키던 파일(원본·변형본)은 고아 큐로 보낸다. 영구 삭제 키 목록은 삭제 시점의 소유자
+     * 엔티티로 만들므로, 그 뒤 이 호출 전까지 도착한 콜백이 기록한 변형본은 목록에 없다 — 여기서 넘기지 않으면 추적
+     * 기록 없이 R2에 남는다. 이미 지운 key가 다시 들어와도 정리 배치가 보존 판정 후 다시 지울 뿐이라 해가 없다.
+     */
     @Override @Transactional public void deleteAssetsForOwner(MediaOwnerType ownerType, String ownerId) {
-        assets.deleteAll(assets.findByOwnerTypeAndOwnerIdOrderByOrdinalAsc(ownerType, ownerId));
+        var rows = assets.findByOwnerTypeAndOwnerIdOrderByOrdinalAsc(ownerType, ownerId);
+        markOrphaned(rows.stream().flatMap(a -> java.util.stream.Stream.of(a.getOriginalKey(), a.getThumbKey(),
+                a.getThumbAdultKey(), a.getOriginalAvifKey())).toList());
+        assets.deleteAll(rows);
     }
     @Override public void deleteFiles(List<String> keys) { storagePort.deleteFiles(keys); }
+    /** 고아 key 적재의 유일한 경로 — null·빈 key는 걸러내고, 남는 것이 없으면 행을 만들지 않는다. */
     @Override @Transactional public void markOrphaned(List<String> keys) { if (keys != null && keys.stream().anyMatch(k -> k != null && !k.isBlank())) orphans.save(OrphanedMediaKey.ofKeys(keys)); }
     private static void validate(MediaOwnerType ownerType, String ownerId, List<String> imageKeys, MediaVariantProfile profile, MediaQualityTier qualityTier) {
         if (ownerType == null || ownerId == null || ownerId.isBlank() || profile == null || qualityTier == null || imageKeys == null || imageKeys.isEmpty() || imageKeys.stream().anyMatch(k -> k == null || k.isBlank())) throw new IllegalArgumentException("유효하지 않은 media asset 요청입니다.");

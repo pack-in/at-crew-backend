@@ -652,24 +652,22 @@ DB 삭제 트랜잭션 커밋 후 `ArtworkPermanentlyDeletedEvent`를 발행한�
 
 ```java
 // ArtworkServiceImpl.java
-public void permanentlyDelete(String memberId, List<String> artworkIds) {
-    List<Artwork> artworks = ...; // 조회 + 권한 검증
-    artworkRepository.deleteAll(artworks);
-    artworks.forEach(a ->
-        eventPublisher.publishEvent(new ArtworkPermanentlyDeletedEvent(a))
-    );
+public void permanentlyDeleteArtworks(String memberId, List<String> artworkIds) {
+    List<Artwork> artworks = ...; // 조회 + 소유자·휴지통 상태 검증
+    artworkPurger.purge(artworks);  // 행 삭제 + 이벤트 발행. TrashPurgeScheduler(1년 만료)도 같은 경로
 }
 
-// ArtworkEventListener.java
+// ArtworkEventListener.java — 영구 삭제 트랜잭션이 커밋된 뒤에만 실행된다(롤백되면 파일을 지우지 않는다)
 @Async
-@EventListener
+@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 public void onPermanentlyDeleted(ArtworkPermanentlyDeletedEvent event) {
-    // R2에서 모든 variant 파일 삭제
-    // 실패 시 orphanedImageKeys에 적재 → 10.3 배치 스케줄러가 재처리
+    // 고정형 스냅샷이 참조하는 key는 보존하고 나머지를 R2에서 삭제
+    // 실패 시 고아 큐에 적재 → OrphanImageCleanupScheduler가 재처리
+    // 마지막으로 media 자산 행 삭제(행이 가리키던 파일도 고아 큐로)
 }
 ```
 
-`MemberDeactivatedEvent` 처리와 동일한 패턴으로 일관성을 유지한다.
+`MemberDeactivatedEvent`는 같은 트랜잭션에서 동기로 처리하지만, R2 삭제는 되돌릴 수 없는 외부 호출이라 커밋 뒤로 미룬다.
 
 ### 10.5 추후 별도 설계 (1차 구현 범위 외)
 

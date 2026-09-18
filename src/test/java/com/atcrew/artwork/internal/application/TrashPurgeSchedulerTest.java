@@ -31,11 +31,15 @@ class TrashPurgeSchedulerTest {
         assertThatIllegalStateException().isThrownBy(() -> scheduler(Period.ofDays(1)));
         assertThatIllegalStateException().isThrownBy(() -> scheduler(Period.ZERO));
         assertThatIllegalStateException().isThrownBy(() -> scheduler(Period.ofDays(-365)));
+        // P1M은 2월에 적용되면 28일이다 — 기준일에 따라 통과하면 안 된다.
+        assertThatIllegalStateException().isThrownBy(() -> scheduler(Period.ofMonths(1)));
+        assertThatIllegalStateException().isThrownBy(() -> scheduler(Period.of(0, 2, -30)));
     }
 
     @Test
     void 보관_기간이_30일_이상이면_기동한다() {
         scheduler(Period.ofDays(30));
+        scheduler(Period.ofMonths(2));
         scheduler(Period.ofYears(1));
     }
 

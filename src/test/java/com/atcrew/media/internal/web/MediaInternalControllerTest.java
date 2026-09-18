@@ -26,7 +26,7 @@ class MediaInternalControllerTest {
         events = mock(ApplicationEventPublisher.class);
         when(assets.findByOwnerTypeAndOwnerIdAndOriginalKey(eq(MediaOwnerType.ARTWORK), eq("artwork-1"), eq("raw/a.jpg")))
                 .thenReturn(Optional.of(MediaAsset.pending(MediaOwnerType.ARTWORK, "artwork-1", 0, "raw/a.jpg", MediaVariantProfile.STANDARD, MediaQualityTier.ORIGINAL)));
-        mockMvc = MockMvcBuilders.standaloneSetup(new MediaInternalController(new MediaCallbackService(assets, events, org.mockito.Mockito.mock(com.atcrew.media.internal.persistence.OrphanedMediaKeyRepository.class)), "secret")).build();
+        mockMvc = MockMvcBuilders.standaloneSetup(new MediaInternalController(new MediaCallbackService(assets, events, mock(MediaService.class)), "secret")).build();
     }
 
     @Test void webhookPublishesEventAndIgnoresUnknownJsonFields() throws Exception {

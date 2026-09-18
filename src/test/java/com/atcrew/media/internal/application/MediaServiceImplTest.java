@@ -16,7 +16,8 @@ class MediaServiceImplTest {
     private final ArtworkStoragePort storage = mock(ArtworkStoragePort.class);
     private final MediaAssetRepository assets = mock(MediaAssetRepository.class);
     private final ImageProcessingWorker worker = mock(ImageProcessingWorker.class);
-    private final MediaService service = new MediaServiceImpl(assets, mock(OrphanedMediaKeyRepository.class), storage, worker);
+    private final OrphanedMediaKeyRepository orphans = mock(OrphanedMediaKeyRepository.class);
+    private final MediaService service = new MediaServiceImpl(assets, orphans, storage, worker);
 
     @Test void deleteAssetsForOwnerRemovesAllMatchingRows() {
         var existing = List.of(MediaAsset.pending(MediaOwnerType.ARTWORK, "artwork-1", 0, "raw/1.jpg", MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.ORIGINAL));
@@ -25,6 +26,10 @@ class MediaServiceImplTest {
         service.deleteAssetsForOwner(MediaOwnerType.ARTWORK, "artwork-1");
 
         verify(assets).deleteAll(existing);
+        // 지운 행이 가리키던 파일은 고아 큐로 간다 — 영구 삭제 이벤트 뒤에 도착한 콜백이 남긴 변형본을 놓치지 않는다.
+        var orphaned = org.mockito.ArgumentCaptor.forClass(com.atcrew.media.internal.domain.OrphanedMediaKey.class);
+        verify(orphans).save(orphaned.capture());
+        assertThat(orphaned.getValue().getKeys()).containsExactly("raw/1.jpg");
     }
 
     @Test void presignAcceptsOneToThirtySupportedImageTypes() {

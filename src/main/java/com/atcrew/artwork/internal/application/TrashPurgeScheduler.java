@@ -28,8 +28,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class TrashPurgeScheduler {
 
     static final int BATCH_SIZE = 100;
-    /** 보관 기간 하한. 설정 실수로 휴지통 작품이 복구 기회 없이 사라지는 것을 기동 시점에 막는다. */
-    static final Period MIN_RETENTION = Period.ofDays(30);
+    /** 보관 기간 하한(일). 설정 실수로 휴지통 작품이 복구 기회 없이 사라지는 것을 기동 시점에 막는다. */
+    static final int MIN_RETENTION_DAYS = 30;
     private static final Logger log = LoggerFactory.getLogger(TrashPurgeScheduler.class);
 
     private final ArtworkRepository artworkRepository;
@@ -42,10 +42,9 @@ public class TrashPurgeScheduler {
      */
     TrashPurgeScheduler(ArtworkRepository artworkRepository, ArtworkPurger artworkPurger,
                         @Value("${artwork.trash.retention:P1Y}") Period retention) {
-        Instant reference = Instant.parse("2026-01-01T00:00:00Z");
-        if (thresholdAt(reference, retention).isAfter(thresholdAt(reference, MIN_RETENTION))) {
+        if (shortestDays(retention) < MIN_RETENTION_DAYS) {
             throw new IllegalStateException("artwork.trash.retention이 너무 짧다: " + retention
-                    + " (최소 " + MIN_RETENTION + "). 휴지통 작품이 복구 기간 없이 영구 삭제된다.");
+                    + " (어느 달에 적용해도 최소 " + MIN_RETENTION_DAYS + "일이어야 한다). 휴지통 작품이 복구 기간 없이 영구 삭제된다.");
         }
         this.artworkRepository = artworkRepository;
         this.artworkPurger = artworkPurger;
@@ -66,6 +65,14 @@ public class TrashPurgeScheduler {
         log.info("휴지통 보관 기간 만료 작품 영구 삭제: count={} retention={} threshold={}",
                 expired.size(), retention, threshold);
         return expired.size();
+    }
+
+    /**
+     * 보관 기간이 실제로 가장 짧게 적용될 때의 일수 — 1년 365일, 1개월 28일로 센다. 특정 기준일에서 재면
+     * "P1M"이 31일로 통과해 놓고 2월에는 28일만 보관하게 된다.
+     */
+    static long shortestDays(Period retention) {
+        return retention.getYears() * 365L + retention.getMonths() * 28L + retention.getDays();
     }
 
     /** now에서 보관 기간을 달력 기준(UTC)으로 뺀 시각. deletedAt이 이보다 이전이면 삭제 대상이다. */
