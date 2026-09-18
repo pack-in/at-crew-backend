@@ -19,6 +19,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
+import java.sql.Timestamp;
+import com.atcrew.artwork.internal.application.TrashPurgeScheduler;
 import org.springframework.modulith.test.ApplicationModuleTest;
 import org.springframework.modulith.test.PublishedEvents;
 
@@ -68,6 +70,9 @@ class ArtworkModuleTests {
     // 운영 차단은 관리자 API 없이 DB 직접 UPDATE로 이뤄지므로 테스트도 같은 경로를 쓴다.
     @Autowired
     JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    TrashPurgeScheduler trashPurgeScheduler;
 
     @Test
     void 작품_업로드_후_모든_필드가_그대로_조회된다() {
@@ -357,6 +362,49 @@ class ArtworkModuleTests {
 
         assertThat(deletedImageKeysOf(events, uploaded.id()))
                 .contains("raw/ct.png", "raw/custom-thumb.png");
+    }
+
+    // 휴지통 보관 기간(기본 1년) 만료 자동 영구 삭제(#178). 사용자 영구 삭제와 같은 경로를 거쳐야
+    // 스냅샷 보존·R2 정리가 똑같이 적용되므로, 같은 이벤트가 같은 키 목록으로 나가는지 본다.
+    @Test
+    void 휴지통_보관_기간이_지난_작품은_자동으로_영구삭제된다(PublishedEvents events) {
+        String memberId = registerAuthor();
+        ArtworkInfo uploaded = uploadMinimal(memberId, "raw/purge.png");
+        processImage(uploaded.id(), "raw/purge.png", MediaProcessingStatus.DONE);
+        awaitReady(memberId, uploaded.id());
+        artworkService.deleteArtwork(memberId, uploaded.id());
+        setDeletedAt(uploaded.id(), Instant.now().minus(Duration.ofDays(366)));
+
+        int purged = trashPurgeScheduler.purgeExpiredTrash();
+
+        assertThat(purged).isEqualTo(1);
+        assertThatThrownBy(() -> artworkService.getArtwork(uploaded.id(), memberId))
+                .isInstanceOf(RuntimeException.class);
+        assertThat(deletedImageKeysOf(events, uploaded.id())).contains("raw/purge.png");
+    }
+
+    @Test
+    void 보관_기간이_남은_휴지통_작품과_휴지통_밖_작품은_자동삭제하지_않는다() {
+        String memberId = registerAuthor();
+        ArtworkInfo recentlyTrashed = uploadMinimal(memberId, "raw/recent.png");
+        artworkService.deleteArtwork(memberId, recentlyTrashed.id());
+        setDeletedAt(recentlyTrashed.id(), Instant.now().minus(Duration.ofDays(364)));
+        ArtworkInfo active = uploadMinimal(memberId, "raw/active.png");
+
+        int purged = trashPurgeScheduler.purgeExpiredTrash();
+
+        assertThat(purged).isZero();
+        assertThat(statusInDb(recentlyTrashed.id())).isEqualTo("DELETED");
+        assertThat(statusInDb(active.id())).isNotNull().isNotEqualTo("DELETED");
+    }
+
+    private String statusInDb(String artworkId) {
+        return jdbcTemplate.queryForList("SELECT status FROM artworks WHERE id = ?", String.class, artworkId)
+                .stream().findFirst().orElse(null);
+    }
+
+    private void setDeletedAt(String artworkId, Instant deletedAt) {
+        jdbcTemplate.update("UPDATE artworks SET deleted_at = ? WHERE id = ?", Timestamp.from(deletedAt), artworkId);
     }
 
     /** 영구 삭제 이벤트가 실어 보낸 R2 key 목록 — 실제 R2 삭제는 비동기라 이벤트로 확인한다. */

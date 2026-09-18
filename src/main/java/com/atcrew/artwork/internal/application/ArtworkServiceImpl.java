@@ -13,7 +13,6 @@ import com.atcrew.artwork.UpdateArtworkCommand;
 import com.atcrew.artwork.UploadArtworkCommand;
 import com.atcrew.artwork.Visibility;
 import com.atcrew.artwork.ArtworkChangedEvent;
-import com.atcrew.artwork.ArtworkPermanentlyDeletedEvent;
 import com.atcrew.artwork.ArtworkPortfolioSelectionRequested;
 import com.atcrew.artwork.internal.domain.artwork.Artwork;
 import com.atcrew.artwork.internal.domain.artwork.Material;
@@ -54,7 +53,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 @Service
 class ArtworkServiceImpl implements ArtworkService {
@@ -71,17 +69,20 @@ class ArtworkServiceImpl implements ArtworkService {
     private final MediaService mediaService;
     private final BillingService billingService;
     private final ApplicationEventPublisher eventPublisher;
+    private final ArtworkPurger artworkPurger;
 
     ArtworkServiceImpl(ArtworkRepository artworkRepository,
                        MemberService memberService,
                        MediaService mediaService,
                        BillingService billingService,
-                       ApplicationEventPublisher eventPublisher) {
+                       ApplicationEventPublisher eventPublisher,
+                       ArtworkPurger artworkPurger) {
         this.artworkRepository = artworkRepository;
         this.memberService = memberService;
         this.mediaService = mediaService;
         this.billingService = billingService;
         this.eventPublisher = eventPublisher;
+        this.artworkPurger = artworkPurger;
     }
 
     @Override
@@ -488,33 +489,7 @@ class ArtworkServiceImpl implements ArtworkService {
             artwork.assertOwner(memberId);
             artwork.assertDeleted();
         }
-        artworkRepository.deleteAll(artworks);
-        for (Artwork artwork : artworks) {
-            eventPublisher.publishEvent(new ArtworkPermanentlyDeletedEvent(artwork.getId(), allImageKeys(artwork)));
-            eventPublisher.publishEvent(new ArtworkChangedEvent(artwork.getId()));
-        }
-    }
-
-    /**
-     * 영구 삭제 대상 R2 key 전체 — 이미지 4종에 <b>사용자 지정 썸네일 key</b>까지 포함한다.
-     *
-     * <p>지정 썸네일은 이미지 처리 대상이 아니라 media_assets에 행이 없어, 여기서 빠지면 어디서도
-     * 지워지지 않고 R2에 남는다. 더 중요한 것은 고정형 스냅샷 보존 판정이 이 key로 스냅샷을 찾는다는
-     * 점이다({@code PortfolioItemSnapshot.thumb_key}) — 후보 목록에 없으면 스냅샷이 매칭되지 않아
-     * 그 스냅샷이 참조 중인 상세 이미지까지 삭제된다(docs/design/portfolio-module-design.md §5.6).
-     */
-    private List<String> allImageKeys(Artwork artwork) {
-        Stream<String> imageKeys = artwork.getImages().stream()
-                .flatMap(img -> Stream.of(
-                        img.getOriginalKey(),
-                        img.getThumbKey(),
-                        img.getThumbAdultKey(),
-                        img.getOriginalAvifKey()
-                ));
-        return Stream.concat(imageKeys, Stream.of(artwork.getThumbnailKey()))
-                .filter(k -> k != null && !k.isBlank())
-                .distinct()
-                .toList();
+        artworkPurger.purge(artworks);
     }
 
     @Override
