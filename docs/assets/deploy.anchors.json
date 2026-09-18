@@ -34,7 +34,7 @@
     },
     {
       "text": "배포 성공",
-      "path": ".github/workflows/deploy.yml"
+      "path": "deploy/deploy-notify.sh"
     },
     {
       "text": "SSM",

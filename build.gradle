@@ -112,6 +112,7 @@ tasks.named('test') {
 	inputs.dir('src/main/java').withPathSensitivity(PathSensitivity.RELATIVE)
 	inputs.dir('cloudflare-worker/src').withPathSensitivity(PathSensitivity.RELATIVE)
 	inputs.dir('.github/workflows').withPathSensitivity(PathSensitivity.RELATIVE)
+	inputs.file('deploy/deploy-notify.sh').withPathSensitivity(PathSensitivity.RELATIVE)
 }
 
 // Stripe sandbox 실호출 테스트(plans/260813-stripe-billing PA-14). 키가 없으면 각 테스트가 스스로 skip한다.
