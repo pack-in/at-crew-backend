@@ -364,6 +364,19 @@ class ArtworkModuleTests {
                 .contains("raw/ct.png", "raw/custom-thumb.png");
     }
 
+    // 자료 첨부도 presign으로 올린 R2 파일이다 — 영구 삭제 키 목록에서 빠지면 R2에 영구히 남는다.
+    @Test
+    void 영구삭제_이벤트는_자료_첨부_키까지_담는다(PublishedEvents events) {
+        String memberId = registerAuthor();
+        ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, baseUploadCommand(List.of("raw/m.png"),
+                List.of(new MaterialData("소재", List.of(), List.of(), List.of("raw/material-1.png"), List.of()))));
+        artworkService.deleteArtwork(memberId, uploaded.id());
+
+        artworkService.permanentlyDeleteArtworks(memberId, List.of(uploaded.id()));
+
+        assertThat(deletedImageKeysOf(events, uploaded.id())).contains("raw/m.png", "raw/material-1.png");
+    }
+
     // 휴지통 보관 기간(기본 1년) 만료 자동 영구 삭제(#178). 사용자 영구 삭제와 같은 경로를 거쳐야
     // 스냅샷 보존·R2 정리가 똑같이 적용되므로, 같은 이벤트가 같은 키 목록으로 나가는지 본다.
     @Test
@@ -390,6 +403,8 @@ class ArtworkModuleTests {
         artworkService.deleteArtwork(memberId, recentlyTrashed.id());
         setDeletedAt(recentlyTrashed.id(), Instant.now().minus(Duration.ofDays(364)));
         ArtworkInfo active = uploadMinimal(memberId, "raw/active.png");
+        // 휴지통 밖 작품에도 오래된 deleted_at을 넣는다 — 그래야 쿼리에서 status 조건이 빠졌을 때 걸린다.
+        setDeletedAt(active.id(), Instant.now().minus(Duration.ofDays(366)));
 
         int purged = trashPurgeScheduler.purgeExpiredTrash();
 

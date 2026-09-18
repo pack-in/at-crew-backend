@@ -7,6 +7,8 @@ import com.atcrew.media.internal.domain.OrphanedMediaKey;
 import com.atcrew.media.internal.infra.storage.ArtworkStoragePort;
 import com.atcrew.media.internal.persistence.MediaAssetRepository;
 import com.atcrew.media.internal.persistence.OrphanedMediaKeyRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -16,6 +18,7 @@ import java.util.Set;
 
 @Service
 class MediaServiceImpl implements MediaService {
+    private static final Logger log = LoggerFactory.getLogger(MediaServiceImpl.class);
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of("image/jpeg", "image/png", "image/webp");
     private final MediaAssetRepository assets; private final OrphanedMediaKeyRepository orphans;
     private final ArtworkStoragePort storagePort; private final ImageProcessingWorker worker;
@@ -44,7 +47,12 @@ class MediaServiceImpl implements MediaService {
      * 보이지 않아 콜백이 버려지고(재시도 스케줄러가 10~15분 뒤에야 되살린다), 트리거 뒤 롤백되면 존재하지 않는
      * 소유자의 이미지를 변환해 R2에 고아 파일이 남았다. 외부 호출은 되돌릴 수 없으므로 커밋이 확정된 뒤에만 보낸다.
      *
-     * <p>트랜잭션 밖에서 불리면(재시도 스케줄러 경로와 같은 상황) 바로 보낸다.
+     * <p>두 진입점이 모두 {@code @Transactional}이라 운영 경로에서는 항상 커밋 뒤로 미뤄진다. 트랜잭션 없이 불리는
+     * 경우(단위 테스트 등)에만 바로 보낸다. 재시도 스케줄러는 이 메서드를 거치지 않고 worker를 직접 부른다.
+     *
+     * <p>afterCommit에서 던진 예외는 이미 커밋된 요청의 호출자에게 그대로 전파된다(데이터는 저장됐는데 500).
+     * 배포 종료 중 {@code @Async} 제출이 거부되는 경우가 그렇다 — 잡아서 남기고, 자산이 PENDING으로 남아 있으므로
+     * 복구는 재시도 스케줄러(10분 넘은 PENDING 재트리거)에 맡긴다.
      */
     private void triggerAfterCommit(MediaOwnerType ownerType, String ownerId, List<String> imageKeys,
                                     MediaVariantProfile variantProfile, MediaQualityTier qualityTier) {
@@ -54,7 +62,12 @@ class MediaServiceImpl implements MediaService {
         }
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override public void afterCommit() {
-                worker.triggerAsync(ownerType, ownerId, imageKeys, variantProfile, qualityTier);
+                try {
+                    worker.triggerAsync(ownerType, ownerId, imageKeys, variantProfile, qualityTier);
+                } catch (RuntimeException e) {
+                    log.warn("커밋 뒤 이미지 처리 트리거 실패 — 재시도 스케줄러가 다시 보낸다: ownerType={} ownerId={} count={}",
+                            ownerType, ownerId, imageKeys.size(), e);
+                }
             }
         });
     }

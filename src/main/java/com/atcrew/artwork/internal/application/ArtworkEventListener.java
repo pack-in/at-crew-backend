@@ -15,6 +15,8 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.util.HashSet;
 import java.util.List;
@@ -50,8 +52,10 @@ class ArtworkEventListener {
         log.info("탈퇴 회원 작품 비공개 처리: memberId={} count={}", event.memberId(), artworks.size());
     }
 
+    // 커밋된 뒤에만 R2를 지운다. 예전에는 @EventListener라 발행 즉시 삭제가 시작돼, 영구 삭제 트랜잭션이
+    // 롤백되면(자동 삭제 배치의 버전 충돌 등) DB 행은 남고 파일만 사라진 작품이 생길 수 있었다.
     @Async
-    @EventListener
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onPermanentlyDeleted(ArtworkPermanentlyDeletedEvent event) {
         // 보존 판정 자체가 실패하면 전체 키를 고아 큐로 넘긴다 — 스케줄러가 같은 판정을 다시 하므로
         // 보존 대상이 즉시 삭제되는 일은 없다.

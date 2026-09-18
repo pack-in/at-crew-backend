@@ -32,8 +32,8 @@ import tools.jackson.databind.json.JsonMapper;
  * <ul>
  *   <li>modules.mmd의 화살표가 Spring Modulith가 계산한 모듈 의존과 같은지 — 완전한 대조</li>
  *   <li>archify SVG가 지금의 IR·archify 버전으로 만들어졌는지 — build.py가 새긴 해시와 비교</li>
- *   <li>IR에 적힌 코드 식별자(앵커)가 아직 코드에 있는지 — 이름 변경·삭제만 잡고 흐름에 단계가
- *       추가된 것은 잡지 못한다</li>
+ *   <li>IR에 적힌 코드 식별자(앵커)가 아직 코드에 있는지 — 주석은 빼고 찾는다. 이름 변경·삭제만 잡고
+ *       흐름에 단계가 추가된 것은 잡지 못한다</li>
  * </ul>
  */
 class DiagramConsistencyTests {
@@ -41,6 +41,11 @@ class DiagramConsistencyTests {
     private static final Path ASSETS = Path.of("docs", "assets");
     private static final Path ARCHIFY_LOCK = Path.of("scripts", "diagrams", "archify.lock.json");
     private static final String COMMON = "common";
+    /** scripts/diagrams/build.py의 MERMAID_SOURCE_TAG와 같은 값. */
+    private static final String MERMAID_SOURCE_TAG = "mermaid";
+    private static final Pattern BLOCK_COMMENT = Pattern.compile("/\\*.*?\\*/", Pattern.DOTALL);
+    private static final Pattern LINE_COMMENT = Pattern.compile("(^|\\s)//.*$", Pattern.MULTILINE);
+    private static final Pattern HASH_COMMENT_LINE = Pattern.compile("^\\s*#.*$", Pattern.MULTILINE);
 
     private static final Pattern IR_FILE =
             Pattern.compile("(.+)\\.(architecture|workflow|sequence|dataflow|lifecycle)\\.json");
@@ -76,6 +81,27 @@ class DiagramConsistencyTests {
         assertThat(problems)
                 .as("다이어그램을 다시 만든다: python3 scripts/diagrams/build.py <이름>\n%s", String.join("\n", problems))
                 .isEmpty();
+    }
+
+    // 앵커가 주석에만 남아 있으면 코드에서 사라진 요소를 그림이 계속 보여 준다 — 주석은 빼고 찾는다.
+    @Test
+    void 앵커는_주석을_뺀_본문에서_찾는다() {
+        String java = "class A {\n  // TrashPurgeScheduler가 지운다\n  /* moveToTrash 참고 */\n  String url = \"https://x\";\n}";
+        assertThat(withoutComments(Path.of("A.java"), java))
+                .doesNotContain("TrashPurgeScheduler").doesNotContain("moveToTrash").contains("https://x");
+        String yaml = "      # nginx -t로 검증한다\n      - name: 헬스체크\n        run: curl liveness\n";
+        assertThat(withoutComments(Path.of("deploy.yml"), yaml))
+                .doesNotContain("nginx -t").contains("헬스체크").contains("liveness");
+    }
+
+    @Test
+    void 모듈_다이어그램_SVG가_지금의_mmd로_생성돼_있다() throws IOException {
+        Path svg = ASSETS.resolve("modules.svg");
+        Matcher m = SOURCE_SHA256.matcher(Files.readString(svg));
+        String expected = sourceSha256(MERMAID_SOURCE_TAG, ASSETS.resolve("modules.mmd"));
+        assertThat(m.find() ? m.group(1) : "(없음)")
+                .as("modules.mmd를 고쳤으면 python3 scripts/diagrams/build.py modules로 SVG를 다시 만든다")
+                .isEqualTo(expected);
     }
 
     @Test
@@ -168,6 +194,9 @@ class DiagramConsistencyTests {
             List<Path> found = files.filter(p -> IR_FILE.matcher(p.getFileName().toString()).matches())
                     .sorted()
                     .toList();
+            // 이름이 같으면 두 IR이 SVG 하나를 나눠 써서 한쪽 검사는 영원히 실패한다(build.py도 같은 이유로 멈춘다).
+            assertThat(found.stream().map(DiagramConsistencyTests::diagramName).toList())
+                    .as("archify IR 이름이 겹친다 — SVG 이름이 IR 이름에서 나온다").doesNotHaveDuplicates();
             // 작업 디렉터리가 달라 아무것도 못 찾으면 검사가 조용히 통과해 버린다.
             assertThat(found).as(ASSETS.toAbsolutePath() + " 에서 archify IR을 찾지 못했다").isNotEmpty();
             return found;
@@ -198,8 +227,23 @@ class DiagramConsistencyTests {
     /** path는 디렉터리(아래 파일 전부)나 파일 하나를 가리킨다. 흔한 문자열이면 파일로 좁혀야 의미가 있다. */
     private static boolean containsText(Path path, String text) throws IOException {
         try (Stream<Path> files = Files.walk(path)) {
-            return files.filter(Files::isRegularFile).anyMatch(f -> readText(f).contains(text));
+            return files.filter(Files::isRegularFile).anyMatch(f -> withoutComments(f, readText(f)).contains(text));
         }
+    }
+
+    /**
+     * 주석을 뺀 본문. 식별자가 주석에만 남아 있어도 앵커가 통과하면, 코드에서 사라진 요소를 그림이 계속 보여 준다.
+     * 확장자로 주석 문법을 고른다 — 모르는 형식은 그대로 둔다.
+     */
+    static String withoutComments(Path file, String text) {
+        String name = file.getFileName().toString();
+        if (name.matches(".*\\.(java|kt|js|mjs|ts)$")) {
+            return LINE_COMMENT.matcher(BLOCK_COMMENT.matcher(text).replaceAll("")).replaceAll("$1");
+        }
+        if (name.matches(".*\\.(ya?ml|sh|py|conf|toml)$")) {
+            return HASH_COMMENT_LINE.matcher(text).replaceAll("");
+        }
+        return text;
     }
 
     private static String readText(Path file) {

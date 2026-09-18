@@ -101,6 +101,19 @@ class MediaServiceImplTest {
                 MediaVariantProfile.STANDARD, MediaQualityTier.WEB);
     }
 
+    // afterCommit에서 던진 예외는 이미 커밋된 요청의 호출자에게 전파된다 — 데이터는 저장됐는데 500이 나가
+    // 클라이언트가 재시도하면 중복 생성된다. 배포 종료 중 @Async 제출 거부가 그 경우다.
+    @Test void 커밋_뒤_트리거가_실패해도_호출자에게_전파하지_않는다() {
+        doThrow(new org.springframework.core.task.TaskRejectedException("executor 종료 중"))
+                .when(worker).triggerAsync(any(), any(), any(), any(), any());
+        inTransaction(() -> {
+            service.registerAndTriggerProcessing(MediaOwnerType.ARTWORK, "artwork-1", List.of("raw/1.jpg"),
+                    MediaVariantProfile.STANDARD, MediaQualityTier.WEB);
+            assertThatNoException().isThrownBy(() ->
+                    TransactionSynchronizationManager.getSynchronizations().forEach(TransactionSynchronization::afterCommit));
+        });
+    }
+
     /** 실제 트랜잭션 매니저 없이 동기화만 켜서 afterCommit·afterCompletion을 직접 부른다. */
     private static void inTransaction(Runnable body) {
         TransactionSynchronizationManager.initSynchronization();

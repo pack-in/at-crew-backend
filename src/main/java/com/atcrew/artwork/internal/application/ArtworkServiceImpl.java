@@ -148,7 +148,7 @@ class ArtworkServiceImpl implements ArtworkService {
         );
         Artwork saved = artworkRepository.save(artwork);
         // 포트폴리오 편입은 portfolio가 이 트랜잭션 안에서 동기 처리한다 — 검증 실패 시 업로드까지 롤백된다.
-        // 이미지 처리 트리거(외부 Worker 호출, 롤백 불가)보다 먼저 검증을 끝내려고 순서를 앞에 뒀다.
+        // 이미지 처리 트리거는 커밋 뒤에만 나가므로(#174) 이 순서가 롤백 가능성에 영향을 주지는 않는다.
         eventPublisher.publishEvent(new ArtworkPortfolioSelectionRequested(
                 memberId, saved.getId(), command.portfolioIds()));
         mediaService.registerAndTriggerProcessing(MediaOwnerType.ARTWORK, saved.getId(),

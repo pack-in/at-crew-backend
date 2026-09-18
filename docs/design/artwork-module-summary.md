@@ -576,7 +576,8 @@ onPermanentlyDeleted() [@Async, @EventListener]
 
 ### TrashPurgeScheduler (1시간마다)
 
-휴지통으로 옮긴 지 보관 기간(기본 1년, `artwork.trash.retention`)이 지난 작품을 최대 100건씩 영구 삭제한다(#178).
+휴지통으로 옮긴 지 보관 기간(기본 `P1Y`, `artwork.trash.retention`)이 지난 작품을 최대 100건씩 영구 삭제한다(#178).
+보관 기간은 `Period`라 윤년을 끼어도 달력 기준 1년이고, 30일 미만으로 설정하면 앱이 기동하지 않는다.
 사용자 영구 삭제와 같은 `ArtworkPurger`를 거치므로 스냅샷 보존·R2 정리가 똑같이 적용된다.
 
 ### OrphanImageCleanupScheduler (1시간마다)

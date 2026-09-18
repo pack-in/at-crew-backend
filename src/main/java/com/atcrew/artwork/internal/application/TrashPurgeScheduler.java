@@ -3,8 +3,9 @@ package com.atcrew.artwork.internal.application;
 import com.atcrew.artwork.ArtworkStatus;
 import com.atcrew.artwork.internal.domain.artwork.Artwork;
 import com.atcrew.artwork.internal.persistence.ArtworkRepository;
-import java.time.Duration;
 import java.time.Instant;
+import java.time.Period;
+import java.time.ZoneOffset;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,21 +22,31 @@ import org.springframework.transaction.annotation.Transactional;
  * 삭제한다. 자동 영구 삭제된 작품은 복구할 수 없다."(docs/design/portfolio-snapshot-spec.md, 마이페이지_작가-R39)
  * 사용자 영구 삭제와 같은 {@link ArtworkPurger}를 거치므로 고정형 스냅샷 보존 정책이 그대로 적용된다.
  *
- * <p>한 번에 {@link #BATCH_SIZE}건만 지운다. 한 트랜잭션이 커지는 것을 막고, 설정 실수로 보관 기간이 짧아져도
- * 한 시간에 지울 수 있는 양이 제한된다. 밀린 양은 다음 실행에서 이어서 지운다.
+ * <p>한 번에 {@link #BATCH_SIZE}건만 지운다. 한 트랜잭션이 커지는 것을 막고, 밀린 양은 다음 실행에서 이어서 지운다.
  */
 @Component
 public class TrashPurgeScheduler {
 
     static final int BATCH_SIZE = 100;
+    /** 보관 기간 하한. 설정 실수로 휴지통 작품이 복구 기회 없이 사라지는 것을 기동 시점에 막는다. */
+    static final Period MIN_RETENTION = Period.ofDays(30);
     private static final Logger log = LoggerFactory.getLogger(TrashPurgeScheduler.class);
 
     private final ArtworkRepository artworkRepository;
     private final ArtworkPurger artworkPurger;
-    private final Duration retention;
+    private final Period retention;
 
+    /**
+     * 보관 기간은 {@link Period}다. 달력 기준이라 "P1Y"는 윤년을 끼어도 정확히 1년이고, 단위 없이 "365"라고 적으면
+     * 365일로 읽힌다 — {@code Duration}이었을 때는 같은 값이 365밀리초로 읽혀 즉시 삭제로 이어질 수 있었다.
+     */
     TrashPurgeScheduler(ArtworkRepository artworkRepository, ArtworkPurger artworkPurger,
-                        @Value("${artwork.trash.retention:P365D}") Duration retention) {
+                        @Value("${artwork.trash.retention:P1Y}") Period retention) {
+        Instant reference = Instant.parse("2026-01-01T00:00:00Z");
+        if (thresholdAt(reference, retention).isAfter(thresholdAt(reference, MIN_RETENTION))) {
+            throw new IllegalStateException("artwork.trash.retention이 너무 짧다: " + retention
+                    + " (최소 " + MIN_RETENTION + "). 휴지통 작품이 복구 기간 없이 영구 삭제된다.");
+        }
         this.artworkRepository = artworkRepository;
         this.artworkPurger = artworkPurger;
         this.retention = retention;
@@ -45,7 +56,7 @@ public class TrashPurgeScheduler {
     @Scheduled(fixedDelay = 3_600_000, initialDelay = 600_000)
     @Transactional
     public int purgeExpiredTrash() {
-        Instant threshold = Instant.now().minus(retention);
+        Instant threshold = thresholdAt(Instant.now(), retention);
         List<Artwork> expired = artworkRepository.findByStatusAndDeletedAtBefore(
                 ArtworkStatus.DELETED, threshold, PageRequest.of(0, BATCH_SIZE));
         if (expired.isEmpty()) {
@@ -55,5 +66,10 @@ public class TrashPurgeScheduler {
         log.info("휴지통 보관 기간 만료 작품 영구 삭제: count={} retention={} threshold={}",
                 expired.size(), retention, threshold);
         return expired.size();
+    }
+
+    /** now에서 보관 기간을 달력 기준(UTC)으로 뺀 시각. deletedAt이 이보다 이전이면 삭제 대상이다. */
+    static Instant thresholdAt(Instant now, Period retention) {
+        return now.atZone(ZoneOffset.UTC).minus(retention).toInstant();
     }
 }

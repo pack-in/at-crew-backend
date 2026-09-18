@@ -1,6 +1,7 @@
 package com.atcrew.portfolio.internal.application;
 
 import com.atcrew.artwork.ArtworkImageInfo;
+import com.atcrew.artwork.MaterialInfo;
 import com.atcrew.media.RetainedMediaKeyProvider;
 import com.atcrew.portfolio.internal.domain.PortfolioItemSnapshot;
 import com.atcrew.portfolio.internal.persistence.PortfolioItemSnapshotRepository;
@@ -22,8 +23,8 @@ import java.util.Set;
  *
  * <p>후보 key와 스냅샷의 매칭은 카드 썸네일 컬럼(`thumb_key`/`thumb_adult_key`)으로 한다 —
  * 삭제 후보는 항상 한 작품의 이미지 key 전체(원본/썸네일/성인 썸네일/avif)로 들어오므로 썸네일 하나만
- * 걸려도 그 스냅샷을 찾을 수 있다. 걸린 스냅샷의 `payload_json`을 펼쳐 상세 본문 이미지 key까지 보존
- * 대상에 넣는다.
+ * 걸려도 그 스냅샷을 찾을 수 있다. 걸린 스냅샷의 `payload_json`을 펼쳐 상세 본문 이미지 key와 자료 첨부
+ * key까지 보존 대상에 넣는다 — 스냅샷은 자료(첨부 포함)도 그대로 보여 준다.
  */
 @Component
 class SnapshotRetainedMediaKeyProvider implements RetainedMediaKeyProvider {
@@ -56,23 +57,31 @@ class SnapshotRetainedMediaKeyProvider implements RetainedMediaKeyProvider {
         for (PortfolioItemSnapshot snapshot : snapshotRepository.findActiveByThumbnailKeys(candidates)) {
             retainIfCandidate(retained, candidates, snapshot.getThumbKey());
             retainIfCandidate(retained, candidates, snapshot.getThumbAdultKey());
-            for (ArtworkImageInfo image : detailImagesOf(snapshot)) {
+            ArtworkSnapshotPayload payload = payloadOf(snapshot);
+            if (payload == null) {
+                continue;
+            }
+            for (ArtworkImageInfo image : payload.images() == null ? List.<ArtworkImageInfo>of() : payload.images()) {
                 retainIfCandidate(retained, candidates, image.originalKey());
                 retainIfCandidate(retained, candidates, image.thumbKey());
                 retainIfCandidate(retained, candidates, image.thumbAdultKey());
                 retainIfCandidate(retained, candidates, image.originalAvifKey());
             }
+            for (MaterialInfo material : payload.materials() == null ? List.<MaterialInfo>of() : payload.materials()) {
+                if (material.attachmentKeys() != null) {
+                    material.attachmentKeys().forEach(key -> retainIfCandidate(retained, candidates, key));
+                }
+            }
         }
         return retained;
     }
 
-    private List<ArtworkImageInfo> detailImagesOf(PortfolioItemSnapshot snapshot) {
+    private ArtworkSnapshotPayload payloadOf(PortfolioItemSnapshot snapshot) {
         String payloadJson = snapshot.getPayloadJson();
         if (payloadJson == null || payloadJson.isBlank()) {
-            return List.of();
+            return null;
         }
-        ArtworkSnapshotPayload payload = jsonMapper.readValue(payloadJson, ArtworkSnapshotPayload.class);
-        return payload.images() == null ? List.of() : payload.images();
+        return jsonMapper.readValue(payloadJson, ArtworkSnapshotPayload.class);
     }
 
     private static void retainIfCandidate(Set<String> retained, Set<String> candidates, String key) {

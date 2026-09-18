@@ -118,7 +118,11 @@ tasks.named('test') {
 //
 // 이 테스트는 컴파일 산출물이 아닌 파일(다이어그램, archify lock, 앵커가 가리키는 소스·워크플로)을 직접
 // 읽는다. 입력으로 선언하지 않으면 그 파일만 바꿨을 때 UP-TO-DATE로 건너뛰어 검사가 돌지 않은 채
-// 통과한다(org.gradle.caching=true). 앵커가 새 경로를 가리키면 여기에도 추가한다.
+// 통과한다(org.gradle.caching=true). 앵커 경로는 손으로 옮겨 적지 않고 *.anchors.json에서 읽는다 —
+// 새 경로를 가리키는 앵커를 추가해도 입력 선언이 저절로 따라온다.
+def diagramAnchorPaths = fileTree('docs/assets') { include '*.anchors.json' }.files
+		.collectMany { new groovy.json.JsonSlurper().parse(it).anchors*.path }
+		.unique()
 tasks.register('diagramTest', Test) {
 	description = '다이어그램 일치 검사 — modules.mmd↔Modulith 의존, archify SVG↔IR 해시, 코드 앵커'
 	group = 'verification'
@@ -134,10 +138,13 @@ tasks.register('diagramTest', Test) {
 	}
 	inputs.dir('docs/assets').withPathSensitivity(PathSensitivity.RELATIVE)
 	inputs.file('scripts/diagrams/archify.lock.json').withPathSensitivity(PathSensitivity.RELATIVE)
-	inputs.dir('src/main/java').withPathSensitivity(PathSensitivity.RELATIVE)
-	inputs.dir('cloudflare-worker/src').withPathSensitivity(PathSensitivity.RELATIVE)
-	inputs.dir('.github/workflows').withPathSensitivity(PathSensitivity.RELATIVE)
-	inputs.file('deploy/deploy-notify.sh').withPathSensitivity(PathSensitivity.RELATIVE)
+	diagramAnchorPaths.each { p ->
+		if (file(p).isDirectory()) {
+			inputs.dir(p).withPathSensitivity(PathSensitivity.RELATIVE)
+		} else {
+			inputs.file(p).withPathSensitivity(PathSensitivity.RELATIVE)
+		}
+	}
 }
 
 tasks.named('check') {

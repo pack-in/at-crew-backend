@@ -252,6 +252,10 @@ Body: {
 }
 ```
 
+대응하는 `media_assets` 행이 없는 콜백(이미지 교체·소유자 삭제 뒤 늦게 도착한 콜백)은 무시하되, Worker가 이미 써 둔
+변형본 키(`thumbKey`/`thumbAdultKey`/`originalAvifKey`)를 고아 큐에 넣어 `OrphanImageCleanupScheduler`가 지우게 한다.
+원본 키는 교체·영구 삭제 경로가 이미 정리 대상으로 넘겼으므로 넣지 않는다.
+
 `failureReason`은 **저장하지 않고 서버 로그(WARN)로만 남긴다.** 실패는 드문 이벤트이고 필요한 것은
 "왜 실패했나"를 되짚는 것이라 컬럼을 늘릴 이유가 없다 — 로그는 Grafana Loki로 수집되므로 검색된다.
 이 값이 없으면 운영 중에는 `FAILED`라는 사실만 남아 용량 초과·**면적 초과(Images는 100MP를 넘기면
@@ -286,7 +290,9 @@ void triggerAsync(MediaOwnerType ownerType, String ownerId, List<String> imageKe
 ```
 
 `registerAndTriggerProcessing`은 이 메서드를 바로 부르지 않고 호출자 트랜잭션의 `afterCommit`에 등록한다(#174).
-외부 호출은 되돌릴 수 없으므로 자산 행이 커밋된 뒤에만 보낸다. 트랜잭션 밖(재시도 스케줄러)에서는 바로 부른다.
+외부 호출은 되돌릴 수 없으므로 자산 행이 커밋된 뒤에만 보낸다. 트랜잭션 없이 불리는 경우(단위 테스트 등)에만 바로
+부른다 — 재시도 스케줄러는 이 경로를 거치지 않고 `triggerAsync`를 직접 부른다. afterCommit에서 트리거 제출이 실패하면
+(배포 종료 중 executor 거부 등) 예외를 호출자에게 넘기지 않고 로그만 남긴다. 자산이 PENDING으로 남아 재시도 스케줄러가 복구한다.
 
 `R2StorageAdapter.triggerWorker`의 요청 바디가 `{"artworkId":..., "imageKeys":[...]}`에서
 `{"ownerType":..., "ownerId":..., "imageKeys":[...], "variantProfile":..., "qualityTier":...}`로 바뀐다 —
