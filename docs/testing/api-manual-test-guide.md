@@ -55,7 +55,7 @@
   ├─ (개발용) POST /api/members  → memberId·handle 확보
   ├─ POST /api/auth/email/register  → accessToken·refreshToken 확보 (실서비스 가입 경로)
   ├─ POST /api/auth/email/login
-  ├─ POST /api/auth/google/register / login (Firebase 토큰 필요)
+  ├─ POST /api/auth/google/register / login (Google ID Token 필요)
   └─ POST /api/auth/refresh
         │  accessToken 을 Swagger Authorize 에 등록
         ▼
@@ -252,36 +252,36 @@
 
 ### 1-3. Google 로그인 [POST /api/auth/google/login]
 
-**목적**: Firebase ID Token으로 Google 로그인. 미가입 시 404를 반환해 프론트가 가입 화면으로 이동합니다.
-**인증**: 불필요 (Firebase ID Token이 본문에 포함)
+**목적**: Google ID Token으로 Google 로그인. 미가입 시 404를 반환해 프론트가 가입 화면으로 이동합니다.
+**인증**: 불필요 (Google ID Token이 본문에 포함)
 
 **Request Body**:
 ```json
-{ "firebaseIdToken": "<Firebase ID Token>" }
+{ "googleIdToken": "<Google ID Token>" }
 ```
-**필드 제약**: `firebaseIdToken` `@NotBlank`.
+**필드 제약**: `googleIdToken` `@NotBlank`.
 
 **정상 응답 (200)**: AuthInfo.
 
 **예외 케이스**:
 | 케이스 | 변경 값 | 예상 에러 코드 | HTTP |
 |--------|---------|--------------|------|
-| 토큰 누락 | firebaseIdToken: "" | COMMON_INVALID_INPUT | 400 |
-| 토큰 검증 실패 | 위조·만료 토큰 | INVALID_FIREBASE_TOKEN | 401 |
+| 토큰 누락 | googleIdToken: "" | COMMON_INVALID_INPUT | 400 |
+| 토큰 검증 실패 | 위조·만료 토큰 | INVALID_GOOGLE_TOKEN | 401 |
 | 미가입 계정 | 가입 안 된 Google 계정 | MEMBER_NOT_REGISTERED | 404 |
-| Firebase 미설정 | 환경설정 누락 | FIREBASE_NOT_CONFIGURED | 503 |
+| Google 로그인 미설정 | 환경설정 누락 | GOOGLE_LOGIN_NOT_CONFIGURED | 503 |
 
 ---
 
 ### 1-4. Google 회원가입 [POST /api/auth/google/register]
 
-**목적**: Firebase ID Token으로 Google 계정 가입.
+**목적**: Google ID Token으로 Google 계정 가입.
 **인증**: 불필요
 
 **Request Body**:
 ```json
 {
-  "firebaseIdToken": "<Firebase ID Token>",
+  "googleIdToken": "<Google ID Token>",
   "name": "구글유저",
   "agreeService": true,
   "agreePrivacy": true,
@@ -289,7 +289,7 @@
   "agreeMarketing": false
 }
 ```
-**필드 제약**: `firebaseIdToken` `@NotBlank`, `name` `@NotBlank @Size(max=16)`, 약관 boolean.
+**필드 제약**: `googleIdToken` `@NotBlank`, `name` `@NotBlank @Size(max=16)`, 약관 boolean.
 
 **정상 응답 (201)**: AuthInfo (`isNewUser`: true).
 
@@ -299,7 +299,7 @@
 | 이름 누락 | name: "" | COMMON_INVALID_INPUT | 400 |
 | 이름 길이 초과 | name: 17자 이상 | COMMON_INVALID_INPUT | 400 |
 | 필수 약관 미동의 | agreeService: false | TERMS_NOT_AGREED | 400 |
-| 토큰 검증 실패 | 위조·만료 토큰 | INVALID_FIREBASE_TOKEN | 401 |
+| 토큰 검증 실패 | 위조·만료 토큰 | INVALID_GOOGLE_TOKEN | 401 |
 | 이미 가입된 Google 계정 | 기존 계정 재가입 | DUPLICATE_EMAIL | 409 |
 
 ---

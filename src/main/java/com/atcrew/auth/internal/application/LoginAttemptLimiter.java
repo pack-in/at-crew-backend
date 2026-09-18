@@ -32,15 +32,25 @@ class LoginAttemptLimiter {
     // 현재 차단 상태인지 확인 — 차단 중이면 BCrypt 연산 전에 429 반환
     @Transactional(readOnly = true)
     void checkBlocked(String email) {
-        String ip = extractIp();
-        Instant windowStart = windowStart();
         Integer emailFails = loginAttemptRepository
-                .findFailCountWithinWindow("email:" + email, windowStart).orElse(null);
-        Integer ipFails = loginAttemptRepository
-                .findFailCountWithinWindow("ip:" + ip, windowStart).orElse(null);
+                .findFailCountWithinWindow("email:" + email, windowStart()).orElse(null);
 
-        if ((emailFails != null && emailFails >= EMAIL_LIMIT) || (ipFails != null && ipFails >= IP_LIMIT)) {
-            log.warn("로그인 차단: email={} ip={}", LogMask.email(email), ip);
+        if (emailFails != null && emailFails >= EMAIL_LIMIT) {
+            log.warn("로그인 차단[email]: email={}", LogMask.email(email));
+            throw new AuthException(AuthErrorCode.TOO_MANY_ATTEMPTS);
+        }
+        checkIpBlocked();
+    }
+
+    // IP 단위 차단만 확인 — Google 로그인처럼 토큰 검증 전에는 이메일을 알 수 없는 경로용
+    @Transactional(readOnly = true)
+    void checkIpBlocked() {
+        String ip = extractIp();
+        Integer ipFails = loginAttemptRepository
+                .findFailCountWithinWindow("ip:" + ip, windowStart()).orElse(null);
+
+        if (ipFails != null && ipFails >= IP_LIMIT) {
+            log.warn("로그인 차단[ip]: ip={}", ip);
             throw new AuthException(AuthErrorCode.TOO_MANY_ATTEMPTS);
         }
     }
@@ -50,9 +60,16 @@ class LoginAttemptLimiter {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     void recordFailure(String email) {
         Instant now = Instant.now();
-        Instant windowStart = now.minusSeconds(WINDOW_SECONDS);
-        loginAttemptRepository.increment("email:" + email, now, windowStart);
-        loginAttemptRepository.increment("ip:" + extractIp(), now, windowStart);
+        loginAttemptRepository.increment("email:" + email, now, now.minusSeconds(WINDOW_SECONDS));
+        // 같은 REQUIRES_NEW 트랜잭션 안에서 IP 카운터도 함께 증가한다(자기호출이라 새 트랜잭션이 열리지 않음)
+        recordIpFailure();
+    }
+
+    // IP 카운터만 증가 — 이메일을 특정할 수 없는 실패(위조 Google 토큰 등)용
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    void recordIpFailure() {
+        Instant now = Instant.now();
+        loginAttemptRepository.increment("ip:" + extractIp(), now, now.minusSeconds(WINDOW_SECONDS));
     }
 
     @Transactional

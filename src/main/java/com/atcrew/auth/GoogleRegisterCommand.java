@@ -3,7 +3,7 @@ package com.atcrew.auth;
 import com.atcrew.member.Language;
 
 public record GoogleRegisterCommand(
-        String firebaseIdToken,
+        String googleIdToken,     // Google이 발급한 ID Token
         String name,
         boolean agreeService,
         boolean agreePrivacy,

@@ -190,6 +190,9 @@ Stripe 웹훅 **처리 실패**는 따로 세지 않는다 — 서명 검증 실
 | P2 | 업로드 후 15분 초과 PENDING 이미지가 10분 지속 (콜백 미도착) |
 | P2 | `atcrew_modulith_incomplete_events` 50 초과 |
 | P2 | readiness 개별 항목 DOWN |
+| P2 | `INVALID_GOOGLE_TOKEN`(401) 10건 / 10분 — 위조 토큰 시도 의심 (등록 필요 — 콘솔 수동 설정) |
+
+**`GOOGLE_LOGIN_NOT_CONFIGURED`(503)는 별도 알람이 필요 없다.** `GlobalExceptionHandler`가 모든 5xx를 `log.error`로 남기고, `SentryConfig`의 Logback 어펜더가 ERROR 로그를 Sentry 이슈로 자동 변환하는 기존 파이프라인으로 이미 커버된다 — 위 5xx 카운트 알람(5건/5분)에도 자연히 포함된다. 별도 코드 변경도 별도 Grafana 규칙도 필요 없다.
 
 ### 7.3 소음 억제
 

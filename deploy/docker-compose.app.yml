@@ -74,17 +74,13 @@ services:
       # .env의 MARIADB_HOST/PORT(로컬 기본값 localhost:3306)를 컨테이너 네트워크 기준으로 덮어쓴다.
       MARIADB_HOST: mariadb
       MARIADB_PORT: 3306
-      # .env의 값은 호스트(EC2) 파일 경로다 — 컨테이너 안에서는 안 보이므로 아래 볼륨으로 마운트한
-      # 컨테이너 내부 경로로 덮어쓴다(실제 배포 중 FileNotFoundException으로 발견).
-      FIREBASE_CREDENTIALS_PATH: /app/firebase-credentials.json
+      # Google ID Token 직접 검증에 쓰는 OAuth Client ID 목록(콤마 구분).
+      GOOGLE_OAUTH_CLIENT_IDS: ${GOOGLE_OAUTH_CLIENT_IDS}
       # JVM 힙을 명시한다(이슈 #116). Dockerfile의 ENTRYPOINT에 -Xmx가 없어 지금까지는 기본
       # MaxRAMPercentage 25%가 적용됐고, 그 25%의 분모는 **컨테이너 메모리 상한**이다.
       # 아래 limits(1600m)를 거는 순간 힙이 958MB에서 400MB로 조용히 줄어든다 —
       # 상한과 힙은 반드시 함께 정해야 한다. 900m는 상한 전 실효값(958MB)에 맞춘 값이다.
       JAVA_TOOL_OPTIONS: "-Xmx900m"
-    volumes:
-      # deploy/ 디렉토리에 firebase-credentials.json이라는 이름으로 올려둔 파일을 그대로 마운트한다.
-      - ./firebase-credentials.json:/app/firebase-credentials.json:ro
     # 힙 900m에 메타스페이스·코드캐시·스레드 스택·다이렉트 버퍼가 더해진다. 2026-09-02 실측
     # RSS가 540~651MB(그때 힙 사용량은 230MB)였으므로 힙 밖 오버헤드를 약 400MB로 보고 1600m로 잡는다.
     deploy:

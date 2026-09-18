@@ -10,10 +10,10 @@ public enum AuthErrorCode {
     PASSWORD_RESET_REQUIRED(HttpStatus.PRECONDITION_REQUIRED, "비밀번호 재설정이 필요해요"),
     TOO_MANY_ATTEMPTS(HttpStatus.TOO_MANY_REQUESTS, "로그인 시도가 너무 많아요. 잠시 후 다시 시도해주세요"),
 
-    // Google 로그인 — Firebase 토큰이 이메일 소유를 증명하므로 404 노출이 enumeration 아님
+    // Google 로그인 — Google 토큰이 이메일 소유를 증명하므로 404 노출이 enumeration 아님
     MEMBER_NOT_REGISTERED(HttpStatus.NOT_FOUND, "가입되지 않은 계정이에요. 회원가입을 진행해주세요"),
-    INVALID_FIREBASE_TOKEN(HttpStatus.UNAUTHORIZED, "Firebase 토큰이 유효하지 않습니다"),
-    FIREBASE_NOT_CONFIGURED(HttpStatus.SERVICE_UNAVAILABLE, "Firebase가 설정되지 않았습니다"),
+    INVALID_GOOGLE_TOKEN(HttpStatus.UNAUTHORIZED, "Google 토큰이 유효하지 않습니다"),
+    GOOGLE_LOGIN_NOT_CONFIGURED(HttpStatus.SERVICE_UNAVAILABLE, "Google 로그인이 설정되지 않았습니다"),
     UNSUPPORTED_AUTH_PROVIDER(HttpStatus.BAD_REQUEST, "지원하지 않는 로그인 방식입니다"),
 
     // 비밀번호 변경 (설정 화면, 이슈 #152로 2단계 재인증 도입)
