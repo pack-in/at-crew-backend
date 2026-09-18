@@ -1,0 +1,60 @@
+{
+  "anchors": [
+    {
+      "text": "/artwork/images/presign",
+      "path": "src/main/java/com/atcrew/artwork"
+    },
+    {
+      "text": "/artworks",
+      "path": "src/main/java/com/atcrew/artwork"
+    },
+    {
+      "text": "ArtworkServiceImpl",
+      "path": "src/main/java/com/atcrew/artwork"
+    },
+    {
+      "text": "uploadArtwork",
+      "path": "src/main/java/com/atcrew/artwork"
+    },
+    {
+      "text": "markImageProcessed",
+      "path": "src/main/java/com/atcrew/artwork"
+    },
+    {
+      "text": "MediaServiceImpl",
+      "path": "src/main/java/com/atcrew/media"
+    },
+    {
+      "text": "generatePresignedUrls",
+      "path": "src/main/java/com/atcrew/media"
+    },
+    {
+      "text": "registerAndTriggerProcessing",
+      "path": "src/main/java/com/atcrew/media"
+    },
+    {
+      "text": "media_assets",
+      "path": "src/main/java/com/atcrew/media"
+    },
+    {
+      "text": "/images/processed",
+      "path": "src/main/java/com/atcrew/media"
+    },
+    {
+      "text": "X-Internal-Secret",
+      "path": "src/main/java/com/atcrew/media"
+    },
+    {
+      "text": "X-Internal-Secret",
+      "path": "cloudflare-worker/src"
+    },
+    {
+      "text": "MediaAssetProcessedEvent",
+      "path": "src/main/java/com/atcrew/media"
+    },
+    {
+      "text": "ImageRetryScheduler",
+      "path": "src/main/java/com/atcrew/media"
+    }
+  ]
+}

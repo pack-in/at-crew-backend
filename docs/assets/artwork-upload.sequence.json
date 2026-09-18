@@ -1,0 +1,281 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "작품 이미지 업로드 파이프라인",
+    "viewBox": [
+      960,
+      1100
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase",
+    "legend": {
+      "entries": {
+        "emphasis": {
+          "label": "요청"
+        },
+        "return": {
+          "label": "응답"
+        },
+        "security": {
+          "label": "보안 검증"
+        },
+        "dashed": {
+          "label": "비동기"
+        },
+        "default": {
+          "label": "내부 호출"
+        }
+      }
+    }
+  },
+  "participants": [
+    {
+      "id": "client",
+      "type": "frontend",
+      "label": "클라이언트",
+      "sublabel": "웹"
+    },
+    {
+      "id": "artwork",
+      "type": "backend",
+      "label": "artwork",
+      "sublabel": "ArtworkServiceImpl"
+    },
+    {
+      "id": "media",
+      "type": "backend",
+      "label": "media",
+      "sublabel": "MediaServiceImpl"
+    },
+    {
+      "id": "db",
+      "type": "database",
+      "label": "MariaDB",
+      "sublabel": "media_assets / artworks"
+    },
+    {
+      "id": "r2",
+      "type": "cloud",
+      "label": "R2",
+      "sublabel": "raw / thumb / original"
+    },
+    {
+      "id": "worker",
+      "type": "cloud",
+      "label": "CF Worker",
+      "sublabel": "이미지 변환"
+    }
+  ],
+  "segments": [
+    {
+      "from": 150,
+      "to": 360,
+      "label": "업로드 준비"
+    },
+    {
+      "from": 376,
+      "to": 620,
+      "label": "등록과 변환 트리거"
+    },
+    {
+      "from": 636,
+      "to": 900,
+      "label": "변환 결과 반영"
+    },
+    {
+      "from": 916,
+      "to": 1000,
+      "label": "복구"
+    }
+  ],
+  "messages": [
+    {
+      "from": "client",
+      "to": "artwork",
+      "y": 180,
+      "label": "POST /api/artwork/images/presign",
+      "variant": "emphasis"
+    },
+    {
+      "from": "artwork",
+      "to": "media",
+      "y": 222,
+      "label": "generatePresignedUrls",
+      "variant": "default"
+    },
+    {
+      "from": "media",
+      "to": "artwork",
+      "y": 264,
+      "label": "presigned URL",
+      "variant": "return"
+    },
+    {
+      "from": "artwork",
+      "to": "client",
+      "y": 306,
+      "label": "URL 목록",
+      "variant": "return"
+    },
+    {
+      "from": "client",
+      "to": "r2",
+      "y": 348,
+      "label": "PUT raw/… 직접 업로드",
+      "variant": "emphasis"
+    },
+    {
+      "from": "client",
+      "to": "artwork",
+      "y": 404,
+      "label": "POST /api/artworks",
+      "variant": "emphasis"
+    },
+    {
+      "from": "artwork",
+      "to": "media",
+      "y": 446,
+      "label": "registerAndTriggerProcessing",
+      "variant": "default"
+    },
+    {
+      "from": "media",
+      "to": "db",
+      "y": 488,
+      "label": "MediaAsset PENDING 저장",
+      "variant": "default"
+    },
+    {
+      "from": "media",
+      "to": "worker",
+      "y": 530,
+      "label": "@Async 트리거 (커밋 전 출발)",
+      "variant": "dashed",
+      "note": "uploadArtwork 트랜잭션 안에서 호출 (#174)"
+    },
+    {
+      "from": "artwork",
+      "to": "client",
+      "y": 572,
+      "label": "작품 생성 응답",
+      "variant": "return"
+    },
+    {
+      "from": "worker",
+      "to": "r2",
+      "y": 664,
+      "label": "원본 변환해 변형본 저장",
+      "variant": "default",
+      "note": "cf.image로 변환"
+    },
+    {
+      "from": "worker",
+      "to": "media",
+      "y": 706,
+      "label": "POST /internal/media/images/processed",
+      "variant": "security",
+      "note": "X-Internal-Secret 상수시간 비교"
+    },
+    {
+      "from": "media",
+      "to": "db",
+      "y": 748,
+      "label": "자산 DONE / FAILED",
+      "variant": "default",
+      "note": "자산이 아직 안 보이면 무시, 재시도로 복구 (#174)"
+    },
+    {
+      "from": "media",
+      "to": "artwork",
+      "y": 790,
+      "label": "MediaAssetProcessedEvent",
+      "variant": "dashed"
+    },
+    {
+      "from": "artwork",
+      "to": "db",
+      "y": 832,
+      "label": "작품 행 잠금 후 markImageProcessed",
+      "variant": "emphasis"
+    },
+    {
+      "from": "media",
+      "to": "worker",
+      "y": 958,
+      "label": "10분 넘은 PENDING 재트리거",
+      "variant": "dashed",
+      "note": "5분 주기 ImageRetryScheduler"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "artwork",
+      "from": 174,
+      "to": 314,
+      "type": "backend"
+    },
+    {
+      "participant": "media",
+      "from": 216,
+      "to": 272,
+      "type": "backend"
+    },
+    {
+      "participant": "artwork",
+      "from": 398,
+      "to": 580,
+      "type": "backend"
+    },
+    {
+      "participant": "media",
+      "from": 440,
+      "to": 538,
+      "type": "backend"
+    },
+    {
+      "participant": "worker",
+      "from": 524,
+      "to": 714,
+      "type": "cloud"
+    },
+    {
+      "participant": "media",
+      "from": 700,
+      "to": 798,
+      "type": "backend"
+    },
+    {
+      "participant": "artwork",
+      "from": 784,
+      "to": 840,
+      "type": "backend"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "서버를 거치지 않는 업로드",
+      "items": [
+        "원본 바이트는 클라이언트에서 R2로 바로 간다",
+        "서버는 presigned URL만 발급한다"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "부분 실패 허용",
+      "items": [
+        "PENDING이 없고 DONE이 하나 이상이면 READY",
+        "전량 실패면 FAILED로 끝낸다"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "자력 복구",
+      "items": [
+        "콜백이 유실돼도 PENDING 자산은 재트리거된다",
+        "실패 사유는 저장하지 않고 WARN 로그로만 남긴다"
+      ]
+    }
+  ]
+}

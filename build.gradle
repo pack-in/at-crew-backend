@@ -103,6 +103,14 @@ tasks.named('test') {
 	// 십수 개가 동시에 살아 있다. 512MB로는 GC에 시간을 다 쓰다가 폴링 대기가 타임아웃한다
 	// (2026-09-11 배포 CI: 정상 8~9분인 스위트가 26분 30초 만에 35개 실패, 전부 컨텍스트 로딩 실패).
 	maxHeapSize = '2g'
+
+	// DiagramConsistencyTests는 컴파일 산출물이 아닌 파일(다이어그램, archify lock, 앵커가 가리키는 소스)을
+	// 직접 읽는다. 입력으로 선언하지 않으면 그 파일만 바꿨을 때 Gradle이 test를 UP-TO-DATE로 건너뛰어
+	// 검사가 돌지 않은 채 통과한다(org.gradle.caching=true라 캐시 결과를 그대로 쓴다).
+	inputs.dir('docs/assets').withPathSensitivity(PathSensitivity.RELATIVE)
+	inputs.file('scripts/diagrams/archify.lock.json').withPathSensitivity(PathSensitivity.RELATIVE)
+	inputs.dir('src/main/java').withPathSensitivity(PathSensitivity.RELATIVE)
+	inputs.dir('cloudflare-worker/src').withPathSensitivity(PathSensitivity.RELATIVE)
 }
 
 // Stripe sandbox 실호출 테스트(plans/260813-stripe-billing PA-14). 키가 없으면 각 테스트가 스스로 skip한다.

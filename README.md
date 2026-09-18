@@ -93,7 +93,7 @@
 | 규약 | [CONTRIBUTING.md](CONTRIBUTING.md), [docs/conventions/](docs/conventions/) |
 | 테스트 전략 | [docs/testing/rest-docs-guide.md](docs/testing/rest-docs-guide.md) |
 | 로드맵 | [docs/roadmap.md](docs/roadmap.md) |
-| 다이어그램 생성 | [scripts/diagrams/build.py](scripts/diagrams/build.py) — 위 SVG 네 개를 다시 만든다 (`architecture` \| `infra` \| `infra-ha` \| `modules`) |
+| 다이어그램 생성 | [scripts/diagrams/build.py](scripts/diagrams/build.py) — 위 SVG 네 개(`architecture` \| `infra` \| `infra-ha` \| `modules`)와 설계 문서의 archify 흐름도(`docs/assets/*.<타입>.json`, Node 22 필요)를 다시 만든다. 코드와 어긋나면 `DiagramConsistencyTests`가 빌드를 실패시킨다 |
 
 ## 라이선스
 
