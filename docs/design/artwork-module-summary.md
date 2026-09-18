@@ -149,10 +149,11 @@ record WorkDuration(Integer months, Integer days, Integer hours, Integer minutes
            READY
               ↓ (deleteArtwork)
            DELETED   ──(restoreArtworks)──▶ 이미지 현황으로 재계산 (PROCESSING/READY/FAILED)
-              ↓ (permanentlyDeleteArtworks)
+              ↓ (permanentlyDeleteArtworks, 또는 보관 1년 경과 시 TrashPurgeScheduler)
            [DB에서 삭제]
 
            PROCESSING ──(모든 이미지 콜백 수신, 전부 FAILED)──▶ FAILED
+           READY·FAILED ──(updateArtwork로 이미지 교체)──▶ PROCESSING
 ```
 
 - **PROCESSING**: 이미지 Worker 처리 중. 작가 본인은 조회 가능, 다른 사람은 접근 불가.
@@ -376,7 +377,7 @@ R2 업로드 완료 후 작품 메타데이터를 저장. 바로 `PROCESSING` �
 
 #### `PATCH /api/artworks/{artworkId}/publication` — 노출 위치 재선언
 
-`READY` 상태일 때만 가능. 요청 본문은 `publishToFeed`(필수)와 `portfolioIds`(선택)이며, 공개 상태는
+휴지통(`DELETED`) 작품은 불가하고, `PROCESSING`·`FAILED` 상태에서도 가능하다. 요청 본문은 `publishToFeed`(필수)와 `portfolioIds`(선택)이며, 공개 상태는
 이 조합으로 서버가 계산한다(업로드-R09) — 공개 상태값을 직접 받는 필드는 없다. `portfolioIds`는
 증분이 아니라 전체 재선언이라 목록에서 빠진 포트폴리오에서는 제외된다.
 
@@ -421,7 +422,7 @@ R2 업로드 완료 후 작품 메타데이터를 저장. 바로 `PROCESSING` �
 { "artworkIds": ["id1", "id2"] }
 ```
 
-- `status` → `READY`, `visibility` → `visibilityBeforeDelete` 복원, `deletedAt` 초기화
+- `status` → 이미지 현황으로 재계산(READY·PROCESSING·FAILED), `visibility` → `visibilityBeforeDelete` 복원, `deletedAt` 초기화
 - 요청한 ID 중 존재하지 않는 것이 하나라도 있으면 404 (전체 롤백)
 - 소유권 위반 시 403 (전체 롤백)
 
@@ -544,7 +545,7 @@ onMemberDeactivated() [동기, @EventListener]
   → artworkRepository.saveAll()
 ```
 
-`changeVisibility()`는 `READY` 상태만 허용하지만, 탈퇴 이벤트 처리는 `PROCESSING` / `DELETED` 작품에도 적용해야 하므로 `forcePrivate()`를 별도로 구현해 상태 체크를 건너뜀.
+`changeVisibility()`는 `DELETED` 상태를 거부하지만, 탈퇴 이벤트 처리는 `PROCESSING` / `DELETED` 작품에도 적용해야 하므로 `forcePrivate()`를 별도로 구현해 상태 체크를 건너뜀.
 
 ### ArtworkPermanentlyDeletedEvent 발행 (비동기)
 
@@ -564,17 +565,19 @@ onPermanentlyDeleted() [@Async, @EventListener]
 
 ## 7. 스케줄러
 
-### ImageRetryScheduler (5분마다)
+### ImageRetryScheduler (media 모듈, 5분마다)
 
-10분 이상 `PROCESSING` 상태인 작품을 찾아 아직 `PENDING`인 이미지만 Worker에 재전송.
+10분 넘게 `PENDING`인 `media_assets`를 owner·화질별로 묶어 Worker를 다시 트리거한다. 작품 상태는 보지도
+바꾸지도 않는다 — 결과는 콜백 → `MediaAssetProcessedEvent` → `ArtworkMediaEventListener`로 반영된다.
 
-```
-findStuckProcessingArtworks(now - 10분)
-  → 각 작품의 isPending() 이미지 필터
-  → pendingKeys 있으면 triggerAsync() 재시도
-```
+`FAILED` 이미지는 대상이 아니다(전량 실패한 작품은 FAILED로 끝나고 작가가 이미지를 교체한다). 재시도 횟수
+상한은 두지 않는다 — 콜백이 서버에 닿지 않을 때 유일한 자동 복구 수단이고, PENDING 잔량 알람이 장애를
+드러내므로 의도된 동작이다.
 
-`FAILED` 이미지는 `isPending()`이 false이므로 재시도 대상에서 제외. 전체 FAILED 케이스는 수동 개입 필요.
+### TrashPurgeScheduler (1시간마다)
+
+휴지통으로 옮긴 지 보관 기간(기본 1년, `artwork.trash.retention`)이 지난 작품을 최대 100건씩 영구 삭제한다(#178).
+사용자 영구 삭제와 같은 `ArtworkPurger`를 거치므로 스냅샷 보존·R2 정리가 똑같이 적용된다.
 
 ### OrphanImageCleanupScheduler (1시간마다)
 
@@ -682,7 +685,7 @@ R2는 Cloudflare R2 (S3 호환). AWS SDK S3 v2를 사용하되 `Region.of("auto"
   동안에도 Worker 콜백이 이미지 행을 갱신하므로 삭제 시점 스냅샷은 낡은 값이 될 수 있다. 예전에는
   무조건 READY라 이미지가 아직 없거나 전량 실패한 작품이 공개 상태로 살아났다.
 - 탈퇴 이벤트 수신 시 모든 작품 강제 PRIVATE (`forcePrivate()`, 상태 무관).
-- `changeVisibility()`는 `READY` 상태만 허용. `forcePrivate()`는 상태 무관.
+- `changeVisibility()`는 `DELETED`만 거부한다(PROCESSING·FAILED에서도 변경 가능). `forcePrivate()`는 상태 무관.
 
 ---
 

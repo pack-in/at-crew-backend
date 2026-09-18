@@ -1,14 +1,16 @@
 # 관측·알람(Observability) 설계
 
 > 작성일: 2026-08-23
-> 상태: 설계 확정 (구현 착수 전)
+> 상태: 설계 확정 후 구현됨. §9(배포 안전장치)는 2026-09-18 `deploy.yml` 기준으로 갱신
 > 범위: prod 운영 감시 — 가용성·에러·성능·리소스·비즈니스 지표 수집, Discord 알람, 중앙 로그,
 > 배포 안전장치(헬스체크·조건부 자동 롤백), MariaDB 백업과 백업 실패 감지
 > 계획 문서: `plans/260823-observability/`(개인 문서, 커밋 안 함)
 
 ---
 
-## 0. 배경 — 지금 상태
+## 0. 배경 — 설계 착수 시점(2026-08-23)의 상태
+
+아래 표는 설계를 시작할 때의 기록이다. 지금 상태는 각 절과 코드를 본다.
 
 실사용자를 받기 직전 시점에 관측 자산이 사실상 없다.
 
@@ -211,27 +213,24 @@ Stripe 웹훅 **처리 실패**는 따로 세지 않는다 — 서명 검증 실
 
 ![프로덕션 배포 파이프라인](../assets/deploy.svg)
 
-그림은 `.github/workflows/deploy.yml`의 현재 코드 기준이다. 아래 설계 목록과 다른 점은 다음과 같다.
+`.github/workflows/deploy.yml`(main push) 기준 흐름이다. 원본은
+[`docs/assets/deploy.workflow.json`](../assets/deploy.workflow.json)(archify IR)이고, 고친 뒤
+`python3 scripts/diagrams/build.py deploy`로 SVG를 다시 만든다.
 
-- 롤백 대상은 "직전 성공 SHA 이미지"가 아니라 배포 직전에 **실행 중이던** app 컨테이너 이미지다.
-- 마이그레이션 판정은 새로 추가된 파일만 본다(`--diff-filter=A`). 기존 마이그레이션을 수정한 배포는 "없음"으로 판정된다.
-- 헬스체크 이전 단계(빌드·테스트, SSM 연결, deploy/ 동기화, 컨테이너 교체)에서 실패하면 롤백 판정을 거치지 않는다.
-  통지는 `deploy/deploy-notify.sh`가 서버를 건드렸는지로 가른다. 동기화 전에 멈췄으면 P2 "배포 중단 — 서버 변경 없음",
-  동기화나 교체 도중·이후에 멈췄으면 P1이다([#177](https://github.com/pack-in/at-crew-backend/issues/177)).
-- 롤백은 DB 스키마, deploy/ 동기화로 바뀐 nginx 설정, 이미 푸시된 `latest` 태그를 되돌리지 않는다.
-
-원본은 [`docs/assets/deploy.workflow.json`](../assets/deploy.workflow.json)(archify IR)이다.
-고친 뒤 `python3 scripts/diagrams/build.py deploy`로 SVG를 다시 만든다.
-
-`.github/workflows/deploy.yml` 확장:
-
-1. 배포 시작 → Grafana silence(10분) 생성.
-2. 컨테이너 재기동 후 **헬스체크 폴링** — `/actuator/health/liveness`가 UP이 될 때까지 최대 3분 대기.
-3. 실패 시 분기 (D13):
-   - 이번 배포에 `src/main/resources/db/migration/` 신규 파일이 **없으면** → 직전 성공 SHA 이미지로 자동 롤백 후 재검증.
-   - **있으면** → 롤백하지 않고 P1 알람. 스키마가 전진한 뒤 구버전 앱은 `ddl-auto: validate`에서 다시 죽는다.
-4. 성공·실패·롤백 **세 경우 모두** Discord 통지.
-5. silence 해제(`if: always()`).
+1. 빌드·테스트 → 이미지 푸시(커밋 SHA와 `latest`) → SSM 연결 확인.
+2. deploy/ 동기화 — 배포 커밋 기준으로 서버의 `deploy/`를 맞추고, nginx 설정이 바뀌었으면 `nginx -t` 통과 후 reload.
+3. 배포 직전에 **실행 중이던** app 이미지를 기록(롤백 대상) → Grafana silence(10분) 생성 → 컨테이너 교체(`up -d`).
+   Flyway는 별도 단계 없이 앱이 기동하며 적용한다.
+4. **헬스체크 폴링** — `/actuator/health/liveness`가 UP이 될 때까지 최대 3분(5초 × 36회).
+5. 헬스체크 실패 시 분기 (D13):
+   - 이번 배포에 **새로 추가된** 마이그레이션 파일이 없으면(`--diff-filter=A`) → 기록해 둔 이미지로 자동 롤백 후 재검증.
+     기존 마이그레이션 파일을 **수정**한 배포는 "없음"으로 판정된다.
+   - 있으면 → 롤백하지 않고 P1 알람. 스키마가 전진한 뒤 구버전 앱은 `ddl-auto: validate`에서 다시 죽는다.
+   - 롤백은 DB 스키마, deploy/ 동기화로 바뀐 nginx 설정, 이미 푸시된 `latest` 태그를 되돌리지 않는다.
+6. 이미지 정리 → silence 해제(`if: always()`) → Discord 통지(`if: always()`).
+   분류는 `deploy/deploy-notify.sh`가 한다([#177](https://github.com/pack-in/at-crew-backend/issues/177)).
+   헬스체크까지 가지 못한 배포는 서버를 건드렸는지로 가른다 — 동기화 전에 멈췄으면 P2 "배포 중단 — 서버 변경 없음",
+   동기화·교체 도중이나 이후에 멈췄으면 P1이다. 통지별 대응은 `docs/operations/incident-runbook.md` §배포 실패·롤백.
 
 ## 10. 백업
 

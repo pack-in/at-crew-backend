@@ -154,10 +154,11 @@ public class ArtworkImage {
 ```
 업로드 완료 → processingStatus = PENDING
 Worker 변환 완료 → processingStatus = DONE, thumbKey/originalAvifKey 채워짐
-Worker 실패 → processingStatus = FAILED (재시도 큐 진입)
+Worker 실패 → processingStatus = FAILED (재시도 대상 아님 — 재시도는 콜백이 오지 않은 PENDING만 다룬다)
 ```
 
-`Artwork.status = READY` 조건: 모든 `ArtworkImage.processingStatus == DONE`
+`Artwork.status` 판정: PENDING이 없고 DONE이 1장 이상이면 READY(부분 실패 허용), PENDING이 없고 DONE이 0장이면
+FAILED, PENDING이 남아 있으면 PROCESSING(`Artwork.resolveStatusFromImages`, §8.1)
 
 ### 2.3 Material (Artwork 내 embedded)
 
@@ -330,19 +331,19 @@ ArtworkStatus  : PROCESSING / READY / FAILED / DELETED
    Artwork 저장 (status=PROCESSING, 모든 image.processingStatus=PENDING)
    artworkId 반환
 
-6. R2 Event Notification (또는 서버에서 Worker 직접 호출)
-   → Cloudflare Worker 트리거 (imageKey 목록 전달)
+6. 서버(media 모듈) — 트랜잭션 커밋 뒤 Cloudflare Worker 트리거(ownerType·ownerId·imageKeys·variantProfile)
+   (afterCommit, #174. 콜백 유실 시 ImageRetryScheduler가 10분 넘은 PENDING을 다시 트리거한다)
 
 7. Cloudflare Worker (이미지별 처리)
-   원본 다운로드 (R2 private 버킷)
-   → avif 변환 → processed/uuid.avif 저장
-   → 3:4 크롭 + 294px 리사이즈 → thumb/uuid.avif 저장
-   → ageRating=ADULT인 경우 blur(20) → thumb_adult/uuid.avif 저장
-   → POST /internal/artwork/images/processed (서버 내부 webhook)
+   원본 크기를 R2 head로 확인 → cf.image fetch로 변환
+   → original/….avif, thumb/….avif 저장
+   → 작품은 variantProfile=STANDARD_WITH_ADULT_BLUR라 블러 썸네일 thumb-adult/….avif도 저장
+   → POST /internal/media/images/processed (X-Internal-Secret)
 
-8. 서버 (ArtworkController 내부 엔드포인트)
-   해당 ArtworkImage.processingStatus = DONE, key 업데이트
-   모든 이미지 DONE → Artwork.status = READY
+8. 서버
+   MediaCallbackService가 media_assets 상태 갱신 → MediaAssetProcessedEvent 발행
+   → ArtworkMediaEventListener가 작품 행을 잠그고(findByIdForUpdate) markImageProcessed
+   → PENDING이 남지 않았으면 상태 재계산: DONE 1장 이상 READY, 전부 실패 FAILED (§8.1)
 
 9. 클라이언트 (폴링 or SSE)
    GET /api/artworks/{artworkId}/status
@@ -442,7 +443,7 @@ GET /api/community/artworks
 POST /api/trash/artworks/restore
 { "artworkIds": ["id1", "id2"] }
 
-→ Artwork.status = READY
+→ Artwork.status = 이미지 처리 현황으로 재계산(READY·PROCESSING·FAILED, §8.1)
 → Artwork.visibility = visibilityBeforeDelete (스냅샷 복원)
 → deletedAt = null
 
@@ -553,25 +554,7 @@ public void onMemberDeactivated(MemberDeactivatedEvent event) {
 원본은 [`docs/assets/artwork-status.lifecycle.json`](../assets/artwork-status.lifecycle.json)(archify IR)이다.
 고친 뒤 `python3 scripts/diagrams/build.py artwork-status`로 SVG를 다시 만든다.
 
-> 아래 ASCII는 그림 이전의 기록이다. 복구 후 상태를 항상 READY로 적은 것, 이미지 교체로 PROCESSING에 돌아가는
-> 전이가 빠진 것이 코드와 다르다. 그림이 코드 기준이다.
-
-```
-[업로드 완료]
-     ↓
-PROCESSING ──(모든 이미지 Worker 처리 완료, 하나라도 성공)──▶ READY
-     └────────(모든 이미지 Worker 처리 완료, 전부 실패)────▶ FAILED
-                                                 ↓
-                                           (삭제 요청)
-                                                 ↓
-                                             DELETED
-                                                 ↓
-                                           (복구 요청)
-                                                 ↓
-                                        READY (visibility 복원)
-```
-
-### 8.2 Artwork.visibility (READY 상태에서만 변경 가능, 노출 위치 조합에서 계산)
+### 8.2 Artwork.visibility (DELETED가 아니면 변경 가능 — PROCESSING·FAILED에서도 된다. 노출 위치 조합에서 계산)
 
 ```
 PUBLIC ◀──▶ PRIVATE   (피드 공개 ON/OFF 2값, 자유롭게 전환)
