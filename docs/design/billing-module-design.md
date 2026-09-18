@@ -36,9 +36,10 @@ Customer Portal의 "요금제 변경"이 Product 단위로 전환 가능한 Pric
 ## 3. 모듈 경계
 
 ```
-recruit  ──consume()──▶  billing  ──findById()──▶  member
-artwork  ──hasProPlan()─▶
-company  ──implements──▶  billing.CompanyAccountPort
+recruit    ──consume()───▶  billing  ──findById()──▶  member
+artwork    ──hasProPlan()─▶
+portfolio  ──hasProPlan()─▶
+company    ──implements──▶  billing.CompanyAccountPort
 ```
 
 - `BillingService`가 유일한 공개 포트다. 다른 모듈은 구독 테이블·entitlement 테이블을 직접 보지 않는다.
@@ -90,6 +91,8 @@ CTA 상태는 `AVAILABLE`(구매 가능) / `CURRENT`(이용 중) / `CHANGE`(다�
 | `billing_entitlement_ledgers` | 잔량 변동 원장(append-only). `PURCHASE`/`CONSUME`/`REFUND_REVOKE` |
 | `billing_webhook_events` | 웹훅 멱등 테이블. event id 선삽입 |
 
+`billing_subscriptions.last_modified_by`는 V36(`V36__audit_last_modified_by.sql`)이 감사 목적으로 추가했다.
+
 ## 6. 웹훅 처리
 
 | 이벤트 | 처리 |
@@ -116,16 +119,20 @@ CTA 상태는 `AVAILABLE`(구매 가능) / `CURRENT`(이용 중) / `CHANGE`(다�
 | 끌어올리기 | `BOOST` 1개 차감 | `boost()` 성공 후(쿨다운 위반이면 미차감) |
 | 작품 업로드·휴지통 복구 | 스타터는 보유 4개 초과 불가 | `ArtworkServiceImpl.assertArtworkQuota` |
 | 프로 구독 구매 | 기업 계정 불가 | `BillingServiceImpl.assertSubscribable` |
+| 공유 포트폴리오 생성·수정 | 프로 구독 | `PortfolioServiceImpl.assertPro` → `PRO_PLAN_REQUIRED` |
+| 작품 다국어 노출(언어 2개 이상) | 프로 구독 | `ArtworkServiceImpl` 언어 검증 → `MULTI_LANGUAGE_REQUIRES_PRO` |
 
 차감은 게시 트랜잭션 안에서 수행하므로 게시가 실패하면 차감도 함께 롤백된다.
-공유 포트폴리오·다국어 노출 게이팅은 해당 기능이 아직 없어 `plans/260813-pro-plan-gating/`으로 분리했다.
+프로 게이팅은 billing이 `hasProPlan(memberId)` boolean만 주고, 403 예외는 소비 모듈이 자기 에러 코드로 던진다 —
+billing에 portfolio·artwork 규칙을 넣지 않기 위해서다. `hasProPlan`은 구독이 ACTIVE일 때만 true다(PAST_DUE는 false).
 
 ## 8. 에러 코드
 
 | 코드 | 상태 | 상황 |
 |------|------|------|
 | `ENTITLEMENT_REQUIRED` | 403 | 단건 상품 보유 없음 → 구매 유도 모달 |
-| `PRO_PLAN_REQUIRED` | 403 | 프로 전용 기능 |
+| `PRO_PLAN_REQUIRED` | 403 | 공유 포트폴리오 생성·수정(portfolio 모듈 코드) |
+| `MULTI_LANGUAGE_REQUIRES_PRO` | 403 | 스타터의 다국어 선택(artwork 모듈 코드) |
 | `SUBSCRIPTION_NOT_ALLOWED` | 403 | 기업 계정의 구독 시도 |
 | `ALREADY_SUBSCRIBED` | 409 | 같은 플랜 중복 구매 |
 | `SUBSCRIPTION_CHANGE_VIA_PORTAL` | 409 | 월↔연 변경은 포털에서 |
