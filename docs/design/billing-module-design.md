@@ -51,6 +51,22 @@ company  ──implements──▶  billing.CompanyAccountPort
 
 ## 4. API
 
+요청부터 웹훅 반영, 플랜 게이팅까지의 전체 흐름이다.
+
+![결제·구독 흐름](../assets/billing-checkout.svg)
+
+- 구독 결제로 PRO가 되는 시점은 `customer.subscription.created`/`updated` 웹훅을 처리한 뒤다.
+  `checkout.session.completed`는 단건 결제(`mode=payment`)만 처리한다.
+- 웹훅은 event id를 먼저 저장해 중복 전송을 무시하고, `stripe_updated_at`보다 오래된 구독 이벤트는 버린다.
+  처리 중 예외가 나면 전체를 롤백하고 5xx로 응답해 Stripe 재전송에 맡긴다.
+- Portal 세션을 만들 때 configuration을 넘기지 않는다. 취소가 즉시 해지인지 기간 말 해지인지는 Stripe
+  대시보드의 Portal 설정이 정한다.
+- `hasProPlan`은 ACTIVE일 때만 true다. `invoice.payment_failed`를 받으면 곧바로 PAST_DUE가 되어 유예 없이
+  false가 된다.
+
+원본은 [`docs/assets/billing-checkout.sequence.json`](../assets/billing-checkout.sequence.json)(archify IR)이다.
+고친 뒤 `python3 scripts/diagrams/build.py billing-checkout`으로 SVG를 다시 만든다.
+
 | 메서드 | 경로 | 인증 | 설명 |
 |--------|------|------|------|
 | GET | `/api/billing/catalog` | 불필요 | 상품 5종의 가격·정가·통화·CTA 상태 |

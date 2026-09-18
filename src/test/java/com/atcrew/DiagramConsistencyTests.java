@@ -100,7 +100,7 @@ class DiagramConsistencyTests {
                 if (!irText.contains(text)) {
                     problems.add(anchorsFile + ": '" + text + "' 가 " + ir + " 에 없다 — 그림에 없는 것은 앵커로 두지 않는다");
                 }
-                if (!Files.isDirectory(scope)) {
+                if (!Files.exists(scope)) {
                     problems.add(anchorsFile + ": 경로 " + scope + " 가 없다");
                 } else if (!containsText(scope, text)) {
                     problems.add(anchorsFile + ": '" + text + "' 가 " + scope + " 아래 코드에 없다 — 이름이 바뀌었으면 IR과 앵커를 함께 고친다");
@@ -195,8 +195,9 @@ class DiagramConsistencyTests {
         }
     }
 
-    private static boolean containsText(Path dir, String text) throws IOException {
-        try (Stream<Path> files = Files.walk(dir)) {
+    /** path는 디렉터리(아래 파일 전부)나 파일 하나를 가리킨다. 흔한 문자열이면 파일로 좁혀야 의미가 있다. */
+    private static boolean containsText(Path path, String text) throws IOException {
+        try (Stream<Path> files = Files.walk(path)) {
             return files.filter(Files::isRegularFile).anyMatch(f -> readText(f).contains(text));
         }
     }

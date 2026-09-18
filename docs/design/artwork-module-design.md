@@ -536,6 +536,24 @@ public void onMemberDeactivated(MemberDeactivatedEvent event) {
 
 ### 8.1 Artwork.status
 
+![작품 상태 전이](../assets/artwork-status.svg)
+
+- 상태는 이미지 처리 현황으로 계산한다(`resolveStatusFromImages`). PENDING이 있으면 PROCESSING, 없고 DONE이
+  한 장이라도 있으면 READY(부분 실패 허용), 둘 다 아니면 FAILED다. `restore`도 같은 규칙으로 다시 계산하므로
+  READY가 아니라 PROCESSING이나 FAILED로 돌아갈 수 있다.
+- 휴지통 이동은 PROCESSING·FAILED에서도 된다(그림은 READY에서만 그렸다). 휴지통에 있는 동안 도착한 콜백은
+  이미지만 갱신하고 작품 상태는 바꾸지 않는다.
+- `ImageRetryScheduler`는 Worker를 다시 부를 뿐 작품 상태를 바꾸지 않는다. 콜백이 서버에 닿지 않는 동안 작품은
+  PROCESSING에 머무는데, 이는 의도된 동작이다. 재시도가 유일한 자동 복구 수단이고, PENDING 잔량 알람(P2)이 장애를
+  드러낸다. 원본·용량 문제는 Worker가 FAILED 콜백을 보내 FAILED로 끝난다.
+- 기획의 "휴지통 1년 뒤 자동 영구 삭제"는 코드에 스케줄러가 없다([#178](https://github.com/pack-in/at-crew-backend/issues/178)).
+
+원본은 [`docs/assets/artwork-status.lifecycle.json`](../assets/artwork-status.lifecycle.json)(archify IR)이다.
+고친 뒤 `python3 scripts/diagrams/build.py artwork-status`로 SVG를 다시 만든다.
+
+> 아래 ASCII는 그림 이전의 기록이다. 복구 후 상태를 항상 READY로 적은 것, 이미지 교체로 PROCESSING에 돌아가는
+> 전이가 빠진 것이 코드와 다르다. 그림이 코드 기준이다.
+
 ```
 [업로드 완료]
      ↓

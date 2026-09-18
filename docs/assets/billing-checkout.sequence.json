@@ -1,0 +1,265 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "결제·구독 흐름 (Stripe)",
+    "viewBox": [
+      960,
+      1220
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase",
+    "legend": {
+      "entries": {
+        "emphasis": {
+          "label": "요청"
+        },
+        "return": {
+          "label": "응답"
+        },
+        "security": {
+          "label": "보안 검증"
+        },
+        "dashed": {
+          "label": "비동기"
+        },
+        "default": {
+          "label": "내부 호출"
+        }
+      }
+    }
+  },
+  "participants": [
+    {
+      "id": "client",
+      "type": "frontend",
+      "label": "클라이언트",
+      "sublabel": "웹"
+    },
+    {
+      "id": "billing",
+      "type": "backend",
+      "label": "billing",
+      "sublabel": "BillingServiceImpl"
+    },
+    {
+      "id": "webhook",
+      "type": "backend",
+      "label": "billing 웹훅",
+      "sublabel": "BillingWebhookService"
+    },
+    {
+      "id": "db",
+      "type": "database",
+      "label": "MariaDB",
+      "sublabel": "billing_*"
+    },
+    {
+      "id": "stripe",
+      "type": "external",
+      "label": "Stripe",
+      "sublabel": "Checkout / Portal"
+    },
+    {
+      "id": "consumer",
+      "type": "backend",
+      "label": "소비 모듈",
+      "sublabel": "artwork·portfolio·recruit"
+    }
+  ],
+  "segments": [
+    {
+      "from": 150,
+      "to": 420,
+      "label": "Checkout"
+    },
+    {
+      "from": 436,
+      "to": 730,
+      "label": "웹훅 반영"
+    },
+    {
+      "from": 746,
+      "to": 840,
+      "label": "복귀 확인"
+    },
+    {
+      "from": 856,
+      "to": 1010,
+      "label": "구독 관리"
+    },
+    {
+      "from": 1026,
+      "to": 1120,
+      "label": "플랜 게이팅"
+    }
+  ],
+  "messages": [
+    {
+      "from": "client",
+      "to": "billing",
+      "y": 180,
+      "label": "POST /api/billing/checkout-sessions",
+      "variant": "emphasis"
+    },
+    {
+      "from": "billing",
+      "to": "db",
+      "y": 226,
+      "label": "billing_customers 조회",
+      "variant": "default",
+      "note": "없으면 Stripe Customer 생성 후 저장"
+    },
+    {
+      "from": "billing",
+      "to": "stripe",
+      "y": 272,
+      "label": "checkout.sessions.create",
+      "variant": "default",
+      "note": "metadata memberId, product"
+    },
+    {
+      "from": "billing",
+      "to": "client",
+      "y": 314,
+      "label": "checkoutUrl",
+      "variant": "return"
+    },
+    {
+      "from": "client",
+      "to": "stripe",
+      "y": 356,
+      "label": "Checkout 페이지에서 결제",
+      "variant": "emphasis"
+    },
+    {
+      "from": "stripe",
+      "to": "client",
+      "y": 398,
+      "label": "/billing/success 리다이렉트",
+      "variant": "return"
+    },
+    {
+      "from": "stripe",
+      "to": "webhook",
+      "y": 466,
+      "label": "POST /internal/billing/stripe/webhook",
+      "variant": "security",
+      "note": "Stripe-Signature 검증, 실패 시 400"
+    },
+    {
+      "from": "webhook",
+      "to": "db",
+      "y": 522,
+      "label": "billing_webhook_events 선삽입",
+      "variant": "default",
+      "note": "이미 있는 event id면 바로 204"
+    },
+    {
+      "from": "webhook",
+      "to": "db",
+      "y": 578,
+      "label": "구독 upsert",
+      "variant": "emphasis",
+      "note": "customer.subscription.*, 더 오래된 이벤트는 무시"
+    },
+    {
+      "from": "webhook",
+      "to": "db",
+      "y": 634,
+      "label": "이용권 +1",
+      "variant": "default",
+      "note": "checkout.session.completed, 단건 결제만"
+    },
+    {
+      "from": "webhook",
+      "to": "stripe",
+      "y": 690,
+      "label": "204",
+      "variant": "return",
+      "note": "예외 시 전체 롤백 후 5xx, Stripe가 재전송"
+    },
+    {
+      "from": "client",
+      "to": "billing",
+      "y": 776,
+      "label": "GET /api/billing/me 폴링",
+      "variant": "dashed"
+    },
+    {
+      "from": "billing",
+      "to": "client",
+      "y": 818,
+      "label": "plan · status · balances",
+      "variant": "return"
+    },
+    {
+      "from": "client",
+      "to": "billing",
+      "y": 886,
+      "label": "POST /api/billing/portal-sessions",
+      "variant": "emphasis"
+    },
+    {
+      "from": "billing",
+      "to": "client",
+      "y": 928,
+      "label": "portalUrl",
+      "variant": "return"
+    },
+    {
+      "from": "stripe",
+      "to": "webhook",
+      "y": 970,
+      "label": "customer.subscription.updated / deleted",
+      "variant": "dashed",
+      "note": "즉시 해지인지 기간 말 해지인지는 Stripe Portal 설정이 정한다"
+    },
+    {
+      "from": "consumer",
+      "to": "billing",
+      "y": 1056,
+      "label": "hasProPlan / consume",
+      "variant": "default"
+    },
+    {
+      "from": "billing",
+      "to": "consumer",
+      "y": 1098,
+      "label": "PRO 아님 · 잔량 0이면 403",
+      "variant": "return"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "billing",
+      "from": 174,
+      "to": 322,
+      "type": "backend"
+    },
+    {
+      "participant": "webhook",
+      "from": 460,
+      "to": 698,
+      "type": "backend"
+    },
+    {
+      "participant": "billing",
+      "from": 770,
+      "to": 826,
+      "type": "backend"
+    },
+    {
+      "participant": "billing",
+      "from": 880,
+      "to": 936,
+      "type": "backend"
+    },
+    {
+      "participant": "billing",
+      "from": 1050,
+      "to": 1106,
+      "type": "backend"
+    }
+  ]
+}

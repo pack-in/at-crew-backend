@@ -1,0 +1,225 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "프로덕션 배포 파이프라인",
+    "quality_profile": "showcase",
+    "legend": {
+      "entries": {
+        "external": {
+          "label": "트리거·통지"
+        },
+        "backend": {
+          "label": "실행 단계"
+        },
+        "cloud": {
+          "label": "이미지 저장소"
+        },
+        "security": {
+          "label": "검증·게이트"
+        },
+        "messagebus": {
+          "label": "복구 조치"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "actions",
+      "label": "GitHub Actions (main push)"
+    },
+    {
+      "id": "server",
+      "label": "EC2 (SSM으로 원격 실행)"
+    },
+    {
+      "id": "failure",
+      "label": "헬스체크 실패 처리",
+      "variant": "exception"
+    },
+    {
+      "id": "notify",
+      "label": "Discord 통지"
+    }
+  ],
+  "phases": [
+    {
+      "id": "build",
+      "label": "빌드와 이미지",
+      "fromCol": 0,
+      "toCol": 2
+    },
+    {
+      "id": "release",
+      "label": "서버 반영",
+      "fromCol": 3,
+      "toCol": 4,
+      "variant": "emphasis"
+    },
+    {
+      "id": "verify",
+      "label": "검증",
+      "fromCol": 5,
+      "toCol": 5,
+      "variant": "dashed"
+    }
+  ],
+  "mainPath": [
+    "push",
+    "build",
+    "image",
+    "sync",
+    "up",
+    "health",
+    "ok"
+  ],
+  "nodes": [
+    {
+      "id": "push",
+      "lane": "actions",
+      "col": 0,
+      "type": "external",
+      "label": "main push",
+      "sublabel": "deploy-prod 직렬"
+    },
+    {
+      "id": "build",
+      "lane": "actions",
+      "col": 1,
+      "type": "backend",
+      "label": "빌드 및 테스트",
+      "sublabel": "./gradlew build"
+    },
+    {
+      "id": "image",
+      "lane": "actions",
+      "col": 2,
+      "type": "cloud",
+      "label": "이미지 푸시",
+      "sublabel": "SHA + latest"
+    },
+    {
+      "id": "sync",
+      "lane": "server",
+      "col": 3,
+      "type": "security",
+      "label": "deploy/ 동기화",
+      "sublabel": "nginx -t 후 reload",
+      "width": 132
+    },
+    {
+      "id": "up",
+      "lane": "server",
+      "col": 4,
+      "type": "backend",
+      "label": "컨테이너 교체",
+      "sublabel": "up -d, 기동 시 Flyway",
+      "width": 132
+    },
+    {
+      "id": "health",
+      "lane": "server",
+      "col": 5,
+      "type": "security",
+      "label": "헬스체크",
+      "sublabel": "liveness 36회 × 5초",
+      "width": 132
+    },
+    {
+      "id": "mig",
+      "lane": "failure",
+      "col": 4,
+      "type": "security",
+      "label": "마이그레이션 판정",
+      "sublabel": "추가된 V 파일?",
+      "width": 132
+    },
+    {
+      "id": "rollback",
+      "lane": "failure",
+      "col": 3,
+      "type": "messagebus",
+      "label": "직전 이미지로 롤백",
+      "sublabel": "실행 중이던 이미지",
+      "width": 132
+    },
+    {
+      "id": "fail",
+      "lane": "notify",
+      "col": 2,
+      "type": "external",
+      "label": "P1 배포 실패",
+      "sublabel": "롤백 결과 · 수동 대응",
+      "width": 132
+    },
+    {
+      "id": "ok",
+      "lane": "notify",
+      "col": 5,
+      "type": "external",
+      "label": "P2 배포 성공"
+    }
+  ],
+  "edges": [
+    {
+      "from": "push",
+      "to": "build",
+      "role": "main"
+    },
+    {
+      "from": "build",
+      "to": "image",
+      "role": "main"
+    },
+    {
+      "from": "image",
+      "to": "sync",
+      "role": "main",
+      "label": "SSM"
+    },
+    {
+      "from": "sync",
+      "to": "up",
+      "role": "main"
+    },
+    {
+      "from": "up",
+      "to": "health",
+      "role": "main"
+    },
+    {
+      "from": "health",
+      "to": "ok",
+      "role": "main",
+      "label": "UP"
+    },
+    {
+      "from": "health",
+      "to": "mig",
+      "role": "error",
+      "variant": "security",
+      "label": "3분 초과"
+    },
+    {
+      "from": "mig",
+      "to": "rollback",
+      "role": "error",
+      "label": "없음"
+    },
+    {
+      "from": "mig",
+      "to": "fail",
+      "role": "error",
+      "variant": "security",
+      "label": "있음: 롤백 안 함"
+    },
+    {
+      "from": "rollback",
+      "to": "fail",
+      "role": "return",
+      "variant": "dashed",
+      "label": "결과 통지"
+    }
+  ]
+}
