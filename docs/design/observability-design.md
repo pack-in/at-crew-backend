@@ -209,6 +209,19 @@ Stripe 웹훅 **처리 실패**는 따로 세지 않는다 — 서명 검증 실
 
 ## 9. 배포 안전장치
 
+![프로덕션 배포 파이프라인](../assets/deploy.svg)
+
+그림은 `.github/workflows/deploy.yml`의 현재 코드 기준이다. 아래 설계 목록과 다른 점은 다음과 같다.
+
+- 롤백 대상은 "직전 성공 SHA 이미지"가 아니라 배포 직전에 **실행 중이던** app 컨테이너 이미지다.
+- 마이그레이션 판정은 새로 추가된 파일만 본다(`--diff-filter=A`). 기존 마이그레이션을 수정한 배포는 "없음"으로 판정된다.
+- 헬스체크 이전 단계(빌드·테스트, SSM 연결, deploy/ 동기화, 컨테이너 교체)에서 실패하면 롤백 판정을 거치지 않는다.
+  이때 Discord에는 "배포 실패 — 롤백도 실패"가 나간다([#177](https://github.com/pack-in/at-crew-backend/issues/177)).
+- 롤백은 DB 스키마, deploy/ 동기화로 바뀐 nginx 설정, 이미 푸시된 `latest` 태그를 되돌리지 않는다.
+
+원본은 [`docs/assets/deploy.workflow.json`](../assets/deploy.workflow.json)(archify IR)이다.
+고친 뒤 `python3 scripts/diagrams/build.py deploy`로 SVG를 다시 만든다.
+
 `.github/workflows/deploy.yml` 확장:
 
 1. 배포 시작 → Grafana silence(10분) 생성.

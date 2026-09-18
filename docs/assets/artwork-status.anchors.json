@@ -1,0 +1,36 @@
+{
+  "anchors": [
+    {
+      "text": "ArtworkStatus",
+      "path": "src/main/java/com/atcrew/artwork"
+    },
+    {
+      "text": "PROCESSING",
+      "path": "src/main/java/com/atcrew/artwork"
+    },
+    {
+      "text": "READY",
+      "path": "src/main/java/com/atcrew/artwork"
+    },
+    {
+      "text": "FAILED",
+      "path": "src/main/java/com/atcrew/artwork"
+    },
+    {
+      "text": "DELETED",
+      "path": "src/main/java/com/atcrew/artwork"
+    },
+    {
+      "text": "uploadArtwork",
+      "path": "src/main/java/com/atcrew/artwork"
+    },
+    {
+      "text": "moveToTrash",
+      "path": "src/main/java/com/atcrew/artwork"
+    },
+    {
+      "text": "restore",
+      "path": "src/main/java/com/atcrew/artwork"
+    }
+  ]
+}

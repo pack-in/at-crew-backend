@@ -1,0 +1,56 @@
+{
+  "anchors": [
+    {
+      "text": "/api/billing",
+      "path": "src/main/java/com/atcrew/billing"
+    },
+    {
+      "text": "/checkout-sessions",
+      "path": "src/main/java/com/atcrew/billing"
+    },
+    {
+      "text": "/portal-sessions",
+      "path": "src/main/java/com/atcrew/billing"
+    },
+    {
+      "text": "/internal/billing/stripe",
+      "path": "src/main/java/com/atcrew/billing"
+    },
+    {
+      "text": "/billing/success",
+      "path": "src/main/java/com/atcrew/billing"
+    },
+    {
+      "text": "Stripe-Signature",
+      "path": "src/main/java/com/atcrew/billing"
+    },
+    {
+      "text": "billing_customers",
+      "path": "src/main/java/com/atcrew/billing"
+    },
+    {
+      "text": "billing_webhook_events",
+      "path": "src/main/java/com/atcrew/billing"
+    },
+    {
+      "text": "checkout.session.completed",
+      "path": "src/main/java/com/atcrew/billing"
+    },
+    {
+      "text": "customer.subscription.updated",
+      "path": "src/main/java/com/atcrew/billing"
+    },
+    {
+      "text": "hasProPlan",
+      "path": "src/main/java/com/atcrew/billing"
+    },
+    {
+      "text": "BillingServiceImpl",
+      "path": "src/main/java/com/atcrew/billing"
+    },
+    {
+      "text": "BillingWebhookService",
+      "path": "src/main/java/com/atcrew/billing"
+    }
+  ]
+}
