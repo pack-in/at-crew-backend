@@ -267,7 +267,7 @@ Body: {
 ## 7. Worker 트리거 / 재시도 / 정리
 
 작품 이미지를 예로 든 전체 흐름이다. presign 발급부터 콜백 반영, 재시도까지 한 장에 담았다.
-트리거가 호출자 트랜잭션 커밋 전에 출발하는 문제는 [#174](https://github.com/pack-in/at-crew-backend/issues/174)에서 다룬다.
+Worker 트리거는 호출자 트랜잭션이 커밋된 뒤에만 나간다([#174](https://github.com/pack-in/at-crew-backend/issues/174)). 예전에는 커밋 전에 나가서 콜백이 커밋보다 먼저 오면 버려지고, 롤백돼도 외부 변환이 진행됐다.
 
 ![작품 이미지 업로드 파이프라인](../assets/artwork-upload.svg)
 
@@ -284,6 +284,9 @@ void triggerAsync(MediaOwnerType ownerType, String ownerId, List<String> imageKe
     storagePort.triggerWorker(ownerType, ownerId, imageKeys, variantProfile, qualityTier);
 }
 ```
+
+`registerAndTriggerProcessing`은 이 메서드를 바로 부르지 않고 호출자 트랜잭션의 `afterCommit`에 등록한다(#174).
+외부 호출은 되돌릴 수 없으므로 자산 행이 커밋된 뒤에만 보낸다. 트랜잭션 밖(재시도 스케줄러)에서는 바로 부른다.
 
 `R2StorageAdapter.triggerWorker`의 요청 바디가 `{"artworkId":..., "imageKeys":[...]}`에서
 `{"ownerType":..., "ownerId":..., "imageKeys":[...], "variantProfile":..., "qualityTier":...}`로 바뀐다 —

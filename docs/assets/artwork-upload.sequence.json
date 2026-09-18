@@ -150,9 +150,9 @@
       "from": "media",
       "to": "worker",
       "y": 530,
-      "label": "@Async 트리거 (커밋 전 출발)",
+      "label": "@Async 트리거 (커밋 후)",
       "variant": "dashed",
-      "note": "uploadArtwork 트랜잭션 안에서 호출 (#174)"
+      "note": "afterCommit에 등록, 롤백되면 나가지 않음"
     },
     {
       "from": "artwork",
@@ -183,7 +183,7 @@
       "y": 748,
       "label": "자산 DONE / FAILED",
       "variant": "default",
-      "note": "자산이 아직 안 보이면 무시, 재시도로 복구 (#174)"
+      "note": "자산이 없으면 WARN 후 무시"
     },
     {
       "from": "media",
@@ -250,32 +250,6 @@
       "from": 784,
       "to": 840,
       "type": "backend"
-    }
-  ],
-  "cards": [
-    {
-      "dot": "cyan",
-      "title": "서버를 거치지 않는 업로드",
-      "items": [
-        "원본 바이트는 클라이언트에서 R2로 바로 간다",
-        "서버는 presigned URL만 발급한다"
-      ]
-    },
-    {
-      "dot": "amber",
-      "title": "부분 실패 허용",
-      "items": [
-        "PENDING이 없고 DONE이 하나 이상이면 READY",
-        "전량 실패면 FAILED로 끝낸다"
-      ]
-    },
-    {
-      "dot": "rose",
-      "title": "자력 복구",
-      "items": [
-        "콜백이 유실돼도 PENDING 자산은 재트리거된다",
-        "실패 사유는 저장하지 않고 WARN 로그로만 남긴다"
-      ]
     }
   ]
 }
