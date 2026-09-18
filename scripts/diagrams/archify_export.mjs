@@ -138,7 +138,13 @@ async function main() {
     ws?.close();
     await shutdown(chrome, wsUrl);
     debug('chrome 종료');
-    fs.rmSync(profile, { recursive: true, force: true });
+    // 메인 프로세스를 끝내도 Helper가 잠깐 프로필에 파일을 써서 삭제가 ENOTEMPTY로 실패할 수 있다.
+    // 재시도하고, 그래도 남으면 경고만 한다 — 임시 폴더 정리 실패로 추출 결과를 버리지 않는다.
+    try {
+      fs.rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    } catch (err) {
+      console.error(`임시 Chrome 프로필을 지우지 못했다(무시): ${profile} ${err.code ?? err.message}`);
+    }
   }
 }
 
