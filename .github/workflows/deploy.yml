@@ -179,12 +179,17 @@ jobs:
         run: |
           STARTS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           ENDS=$(date -u -d '+10 minutes' +%Y-%m-%dT%H:%M:%SZ)
-          ID=$(curl -sS -X POST "$GRAFANA_URL/api/alertmanager/grafana/api/v2/silences" \
+          # matcher value는 ".*"가 아니라 ".+"여야 한다 — Grafana가 빈 문자열까지 매칭되는
+          # 정규식은 400으로 거부한다("at least one matcher must not match the empty string").
+          # 이 버그로 지금까지의 배포에서 silence 생성이 전부 조용히 실패해왔다(2026-09-19 발견).
+          RESPONSE=$(curl -sS -X POST "$GRAFANA_URL/api/alertmanager/grafana/api/v2/silences" \
             -H "Authorization: Bearer $GRAFANA_API_KEY" -H 'Content-Type: application/json' \
-            -d "{\"matchers\":[{\"name\":\"alertname\",\"value\":\".*\",\"isRegex\":true}],
+            -d "{\"matchers\":[{\"name\":\"alertname\",\"value\":\".+\",\"isRegex\":true}],
                  \"startsAt\":\"$STARTS\",\"endsAt\":\"$ENDS\",
-                 \"createdBy\":\"github-actions\",\"comment\":\"deploy ${{ github.sha }}\"}" \
-            | python3 -c 'import sys,json; print(json.load(sys.stdin).get("silenceID",""))' || true)
+                 \"createdBy\":\"github-actions\",\"comment\":\"deploy ${{ github.sha }}\"}")
+          ID=$(echo "$RESPONSE" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("silenceID",""))' 2>/dev/null || true)
+          # 실패해도 배포는 계속 진행하지만(continue-on-error), 다시 조용히 묻히지 않도록 경고를 남긴다.
+          [ -n "$ID" ] || echo "::warning::알람 억제(silence) 생성 실패 — 응답: $RESPONSE"
           echo "id=$ID" >> "$GITHUB_OUTPUT"
 
       - name: EC2 재기동 (deploy.sh 2/3 단계와 동일 절차)
