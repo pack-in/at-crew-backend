@@ -204,7 +204,8 @@ public interface MediaService {
 
 교체·삭제(`findByOwnerForUpdate`)와 Worker 콜백(`findByOwnerAndOriginalKeyForUpdate`)은 자산 행을 잠근 뒤 읽는다.
 콜백이 먼저면 삭제 쪽이 콜백이 기록한 변형본을 보고 고아로 넘기고, 삭제가 먼저면 콜백은 행이 없다고 보고
-변형본을 고아로 넘긴다. 콜백은 한 행만, 교체·삭제는 한 소유자의 행을 ordinal 순으로 잠가 서로 기다리는 순환이 없다.
+변형본을 고아로 넘긴다. 두 쿼리 모두 `idx_ma_owner(owner_type, owner_id, ordinal)`를 ordinal 순으로 훑으며 소유자의 행 전체를
+잠그므로(콜백도 한 행이 아니라 소유자 범위를 잠근다) 잠금 순서가 같아 순환이 없다. 대신 한 소유자의 콜백은 직렬화된다.
 
 public record PresignedUrlInfo(String key, String uploadUrl);
 

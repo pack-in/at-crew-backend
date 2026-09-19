@@ -47,9 +47,8 @@ class ArtworkPurger {
      * 소유 검증이 생길 때까지 R2에 남는다(누수를 감수한다). 사용자 지정 썸네일 key에도 같은 검증 공백이 있다(#190).
      *
      * <p>지정 썸네일은 이미지 처리 대상이 아니라 media_assets에 행이 없어, 여기서 빠지면 어디서도
-     * 지워지지 않고 R2에 남는다. 더 중요한 것은 고정형 스냅샷 보존 판정이 이 key로 스냅샷을 찾는다는
-     * 점이다({@code PortfolioItemSnapshot.thumb_key}) — 후보 목록에 없으면 스냅샷이 매칭되지 않아
-     * 그 스냅샷이 참조 중인 상세 이미지까지 삭제된다(docs/design/portfolio-module-design.md §5.6).
+     * 지워지지 않고 R2에 남는다 — 후보에 넣는 이유는 이 파일 정리뿐이다. 보존 판정은 V41 색인으로 key마다
+     * 조회하므로 후보 구성과 무관하다(docs/design/portfolio-module-design.md §5.6).
      */
     private List<String> allImageKeys(Artwork artwork) {
         Stream<String> imageKeys = artwork.getImages().stream()

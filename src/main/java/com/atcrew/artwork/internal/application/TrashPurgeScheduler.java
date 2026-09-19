@@ -49,7 +49,7 @@ public class TrashPurgeScheduler {
     private final ArtworkPurger artworkPurger;
     private final Period retention;
     private final TransactionTemplate perArtwork;
-    /** 최근 실패한 작품 id → 다시 시도할 시각. 스케줄 실행은 fixedDelay라 한 번에 한 스레드만 접근한다. */
+    /** 최근 실패한 작품 id → 다시 시도할 시각. 접근은 synchronized인 purgeExpiredTrash 안에서만 한다. */
     private final Map<String, Instant> skipUntil = new LinkedHashMap<>();
 
     /**
@@ -72,7 +72,7 @@ public class TrashPurgeScheduler {
 
     /** @return 이번 실행에서 영구 삭제한 작품 수 */
     @Scheduled(fixedDelay = 3_600_000, initialDelay = 600_000)
-    public int purgeExpiredTrash() {
+    public synchronized int purgeExpiredTrash() {
         Instant now = Instant.now();
         Instant threshold = thresholdAt(now, retention);
         skipUntil.values().removeIf(until -> !until.isAfter(now));
