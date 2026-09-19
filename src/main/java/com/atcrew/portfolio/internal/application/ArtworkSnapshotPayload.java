@@ -5,6 +5,10 @@ import com.atcrew.artwork.ArtworkRole;
 import com.atcrew.artwork.MaterialInfo;
 
 import java.util.List;
+import java.util.stream.Stream;
+import java.util.stream.Collectors;
+import java.util.Set;
+import java.util.LinkedHashSet;
 
 /**
  * 고정형 스냅샷의 상세 본문 페이로드 (docs/design/portfolio-module-design.md §2.3).
@@ -28,4 +32,19 @@ record ArtworkSnapshotPayload(
         String description,              // 작품 설명
         Integer representativeImageIndex // 대표 이미지 인덱스 — images 기준. 구버전 payload는 null일 수 있다
 ) {
+
+    /**
+     * 스냅샷이 참조하는 R2 key — 카드 썸네일 2종과 본문 이미지 4종. 보존 판정 색인(portfolio_snapshot_media_keys)에 넣는다.
+     * V41의 기존 행 채우기 SQL이 같은 경로를 JSON_TABLE로 읽으므로, 필드를 추가하면 둘을 함께 고친다.
+     *
+     * <p>자료 첨부 key는 넣지 않는다. 소유 검증 없이 저장되는 클라이언트 입력이라(#190), 색인에 넣으면 남의 key를 첨부로
+     * 넣어 그 파일의 삭제를 무기한 막을 수 있다. 첨부는 영구 삭제 대상도 아니므로 보존할 일도 없다.
+     */
+    Set<String> referencedMediaKeys(String cardThumbKey, String cardThumbAdultKey) {
+        Stream<String> imageKeys = images == null ? Stream.empty() : images.stream().flatMap(img -> Stream.of(
+                img.originalKey(), img.thumbKey(), img.thumbAdultKey(), img.originalAvifKey()));
+        return Stream.concat(Stream.of(cardThumbKey, cardThumbAdultKey), imageKeys)
+                .filter(k -> k != null && !k.isBlank())
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
 }

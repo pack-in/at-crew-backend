@@ -112,16 +112,24 @@ jobs:
           set -e
           cd /home/ec2-user/at-crew-backend
           sudo -u ec2-user git fetch origin ${{ github.sha }} --depth=1 -q
-          BEFORE=\$(md5sum deploy/nginx/api.at-crew.com.conf | cut -d' ' -f1)
           sudo -u ec2-user git checkout -f ${{ github.sha }} -- deploy/
-          AFTER=\$(md5sum deploy/nginx/api.at-crew.com.conf | cut -d' ' -f1)
           echo "동기화 완료: \$(sudo -u ec2-user git log -1 --format=%h ${{ github.sha }})"
           # nginx는 한 프로세스가 한 설정을 읽는다 — 443 블록이 깨지면 80까지 같이 죽는다.
           # 반드시 -t로 검증한 뒤에만 reload하고, 검증에 실패하면 배포를 멈춘다.
-          if [ "\$BEFORE" != "\$AFTER" ]; then
+          # 변경 판정은 레포 파일과 실제로 적용된 /etc 파일을 비교한다. 체크아웃 전후 레포 파일끼리 비교하면
+          # 검증 실패로 /etc를 되돌린 뒤 재실행했을 때 "변경 없음"으로 건너뛰어 새 설정이 영영 반영되지 않는다.
+          if ! sudo cmp -s deploy/nginx/api.at-crew.com.conf /etc/nginx/conf.d/api.at-crew.com.conf; then
             echo "nginx 설정이 바뀌었다 — 검증 후 reload"
-            sudo cp deploy/nginx/api.at-crew.com.conf /etc/nginx/conf.d/api.at-crew.com.conf
-            sudo nginx -t
+            # 새 설정을 먼저 제자리에 놓아야 nginx -t가 전체 구성으로 검증한다. 검증에 실패하면 원래 파일로
+            # 되돌린다 — 그대로 두면 다음 재부팅·재시작 때 nginx가 뜨지 못해 80·443이 함께 내려간다.
+            CONF=/etc/nginx/conf.d/api.at-crew.com.conf
+            sudo rm -f /tmp/api.at-crew.com.conf.bak
+            if [ -f "\$CONF" ]; then sudo cp "\$CONF" /tmp/api.at-crew.com.conf.bak; fi
+            sudo cp deploy/nginx/api.at-crew.com.conf "\$CONF"
+            if ! sudo nginx -t; then
+              if [ -f /tmp/api.at-crew.com.conf.bak ]; then sudo cp /tmp/api.at-crew.com.conf.bak "\$CONF"; else sudo rm -f "\$CONF"; fi
+              echo "nginx -t 실패 — 원래 설정으로 되돌렸다"; exit 1
+            fi
             sudo systemctl reload nginx
             echo "nginx reload 완료"
           else
@@ -246,14 +254,15 @@ jobs:
           if [ -z "$BEFORE" ] || [ "$BEFORE" = "$PREV_IMAGE" ] || [ "$BEFORE" = "latest" ] \
              || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
             echo "직전 배포 커밋을 특정할 수 없어 마이그레이션이 있다고 간주한다(안전측): ${PREV_IMAGE:-없음}"
-            echo "has=true" >> "$GITHUB_OUTPUT"; exit 0
+            # 통지가 "마이그레이션 포함"과 구분할 수 있게 근거를 남긴다(deploy/deploy-notify.sh).
+            echo "has=true" >> "$GITHUB_OUTPUT"; echo "reason=unknown-base" >> "$GITHUB_OUTPUT"; exit 0
           fi
           echo "직전 배포 커밋: $BEFORE"
           CHANGED=$(git diff --name-only --diff-filter=A "$BEFORE" "${{ github.sha }}" \
             -- src/main/resources/db/migration || true)
           if [ -n "$CHANGED" ]; then
             echo "새 마이그레이션 발견:"; echo "$CHANGED"
-            echo "has=true" >> "$GITHUB_OUTPUT"
+            echo "has=true" >> "$GITHUB_OUTPUT"; echo "reason=detected" >> "$GITHUB_OUTPUT"
           else
             echo "새 마이그레이션 없음 — 자동 롤백 가능"
             echo "has=false" >> "$GITHUB_OUTPUT"
@@ -314,13 +323,24 @@ jobs:
           HEALTH: ${{ steps.health.outcome }}
           ROLLBACK: ${{ steps.rollback.outcome }}
           MIG_HAS: ${{ steps.mig.outputs.has }}
+          MIG_REASON: ${{ steps.mig.outputs.reason }}
           PREV_IMAGE: ${{ steps.prev.outputs.image }}
           ACTOR: ${{ github.actor }}
         run: |
           export SHA_SHORT=$(echo "${{ github.sha }}" | cut -c1-7)
-          RESULT=$(bash deploy/deploy-notify.sh)
-          LEVEL=$(echo "$RESULT" | sed -n 1p)
-          MSG=$(echo "$RESULT" | sed -n 2p)
+          # 분류 스크립트가 없거나(checkout 실패) 깨져도 통지는 나가야 한다 — 실패하면 P1 일반 메시지로 보낸다.
+          if RESULT=$(bash deploy/deploy-notify.sh 2>/tmp/notify-err) && [ "$(echo "$RESULT" | sed -n 1p)" != "" ]; then
+            LEVEL=$(echo "$RESULT" | sed -n 1p)
+            MSG=$(echo "$RESULT" | sed -n 2p)
+          else
+            echo "통지 분류 실패: $(cat /tmp/notify-err 2>/dev/null)"
+            # 서버를 건드렸는지는 step 결과로 안다 — 동기화·교체·헬스체크가 하나도 돌지 않았으면 P2다(#177).
+            case "$SYNC $RESTART $HEALTH" in
+              *success*|*failure*|*cancelled*) LEVEL=P1 ;;
+              *) LEVEL=P2 ;;
+            esac
+            MSG="**배포 결과 분류 실패** \`$SHA_SHORT\`\n통지 분류 스크립트가 실패했다. 배포가 어느 단계까지 갔는지 워크플로 로그로 확인 필요.\n$RUN_URL"
+          fi
           if [ "$LEVEL" = "P1" ]; then HOOK="$WEBHOOK_P1"; else HOOK="$WEBHOOK_P2"; fi
           echo "통지 등급 $LEVEL: $(printf '%b' "$MSG" | head -1)"
           [ -n "$HOOK" ] || { echo "웹훅 미설정 — 통지 생략"; exit 0; }

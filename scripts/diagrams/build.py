@@ -382,6 +382,9 @@ HA_ARIA = ("AT-CREW 고가용성 청사진. 서울 리전 VPC 안에 가용 영�
 
 # --------------------------------------------------------------------- modules
 
+# modules.svg의 data-source-sha256에 쓰는 태그. DiagramConsistencyTests가 같은 값으로 다시 계산한다.
+MERMAID_SOURCE_TAG = "mermaid"
+
 # htmlLabels를 켜두면 라벨이 foreignObject 안의 HTML로 나오고, 거기 닫히지 않은 <br>가
 # 남아 독립 SVG 파일이 XML로 파싱되지 않는다. 최상위에 꺼야 실제로 적용된다.
 MERMAID_HTML = """<!doctype html><meta charset="utf-8"><body><div id="out"></div>
@@ -450,6 +453,11 @@ def render_mermaid(mmd_path, out_path):
     if "foreignObject" in svg:
         sys.exit("foreignObject가 남았다. htmlLabels가 적용되지 않은 것이라 독립 SVG로 못 쓴다.")
 
+    # archify SVG와 같은 방식으로 원본 해시를 새긴다 — mmd만 고치고 SVG를 다시 만들지 않은 상태를
+    # DiagramConsistencyTests가 잡는다.
+    digest = source_sha256(MERMAID_SOURCE_TAG, mmd_path)
+    svg = re.sub(r"<svg\b", f'<svg data-source-sha256="{digest}"', svg, count=1)
+
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(svg)
     return out_path
@@ -467,6 +475,10 @@ def archify_targets():
     for fname in sorted(os.listdir(ASSETS)):
         m = re.fullmatch(r"(.+)\.(%s)\.json" % "|".join(ARCHIFY_TYPES), fname)
         if m:
+            # 이름이 같으면 SVG 하나를 두 IR이 나눠 쓰게 된다 — 하나는 조용히 무시되고 검사는 영원히 실패한다.
+            if m.group(1) in found:
+                sys.exit(f"archify IR 이름이 겹친다: {m.group(1)} ({found[m.group(1)][0]}, {m.group(2)}). "
+                         "SVG 이름이 IR 이름에서 나오므로 이름을 다르게 짓는다.")
             found[m.group(1)] = (m.group(2), os.path.join(ASSETS, fname))
     return found
 

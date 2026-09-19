@@ -1,5 +1,6 @@
 package com.atcrew.media;
 
+import java.util.Collection;
 import java.util.List;
 
 public interface MediaService {
@@ -13,8 +14,11 @@ public interface MediaService {
     void replaceAndTriggerProcessing(MediaOwnerType ownerType, String ownerId, List<String> newImageKeys,
                                      MediaVariantProfile variantProfile, MediaQualityTier qualityTier);
     List<MediaAssetInfo> getAssets(MediaOwnerType ownerType, String ownerId);
-    /** 소유자의 media_assets 행을 전부 제거한다. R2 파일 삭제는 호출자가 별도로 처리한다. */
-    void deleteAssetsForOwner(MediaOwnerType ownerType, String ownerId);
+    /**
+     * 소유자의 media_assets 행을 전부 제거하고, 행이 가리키던 파일 중 {@code handledKeys}에 없는 것을 고아 큐로 넘긴다.
+     * {@code handledKeys}는 호출자가 이미 지웠거나 고아 큐에 넣은 key다 — 같은 key를 두 번 적재하지 않기 위해 받는다.
+     */
+    void deleteAssetsForOwner(MediaOwnerType ownerType, String ownerId, Collection<String> handledKeys);
     void deleteFiles(List<String> keys);
     void markOrphaned(List<String> keys);
 }

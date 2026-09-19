@@ -3,18 +3,25 @@ package com.atcrew.portfolio.internal.domain;
 import com.atcrew.artwork.AgeRating;
 import com.atcrew.artwork.ArtworkField;
 import com.atcrew.common.id.UuidV7Generator;
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * 고정형(SNAPSHOT) 포트폴리오의 작품 복사본 (docs/design/portfolio-module-design.md §2.3).
@@ -78,6 +85,15 @@ public class PortfolioItemSnapshot {
     @Column(name = "payload_json")
     private String payloadJson;
 
+    /**
+     * 이 스냅샷이 참조하는 R2 key 색인(V41) — 보존 판정이 key로 바로 조회한다(docs/design/portfolio-module-design.md §5.6).
+     * 스냅샷은 생성 뒤 바뀌지 않으므로 생성 시점(of)에 채운다. 스냅샷 행이 지워지면 FK CASCADE로 함께 지워진다.
+     */
+    @ElementCollection(fetch = FetchType.LAZY)
+    @CollectionTable(name = "portfolio_snapshot_media_keys", joinColumns = @JoinColumn(name = "snapshot_id"))
+    @Column(name = "media_key", length = 500)
+    private Set<String> mediaKeys = new HashSet<>();
+
     // 운영 정책·법적 조치에 따른 외부 노출 중단 시각(마이페이지_작가-R39). 원본 역조회가 아니라 스냅샷 행에
     // 비정규화해 둔다 — 원본을 영구 삭제하면 역조회로는 차단 판정 근거가 사라지기 때문이다.
     // 차단은 고정형 "상태 고정"보다 우선하며, 차단된 스냅샷은 카드·커버·개수·상세에서 모두 빠진다.
@@ -90,7 +106,8 @@ public class PortfolioItemSnapshot {
     public static PortfolioItemSnapshot of(String portfolioId, int ordinal, String sourceArtworkId,
                                            String title, String thumbKey, String thumbAdultKey,
                                            AgeRating ageRating, ArtworkField artworkField,
-                                           Instant sourceCreatedAt, String payloadJson) {
+                                           Instant sourceCreatedAt, String payloadJson,
+                                           Collection<String> referencedMediaKeys) {
         PortfolioItemSnapshot snapshot = new PortfolioItemSnapshot();
         snapshot.portfolioId = portfolioId;
         snapshot.snapshotPublicId = UuidV7Generator.generate();
@@ -103,6 +120,8 @@ public class PortfolioItemSnapshot {
         snapshot.artworkField = artworkField;
         snapshot.sourceCreatedAt = sourceCreatedAt;
         snapshot.payloadJson = payloadJson;
+        // 색인을 팩토리에서 필수로 받는다 — 선택 호출로 두면 새 생성 경로가 빠뜨려도 조용히 보존 대상에서 빠진다.
+        referencedMediaKeys.stream().filter(k -> k != null && !k.isBlank()).forEach(snapshot.mediaKeys::add);
         return snapshot;
     }
 

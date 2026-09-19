@@ -26,6 +26,7 @@ import org.springframework.modulith.test.PublishedEvents;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.stream.IntStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -37,7 +38,9 @@ import java.util.function.BooleanSupplier;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 /**
  * artwork 모듈 통합 검증.
@@ -364,6 +367,24 @@ class ArtworkModuleTests {
                 .contains("raw/ct.png", "raw/custom-thumb.png");
     }
 
+    // 영구 삭제 이벤트는 작품의 R2 key 전체를 싣고 이벤트 레지스트리(EVENT_PUBLICATION.SERIALIZED_EVENT)에 저장된다.
+    // V13의 VARCHAR(4000)이면 처리된 이미지가 많은 작품에서 'Data too long'으로 영구 삭제 전체가 롤백됐다(V40).
+    @Test
+    void 이미지가_많은_작품도_영구삭제된다() {
+        String memberId = registerAuthor();
+        List<String> keys = IntStream.range(0, 15)
+                .mapToObj(i -> "raw/" + "long-image-name-to-grow-the-serialized-event-".repeat(2) + i + ".png")
+                .toList();
+        ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, baseUploadCommand(keys, List.of()));
+        keys.forEach(key -> processImage(uploaded.id(), key, MediaProcessingStatus.DONE));
+        awaitReady(memberId, uploaded.id());
+        artworkService.deleteArtwork(memberId, uploaded.id());
+
+        assertThatNoException().isThrownBy(() ->
+                artworkService.permanentlyDeleteArtworks(memberId, List.of(uploaded.id())));
+        assertThat(statusInDb(uploaded.id())).isNull();
+    }
+
     // 휴지통 보관 기간(기본 1년) 만료 자동 영구 삭제(#178). 사용자 영구 삭제와 같은 경로를 거쳐야
     // 스냅샷 보존·R2 정리가 똑같이 적용되므로, 같은 이벤트가 같은 키 목록으로 나가는지 본다.
     @Test
@@ -390,6 +411,8 @@ class ArtworkModuleTests {
         artworkService.deleteArtwork(memberId, recentlyTrashed.id());
         setDeletedAt(recentlyTrashed.id(), Instant.now().minus(Duration.ofDays(364)));
         ArtworkInfo active = uploadMinimal(memberId, "raw/active.png");
+        // 휴지통 밖 작품에도 오래된 deleted_at을 넣는다 — 그래야 쿼리에서 status 조건이 빠졌을 때 걸린다.
+        setDeletedAt(active.id(), Instant.now().minus(Duration.ofDays(366)));
 
         int purged = trashPurgeScheduler.purgeExpiredTrash();
 
