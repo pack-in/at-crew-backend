@@ -139,10 +139,10 @@ class AuthControllerValidationTest {
     // ─── POST /api/auth/google/login ─────────────────────────────────
 
     @Test
-    void Google_로그인_firebaseIdToken_blank_400() throws Exception {
+    void Google_로그인_googleIdToken_blank_400() throws Exception {
         mockMvc.perform(post("/api/auth/google/login")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("firebaseIdToken", ""))))
+                        .content(objectMapper.writeValueAsString(Map.of("googleIdToken", ""))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
                 .andDo(document("auth/validation/google-login-blank-token"));
@@ -151,11 +151,11 @@ class AuthControllerValidationTest {
     // ─── POST /api/auth/google/register ──────────────────────────────
 
     @Test
-    void Google_가입_firebaseIdToken_blank_400() throws Exception {
+    void Google_가입_googleIdToken_blank_400() throws Exception {
         mockMvc.perform(post("/api/auth/google/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "firebaseIdToken", "",
+                                "googleIdToken", "",
                                 "name", "홍길동",
                                 "agreePrivacy", true, "agreeService", true, "agreeThirdParty", true, "agreeMarketing", false))))
                 .andExpect(status().isBadRequest())
@@ -168,7 +168,7 @@ class AuthControllerValidationTest {
         mockMvc.perform(post("/api/auth/google/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "firebaseIdToken", "valid-token",
+                                "googleIdToken", "valid-token",
                                 "name", "가".repeat(17),
                                 "agreePrivacy", true, "agreeService", true, "agreeThirdParty", true, "agreeMarketing", false))))
                 .andExpect(status().isBadRequest())

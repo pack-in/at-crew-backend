@@ -8,7 +8,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 public record GoogleRegisterRequest(
-        @NotBlank(message = "Firebase ID Token은 필수입니다") String firebaseIdToken,
+        @NotBlank(message = "Google ID Token은 필수입니다") String googleIdToken,
         @NotBlank(message = "사용자 이름은 필수입니다")
         @Size(max = 16, message = "사용자 이름은 16자 이하여야 합니다") String name,
         boolean agreeService,

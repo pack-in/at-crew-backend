@@ -112,7 +112,8 @@ main push(=PR 머지) 시 빌드·테스트 → Docker Hub 푸시 → 앱 서버
    기본 `/etc/nginx/nginx.conf`의 `listen 80 default_server;` 서버 블록은 먼저 주석 처리한다
    (이 파일의 default_server와 충돌해 기동이 실패한다).
    이 레포의 `deploy/` 디렉토리를 서버에 올리고(`git clone`), `.env.example`을 `.env`로
-   복사해 값을 채운다. Firebase 서비스 계정 JSON도 별도로 올려 `FIREBASE_CREDENTIALS_PATH`에 지정.
+   복사해 값을 채운다. Google Cloud Console에서 발급받은 OAuth Client ID를
+   `GOOGLE_OAUTH_CLIENT_IDS`에 등록(서버에 올릴 비밀 파일 없음).
 
    앱을 배포한 뒤 **`./bootstrap.sh`를 반드시 한 번 실행한다.** 관측 에이전트(Alloy)와 백업 타이머는
    앱 compose에 들어 있지 않아 앱 배포만으로는 설치되지 않는다(아래 "인스턴스를 교체할 때" 참고).

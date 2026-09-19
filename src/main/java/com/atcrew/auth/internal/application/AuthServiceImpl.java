@@ -10,8 +10,8 @@ import com.atcrew.auth.internal.exception.AuthErrorCode;
 import com.atcrew.auth.internal.exception.AuthException;
 import com.atcrew.auth.internal.domain.PasswordReauthToken;
 import com.atcrew.auth.internal.domain.PasswordResetToken;
-import com.atcrew.auth.internal.infra.firebase.FirebaseUser;
-import com.atcrew.auth.internal.infra.firebase.FirebaseVerifier;
+import com.atcrew.auth.internal.infra.google.GoogleTokenVerifierPort;
+import com.atcrew.auth.internal.infra.google.GoogleUser;
 import com.atcrew.auth.internal.persistence.PasswordReauthTokenRepository;
 import com.atcrew.auth.internal.persistence.PasswordResetTokenRepository;
 import com.atcrew.auth.internal.persistence.RefreshTokenRepository;
@@ -61,7 +61,7 @@ class AuthServiceImpl implements AuthService {
     // 필요 항목이었으나, 재설정 세션과 같은 5분으로 확정했다(2026-09-10).
     private static final int PASSWORD_REAUTH_TTL_SECONDS = 300;
 
-    private final FirebaseVerifier firebaseVerifier;
+    private final GoogleTokenVerifierPort googleTokenVerifierPort;
     private final MemberService memberService;
     private final JwtProvider jwtProvider;
     private final RefreshTokenRepository refreshTokenRepository;
@@ -73,7 +73,7 @@ class AuthServiceImpl implements AuthService {
     private final MailSender mailSender;
     private final String resetCodePepper;
 
-    AuthServiceImpl(FirebaseVerifier firebaseVerifier, MemberService memberService,
+    AuthServiceImpl(GoogleTokenVerifierPort googleTokenVerifierPort, MemberService memberService,
                     JwtProvider jwtProvider, RefreshTokenRepository refreshTokenRepository,
                     LoginAttemptLimiter loginAttemptLimiter,
                     PasswordResetTokenRepository passwordResetTokenRepository,
@@ -82,7 +82,7 @@ class AuthServiceImpl implements AuthService {
                     PasswordChangeAttemptLimiter passwordChangeAttemptLimiter,
                     MailSender mailSender,
                     @Value("${auth.password-reset.code-pepper}") String resetCodePepper) {
-        this.firebaseVerifier = firebaseVerifier;
+        this.googleTokenVerifierPort = googleTokenVerifierPort;
         this.memberService = memberService;
         this.jwtProvider = jwtProvider;
         this.refreshTokenRepository = refreshTokenRepository;
@@ -132,11 +132,20 @@ class AuthServiceImpl implements AuthService {
 
     @Override
     @Transactional
-    public AuthInfo loginWithGoogle(String firebaseIdToken) {
-        FirebaseUser firebaseUser = firebaseVerifier.verify(firebaseIdToken);
-        String email = firebaseUser.email();
+    public AuthInfo loginWithGoogle(String googleIdToken) {
+        // 위조·만료 토큰 반복 전송 방지 — 이메일을 모르는 시점이라 IP 카운터만 사용
+        loginAttemptLimiter.checkIpBlocked();
 
-        // Firebase 토큰이 이메일 소유를 증명 → 404 노출은 enumeration 아님 (§1.2)
+        GoogleUser googleUser;
+        try {
+            googleUser = googleTokenVerifierPort.verify(googleIdToken);
+        } catch (RuntimeException e) {
+            loginAttemptLimiter.recordIpFailure();
+            throw e;
+        }
+        String email = googleUser.email();
+
+        // Google 토큰이 이메일 소유를 증명 → 404 노출은 enumeration 아님 (§1.2)
         // F3: exists + find 2회 조회 → find 1회로 최적화 (not-found는 DomainException으로 처리)
         MemberInfo member;
         try {
@@ -177,8 +186,17 @@ class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public AuthInfo registerWithGoogle(GoogleRegisterCommand command) {
-        FirebaseUser firebaseUser = firebaseVerifier.verify(command.firebaseIdToken());
-        String email = firebaseUser.email();
+        // 위조·만료 토큰 반복 전송 방지 — 이메일을 모르는 시점이라 IP 카운터만 사용
+        loginAttemptLimiter.checkIpBlocked();
+
+        GoogleUser googleUser;
+        try {
+            googleUser = googleTokenVerifierPort.verify(command.googleIdToken());
+        } catch (RuntimeException e) {
+            loginAttemptLimiter.recordIpFailure();
+            throw e;
+        }
+        String email = googleUser.email();
 
         RegisterMemberCommand memberCommand = new RegisterMemberCommand(
                 email, command.name(), AuthProvider.GOOGLE, null,

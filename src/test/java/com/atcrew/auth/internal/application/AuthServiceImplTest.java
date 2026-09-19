@@ -9,8 +9,8 @@ import com.atcrew.auth.internal.domain.PasswordResetToken;
 import com.atcrew.auth.internal.domain.RefreshToken;
 import com.atcrew.auth.internal.exception.AuthErrorCode;
 import com.atcrew.auth.internal.exception.AuthException;
-import com.atcrew.auth.internal.infra.firebase.FirebaseUser;
-import com.atcrew.auth.internal.infra.firebase.FirebaseVerifier;
+import com.atcrew.auth.internal.infra.google.GoogleTokenVerifierPort;
+import com.atcrew.auth.internal.infra.google.GoogleUser;
 import com.atcrew.auth.internal.persistence.PasswordReauthTokenRepository;
 import com.atcrew.auth.internal.persistence.PasswordResetTokenRepository;
 import com.atcrew.auth.internal.persistence.RefreshTokenRepository;
@@ -42,7 +42,7 @@ import static org.mockito.Mockito.*;
 
 class AuthServiceImplTest {
 
-    FirebaseVerifier firebaseVerifier;
+    GoogleTokenVerifierPort googleTokenVerifierPort;
     MemberService memberService;
     JwtProvider jwtProvider;
     RefreshTokenRepository refreshTokenRepository;
@@ -54,7 +54,7 @@ class AuthServiceImplTest {
     MailSender mailSender;
     AuthServiceImpl authService;
 
-    static final String TOKEN = "firebase-id-token";
+    static final String TOKEN = "google-id-token";
     static final String EMAIL = "user@test.com";
     static final String PASSWORD = "Pass1234!";
     static final String MEMBER_ID = "member-001";
@@ -64,7 +64,7 @@ class AuthServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        firebaseVerifier = mock(FirebaseVerifier.class);
+        googleTokenVerifierPort = mock(GoogleTokenVerifierPort.class);
         memberService = mock(MemberService.class);
         jwtProvider = mock(JwtProvider.class);
         refreshTokenRepository = mock(RefreshTokenRepository.class);
@@ -74,7 +74,7 @@ class AuthServiceImplTest {
         passwordReauthTokenRepository = mock(PasswordReauthTokenRepository.class);
         passwordChangeAttemptLimiter = mock(PasswordChangeAttemptLimiter.class);
         mailSender = mock(MailSender.class);
-        authService = new AuthServiceImpl(firebaseVerifier, memberService, jwtProvider,
+        authService = new AuthServiceImpl(googleTokenVerifierPort, memberService, jwtProvider,
                 refreshTokenRepository, loginAttemptLimiter, passwordResetTokenRepository,
                 passwordResetAttemptLimiter, passwordReauthTokenRepository, passwordChangeAttemptLimiter,
                 mailSender, RESET_CODE_PEPPER);
@@ -155,7 +155,7 @@ class AuthServiceImplTest {
     @Test
     void Google_로그인_성공() {
         // F3: existsByLoginEmailAndProvider 제거 — findByLoginEmailAndProvider 단일 조회
-        when(firebaseVerifier.verify(TOKEN)).thenReturn(new FirebaseUser(EMAIL, AuthProvider.GOOGLE, true));
+        when(googleTokenVerifierPort.verify(TOKEN)).thenReturn(new GoogleUser(EMAIL, AuthProvider.GOOGLE, true));
         when(memberService.findByLoginEmailAndProvider(EMAIL, AuthProvider.GOOGLE)).thenReturn(memberInfo(AuthProvider.GOOGLE));
         when(memberService.recordLogin(MEMBER_ID)).thenReturn(memberInfo(AuthProvider.GOOGLE));
 
@@ -168,7 +168,7 @@ class AuthServiceImplTest {
     @Test
     void Google_미가입_404() {
         // F3: not-found는 findByLoginEmailAndProvider 예외로 처리
-        when(firebaseVerifier.verify(TOKEN)).thenReturn(new FirebaseUser(EMAIL, AuthProvider.GOOGLE, true));
+        when(googleTokenVerifierPort.verify(TOKEN)).thenReturn(new GoogleUser(EMAIL, AuthProvider.GOOGLE, true));
         when(memberService.findByLoginEmailAndProvider(EMAIL, AuthProvider.GOOGLE))
                 .thenThrow(new MemberException(MemberErrorCode.MEMBER_NOT_FOUND, EMAIL));
 
@@ -179,13 +179,41 @@ class AuthServiceImplTest {
     }
 
     @Test
-    void Google_Firebase_토큰_오류_401() {
-        when(firebaseVerifier.verify(TOKEN)).thenThrow(new AuthException(AuthErrorCode.INVALID_FIREBASE_TOKEN));
+    void Google_토큰_오류_401() {
+        when(googleTokenVerifierPort.verify(TOKEN)).thenThrow(new AuthException(AuthErrorCode.INVALID_GOOGLE_TOKEN));
 
         assertThatThrownBy(() -> authService.loginWithGoogle(TOKEN))
                 .isInstanceOf(AuthException.class)
                 .satisfies(e -> assertThat(((AuthException) e).getCode())
-                        .isEqualTo(AuthErrorCode.INVALID_FIREBASE_TOKEN.name()));
+                        .isEqualTo(AuthErrorCode.INVALID_GOOGLE_TOKEN.name()));
+
+        // 위조 토큰 반복 전송 방지 — IP 카운터 누적 후 원래 예외 전파
+        verify(loginAttemptLimiter).recordIpFailure();
+    }
+
+    @Test
+    void Google_로그인_성공_시_IP_카운터를_누적하지_않는다() {
+        when(googleTokenVerifierPort.verify(TOKEN)).thenReturn(new GoogleUser(EMAIL, AuthProvider.GOOGLE, true));
+        when(memberService.findByLoginEmailAndProvider(EMAIL, AuthProvider.GOOGLE)).thenReturn(memberInfo(AuthProvider.GOOGLE));
+        when(memberService.recordLogin(MEMBER_ID)).thenReturn(memberInfo(AuthProvider.GOOGLE));
+
+        authService.loginWithGoogle(TOKEN);
+
+        verify(loginAttemptLimiter).checkIpBlocked();
+        verify(loginAttemptLimiter, never()).recordIpFailure();
+    }
+
+    @Test
+    void Google_로그인_IP_Rate_limit_초과_시_토큰_검증_전에_429() {
+        doThrow(new AuthException(AuthErrorCode.TOO_MANY_ATTEMPTS))
+                .when(loginAttemptLimiter).checkIpBlocked();
+
+        assertThatThrownBy(() -> authService.loginWithGoogle(TOKEN))
+                .isInstanceOf(AuthException.class)
+                .satisfies(e -> assertThat(((AuthException) e).getCode())
+                        .isEqualTo(AuthErrorCode.TOO_MANY_ATTEMPTS.name()));
+
+        verify(googleTokenVerifierPort, never()).verify(anyString());
     }
 
     // ─── 이메일 회원가입 ──────────────────────────────────────────────
@@ -220,7 +248,7 @@ class AuthServiceImplTest {
 
     @Test
     void Google_회원가입_성공() {
-        when(firebaseVerifier.verify(TOKEN)).thenReturn(new FirebaseUser(EMAIL, AuthProvider.GOOGLE, true));
+        when(googleTokenVerifierPort.verify(TOKEN)).thenReturn(new GoogleUser(EMAIL, AuthProvider.GOOGLE, true));
         when(memberService.register(any())).thenReturn(memberInfo(AuthProvider.GOOGLE));
 
         AuthInfo result = authService.registerWithGoogle(
@@ -229,6 +257,36 @@ class AuthServiceImplTest {
         assertThat(result.isNewUser()).isTrue();
         verify(memberService).register(argThat(cmd ->
                 cmd.authProvider() == AuthProvider.GOOGLE && cmd.rawPassword() == null));
+        verify(loginAttemptLimiter).checkIpBlocked();
+        verify(loginAttemptLimiter, never()).recordIpFailure();
+    }
+
+    @Test
+    void Google_회원가입_토큰_오류_시_IP_카운터_누적() {
+        when(googleTokenVerifierPort.verify(TOKEN)).thenThrow(new AuthException(AuthErrorCode.INVALID_GOOGLE_TOKEN));
+
+        assertThatThrownBy(() -> authService.registerWithGoogle(
+                new GoogleRegisterCommand(TOKEN, "홍길동", true, true, true, false, "Asia/Seoul", "KR", Language.KO)))
+                .isInstanceOf(AuthException.class)
+                .satisfies(e -> assertThat(((AuthException) e).getCode())
+                        .isEqualTo(AuthErrorCode.INVALID_GOOGLE_TOKEN.name()));
+
+        verify(loginAttemptLimiter).recordIpFailure();
+        verify(memberService, never()).register(any());
+    }
+
+    @Test
+    void Google_회원가입_IP_Rate_limit_초과_시_토큰_검증_전에_429() {
+        doThrow(new AuthException(AuthErrorCode.TOO_MANY_ATTEMPTS))
+                .when(loginAttemptLimiter).checkIpBlocked();
+
+        assertThatThrownBy(() -> authService.registerWithGoogle(
+                new GoogleRegisterCommand(TOKEN, "홍길동", true, true, true, false, "Asia/Seoul", "KR", Language.KO)))
+                .isInstanceOf(AuthException.class)
+                .satisfies(e -> assertThat(((AuthException) e).getCode())
+                        .isEqualTo(AuthErrorCode.TOO_MANY_ATTEMPTS.name()));
+
+        verify(googleTokenVerifierPort, never()).verify(anyString());
     }
 
     // ─── Refresh Token 흐름 ───────────────────────────────────────────

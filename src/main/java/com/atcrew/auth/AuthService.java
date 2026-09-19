@@ -4,7 +4,7 @@ public interface AuthService {
 
     AuthInfo loginWithEmail(EmailLoginCommand command);
 
-    AuthInfo loginWithGoogle(String firebaseIdToken);
+    AuthInfo loginWithGoogle(String googleIdToken);
 
     AuthInfo registerWithEmail(EmailRegisterCommand command);
 
