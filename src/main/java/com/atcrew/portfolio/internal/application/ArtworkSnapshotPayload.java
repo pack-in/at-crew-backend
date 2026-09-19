@@ -5,6 +5,10 @@ import com.atcrew.artwork.ArtworkRole;
 import com.atcrew.artwork.MaterialInfo;
 
 import java.util.List;
+import java.util.stream.Stream;
+import java.util.stream.Collectors;
+import java.util.Set;
+import java.util.LinkedHashSet;
 
 /**
  * 고정형 스냅샷의 상세 본문 페이로드 (docs/design/portfolio-module-design.md §2.3).
@@ -28,4 +32,18 @@ record ArtworkSnapshotPayload(
         String description,              // 작품 설명
         Integer representativeImageIndex // 대표 이미지 인덱스 — images 기준. 구버전 payload는 null일 수 있다
 ) {
+
+    /**
+     * 이 본문이 보여 주는 R2 key 전체 — 이미지 4종과 자료 첨부. 보존 판정 색인(portfolio_snapshot_media_keys)에 넣는다.
+     * V41의 기존 행 채우기 SQL이 같은 경로를 JSON_TABLE로 읽으므로, 필드를 추가하면 둘을 함께 고친다.
+     */
+    Set<String> mediaKeys() {
+        Stream<String> imageKeys = images == null ? Stream.empty() : images.stream().flatMap(img -> Stream.of(
+                img.originalKey(), img.thumbKey(), img.thumbAdultKey(), img.originalAvifKey()));
+        Stream<String> attachmentKeys = materials == null ? Stream.empty() : materials.stream()
+                .flatMap(m -> m.attachmentKeys() == null ? Stream.empty() : m.attachmentKeys().stream());
+        return Stream.concat(imageKeys, attachmentKeys)
+                .filter(k -> k != null && !k.isBlank())
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
 }

@@ -50,7 +50,7 @@ public class MediaCallbackService {
             log.warn("이미지 변환 실패: ownerType={} ownerId={} imageKey={} reason={}",
                     ownerType, ownerId, imageKey, failureReason != null ? failureReason : "(사유 미제공)");
         }
-        assets.findByOwnerTypeAndOwnerIdAndOriginalKey(ownerType, ownerId, imageKey).ifPresentOrElse(asset -> {
+        assets.findByOwnerAndOriginalKeyForUpdate(ownerType, ownerId, imageKey).ifPresentOrElse(asset -> {
             asset.markProcessed(thumbKey, thumbAdultKey, originalAvifKey, status);
             events.publishEvent(new MediaAssetProcessedEvent(ownerType, ownerId, imageKey, thumbKey, thumbAdultKey,
                     originalAvifKey, status));

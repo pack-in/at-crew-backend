@@ -124,14 +124,16 @@ class DiagramConsistencyTests {
             }
             for (JsonNode anchor : anchors) {
                 String text = anchor.get("text").asString();
+                // 그림의 문구와 코드의 문자열이 다를 때(예: "POST /api/artworks" ↔ @PostMapping("/artworks")) code로 따로 적는다.
+                String code = anchor.has("code") ? anchor.get("code").asString() : text;
                 Path scope = Path.of(anchor.get("path").asString());
                 if (!irText.contains(text)) {
                     problems.add(anchorsFile + ": '" + text + "' 가 " + ir + " 에 없다 — 그림에 없는 것은 앵커로 두지 않는다");
                 }
                 if (!Files.exists(scope)) {
                     problems.add(anchorsFile + ": 경로 " + scope + " 가 없다");
-                } else if (!containsText(scope, text)) {
-                    problems.add(anchorsFile + ": '" + text + "' 가 " + scope + " 아래 코드에 없다 — 이름이 바뀌었으면 IR과 앵커를 함께 고친다");
+                } else if (!containsText(scope, code)) {
+                    problems.add(anchorsFile + ": '" + code + "' 가 " + scope + " 아래 코드에 없다 — 이름이 바뀌었으면 IR과 앵커를 함께 고친다");
                 }
             }
         }

@@ -5,6 +5,11 @@
       "path": "src/main/java/com/atcrew/artwork/internal/web/ArtworkController.java"
     },
     {
+      "text": "POST /api/artworks",
+      "code": "@PostMapping(\"/artworks\")",
+      "path": "src/main/java/com/atcrew/artwork/internal/web/ArtworkController.java"
+    },
+    {
       "text": "ArtworkServiceImpl",
       "path": "src/main/java/com/atcrew/artwork"
     },

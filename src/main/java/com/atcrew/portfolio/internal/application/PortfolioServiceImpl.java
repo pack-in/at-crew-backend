@@ -535,9 +535,14 @@ public class PortfolioServiceImpl {
                 artwork.videoLinks(),
                 artwork.description(),
                 artwork.representativeImageIndex());
+        // 보존 판정 색인: 카드 썸네일(사용자 지정 썸네일일 수 있다)과 본문이 보여 주는 key 전체.
+        Set<String> mediaKeys = new LinkedHashSet<>(payload.mediaKeys());
+        mediaKeys.add(card.thumbKey());
+        mediaKeys.add(card.thumbAdultKey());
         return PortfolioItemSnapshot.of(portfolioId, ordinal, artwork.id(), artwork.title(),
                 card.thumbKey(), card.thumbAdultKey(), artwork.ageRating(), artwork.artworkField(),
-                artwork.createdAt(), jsonMapper.writeValueAsString(payload));
+                artwork.createdAt(), jsonMapper.writeValueAsString(payload))
+                .referenceMediaKeys(mediaKeys);
     }
 
     // === 수정 ===

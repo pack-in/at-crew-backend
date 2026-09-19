@@ -40,6 +40,7 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 /**
  * artwork 모듈 통합 검증.
@@ -382,6 +383,42 @@ class ArtworkModuleTests {
         assertThatNoException().isThrownBy(() ->
                 artworkService.permanentlyDeleteArtworks(memberId, List.of(uploaded.id())));
         assertThat(statusInDb(uploaded.id())).isNull();
+    }
+
+    // 이미지 일부만 교체 — 남긴 이미지는 처리 결과를 넘겨받는다. 예전에는 전부 PENDING으로 다시 만들고 다시 트리거해
+    // Worker가 raw를 지운 뒤라 FAILED가 됐고, media는 남긴 이미지 파일까지 고아로 넘겨 지웠다.
+    @Test
+    void 이미지를_일부만_교체하면_남긴_이미지는_처리_결과를_유지한다() {
+        String memberId = registerAuthor();
+        ArtworkInfo uploaded = uploadMinimal(memberId, "raw/p1.png", "raw/p2.png", "raw/p3.png");
+        List.of("raw/p1.png", "raw/p2.png", "raw/p3.png").forEach(k -> processImage(uploaded.id(), k, MediaProcessingStatus.DONE));
+        awaitReady(memberId, uploaded.id());
+
+        ArtworkInfo updated = artworkService.updateArtwork(memberId, uploaded.id(), imagesOnly(List.of("raw/p3.png", "raw/p1.png", "raw/p9.png")));
+
+        assertThat(updated.images()).extracting(ArtworkImageInfo::originalKey, ArtworkImageInfo::processingStatus)
+                .containsExactly(tuple("raw/p3.png", ImageProcessingStatus.DONE), tuple("raw/p1.png", ImageProcessingStatus.DONE),
+                        tuple("raw/p9.png", ImageProcessingStatus.PENDING));
+        assertThat(updated.images().getFirst().thumbKey()).isEqualTo("thumb/p3.avif");
+        assertThat(updated.status()).isEqualTo(ArtworkStatus.PROCESSING);
+    }
+
+    @Test
+    void 이미지_순서만_바꾸면_READY를_유지한다() {
+        String memberId = registerAuthor();
+        ArtworkInfo uploaded = uploadMinimal(memberId, "raw/o1.png", "raw/o2.png");
+        List.of("raw/o1.png", "raw/o2.png").forEach(k -> processImage(uploaded.id(), k, MediaProcessingStatus.DONE));
+        awaitReady(memberId, uploaded.id());
+
+        ArtworkInfo updated = artworkService.updateArtwork(memberId, uploaded.id(), imagesOnly(List.of("raw/o2.png", "raw/o1.png")));
+
+        assertThat(updated.status()).isEqualTo(ArtworkStatus.READY);
+        assertThat(updated.images()).allMatch(img -> img.processingStatus() == ImageProcessingStatus.DONE);
+    }
+
+    private static UpdateArtworkCommand imagesOnly(List<String> imageKeys) {
+        return new UpdateArtworkCommand(imageKeys, 0, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null);
     }
 
     // 휴지통 보관 기간(기본 1년) 만료 자동 영구 삭제(#178). 사용자 영구 삭제와 같은 경로를 거쳐야

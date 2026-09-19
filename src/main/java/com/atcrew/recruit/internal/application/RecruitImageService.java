@@ -39,14 +39,16 @@ class RecruitImageService {
         /** 새 이미지를 등록해 Worker 처리를 기다린다 — PENDING. */
         PROCESSING,
         /** 처리할 이미지가 없다 — READY. */
-        NO_IMAGES
+        NO_IMAGES,
+        /** 교체했지만 새로 처리할 이미지가 없고, 남긴 이미지가 이미 처리돼 있다(순서 변경·일부 삭제) — READY. */
+        READY
     }
 
     /** 동기화 결과를 게시글의 이미지 처리 상태에 반영한다. */
     static void apply(ImageSyncResult result, Runnable markPending, Runnable markReady) {
         switch (result) {
             case PROCESSING -> markPending.run();
-            case NO_IMAGES -> markReady.run();
+            case NO_IMAGES, READY -> markReady.run();
             case UNCHANGED -> { }
         }
     }
@@ -100,18 +102,22 @@ class RecruitImageService {
             return ImageSyncResult.UNCHANGED;
         }
         if (newKeys.isEmpty()) {
-            // 이미지를 모두 지운 경우. media는 새 키가 없으면 교체 API를 받지 않으므로 파일 고아 처리와
-            // media_assets 행 삭제를 직접 호출한다(등록될 때까지 미루지 않음).
-            mediaService.markOrphaned(derivedKeysOf(existing));
+            // 이미지를 모두 지운 경우. media는 새 키가 없으면 교체 API를 받지 않으므로 media_assets 행 삭제를
+            // 직접 호출한다 — 지운 행이 가리키던 파일은 media가 고아 큐로 넘긴다(등록될 때까지 미루지 않음).
             mediaService.deleteAssetsForOwner(ownerType, postingId);
             deleteImages(ownerType, postingId);
             return ImageSyncResult.NO_IMAGES;
         }
+        // 남는 이미지는 처리 결과를 넘겨받는다 — media도 남는 키는 다시 트리거하지 않는다(Worker가 raw를 지운 뒤라
+        // 재변환하면 FAILED다). 빠진 키의 파일 정리는 media의 replaceAndTriggerProcessing이 맡는다.
+        java.util.Map<String, RecruitPostingImage> previousByKey = new java.util.HashMap<>();
+        existing.forEach(img -> previousByKey.putIfAbsent(img.getOriginalKey(), img));
         deleteImages(ownerType, postingId);
-        saveSlots(ownerType, postingId, slots);
+        List<? extends RecruitPostingImage> saved = saveSlots(ownerType, postingId, slots, previousByKey);
         mediaService.replaceAndTriggerProcessing(ownerType, postingId, newKeys,
                 MediaVariantProfile.STANDARD, MediaQualityTier.WEB);
-        return ImageSyncResult.PROCESSING;
+        boolean anyNew = newKeys.stream().anyMatch(key -> !previousByKey.containsKey(key));
+        return !anyNew && RecruitPostingImage.readyFor(saved) ? ImageSyncResult.READY : ImageSyncResult.PROCESSING;
     }
 
     // === 읽기 ===
@@ -165,15 +171,32 @@ class RecruitImageService {
     }
 
     private void saveSlots(MediaOwnerType ownerType, String postingId, List<ImageSlot> slots) {
-        switch (ownerType) {
-            case JOB_POSTING -> slots.forEach(s ->
-                    jobPostingImages.save(JobPostingImage.pending(postingId, s.role(), s.ordinal(), s.key())));
-            case TEAM_POSTING -> slots.forEach(s ->
-                    teamPostingImages.save(TeamPostingImage.pending(postingId, s.role(), s.ordinal(), s.key())));
-            case JOB_SEEKING_POST -> slots.forEach(s ->
-                    jobSeekingPostImages.save(JobSeekingPostImage.pending(postingId, s.role(), s.ordinal(), s.key())));
-            case ARTWORK -> throw new IllegalArgumentException("recruit이 다루는 ownerType이 아닙니다: " + ownerType);
+        saveSlots(ownerType, postingId, slots, java.util.Map.of());
+    }
+
+    /** previousByKey에 같은 원본 key가 있으면 그 처리 결과(상태·변형본 key)를 넘겨받는다. */
+    private List<? extends RecruitPostingImage> saveSlots(MediaOwnerType ownerType, String postingId, List<ImageSlot> slots,
+            java.util.Map<String, RecruitPostingImage> previousByKey) {
+        List<RecruitPostingImage> saved = new ArrayList<>();
+        for (ImageSlot s : slots) {
+            RecruitPostingImage image = switch (ownerType) {
+                case JOB_POSTING -> JobPostingImage.pending(postingId, s.role(), s.ordinal(), s.key());
+                case TEAM_POSTING -> TeamPostingImage.pending(postingId, s.role(), s.ordinal(), s.key());
+                case JOB_SEEKING_POST -> JobSeekingPostImage.pending(postingId, s.role(), s.ordinal(), s.key());
+                case ARTWORK -> throw new IllegalArgumentException("recruit이 다루는 ownerType이 아닙니다: " + ownerType);
+            };
+            RecruitPostingImage previous = previousByKey.get(s.key());
+            if (previous != null) {
+                image.markProcessed(previous.getThumbKey(), previous.getOriginalAvifKey(), previous.getProcessingStatus());
+            }
+            saved.add(switch (ownerType) {
+                case JOB_POSTING -> jobPostingImages.save((JobPostingImage) image);
+                case TEAM_POSTING -> teamPostingImages.save((TeamPostingImage) image);
+                case JOB_SEEKING_POST -> jobSeekingPostImages.save((JobSeekingPostImage) image);
+                case ARTWORK -> throw new IllegalArgumentException("recruit이 다루는 ownerType이 아닙니다: " + ownerType);
+            });
         }
+        return saved;
     }
 
     // === 헬퍼 ===
@@ -199,14 +222,6 @@ class RecruitImageService {
 
     private static List<String> keysOf(List<ImageSlot> slots) {
         return slots.stream().map(ImageSlot::key).toList();
-    }
-
-    // 교체·삭제 시 R2에서 지워야 할 키 — 업로드 원본과 Worker가 만든 변환본 전부.
-    private static List<String> derivedKeysOf(List<? extends RecruitPostingImage> images) {
-        return images.stream()
-                .flatMap(i -> java.util.stream.Stream.of(i.getOriginalKey(), i.getThumbKey(), i.getOriginalAvifKey()))
-                .filter(RecruitImageService::isPresent)
-                .toList();
     }
 
     private static boolean isPresent(String value) {

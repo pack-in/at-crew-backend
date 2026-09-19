@@ -21,7 +21,7 @@ class MediaServiceImplTest {
 
     @Test void deleteAssetsForOwnerRemovesAllMatchingRows() {
         var existing = List.of(MediaAsset.pending(MediaOwnerType.ARTWORK, "artwork-1", 0, "raw/1.jpg", MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.ORIGINAL));
-        when(assets.findByOwnerTypeAndOwnerIdOrderByOrdinalAsc(MediaOwnerType.ARTWORK, "artwork-1")).thenReturn(existing);
+        when(assets.findByOwnerForUpdate(MediaOwnerType.ARTWORK, "artwork-1")).thenReturn(existing);
 
         service.deleteAssetsForOwner(MediaOwnerType.ARTWORK, "artwork-1");
 
@@ -95,7 +95,7 @@ class MediaServiceImplTest {
     }
 
     @Test void 교체도_커밋된_뒤_한_번만_트리거한다() {
-        when(assets.findByOwnerTypeAndOwnerIdOrderByOrdinalAsc(MediaOwnerType.JOB_POSTING, "posting-1")).thenReturn(List.of());
+        when(assets.findByOwnerForUpdate(MediaOwnerType.JOB_POSTING, "posting-1")).thenReturn(List.of());
         inTransaction(() -> {
             service.replaceAndTriggerProcessing(MediaOwnerType.JOB_POSTING, "posting-1", List.of("raw/2.jpg"),
                     MediaVariantProfile.STANDARD, MediaQualityTier.WEB);
@@ -117,6 +117,51 @@ class MediaServiceImplTest {
             assertThatNoException().isThrownBy(() ->
                     TransactionSynchronizationManager.getSynchronizations().forEach(TransactionSynchronization::afterCommit));
         });
+        // 예외가 난 경로를 실제로 지났는지 — 동기화가 등록되지 않도록 퇴행하면 여기서 걸린다.
+        verify(worker).triggerAsync(MediaOwnerType.ARTWORK, "artwork-1", List.of("raw/1.jpg"),
+                MediaVariantProfile.STANDARD, MediaQualityTier.WEB);
+    }
+
+    // 부분 교체 — 남는 key는 처리 결과를 넘겨받고 다시 트리거하지 않는다. Worker는 변환을 마치면 raw를 지우므로
+    // 재변환은 FAILED가 되고, 남는 key를 고아로 넘기면 정리 배치가 남긴 이미지 파일을 지운다.
+    @Test void 부분_교체는_빠진_키만_고아로_넘기고_새_키만_트리거한다() {
+        MediaAsset kept1 = done("raw/1.jpg", 0), removed = done("raw/2.jpg", 1), kept3 = done("raw/3.jpg", 2);
+        when(assets.findByOwnerForUpdate(MediaOwnerType.ARTWORK, "artwork-1"))
+                .thenReturn(List.of(kept1, removed, kept3));
+
+        service.replaceAndTriggerProcessing(MediaOwnerType.ARTWORK, "artwork-1", List.of("raw/3.jpg", "raw/1.jpg", "raw/9.jpg"),
+                MediaVariantProfile.STANDARD, MediaQualityTier.WEB);
+
+        var orphaned = org.mockito.ArgumentCaptor.forClass(com.atcrew.media.internal.domain.OrphanedMediaKey.class);
+        verify(orphans).save(orphaned.capture());
+        assertThat(orphaned.getValue().getKeys())
+                .containsExactlyInAnyOrder("raw/2.jpg", "thumb/2.avif", "original/2.avif");
+        var saved = org.mockito.ArgumentCaptor.forClass(MediaAsset.class);
+        verify(assets, times(3)).save(saved.capture());
+        assertThat(saved.getAllValues()).extracting(MediaAsset::getOriginalKey, MediaAsset::getOrdinal, MediaAsset::getThumbKey)
+                .containsExactly(tuple("raw/3.jpg", 0, "thumb/3.avif"), tuple("raw/1.jpg", 1, "thumb/1.avif"),
+                        tuple("raw/9.jpg", 2, null));
+        verify(worker).triggerAsync(MediaOwnerType.ARTWORK, "artwork-1", List.of("raw/9.jpg"),
+                MediaVariantProfile.STANDARD, MediaQualityTier.WEB);
+    }
+
+    @Test void 순서만_바꾸면_트리거도_고아_처리도_없다() {
+        when(assets.findByOwnerForUpdate(MediaOwnerType.ARTWORK, "artwork-1"))
+                .thenReturn(List.of(done("raw/1.jpg", 0), done("raw/2.jpg", 1)));
+
+        service.replaceAndTriggerProcessing(MediaOwnerType.ARTWORK, "artwork-1", List.of("raw/2.jpg", "raw/1.jpg"),
+                MediaVariantProfile.STANDARD, MediaQualityTier.WEB);
+
+        verifyNoInteractions(worker);
+        verify(orphans, never()).save(any());
+    }
+
+    private static MediaAsset done(String rawKey, int ordinal) {
+        String name = rawKey.substring(4, rawKey.lastIndexOf('.'));
+        MediaAsset asset = MediaAsset.pending(MediaOwnerType.ARTWORK, "artwork-1", ordinal, rawKey,
+                MediaVariantProfile.STANDARD, MediaQualityTier.WEB);
+        asset.markProcessed("thumb/" + name + ".avif", null, "original/" + name + ".avif", MediaProcessingStatus.DONE);
+        return asset;
     }
 
     /** 실제 트랜잭션 매니저 없이 동기화만 켜서 afterCommit·afterCompletion을 직접 부른다. */

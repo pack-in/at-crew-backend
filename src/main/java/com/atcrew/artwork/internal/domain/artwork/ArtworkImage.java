@@ -49,6 +49,16 @@ public class ArtworkImage {
         return img;
     }
 
+    // 교체 뒤에도 남는 이미지 — 새 순서로 옮기되 처리 결과는 그대로 넘겨받는다(media 자산과 같은 규칙).
+    static ArtworkImage carriedOver(Artwork artwork, int ordinal, ArtworkImage previous) {
+        ArtworkImage img = pending(artwork, ordinal, previous.originalKey);
+        img.thumbKey = previous.thumbKey;
+        img.thumbAdultKey = previous.thumbAdultKey;
+        img.originalAvifKey = previous.originalAvifKey;
+        img.processingStatus = previous.processingStatus;
+        return img;
+    }
+
     public void markDone(String thumbKey, String thumbAdultKey, String originalAvifKey) {
         this.thumbKey = thumbKey;
         this.thumbAdultKey = thumbAdultKey;

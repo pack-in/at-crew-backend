@@ -30,7 +30,7 @@ class MediaCallbackServiceTest {
     // 고아 정리 대상에 넣어야 R2에 쌓이지 않는다. 원본은 교체·삭제 경로가 이미 넘겼으므로 넣지 않는다.
     @Test
     void 대상_자산이_없는_콜백의_변형본은_고아_정리_대상에_넣는다() {
-        when(assets.findByOwnerTypeAndOwnerIdAndOriginalKey(MediaOwnerType.ARTWORK, "artwork-1", "raw/1.png"))
+        when(assets.findByOwnerAndOriginalKeyForUpdate(MediaOwnerType.ARTWORK, "artwork-1", "raw/1.png"))
                 .thenReturn(Optional.empty());
 
         service.process(MediaOwnerType.ARTWORK, "artwork-1", "raw/1.png", "thumb/1.avif", null,
@@ -43,7 +43,7 @@ class MediaCallbackServiceTest {
 
     @Test
     void 대상_자산이_있으면_고아_큐를_건드리지_않고_이벤트를_발행한다() {
-        when(assets.findByOwnerTypeAndOwnerIdAndOriginalKey(MediaOwnerType.ARTWORK, "artwork-1", "raw/1.png"))
+        when(assets.findByOwnerAndOriginalKeyForUpdate(MediaOwnerType.ARTWORK, "artwork-1", "raw/1.png"))
                 .thenReturn(Optional.of(MediaAsset.pending(MediaOwnerType.ARTWORK, "artwork-1", 0, "raw/1.png",
                         MediaVariantProfile.STANDARD, MediaQualityTier.WEB)));
 

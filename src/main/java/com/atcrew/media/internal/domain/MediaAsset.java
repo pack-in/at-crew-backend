@@ -45,6 +45,16 @@ public class MediaAsset {
         asset.processingStatus = MediaProcessingStatus.PENDING;
         return asset;
     }
+    /**
+     * 교체 뒤에도 남는 이미지 — 새 순서로 옮기되 처리 결과(상태·변형본 key·화질)는 그대로 넘겨받는다. Worker는 변환을
+     * 마치면 raw를 지우므로 다시 트리거하면 "원본 없음"으로 실패한다.
+     */
+    public static MediaAsset carriedOver(MediaAsset previous, int ordinal) {
+        MediaAsset asset = pending(previous.ownerType, previous.ownerId, ordinal, previous.originalKey,
+                previous.variantProfile, previous.qualityTier);
+        asset.markProcessed(previous.thumbKey, previous.thumbAdultKey, previous.originalAvifKey, previous.processingStatus);
+        return asset;
+    }
     public void markProcessed(String thumbKey, String thumbAdultKey, String originalAvifKey,
                               MediaProcessingStatus status) {
         this.thumbKey = thumbKey; this.thumbAdultKey = thumbAdultKey; this.originalAvifKey = originalAvifKey;

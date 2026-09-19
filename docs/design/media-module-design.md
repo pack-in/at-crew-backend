@@ -180,7 +180,9 @@ public interface MediaService {
                                        List<String> imageKeys, MediaVariantProfile variantProfile,
                                        MediaQualityTier qualityTier);
 
-    // 소유자가 이미지 목록을 교체할 때(artwork replaceImages와 동일 패턴) 기존 행을 고아 처리하고 새로 등록.
+    // 소유자가 이미지 목록을 교체할 때. 새 목록에 남는 key는 처리 결과(상태·변형본 key)를 그대로 넘겨받고 다시
+    // 트리거하지 않는다 — Worker는 변환을 마치면 raw를 지우므로 재변환은 "원본 없음"으로 FAILED다. 빠진 key의 파일만
+    // 고아 큐에 넣고, 새로 들어온 key만 트리거한다(PR #188). 순서만 바꾸면 트리거도 고아 처리도 없다.
     void replaceAndTriggerProcessing(MediaOwnerType ownerType, String ownerId,
                                       List<String> newImageKeys, MediaVariantProfile variantProfile,
                                       MediaQualityTier qualityTier);
@@ -192,8 +194,18 @@ public interface MediaService {
     // 자리를 대체 — QA에서 발견: 최초 초안은 이 소비자를 놓쳐 deleteFiles를 공개 API에서 빠뜨렸었다.
     void deleteFiles(List<String> keys);
 
+    // 자산 행을 지우면 그 행이 가리키던 파일(원본·변형본)을 고아 큐로 보낸다 — 영구 삭제 이벤트를 만든 뒤 도착한
+    // 콜백이 기록한 변형본도 놓치지 않는다. 이미 지운 key가 다시 들어와도 정리 배치가 보존 판정 후 지울 뿐이다.
+    void deleteAssetsForOwner(MediaOwnerType ownerType, String ownerId);
+
+    // 고아 key 적재의 유일한 경로(null·빈 key는 거른다). 정리 배치(OrphanImageCleanupScheduler)는 지우기 전에
+    // RetainedMediaKeyProvider로 보존 판정을 한다 — 판정은 key 단위라 행에 어떤 key 조합이 들어와도 안전하다.
     void markOrphaned(List<String> keys);
 }
+
+교체·삭제(`findByOwnerForUpdate`)와 Worker 콜백(`findByOwnerAndOriginalKeyForUpdate`)은 자산 행을 잠근 뒤 읽는다.
+콜백이 먼저면 삭제 쪽이 콜백이 기록한 변형본을 보고 고아로 넘기고, 삭제가 먼저면 콜백은 행이 없다고 보고
+변형본을 고아로 넘긴다. 콜백은 한 행만, 교체·삭제는 한 소유자의 행을 ordinal 순으로 잠가 서로 기다리는 순환이 없다.
 
 public record PresignedUrlInfo(String key, String uploadUrl);
 
@@ -430,6 +442,10 @@ Worker가 먼저 하면 된다"는 가정이 틀렸다. 서버가 새 필드를 
 별도 `imageProcessingStatus`(PENDING/READY) 필드를 posting에 추가해 발행 상태와 이미지 처리 상태를
 독립 축으로 관리한다 — artwork는 이미지가 곧 콘텐츠라 상태를 합쳤지만, recruit은 텍스트 게시글에 이미지가
 부속이라 두 흐름을 분리하는 편이 상태 전이 로직을 단순하게 유지한다.
+
+게시글 이미지를 교체할 때 새 목록에 남는 이미지는 처리 결과를 넘겨받는다(`RecruitImageService.replace`). 새로 들어온
+이미지가 없고 남긴 이미지가 "PENDING 없음 + DONE 1장 이상"이면 곧바로 READY(`ImageSyncResult.READY`), 새 이미지가
+있으면 PENDING이다. 이미지를 모두 지우면 `deleteAssetsForOwner`가 지운 자산 행의 파일을 고아 큐로 넘긴다(PR #188).
 
 ### 10.3 API
 
