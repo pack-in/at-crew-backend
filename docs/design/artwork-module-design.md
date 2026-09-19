@@ -549,7 +549,8 @@ public void onMemberDeactivated(MemberDeactivatedEvent event) {
   드러낸다. 원본·용량 문제는 Worker가 FAILED 콜백을 보내 FAILED로 끝난다.
 - 휴지통 보관 기간(기본 1년, 설정 `artwork.trash.retention` — `Period`라 달력 기준이고 단위 없는 숫자는 일, 30일 미만이면 기동 실패)이 지나면 `TrashPurgeScheduler`가 1시간마다 최대 100건씩
   자동 영구 삭제한다([#178](https://github.com/pack-in/at-crew-backend/issues/178)). 사용자 영구 삭제와 같은 `ArtworkPurger`를
-  거치므로 고정형 스냅샷 보존·R2 정리·포트폴리오 구성 정리가 똑같이 적용된다.
+  거치므로 고정형 스냅샷 보존·R2 정리·포트폴리오 구성 정리가 똑같이 적용된다. 작품마다 별도 트랜잭션이고,
+  실패한 작품은 하루 동안 건너뛰어 뒤의 작품이 밀리지 않는다.
 
 원본은 [`docs/assets/artwork-status.lifecycle.json`](../assets/artwork-status.lifecycle.json)(archify IR)이다.
 고친 뒤 `python3 scripts/diagrams/build.py artwork-status`로 SVG를 다시 만든다.
@@ -606,10 +607,6 @@ public ArtworkInfo uploadArtwork(String memberId, UploadArtworkCommand command) 
     return toInfo(artwork);
 }
 ```
-
-이미지를 교체할 때(`updateArtwork`의 `imageKeys`) 새 목록에 남는 이미지는 처리 결과를 넘겨받는다(`ArtworkImage.carriedOver`).
-작품 상태는 이미지 현황으로 다시 계산하므로 순서만 바꾸면 READY가 유지되고, 새로 들어온 이미지만 PROCESSING을 만든다.
-media도 남는 key는 다시 트리거하지 않는다 — Worker가 raw를 지운 뒤라 재변환하면 FAILED가 된다(PR #188).
 
 R2 Event Notification은 Cloudflare Queue 설정이 선행되어야 해 복잡도가 높다.
 서버 재시작 시 @Async 유실은 아래 10.2 스케줄러가 커버한다.

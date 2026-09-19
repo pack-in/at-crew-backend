@@ -238,7 +238,7 @@ public class Artwork implements Persistable<String> {
         artwork.authorId = authorId;
         artwork.title = title;
         artwork.description = description;
-        artwork.attachImages(imageKeys, representativeImageIndex, List.of());
+        artwork.attachImages(imageKeys, representativeImageIndex);
         artwork.thumbnailKey = thumbnailKey;
         artwork.imageLayoutType = imageLayoutType;
         artwork.artworkField = artworkField;
@@ -343,26 +343,19 @@ public class Artwork implements Persistable<String> {
         return removed;
     }
 
-    // 이미지 교체 2단계 — 신규 이미지를 ordinal 0부터 채운다. detached(1단계에서 뗀 이미지)에 같은 원본 key가 있으면
-    // 그 처리 결과를 넘겨받고, 상태는 이미지 현황으로 다시 계산한다 — 남는 이미지는 다시 변환하지 않으므로(Worker가 raw를
-    // 지운 뒤라 재변환하면 FAILED다) 순서만 바꾸면 READY가 그대로 유지된다.
-    public void attachImages(List<String> newImageKeys, int newRepresentativeIndex, List<ArtworkImage> detached) {
+    // 이미지 교체 2단계 — 신규 이미지를 ordinal 0부터 채우고 PROCESSING 상태로 전환한다.
+    public void attachImages(List<String> newImageKeys, int newRepresentativeIndex) {
         if (newImageKeys == null || newImageKeys.isEmpty() || newImageKeys.size() > 30) {
             throw new ArtworkException(ArtworkErrorCode.INVALID_IMAGE_COUNT);
         }
         if (newRepresentativeIndex < 0 || newRepresentativeIndex >= newImageKeys.size()) {
             throw new ArtworkException(ArtworkErrorCode.INVALID_REPRESENTATIVE_INDEX);
         }
-        java.util.Map<String, ArtworkImage> previousByKey = new java.util.HashMap<>();
-        detached.forEach(img -> previousByKey.putIfAbsent(img.getOriginalKey(), img));
         for (int i = 0; i < newImageKeys.size(); i++) {
-            ArtworkImage previous = previousByKey.get(newImageKeys.get(i));
-            this.images.add(previous != null
-                    ? ArtworkImage.carriedOver(this, i, previous)
-                    : ArtworkImage.pending(this, i, newImageKeys.get(i)));
+            this.images.add(ArtworkImage.pending(this, i, newImageKeys.get(i)));
         }
         this.representativeImageIndex = newRepresentativeIndex;
-        this.status = resolveStatusFromImages();
+        this.status = ArtworkStatus.PROCESSING;
     }
 
     // 자재 교체 1단계 — detachImages와 동일한 이유로 삭제를 먼저 예약한다(uk_am_order 충돌 방지).

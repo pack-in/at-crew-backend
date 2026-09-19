@@ -15,7 +15,6 @@ import com.atcrew.artwork.Visibility;
 import com.atcrew.artwork.ArtworkChangedEvent;
 import com.atcrew.artwork.ArtworkPortfolioSelectionRequested;
 import com.atcrew.artwork.internal.domain.artwork.Artwork;
-import com.atcrew.artwork.internal.domain.artwork.ArtworkImage;
 import com.atcrew.artwork.internal.domain.artwork.Material;
 import com.atcrew.artwork.internal.exception.ArtworkErrorCode;
 import com.atcrew.artwork.internal.exception.ArtworkException;
@@ -244,10 +243,10 @@ class ArtworkServiceImpl implements ArtworkService {
     // (docs/design/mariadb-migration-design.md §3.3.2 RefreshToken과 동일 계열의 함정, 이번 전환에서 신규 발견).
     // 교체로 버려지는 R2 key의 고아 처리는 mediaService.replaceAndTriggerProcessing이 담당한다.
     private void replaceImages(Artwork artwork, List<String> newImageKeys, Integer representativeImageIndex) {
-        List<ArtworkImage> detached = artwork.detachImages();
+        artwork.detachImages();
         artworkRepository.saveAndFlush(artwork);
         int newRepIndex = representativeImageIndex != null ? representativeImageIndex : 0;
-        artwork.attachImages(newImageKeys, newRepIndex, detached);
+        artwork.attachImages(newImageKeys, newRepIndex);
     }
 
     // 자재 교체 — replaceImages와 동일한 이유로 uk_am_order(artwork_id, ordinal) 충돌을 막기 위해 2단계로 처리한다.

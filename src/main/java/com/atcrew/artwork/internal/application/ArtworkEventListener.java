@@ -60,23 +60,28 @@ class ArtworkEventListener {
         // 보존 판정 자체가 실패하면 전체 키를 고아 큐로 넘긴다 — 스케줄러가 같은 판정을 다시 하므로
         // 보존 대상이 즉시 삭제되는 일은 없다.
         List<String> deletableKeys = event.allImageKeys();
+        // 지웠거나 고아 큐에 넣은 key — 아래 자산 행 정리가 같은 key를 다시 적재하지 않게 넘긴다.
+        Set<String> handledKeys = new HashSet<>();
         try {
             Set<String> retainedKeys = retainedKeys(event.allImageKeys());
             deletableKeys = event.allImageKeys().stream().filter(key -> !retainedKeys.contains(key)).toList();
             // 추적 기록을 R2 삭제보다 먼저 남긴다 — 삭제가 중간에 실패해도 보존 key가 미아가 되지 않는다.
             markRetainedAsOrphaned(retainedKeys);
+            handledKeys.addAll(retainedKeys);
             mediaService.deleteFiles(deletableKeys);
+            handledKeys.addAll(deletableKeys);
             log.info("영구 삭제 R2 파일 제거: artworkId={} keyCount={} retainedCount={}",
                     event.artworkId(), deletableKeys.size(), retainedKeys.size());
         } catch (Exception e) {
             log.error("R2 파일 삭제 실패 — media 고아 키 정리 큐에 적재: artworkId={}", event.artworkId(), e);
             if (!deletableKeys.isEmpty()) {
                 mediaService.markOrphaned(deletableKeys);
+                handledKeys.addAll(deletableKeys);
             }
         }
         // R2 삭제 성공 여부와 무관하게 media_assets 행은 정리한다 — 영구 삭제된 작품은 더 이상
         // Worker 콜백을 받을 일이 없으므로 메타데이터를 남겨둘 이유가 없다.
-        mediaService.deleteAssetsForOwner(MediaOwnerType.ARTWORK, event.artworkId());
+        mediaService.deleteAssetsForOwner(MediaOwnerType.ARTWORK, event.artworkId(), handledKeys);
     }
 
     /**

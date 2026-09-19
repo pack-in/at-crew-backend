@@ -14,6 +14,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import java.util.List;
+import java.util.stream.Stream;
+import java.util.Collection;
 import java.util.Set;
 
 @Service
@@ -71,39 +73,17 @@ class MediaServiceImpl implements MediaService {
             }
         });
     }
-    /**
-     * 이미지 목록 교체. 새 목록에 남는 key는 처리 결과를 그대로 넘겨받고(다시 트리거하지 않는다), 빠진 key의 파일만
-     * 고아 큐에 넣고, 새로 들어온 key만 트리거한다.
-     *
-     * <p>예전에는 남는 key까지 고아로 넘기고 전부 다시 트리거했다. 정리 배치가 남긴 이미지 파일을 지웠고, Worker는
-     * 변환을 마치면 raw를 지우므로 재변환은 "원본 없음"으로 FAILED가 됐다(PR #188 코드 리뷰).
-     */
+    // 소유자가 이미지 목록을 교체할 때 기존 행의 파일을 고아로 넘기고 새로 등록한다. 남는 key의 처리 결과를 넘겨받는
+    // 개선은 artwork·recruit와 함께 설계해야 해 별도 이슈로 분리했다(PR #188).
     @Override @Transactional public void replaceAndTriggerProcessing(MediaOwnerType ownerType, String ownerId,
             List<String> newImageKeys, MediaVariantProfile variantProfile, MediaQualityTier qualityTier) {
-        validate(ownerType, ownerId, newImageKeys, variantProfile, qualityTier);
         var previous = assets.findByOwnerForUpdate(ownerType, ownerId);
-        var previousByKey = new java.util.HashMap<String, MediaAsset>();
-        previous.forEach(a -> previousByKey.putIfAbsent(a.getOriginalKey(), a));
-        var kept = new java.util.HashSet<>(newImageKeys);
-        markOrphaned(keysOf(previous.stream().filter(a -> !kept.contains(a.getOriginalKey())).toList()));
+        markOrphaned(keysOf(previous));
         // 삭제를 flush로 먼저 확정한 뒤 새 행을 넣는다 — 같은 flush에 묶이면 Hibernate가 INSERT를 DELETE보다
         // 먼저 실행해 uk_ma_owner_order와 충돌한다(설계 §2.1이 artwork에서 그대로 옮겨오라고 명시한 2단계 패턴).
         assets.deleteAll(previous);
         assets.flush();
-        var toTrigger = new java.util.ArrayList<String>();
-        for (int i = 0; i < newImageKeys.size(); i++) {
-            String key = newImageKeys.get(i);
-            MediaAsset carried = previousByKey.get(key);
-            if (carried != null) {
-                assets.save(MediaAsset.carriedOver(carried, i));
-            } else {
-                assets.save(MediaAsset.pending(ownerType, ownerId, i, key, variantProfile, qualityTier));
-                toTrigger.add(key);
-            }
-        }
-        if (!toTrigger.isEmpty()) {
-            triggerAfterCommit(ownerType, ownerId, toTrigger, variantProfile, qualityTier);
-        }
+        registerAndTriggerProcessing(ownerType, ownerId, newImageKeys, variantProfile, qualityTier);
     }
     @Override @Transactional(readOnly = true) public List<MediaAssetInfo> getAssets(MediaOwnerType ownerType, String ownerId) {
         return assets.findByOwnerTypeAndOwnerIdOrderByOrdinalAsc(ownerType, ownerId).stream()
@@ -112,17 +92,18 @@ class MediaServiceImpl implements MediaService {
     /**
      * 자산 행을 지우면 그 행이 가리키던 파일(원본·변형본)은 고아 큐로 보낸다. 영구 삭제 키 목록은 삭제 시점의 소유자
      * 엔티티로 만들므로, 그 뒤 이 호출 전까지 도착한 콜백이 기록한 변형본은 목록에 없다 — 여기서 넘기지 않으면 추적
-     * 기록 없이 R2에 남는다. 이미 지운 key가 다시 들어와도 정리 배치가 보존 판정 후 다시 지울 뿐이라 해가 없다.
+     * 기록 없이 R2에 남는다. 호출자가 이미 처리한 key(handledKeys)는 빼고 넘긴다.
      */
-    @Override @Transactional public void deleteAssetsForOwner(MediaOwnerType ownerType, String ownerId) {
+    @Override @Transactional public void deleteAssetsForOwner(MediaOwnerType ownerType, String ownerId, Collection<String> handledKeys) {
         var rows = assets.findByOwnerForUpdate(ownerType, ownerId);
-        markOrphaned(keysOf(rows));
+        Set<String> handled = Set.copyOf(handledKeys);
+        markOrphaned(keysOf(rows).stream().filter(k -> k != null && !handled.contains(k)).toList());
         assets.deleteAll(rows);
     }
     @Override public void deleteFiles(List<String> keys) { storagePort.deleteFiles(keys); }
     /** 자산 행이 가리키는 R2 key 전체(원본·변형본 3종). null은 markOrphaned가 거른다. */
     private static List<String> keysOf(List<MediaAsset> rows) {
-        return rows.stream().flatMap(a -> java.util.stream.Stream.of(a.getOriginalKey(), a.getThumbKey(),
+        return rows.stream().flatMap(a -> Stream.of(a.getOriginalKey(), a.getThumbKey(),
                 a.getThumbAdultKey(), a.getOriginalAvifKey())).toList();
     }
 

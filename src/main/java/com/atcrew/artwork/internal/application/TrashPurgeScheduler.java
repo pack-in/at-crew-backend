@@ -2,10 +2,13 @@ package com.atcrew.artwork.internal.application;
 
 import com.atcrew.artwork.ArtworkStatus;
 import com.atcrew.artwork.internal.persistence.ArtworkRepository;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.Period;
 import java.time.ZoneOffset;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -26,6 +29,10 @@ import org.springframework.transaction.support.TransactionTemplate;
  * <p>한 번에 {@link #BATCH_SIZE}건까지, 오래된 것부터 <b>작품마다 별도 트랜잭션</b>으로 지운다. 한 트랜잭션으로 묶으면
  * 매번 실패하는 작품 하나가 배치 전체를 롤백시켜 자동 삭제가 영영 멈춘다 — 실패한 작품은 로그를 남기고 건너뛴다.
  * 밀린 양은 다음 실행에서 이어서 지운다.
+ *
+ * <p>실패한 작품은 {@link #FAILURE_BACKOFF} 동안 조회 결과에서 뺀다. 오래된 순으로 뽑으므로, 빼지 않으면 매번 실패하는
+ * 작품이 {@link #BATCH_SIZE}건 쌓였을 때 배치가 그 작품들로만 채워져 뒤의 작품이 영영 지워지지 않는다. 기록은
+ * 인스턴스 메모리에만 두며 재기동하면 비워진다 — 다시 시도할 뿐이라 해가 없다.
  */
 @Component
 public class TrashPurgeScheduler {
@@ -33,12 +40,17 @@ public class TrashPurgeScheduler {
     static final int BATCH_SIZE = 100;
     /** 보관 기간 하한(일). 설정 실수로 휴지통 작품이 복구 기회 없이 사라지는 것을 기동 시점에 막는다. */
     static final int MIN_RETENTION_DAYS = 30;
+    static final Duration FAILURE_BACKOFF = Duration.ofDays(1);
+    /** 건너뛸 작품 수 상한 — 조회 크기가 BATCH_SIZE + 이 값을 넘지 않게 한다. 넘치면 가장 먼저 기록된 것부터 다시 시도한다. */
+    static final int MAX_SKIPPED = 1_000;
     private static final Logger log = LoggerFactory.getLogger(TrashPurgeScheduler.class);
 
     private final ArtworkRepository artworkRepository;
     private final ArtworkPurger artworkPurger;
     private final Period retention;
     private final TransactionTemplate perArtwork;
+    /** 최근 실패한 작품 id → 다시 시도할 시각. 스케줄 실행은 fixedDelay라 한 번에 한 스레드만 접근한다. */
+    private final Map<String, Instant> skipUntil = new LinkedHashMap<>();
 
     /**
      * 보관 기간은 {@link Period}다. 달력 기준이라 "P1Y"는 윤년을 끼어도 정확히 1년이고, 단위 없이 "365"라고 적으면
@@ -61,9 +73,14 @@ public class TrashPurgeScheduler {
     /** @return 이번 실행에서 영구 삭제한 작품 수 */
     @Scheduled(fixedDelay = 3_600_000, initialDelay = 600_000)
     public int purgeExpiredTrash() {
-        Instant threshold = thresholdAt(Instant.now(), retention);
+        Instant now = Instant.now();
+        Instant threshold = thresholdAt(now, retention);
+        skipUntil.values().removeIf(until -> !until.isAfter(now));
         List<String> expiredIds = artworkRepository.findIdsByStatusAndDeletedAtBefore(
-                ArtworkStatus.DELETED, threshold, PageRequest.of(0, BATCH_SIZE));
+                        ArtworkStatus.DELETED, threshold, PageRequest.of(0, BATCH_SIZE + skipUntil.size())).stream()
+                .filter(id -> !skipUntil.containsKey(id))
+                .limit(BATCH_SIZE)
+                .toList();
         int purged = 0;
         for (String artworkId : expiredIds) {
             try {
@@ -72,13 +89,21 @@ public class TrashPurgeScheduler {
                     purged++;
                 }
             } catch (RuntimeException e) {
-                log.warn("휴지통 자동 영구 삭제 실패 — 건너뛰고 다음 작품으로: artworkId={}", artworkId, e);
+                log.warn("휴지통 자동 영구 삭제 실패 — {} 동안 건너뛴다: artworkId={}", FAILURE_BACKOFF, artworkId, e);
+                rememberFailure(artworkId, now);
             }
         }
         if (purged > 0) {
             log.info("휴지통 보관 기간 만료 작품 영구 삭제: count={} retention={} threshold={}", purged, retention, threshold);
         }
         return purged;
+    }
+
+    private void rememberFailure(String artworkId, Instant now) {
+        if (skipUntil.size() >= MAX_SKIPPED) {
+            skipUntil.remove(skipUntil.keySet().iterator().next());
+        }
+        skipUntil.put(artworkId, now.plus(FAILURE_BACKOFF));
     }
 
     // 목록을 뽑은 뒤 사용자가 복구했을 수 있다 — 트랜잭션 안에서 다시 읽어 여전히 만료된 휴지통 작품일 때만 지운다.

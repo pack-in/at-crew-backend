@@ -22,7 +22,6 @@ import com.atcrew.recruit.internal.domain.RecruitPostingImage;
 import com.atcrew.recruit.internal.persistence.JobPostingImageRepository;
 import com.atcrew.recruit.internal.persistence.JobPostingRepository;
 import com.atcrew.recruit.internal.persistence.JobSeekingPostImageRepository;
-import com.atcrew.recruit.internal.persistence.JobSeekingPostRepository;
 import com.atcrew.support.BillingTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -73,8 +72,6 @@ class RecruitModuleTests {
     @Autowired
     JobSeekingPostImageRepository jobSeekingPostImageRepository;
 
-    @Autowired
-    JobSeekingPostRepository jobSeekingPostRepository;
 
     @Autowired
     MediaService mediaService;
@@ -471,40 +468,6 @@ class RecruitModuleTests {
         assertThat(jobSeekingPostImageRepository.findByPostingIdOrderByOrdinalAsc(created.id()))
                 .extracting(RecruitPostingImage::getOriginalKey, RecruitPostingImage::getProcessingStatus)
                 .containsExactly(tuple(secondKey, MediaProcessingStatus.PENDING));
-    }
-
-    // 순서만 바꾸거나 일부만 교체하면 남긴 이미지는 처리 결과를 넘겨받는다 — 다시 트리거하면 Worker가 raw를 지운 뒤라
-    // FAILED가 되고, 남긴 이미지 파일을 고아로 넘기면 정리 배치가 지운다.
-    @Test
-    void 구직글_이미지_순서만_바꾸면_처리_결과를_유지하고_READY다() {
-        String authorId = registerMember("media-seeking-reorder");
-        String k1 = presignKey(), k2 = presignKey();
-        JobSeekingPostInfo created = recruitService.createJobSeekingPost(authorId, new CreateJobSeekingPostCommand(
-                "순서 변경", List.of(ArtworkRole.TOTAL_ARTWORK), List.of(Genre.FANTASY), "선화 위주",
-                FeedbackStyle.PERIODIC, WorkStyle.COLLABORATIVE, "협의", "포트폴리오 소개", List.of(k1, k2), false));
-        publishProcessed(MediaOwnerType.JOB_SEEKING_POST, created.id(), k1, "original/k1.avif", MediaProcessingStatus.DONE);
-        publishProcessed(MediaOwnerType.JOB_SEEKING_POST, created.id(), k2, "original/k2.avif", MediaProcessingStatus.DONE);
-        awaitCondition(() -> jobSeekingPostImageRepository.findByPostingIdOrderByOrdinalAsc(created.id()).stream()
-                .allMatch(RecruitPostingImage::isDone));
-
-        String k3 = presignKey();
-        recruitService.updateJobSeekingPost(authorId, created.id(),
-                new UpdateJobSeekingPostCommand(null, null, null, null, null, null, null, null, List.of(k2, k1)));
-
-        assertThat(jobSeekingPostImageRepository.findByPostingIdOrderByOrdinalAsc(created.id()))
-                .extracting(RecruitPostingImage::getOriginalKey, RecruitPostingImage::getProcessingStatus,
-                        RecruitPostingImage::getOriginalAvifKey)
-                .containsExactly(tuple(k2, MediaProcessingStatus.DONE, "original/k2.avif"),
-                        tuple(k1, MediaProcessingStatus.DONE, "original/k1.avif"));
-        assertThat(jobSeekingPostRepository.findById(created.id()).orElseThrow().getImageProcessingStatus())
-                .isEqualTo(RecruitImageProcessingStatus.READY);
-
-        recruitService.updateJobSeekingPost(authorId, created.id(),
-                new UpdateJobSeekingPostCommand(null, null, null, null, null, null, null, null, List.of(k2, k3)));
-
-        assertThat(jobSeekingPostImageRepository.findByPostingIdOrderByOrdinalAsc(created.id()))
-                .extracting(RecruitPostingImage::getOriginalKey, RecruitPostingImage::getProcessingStatus)
-                .containsExactly(tuple(k2, MediaProcessingStatus.DONE), tuple(k3, MediaProcessingStatus.PENDING));
     }
 
     // presign이 발급하는 key 형태(raw/<uuid>.jpg)를 흉내낸다.

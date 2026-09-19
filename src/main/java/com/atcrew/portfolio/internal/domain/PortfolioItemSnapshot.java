@@ -87,7 +87,7 @@ public class PortfolioItemSnapshot {
 
     /**
      * 이 스냅샷이 참조하는 R2 key 색인(V41) — 보존 판정이 key로 바로 조회한다(docs/design/portfolio-module-design.md §5.6).
-     * 스냅샷은 생성 뒤 바뀌지 않으므로 생성 시점에 한 번 채운다. 스냅샷 행이 지워지면 FK CASCADE로 함께 지워진다.
+     * 스냅샷은 생성 뒤 바뀌지 않으므로 생성 시점(of)에 채운다. 스냅샷 행이 지워지면 FK CASCADE로 함께 지워진다.
      */
     @ElementCollection(fetch = FetchType.LAZY)
     @CollectionTable(name = "portfolio_snapshot_media_keys", joinColumns = @JoinColumn(name = "snapshot_id"))
@@ -106,7 +106,8 @@ public class PortfolioItemSnapshot {
     public static PortfolioItemSnapshot of(String portfolioId, int ordinal, String sourceArtworkId,
                                            String title, String thumbKey, String thumbAdultKey,
                                            AgeRating ageRating, ArtworkField artworkField,
-                                           Instant sourceCreatedAt, String payloadJson) {
+                                           Instant sourceCreatedAt, String payloadJson,
+                                           Collection<String> referencedMediaKeys) {
         PortfolioItemSnapshot snapshot = new PortfolioItemSnapshot();
         snapshot.portfolioId = portfolioId;
         snapshot.snapshotPublicId = UuidV7Generator.generate();
@@ -119,13 +120,9 @@ public class PortfolioItemSnapshot {
         snapshot.artworkField = artworkField;
         snapshot.sourceCreatedAt = sourceCreatedAt;
         snapshot.payloadJson = payloadJson;
+        // 색인을 팩토리에서 필수로 받는다 — 선택 호출로 두면 새 생성 경로가 빠뜨려도 조용히 보존 대상에서 빠진다.
+        referencedMediaKeys.stream().filter(k -> k != null && !k.isBlank()).forEach(snapshot.mediaKeys::add);
         return snapshot;
-    }
-
-    /** 보존 판정 색인에 넣을 key — null·빈 값은 거른다. 생성 직후 한 번만 부른다. */
-    public PortfolioItemSnapshot referenceMediaKeys(Collection<String> keys) {
-        keys.stream().filter(k -> k != null && !k.isBlank()).forEach(mediaKeys::add);
-        return this;
     }
 
     public Long getId() { return id; }

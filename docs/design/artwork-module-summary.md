@@ -560,7 +560,7 @@ permanentlyDeleteArtworks() / TrashPurgeScheduler
 onPermanentlyDeleted() [@Async, @TransactionalEventListener(AFTER_COMMIT)]
   → 스냅샷 보존 key 제외 후 mediaService.deleteFiles()
   → 실패 시 mediaService.markOrphaned()
-  → mediaService.deleteAssetsForOwner()  (지운 행의 key도 고아 큐로)
+  → mediaService.deleteAssetsForOwner(handledKeys)  (위에서 처리하지 않은 행의 key만 고아 큐로)
 ```
 
 ---
@@ -581,6 +581,8 @@ onPermanentlyDeleted() [@Async, @TransactionalEventListener(AFTER_COMMIT)]
 휴지통으로 옮긴 지 보관 기간(기본 `P1Y`, `artwork.trash.retention`)이 지난 작품을 최대 100건씩 영구 삭제한다(#178).
 보관 기간은 `Period`라 윤년을 끼어도 달력 기준 1년이고, 30일 미만으로 설정하면 앱이 기동하지 않는다.
 사용자 영구 삭제와 같은 `ArtworkPurger`를 거치므로 스냅샷 보존·R2 정리가 똑같이 적용된다.
+작품마다 별도 트랜잭션이라 한 건이 실패해도 나머지는 지우고, 실패한 작품은 하루 동안 조회에서 빼 뒤의 작품이
+밀리지 않게 한다(건너뛴 수만큼 더 조회해 배치를 채운다. 기록은 메모리에만 두며 재기동 시 비워진다).
 
 ### OrphanImageCleanupScheduler (1시간마다)
 

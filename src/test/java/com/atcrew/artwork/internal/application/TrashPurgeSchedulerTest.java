@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -19,6 +20,7 @@ import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.convert.ApplicationConversionService;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.SimpleTransactionStatus;
 
@@ -85,6 +87,32 @@ class TrashPurgeSchedulerTest {
         assertThat(purged).isEqualTo(1);
         verify(purger).purge(List.of(ok));
         verify(txManager).rollback(any());
+    }
+
+    // 오래된 순으로 뽑으므로 매번 실패하는 작품을 다시 넣으면 배치가 그 작품들로 채워져 뒤의 작품이 영영 밀린다.
+    // 실패한 작품은 빼고, 빠진 만큼 더 조회해 배치를 채운다.
+    @Test
+    void 실패한_작품은_다음_실행에서_건너뛰고_그만큼_더_조회한다() {
+        ArtworkRepository repository = mock(ArtworkRepository.class);
+        ArtworkPurger purger = mock(ArtworkPurger.class);
+        PlatformTransactionManager txManager = mock(PlatformTransactionManager.class);
+        when(txManager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
+        Artwork failing = expiredArtwork(), next = expiredArtwork();
+        when(repository.findIdsByStatusAndDeletedAtBefore(eq(ArtworkStatus.DELETED), any(), any()))
+                .thenReturn(List.of("failing"), List.of("failing", "next"));
+        when(repository.findById("failing")).thenReturn(Optional.of(failing));
+        when(repository.findById("next")).thenReturn(Optional.of(next));
+        doThrow(new IllegalStateException("직렬화 실패")).when(purger).purge(List.of(failing));
+        TrashPurgeScheduler scheduler = new TrashPurgeScheduler(repository, purger, txManager, Period.ofYears(1));
+
+        scheduler.purgeExpiredTrash();
+        int purged = scheduler.purgeExpiredTrash();
+
+        assertThat(purged).isEqualTo(1);
+        verify(purger, times(1)).purge(List.of(failing));
+        verify(purger).purge(List.of(next));
+        verify(repository).findIdsByStatusAndDeletedAtBefore(eq(ArtworkStatus.DELETED), any(),
+                eq(PageRequest.of(0, TrashPurgeScheduler.BATCH_SIZE + 1)));
     }
 
     // 목록을 뽑은 뒤 사용자가 복구했으면 지우지 않는다.

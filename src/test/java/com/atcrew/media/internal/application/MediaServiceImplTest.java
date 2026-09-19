@@ -2,13 +2,17 @@ package com.atcrew.media.internal.application;
 
 import com.atcrew.media.*;
 import com.atcrew.media.internal.domain.MediaAsset;
+import com.atcrew.media.internal.domain.OrphanedMediaKey;
 import com.atcrew.media.internal.infra.storage.ArtworkStoragePort;
 import com.atcrew.media.internal.persistence.MediaAssetRepository;
 import com.atcrew.media.internal.persistence.OrphanedMediaKeyRepository;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.core.task.TaskRejectedException;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import java.util.List;
+import java.util.Set;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -23,13 +27,35 @@ class MediaServiceImplTest {
         var existing = List.of(MediaAsset.pending(MediaOwnerType.ARTWORK, "artwork-1", 0, "raw/1.jpg", MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.ORIGINAL));
         when(assets.findByOwnerForUpdate(MediaOwnerType.ARTWORK, "artwork-1")).thenReturn(existing);
 
-        service.deleteAssetsForOwner(MediaOwnerType.ARTWORK, "artwork-1");
+        service.deleteAssetsForOwner(MediaOwnerType.ARTWORK, "artwork-1", List.of());
 
         verify(assets).deleteAll(existing);
         // 지운 행이 가리키던 파일은 고아 큐로 간다 — 영구 삭제 이벤트 뒤에 도착한 콜백이 남긴 변형본을 놓치지 않는다.
-        var orphaned = org.mockito.ArgumentCaptor.forClass(com.atcrew.media.internal.domain.OrphanedMediaKey.class);
+        var orphaned = ArgumentCaptor.forClass(OrphanedMediaKey.class);
         verify(orphans).save(orphaned.capture());
         assertThat(orphaned.getValue().getKeys()).containsExactly("raw/1.jpg");
+    }
+
+    @Test void 호출자가_처리한_키는_고아_큐에_다시_넣지_않는다() {
+        var processed = MediaAsset.pending(MediaOwnerType.ARTWORK, "artwork-1", 0, "raw/1.jpg", MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.ORIGINAL);
+        var late = MediaAsset.pending(MediaOwnerType.ARTWORK, "artwork-1", 1, "raw/2.jpg", MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.ORIGINAL);
+        when(assets.findByOwnerForUpdate(MediaOwnerType.ARTWORK, "artwork-1")).thenReturn(List.of(processed, late));
+
+        service.deleteAssetsForOwner(MediaOwnerType.ARTWORK, "artwork-1", Set.of("raw/1.jpg"));
+
+        var orphaned = ArgumentCaptor.forClass(OrphanedMediaKey.class);
+        verify(orphans).save(orphaned.capture());
+        assertThat(orphaned.getValue().getKeys()).containsExactly("raw/2.jpg");
+    }
+
+    @Test void 남은_키를_호출자가_모두_처리했으면_고아_행을_만들지_않는다() {
+        var processed = MediaAsset.pending(MediaOwnerType.ARTWORK, "artwork-1", 0, "raw/1.jpg", MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.ORIGINAL);
+        when(assets.findByOwnerForUpdate(MediaOwnerType.ARTWORK, "artwork-1")).thenReturn(List.of(processed));
+
+        service.deleteAssetsForOwner(MediaOwnerType.ARTWORK, "artwork-1", Set.of("raw/1.jpg"));
+
+        verify(orphans, never()).save(any());
+        verify(assets).deleteAll(List.of(processed));
     }
 
     @Test void presignAcceptsOneToThirtySupportedImageTypes() {
@@ -109,7 +135,7 @@ class MediaServiceImplTest {
     // afterCommit에서 던진 예외는 이미 커밋된 요청의 호출자에게 전파된다 — 데이터는 저장됐는데 500이 나가
     // 클라이언트가 재시도하면 중복 생성된다. 배포 종료 중 @Async 제출 거부가 그 경우다.
     @Test void 커밋_뒤_트리거가_실패해도_호출자에게_전파하지_않는다() {
-        doThrow(new org.springframework.core.task.TaskRejectedException("executor 종료 중"))
+        doThrow(new TaskRejectedException("executor 종료 중"))
                 .when(worker).triggerAsync(any(), any(), any(), any(), any());
         inTransaction(() -> {
             service.registerAndTriggerProcessing(MediaOwnerType.ARTWORK, "artwork-1", List.of("raw/1.jpg"),
@@ -120,48 +146,6 @@ class MediaServiceImplTest {
         // 예외가 난 경로를 실제로 지났는지 — 동기화가 등록되지 않도록 퇴행하면 여기서 걸린다.
         verify(worker).triggerAsync(MediaOwnerType.ARTWORK, "artwork-1", List.of("raw/1.jpg"),
                 MediaVariantProfile.STANDARD, MediaQualityTier.WEB);
-    }
-
-    // 부분 교체 — 남는 key는 처리 결과를 넘겨받고 다시 트리거하지 않는다. Worker는 변환을 마치면 raw를 지우므로
-    // 재변환은 FAILED가 되고, 남는 key를 고아로 넘기면 정리 배치가 남긴 이미지 파일을 지운다.
-    @Test void 부분_교체는_빠진_키만_고아로_넘기고_새_키만_트리거한다() {
-        MediaAsset kept1 = done("raw/1.jpg", 0), removed = done("raw/2.jpg", 1), kept3 = done("raw/3.jpg", 2);
-        when(assets.findByOwnerForUpdate(MediaOwnerType.ARTWORK, "artwork-1"))
-                .thenReturn(List.of(kept1, removed, kept3));
-
-        service.replaceAndTriggerProcessing(MediaOwnerType.ARTWORK, "artwork-1", List.of("raw/3.jpg", "raw/1.jpg", "raw/9.jpg"),
-                MediaVariantProfile.STANDARD, MediaQualityTier.WEB);
-
-        var orphaned = org.mockito.ArgumentCaptor.forClass(com.atcrew.media.internal.domain.OrphanedMediaKey.class);
-        verify(orphans).save(orphaned.capture());
-        assertThat(orphaned.getValue().getKeys())
-                .containsExactlyInAnyOrder("raw/2.jpg", "thumb/2.avif", "original/2.avif");
-        var saved = org.mockito.ArgumentCaptor.forClass(MediaAsset.class);
-        verify(assets, times(3)).save(saved.capture());
-        assertThat(saved.getAllValues()).extracting(MediaAsset::getOriginalKey, MediaAsset::getOrdinal, MediaAsset::getThumbKey)
-                .containsExactly(tuple("raw/3.jpg", 0, "thumb/3.avif"), tuple("raw/1.jpg", 1, "thumb/1.avif"),
-                        tuple("raw/9.jpg", 2, null));
-        verify(worker).triggerAsync(MediaOwnerType.ARTWORK, "artwork-1", List.of("raw/9.jpg"),
-                MediaVariantProfile.STANDARD, MediaQualityTier.WEB);
-    }
-
-    @Test void 순서만_바꾸면_트리거도_고아_처리도_없다() {
-        when(assets.findByOwnerForUpdate(MediaOwnerType.ARTWORK, "artwork-1"))
-                .thenReturn(List.of(done("raw/1.jpg", 0), done("raw/2.jpg", 1)));
-
-        service.replaceAndTriggerProcessing(MediaOwnerType.ARTWORK, "artwork-1", List.of("raw/2.jpg", "raw/1.jpg"),
-                MediaVariantProfile.STANDARD, MediaQualityTier.WEB);
-
-        verifyNoInteractions(worker);
-        verify(orphans, never()).save(any());
-    }
-
-    private static MediaAsset done(String rawKey, int ordinal) {
-        String name = rawKey.substring(4, rawKey.lastIndexOf('.'));
-        MediaAsset asset = MediaAsset.pending(MediaOwnerType.ARTWORK, "artwork-1", ordinal, rawKey,
-                MediaVariantProfile.STANDARD, MediaQualityTier.WEB);
-        asset.markProcessed("thumb/" + name + ".avif", null, "original/" + name + ".avif", MediaProcessingStatus.DONE);
-        return asset;
     }
 
     /** 실제 트랜잭션 매니저 없이 동기화만 켜서 afterCommit·afterCompletion을 직접 부른다. */

@@ -19,9 +19,10 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.modulith.test.ApplicationModuleTest;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -138,14 +139,16 @@ class SnapshotRetainedMediaKeyProviderTests {
 
         assertThat(jdbcTemplate.queryForList(
                 "SELECT media_key FROM portfolio_snapshot_media_keys WHERE snapshot_id = ?", String.class, snapshotId))
-                .containsExactlyInAnyOrder("raw/custom-g.png", "raw/g.png", "thumb/g.avif", "original/g.avif", "raw/att-g.png");
+                .containsExactlyInAnyOrder("raw/custom-g.png", "raw/g.png", "thumb/g.avif", "original/g.avif");
+        // 자료 첨부 key는 소유 검증 없는 입력이라(#190) 색인하지 않는다 — 남의 파일 삭제를 막는 데 쓰일 수 있다.
+        assertThat(provider.retainedKeys(List.of("raw/att-g.png"))).isEmpty();
         assertThat(provider.retainedKeys(List.of("original/g.avif"))).containsExactly("original/g.avif");
     }
 
     /** V41 파일의 채우기 INSERT 문 — 테스트가 따로 SQL을 적으면 실제 마이그레이션과 어긋나도 모른다. */
     private static String backfillSql() throws java.io.IOException {
-        String migration = java.nio.file.Files.readString(
-                java.nio.file.Path.of("src/main/resources/db/migration/V41__portfolio_snapshot_media_keys.sql"));
+        String migration = Files.readString(
+                Path.of("src/main/resources/db/migration/V41__portfolio_snapshot_media_keys.sql"));
         String insert = migration.substring(migration.indexOf("INSERT IGNORE INTO"));
         return insert.substring(0, insert.lastIndexOf(';'));
     }
@@ -161,17 +164,14 @@ class SnapshotRetainedMediaKeyProviderTests {
         return portfolio.getId();
     }
 
-    // 운영 경로(PortfolioServiceImpl.toSnapshot)와 같은 방식으로 색인을 채운다 — 카드 썸네일 + 본문 key.
+    // 운영 경로(PortfolioServiceImpl.toSnapshot)와 같은 메서드로 색인 key를 만든다.
     private PortfolioItemSnapshot snapshotOf(String portfolioId, String thumbKey, String thumbAdultKey,
                                              ArtworkImageInfo... images) {
         ArtworkSnapshotPayload payload = new ArtworkSnapshotPayload(List.of(images), List.of(), List.of(),
                 List.of(), List.of(), List.of(), List.of(), "본문", 0);
-        Set<String> keys = new java.util.LinkedHashSet<>(payload.mediaKeys());
-        keys.add(thumbKey);
-        keys.add(thumbAdultKey);
         return PortfolioItemSnapshot.of(portfolioId, 0, UUID.randomUUID().toString(), "작품",
                 thumbKey, thumbAdultKey, AgeRating.ALL, ArtworkField.ILLUSTRATION, Instant.now(),
-                jsonMapper.writeValueAsString(payload)).referenceMediaKeys(keys);
+                jsonMapper.writeValueAsString(payload), payload.referencedMediaKeys(thumbKey, thumbAdultKey));
     }
 
     private String newSlug() {
