@@ -5,6 +5,7 @@ import com.atcrew.common.web.GlobalExceptionHandler;
 import com.atcrew.recruit.RecruitService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,6 +33,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 요청 바디가 없는 엔드포인트가 대부분이므로 경로변수 {@code artistMemberId}의 형식 검증에 집중한다.
  * ({@code MEMBER_ID_PATTERN} — MongoDB ObjectId 24자 hex 또는 UUID 36자만 허용)
  */
+@Disabled("MVP 범위 밖 — recruit(구인·구직·팀원모집) 미출시, 출시 시 해제")
 @ExtendWith(RestDocumentationExtension.class)
 class LikedArtistControllerValidationTest {
 

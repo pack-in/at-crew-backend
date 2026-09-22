@@ -2,6 +2,7 @@ package com.atcrew.search;
 
 import com.atcrew.SharedContainersConfig;
 import com.atcrew.support.DatabaseCleanupExtension;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import com.atcrew.artwork.AgeRating;
@@ -156,6 +157,7 @@ class SearchModuleTests {
         assertThat(mismatched.items()).isEmpty();
     }
 
+    @Disabled("MVP 범위 밖 — recruit(구인·구직·팀원모집) 미출시, 출시 시 해제")
     @Test
     void 구인글_유형만_요청하면_recruit_결과를_반환한다() {
         String token = uniqueToken();
@@ -171,6 +173,7 @@ class SearchModuleTests {
         assertThat(page.totalCount()).isEqualTo(1);
     }
 
+    @Disabled("MVP 범위 밖 — recruit(구인·구직·팀원모집) 미출시, 출시 시 해제")
     @Test
     void 포트폴리오와_구인글을_함께_요청하면_최신순으로_병합된다() {
         String token = uniqueToken();
@@ -198,6 +201,7 @@ class SearchModuleTests {
         assertThat(secondPage.items().get(0).id()).isNotEqualTo(firstPage.items().get(0).id());
     }
 
+    @Disabled("MVP 범위 밖 — recruit(구인·구직·팀원모집) 미출시, 출시 시 해제")
     @Test
     void 포트폴리오_전용_필터가_걸리면_구인글은_결과에서_제외된다() {
         String token = uniqueToken();
@@ -211,6 +215,7 @@ class SearchModuleTests {
         assertThat(page.totalCount()).isZero();
     }
 
+    @Disabled("MVP 범위 밖 — recruit(구인·구직·팀원모집) 미출시, 출시 시 해제")
     @Test
     void recruit_승인되지_않은_구인글은_검색에서_제외된다() {
         String token = uniqueToken();
@@ -227,6 +232,7 @@ class SearchModuleTests {
         assertThat(found).extracting(SearchResultItem::id).containsExactly(publishedId);
     }
 
+    @Disabled("MVP 범위 밖 — recruit(구인·구직·팀원모집) 미출시, 출시 시 해제")
     @Test
     void recruit_장르_태그_필터가_적용된다() {
         String token = uniqueToken();
@@ -242,6 +248,7 @@ class SearchModuleTests {
         assertThat(byGenre).extracting(SearchResultItem::id).containsExactly(teamPostingId);
     }
 
+    @Disabled("MVP 범위 밖 — recruit(구인·구직·팀원모집) 미출시, 출시 시 해제")
     @Test
     void recruit_검색_결과는_커서로_이어서_조회되고_hasNext와_totalCount가_정확하다() {
         String token = uniqueToken();
@@ -315,6 +322,7 @@ class SearchModuleTests {
         return new SearchQuery(q, List.of(PostType.JOB_POSTING, PostType.JOB_SEEKING, PostType.TEAM_RECRUIT), null, null, null, null, null, null, null, null, true, SearchSort.OLDEST, null, size);
     }
 
+    @Disabled("MVP 범위 밖 — recruit(구인·구직·팀원모집) 미출시, 출시 시 해제")
     @Test
     void recruit_전체_재색인_후에도_기존_구인글이_검색된다() {
         String token = uniqueToken();

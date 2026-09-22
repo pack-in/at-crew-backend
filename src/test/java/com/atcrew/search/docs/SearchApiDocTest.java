@@ -26,6 +26,7 @@ import com.atcrew.recruit.RecruitService;
 import com.atcrew.billing.internal.persistence.EntitlementBalanceRepository;
 import com.atcrew.support.BillingTestSupport;
 import com.atcrew.support.RestDocsIntegrationSupport;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -115,6 +116,7 @@ class SearchApiDocTest extends RestDocsIntegrationSupport {
                 ));
     }
 
+    @Disabled("MVP 범위 밖 — recruit(구인·구직·팀원모집) 미출시, 출시 시 해제")
     @Test
     void 구인글_유형_검색_문서화() throws Exception {
         String token = "token" + UUID.randomUUID().toString().replace("-", "").substring(0, 10);

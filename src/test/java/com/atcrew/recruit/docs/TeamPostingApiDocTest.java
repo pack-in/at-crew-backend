@@ -3,6 +3,7 @@ package com.atcrew.recruit.docs;
 import com.atcrew.billing.internal.persistence.EntitlementBalanceRepository;
 import com.atcrew.support.BillingTestSupport;
 import com.atcrew.support.RestDocsIntegrationSupport;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
@@ -29,6 +30,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 끌어올리기·휴지통 API의 요청/응답 구조를 REST Docs 스니펫으로 생성한다.
  * TeamPosting은 JobPosting과 달리 승인 절차가 없어 생성 즉시 PUBLISHED로 게시된다(설계 §4.2).
  */
+@Disabled("MVP 범위 밖 — recruit(구인·구직·팀원모집) 미출시, 출시 시 해제")
 class TeamPostingApiDocTest extends RestDocsIntegrationSupport {
 
     @Autowired
