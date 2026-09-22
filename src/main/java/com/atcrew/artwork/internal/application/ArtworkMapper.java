@@ -77,7 +77,7 @@ class ArtworkMapper {
                 thumbKey,
                 thumbAdultKey,
                 artwork.getArtworkField(),
-                artwork.getTags(),
+                artwork.getRoles(),
                 artwork.getAgeRating(),
                 artwork.getVisibility(),
                 artwork.isBlocked(),
