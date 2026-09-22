@@ -1,7 +1,9 @@
 package com.atcrew.recruit;
 
 import com.atcrew.common.response.CursorPage;
+import com.atcrew.common.response.OffsetPage;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -9,11 +11,12 @@ import java.util.Optional;
  */
 public interface RecruitService {
 
-    // 커뮤니티 "구인글" 탭 피드 — PUBLISHED 상태만 커서 페이지네이션으로 조회
-    CursorPage<CommunityJobPostingCardInfo> getJobPostingFeed(String cursor, int size);
+    // 커뮤니티 "구인글" 탭 피드 — PUBLISHED 상태만, 화면이 번호 페이지네이션이라 오프셋 조회다
+    // (page는 1부터, docs/design/community-module-design.md §6)
+    OffsetPage<CommunityJobPostingCardInfo> getJobPostingFeed(int page, int size);
 
-    // 커뮤니티 "팀원모집글" 탭 피드 — PUBLISHED 상태만 커서 페이지네이션으로 조회
-    CursorPage<CommunityTeamRecruitCardInfo> getTeamRecruitFeed(String cursor, int size);
+    // 커뮤니티 "팀원모집글" 탭 피드 — 위와 같은 계약
+    OffsetPage<CommunityTeamRecruitCardInfo> getTeamRecruitFeed(int page, int size);
 
     // === 타 모듈 연동 (§6) ===
 

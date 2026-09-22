@@ -170,21 +170,19 @@ class ArtworkSortModuleTests {
         assertThat(paged).isEqualTo(pageThrough(field, ArtworkSort.BOOKMARK_COUNT, 50));
     }
 
-    /** 커서를 따라 끝까지 순회하며 나온 순서대로 작품 ID를 모은다. */
+    /** 페이지를 1번부터 끝까지 넘기며 나온 순서대로 작품 ID를 모은다. */
     private List<String> pageThrough(ArtworkField field, ArtworkSort sort, int pageSize) {
         List<String> ids = new ArrayList<>();
-        String cursor = null;
-        // 커서가 진전되지 않아 같은 페이지를 무한히 도는 회귀를 테스트가 매달리지 않고 잡도록 상한을 둔다.
-        for (int page = 0; page < 50; page++) {
-            CursorPage<ArtworkSummaryInfo> result = artworkService.getCommunityArtworks(
-                    field, null, List.of(), sort, cursor, pageSize, null, true);
-            ids.addAll(result.items().stream().map(ArtworkSummaryInfo::id).toList());
-            cursor = result.nextCursor();
-            if (cursor == null) {
+        // 페이지가 비지 않아 같은 구간을 무한히 도는 회귀를 테스트가 매달리지 않고 잡도록 상한을 둔다.
+        for (int page = 1; page <= 50; page++) {
+            List<ArtworkSummaryInfo> items = artworkService.getCommunityArtworks(
+                    field, null, List.of(), sort, page, pageSize, null, true).items();
+            ids.addAll(items.stream().map(ArtworkSummaryInfo::id).toList());
+            if (items.size() < pageSize) {
                 return ids;
             }
         }
-        throw new AssertionError("커서 순회가 끝나지 않았습니다: sort=" + sort);
+        throw new AssertionError("페이지 순회가 끝나지 않았습니다: sort=" + sort);
     }
 
     /** 기대 정렬 순서 — (집계값 내림차순, 작품 ID 내림차순). 서비스 구현과 독립된 비교 기준이다. */

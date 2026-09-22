@@ -3,6 +3,7 @@ package com.atcrew.recruit.internal.application;
 import com.atcrew.billing.BillingProduct;
 import com.atcrew.billing.BillingService;
 import com.atcrew.common.response.CursorPage;
+import com.atcrew.common.response.OffsetPage;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.recruit.ApplicationInfo;
 import com.atcrew.recruit.ApplicationReviewStatus;
@@ -76,18 +77,20 @@ class RecruitServiceImpl implements RecruitService {
 
     @Override
     @Transactional(readOnly = true)
-    public CursorPage<CommunityJobPostingCardInfo> getJobPostingFeed(String cursor, int size) {
-        Instant now = Instant.now();
-        List<JobPosting> postings = findPublished(cursor, size, now);
-        return toCardPage(postings, size, now);
+    public OffsetPage<CommunityJobPostingCardInfo> getJobPostingFeed(int page, int size) {
+        List<JobPosting> postings = jobPostingRepository.findPublishedFirstPage(
+                JobPostingStatus.PUBLISHED, Instant.now(), Instant.EPOCH, PageRequest.of(page - 1, size));
+        return new OffsetPage<>(toJobCardInfos(postings),
+                jobPostingRepository.countPublished(JobPostingStatus.PUBLISHED));
     }
 
     @Override
     @Transactional(readOnly = true)
-    public CursorPage<CommunityTeamRecruitCardInfo> getTeamRecruitFeed(String cursor, int size) {
-        Instant now = Instant.now();
-        List<TeamPosting> postings = findPublishedTeamPostings(cursor, size, now);
-        return toTeamCardPage(postings, size, now);
+    public OffsetPage<CommunityTeamRecruitCardInfo> getTeamRecruitFeed(int page, int size) {
+        List<TeamPosting> postings = teamPostingRepository.findPublishedFirstPage(
+                TeamPostingStatus.PUBLISHED, Instant.now(), Instant.EPOCH, PageRequest.of(page - 1, size));
+        return new OffsetPage<>(toTeamCardInfos(postings),
+                teamPostingRepository.countPublished(TeamPostingStatus.PUBLISHED));
     }
 
     // === 타 모듈 연동 (§6) ===
@@ -576,22 +579,17 @@ class RecruitServiceImpl implements RecruitService {
         return CursorPage.of(items, nextCursor);
     }
 
-    private CursorPage<CommunityJobPostingCardInfo> toCardPage(List<JobPosting> postings, int size, Instant now) {
-        if (postings.isEmpty()) {
-            return CursorPage.empty();
+    private List<CommunityJobPostingCardInfo> toJobCardInfos(List<JobPosting> page) {
+        if (page.isEmpty()) {
+            return List.of();
         }
-        boolean hasNext = postings.size() > size;
-        List<JobPosting> page = hasNext ? postings.subList(0, size) : postings;
         Map<String, String> authorNames = authorNameResolver.resolveAll(
                 page.stream().map(JobPosting::getAuthorMemberId).toList());
         Map<String, PostingImages> images = recruitImageService.loadAll(
                 MediaOwnerType.JOB_POSTING, page.stream().map(JobPosting::getId).toList());
-        List<CommunityJobPostingCardInfo> items = page.stream()
+        return page.stream()
                 .map(p -> JobPostingMapper.toCardInfo(p, authorNames.get(p.getAuthorMemberId()), images.get(p.getId())))
                 .toList();
-        JobPosting last = page.get(page.size() - 1);
-        String nextCursor = hasNext ? CompositeCursor.encodeBoost(last.getBoostedUntil(), last.getId(), now) : null;
-        return CursorPage.of(items, nextCursor);
     }
 
     private JobPostingInfo toInfo(JobPosting jobPosting) {
@@ -650,22 +648,17 @@ class RecruitServiceImpl implements RecruitService {
         return CursorPage.of(items, nextCursor);
     }
 
-    private CursorPage<CommunityTeamRecruitCardInfo> toTeamCardPage(List<TeamPosting> postings, int size, Instant now) {
-        if (postings.isEmpty()) {
-            return CursorPage.empty();
+    private List<CommunityTeamRecruitCardInfo> toTeamCardInfos(List<TeamPosting> page) {
+        if (page.isEmpty()) {
+            return List.of();
         }
-        boolean hasNext = postings.size() > size;
-        List<TeamPosting> page = hasNext ? postings.subList(0, size) : postings;
         Map<String, String> authorNames = authorNameResolver.resolveAll(
                 page.stream().map(TeamPosting::getAuthorMemberId).toList());
         Map<String, PostingImages> images = recruitImageService.loadAll(
                 MediaOwnerType.TEAM_POSTING, page.stream().map(TeamPosting::getId).toList());
-        List<CommunityTeamRecruitCardInfo> items = page.stream()
+        return page.stream()
                 .map(p -> TeamPostingMapper.toCardInfo(p, authorNames.get(p.getAuthorMemberId()), images.get(p.getId())))
                 .toList();
-        TeamPosting last = page.get(page.size() - 1);
-        String nextCursor = hasNext ? CompositeCursor.encodeBoost(last.getBoostedUntil(), last.getId(), now) : null;
-        return CursorPage.of(items, nextCursor);
     }
 
     private TeamPostingInfo toTeamInfo(TeamPosting teamPosting) {

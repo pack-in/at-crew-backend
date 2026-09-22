@@ -1,6 +1,7 @@
 package com.atcrew.community.internal.web;
 
 import com.atcrew.artwork.ArtworkService;
+import com.atcrew.common.response.OffsetPage;
 import com.atcrew.common.web.GlobalExceptionHandler;
 import com.atcrew.member.MemberService;
 import com.atcrew.recruit.RecruitService;
@@ -9,9 +10,12 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.stubbing.Answer;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+
+import static org.mockito.Mockito.RETURNS_DEFAULTS;
 import static org.mockito.Mockito.mock;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -26,13 +30,19 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 class CommunitySizeValidationTest {
 
+    // 컨트롤러가 목록을 페이지 봉투로 감싸므로 목록 조회는 null 대신 빈 결과를 돌려준다.
+    private static final Answer<Object> EMPTY_PAGE = invocation ->
+            invocation.getMethod().getReturnType() == OffsetPage.class
+                    ? OffsetPage.empty() : RETURNS_DEFAULTS.answer(invocation);
+
     MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders
                 .standaloneSetup(new CommunityController(
-                        mock(ArtworkService.class), mock(MemberService.class), mock(RecruitService.class)))
+                        mock(ArtworkService.class, EMPTY_PAGE), mock(MemberService.class, EMPTY_PAGE),
+                        mock(RecruitService.class, EMPTY_PAGE)))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }

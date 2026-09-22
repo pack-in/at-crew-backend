@@ -724,16 +724,16 @@
 **Query Parameters**:
 - `artworkField` (선택): ArtworkField enum 필터
 - `ageRating` (선택): AgeRating enum 필터 (기본 ALL)
-- `cursor` (선택): 마지막 작품 createdAt millis
+- `page` (선택): 페이지 번호 (1부터, 기본 1). `page` × `size`가 10000을 넘으면 400 INVALID_PAGE
 - `size` (선택): 페이지 크기 (기본 20, 최대 50)
 
-**정상 응답 (200)**: `data`에 CursorPage<ArtworkSummaryInfo>.
+**정상 응답 (200)**: `data`에 CommunityPage<ArtworkSummaryInfo> — `items`·`page`·`size`·`totalCount`·`totalPages`·`hasNext`. 커뮤니티 4개 탭(`/artworks`·`/authors`·`/job-postings`·`/team-recruits`) 모두 같은 형태이며, 화면이 번호 페이지네이션이라 커서가 아니라 `page`(1부터)로 조회한다.
 
 **예외 케이스**:
 | 케이스 | 변경 값 | 예상 에러 코드 | HTTP |
 |--------|---------|--------------|------|
 | 잘못된 enum 필터 | artworkField: "FOO" | COMMON_INVALID_INPUT | 400 |
-| 잘못된 커서 | cursor: "abc" | INVALID_CURSOR | 400 |
+| 상한 초과 페이지 | page: 501 (size 20) | INVALID_PAGE | 400 |
 
 ---
 

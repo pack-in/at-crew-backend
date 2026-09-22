@@ -25,6 +25,7 @@ import com.atcrew.artwork.internal.exception.ArtworkException;
 import com.atcrew.artwork.internal.persistence.ArtworkRepository;
 import com.atcrew.billing.BillingService;
 import com.atcrew.common.response.CursorPage;
+import com.atcrew.common.response.OffsetPage;
 import com.atcrew.media.MediaConstraints;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaAssetInfo;
@@ -38,13 +39,13 @@ import com.atcrew.member.MemberService;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Join;
-import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
@@ -344,26 +345,23 @@ class ArtworkServiceImpl implements ArtworkService {
 
     @Override
     @Transactional(readOnly = true)
-    public CursorPage<ArtworkSummaryInfo> getCommunityArtworks(ArtworkField artworkField,
-                                                                AgeRating ageRating,
-                                                                List<Language> viewerLanguages,
-                                                                ArtworkSort sort,
-                                                                String cursor, int size,
-                                                                String viewerMemberId,
-                                                                boolean viewerAdultContentVisible) {
+    public OffsetPage<ArtworkSummaryInfo> getCommunityArtworks(ArtworkField artworkField,
+                                                               AgeRating ageRating,
+                                                               List<Language> viewerLanguages,
+                                                               ArtworkSort sort,
+                                                               int page, int size,
+                                                               String viewerMemberId,
+                                                               boolean viewerAdultContentVisible) {
         ArtworkSort resolvedSort = sort != null ? sort : ArtworkSort.LATEST;
-        int limit = size + 1;
-        Specification<Artwork> spec =
-                buildCommunitySpecification(artworkField, ageRating, viewerLanguages, resolvedSort, cursor,
-                        viewerMemberId, viewerAdultContentVisible);
-        List<Artwork> artworks = artworkRepository
-                .findAll(spec, PageRequest.of(0, limit, sortOf(resolvedSort)))
-                .getContent();
-        return toSummaryPage(artworks, size, last -> communityCursorOf(last, resolvedSort));
+        Specification<Artwork> spec = buildCommunitySpecification(artworkField, ageRating, viewerLanguages,
+                viewerMemberId, viewerAdultContentVisible);
+        // 전체 개수는 이 조회가 이미 센 값을 쓴다 — 따로 count를 부르면 같은 COUNT가 두 번 실행된다.
+        Page<Artwork> found = artworkRepository.findAll(spec, PageRequest.of(page - 1, size, sortOf(resolvedSort)));
+        return new OffsetPage<>(toSummaryInfos(found.getContent()), found.getTotalElements());
     }
 
     /**
-     * 후보 필터는 커뮤니티 피드와 같은 {@link #buildCommunitySpecification}을 그대로 쓴다(분야·연령·커서 없음).
+     * 후보 필터는 커뮤니티 피드와 같은 {@link #buildCommunitySpecification}을 그대로 쓴다(분야·연령 필터 없음).
      * 두 조회를 한 읽기 트랜잭션에 묶어 같은 스냅샷을 보게 한다 — 그 사이 매시간 배치가 점수를 다시 쓰면
      * 1단계와 2단계가 서로 다른 점수표를 보고 같은 작품을 두 번 뽑거나 빠뜨릴 수 있다.
      */
@@ -372,7 +370,7 @@ class ArtworkServiceImpl implements ArtworkService {
     public List<ArtworkSummaryInfo> getHotArtworks(List<Language> viewerLanguages, String viewerMemberId,
                                                    boolean viewerAdultContentVisible) {
         Specification<Artwork> candidates = buildCommunitySpecification(null, null, viewerLanguages,
-                ArtworkSort.LATEST, null, viewerMemberId, viewerAdultContentVisible);
+                viewerMemberId, viewerAdultContentVisible);
         List<Artwork> picked = new ArrayList<>(artworkRepository
                 .findAll(candidates.and(rankedByWindowViews()), PageRequest.of(0, HOT_ARTWORK_LIMIT))
                 .getContent());
@@ -421,7 +419,6 @@ class ArtworkServiceImpl implements ArtworkService {
     private Specification<Artwork> buildCommunitySpecification(ArtworkField artworkField,
                                                                 AgeRating ageRating,
                                                                 List<Language> viewerLanguages,
-                                                                ArtworkSort sort, String cursor,
                                                                 String viewerMemberId,
                                                                 boolean viewerAdultContentVisible) {
         return (root, query, cb) -> {
@@ -442,9 +439,6 @@ class ArtworkServiceImpl implements ArtworkService {
             if (!viewerAdultContentVisible) {
                 predicates.add(adultContentPredicate(root, cb, viewerMemberId));
             }
-            if (cursor != null) {
-                predicates.add(communityCursorPredicate(root, cb, sort, cursor));
-            }
             return cb.and(predicates.toArray(new Predicate[0]));
         };
     }
@@ -464,85 +458,6 @@ class ArtworkServiceImpl implements ArtworkService {
             case VIEW_COUNT -> Sort.by(Sort.Direction.DESC, "viewCount", "id");
             case BOOKMARK_COUNT -> Sort.by(Sort.Direction.DESC, "bookmarkCount", "id");
         };
-    }
-
-    /**
-     * 다음 페이지 커서 — {@code "정렬값_작품ID"}. 정렬 키와 tiebreaker를 함께 실어야 정렬값이 같은
-     * 구간의 중간에서도 이어받을 지점을 정확히 지목할 수 있다(member 프로필 검색의 rank 커서와 같은 형태).
-     *
-     * <p>등록일은 밀리초가 아니라 <b>마이크로초</b>로 싣는다. DB 컬럼이 DATETIME(6)이라 밀리초로 자르면
-     * 같은 밀리초 안의 작품이 커서와 정확히 같은 값이 되지 못해 다음 페이지에서 통째로 누락된다.
-     */
-    private String communityCursorOf(Artwork last, ArtworkSort sort) {
-        long sortValue = switch (sort) {
-            case LATEST, OLDEST -> toEpochMicros(last.getCreatedAt());
-            case VIEW_COUNT -> last.getViewCount();
-            case BOOKMARK_COUNT -> last.getBookmarkCount();
-        };
-        return sortValue + "_" + last.getId();
-    }
-
-    /** 커서 이후 구간 조건 — 정렬 방향에 따라 부등호가 뒤집힌다. */
-    private Predicate communityCursorPredicate(Root<Artwork> root, CriteriaBuilder cb,
-                                               ArtworkSort sort, String cursor) {
-        CommunityCursor c = parseCommunityCursor(cursor);
-        return switch (sort) {
-            case LATEST -> keysetPredicate(cb, root.get("createdAt"), fromEpochMicros(c.sortValue()),
-                    root.get("id"), c.artworkId(), false);
-            case OLDEST -> keysetPredicate(cb, root.get("createdAt"), fromEpochMicros(c.sortValue()),
-                    root.get("id"), c.artworkId(), true);
-            case VIEW_COUNT -> keysetPredicate(cb, root.get("viewCount"), c.sortValue(),
-                    root.get("id"), c.artworkId(), false);
-            case BOOKMARK_COUNT -> keysetPredicate(cb, root.get("bookmarkCount"), c.sortValue(),
-                    root.get("id"), c.artworkId(), false);
-        };
-    }
-
-    /**
-     * 튜플 비교 {@code (정렬키, id) < (커서정렬키, 커서id)}를 표준 SQL 형태로 편다(오름차순이면 부등호를 뒤집는다).
-     * 단순 AND로 묶으면(정렬키 &lt; 커서 AND id &lt; 커서id) 정렬값이 커서와 같은 나머지 행이 통째로 사라진다.
-     */
-    private <Y extends Comparable<? super Y>> Predicate keysetPredicate(
-            CriteriaBuilder cb, Path<Y> sortPath, Y sortValue,
-            Path<String> idPath, String artworkId, boolean ascending) {
-        if (ascending) {
-            return cb.or(
-                    cb.greaterThan(sortPath, sortValue),
-                    cb.and(cb.equal(sortPath, sortValue), cb.greaterThan(idPath, artworkId)));
-        }
-        return cb.or(
-                cb.lessThan(sortPath, sortValue),
-                cb.and(cb.equal(sortPath, sortValue), cb.lessThan(idPath, artworkId)));
-    }
-
-    private record CommunityCursor(
-            long sortValue,   // 정렬 키 값 (등록일은 epoch 마이크로초, 조회수·북마크 수는 그 값 그대로)
-            String artworkId  // tiebreaker로 쓰는 마지막 작품 ID
-    ) {
-    }
-
-    // 작품 ID(UUID)에는 '_'가 없으므로 첫 구분자 하나로 정확히 둘로 나뉜다.
-    private CommunityCursor parseCommunityCursor(String cursor) {
-        int separator = cursor.indexOf('_');
-        if (separator < 0 || separator == cursor.length() - 1) {
-            throw new ArtworkException(ArtworkErrorCode.INVALID_CURSOR);
-        }
-        try {
-            return new CommunityCursor(
-                    Long.parseLong(cursor.substring(0, separator)),
-                    cursor.substring(separator + 1));
-        } catch (NumberFormatException e) {
-            throw new ArtworkException(ArtworkErrorCode.INVALID_CURSOR);
-        }
-    }
-
-    private long toEpochMicros(Instant instant) {
-        return instant.getEpochSecond() * 1_000_000L + instant.getNano() / 1_000L;
-    }
-
-    private Instant fromEpochMicros(long micros) {
-        return Instant.ofEpochSecond(Math.floorDiv(micros, 1_000_000L),
-                Math.floorMod(micros, 1_000_000L) * 1_000L);
     }
 
     @Override
@@ -662,11 +577,11 @@ class ArtworkServiceImpl implements ArtworkService {
 
         boolean hasNext = artworks.size() > size;
         List<Artwork> page = hasNext ? artworks.subList(0, size) : artworks;
-
         String nextCursor = hasNext ? nextCursorOf.apply(page.get(page.size() - 1)) : null;
         return CursorPage.of(toSummaryInfos(page), nextCursor);
     }
 
+    /** 작가 정보·이미지를 붙여 카드 목록으로 바꾼다. 커서 목록과 커뮤니티 오프셋 목록이 함께 쓴다. */
     private List<ArtworkSummaryInfo> toSummaryInfos(List<Artwork> artworks) {
         if (artworks.isEmpty()) return List.of();
         // 작가 정보 일괄 조회 (N+1 완화 — 향후 batch API 추가 예정)
