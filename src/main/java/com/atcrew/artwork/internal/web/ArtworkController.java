@@ -29,6 +29,7 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
@@ -82,12 +83,30 @@ class ArtworkController {
         return ApiResponse.success(artworkService.uploadArtwork(memberId, toCommand(request)));
     }
 
-    @Operation(summary = "작품 상세 조회")
+    @Operation(summary = "작품 상세 조회",
+            description = "조회수를 올리지 않습니다. 열람 집계는 POST /api/artworks/{artworkId}/views로 별도 호출합니다.")
     @GetMapping("/artworks/{artworkId}")
     public ApiResponse<ArtworkInfo> getArtwork(
             @Parameter(description = "작품 ID") @PathVariable String artworkId) {
         String viewerId = getOptionalMemberId();
         return ApiResponse.success(artworkService.getArtwork(artworkId, viewerId));
+    }
+
+    @Operation(summary = "작품 열람 기록",
+            description = "작품 상세 화면을 브라우저에서 연 뒤 호출합니다. 인증 선택 — 로그인 회원은 회원 기준으로, "
+                    + "비로그인은 X-Anonymous-Id(FE 발급 익명 UUID) 기준으로 기록하며 둘 다 있으면 회원 기준입니다. "
+                    + "동일 열람자의 24시간 이내 반복 열람, 본인 작품, 열람할 수 없거나 없는 작품, 식별값이 없는 요청은 "
+                    + "기록하지 않지만 응답은 항상 204입니다.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "204", description = "처리 완료(기록 여부와 무관)")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400",
+            description = "비로그인 요청의 X-Anonymous-Id가 UUID 형식이 아님(INVALID_ANONYMOUS_ID)")
+    @PostMapping("/artworks/{artworkId}/views")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void recordView(
+            @Parameter(description = "작품 ID") @PathVariable String artworkId,
+            @Parameter(description = "비로그인 열람자 익명 UUID (FE 1st-party 쿠키 값)")
+            @RequestHeader(value = "X-Anonymous-Id", required = false) String anonymousId) {
+        artworkService.recordView(artworkId, getOptionalMemberId(), anonymousId);
     }
 
     @Operation(summary = "작품 처리 상태 폴링", description = "이미지 Worker 처리 완료 여부를 확인합니다.")

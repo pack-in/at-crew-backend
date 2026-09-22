@@ -395,7 +395,8 @@ Authorization: Bearer {accessToken}
 | 메서드 | 경로 | 인증 | 설명 |
 |--------|------|------|------|
 | POST | `/api/artworks` | 필수 | 작품 업로드 |
-| GET | `/api/artworks/{artworkId}` | 선택 | 작품 상세 조회 |
+| GET | `/api/artworks/{artworkId}` | 선택 | 작품 상세 조회 (조회수를 올리지 않는다 — §10.6) |
+| POST | `/api/artworks/{artworkId}/views` | 선택 | 작품 열람 기록 — 항상 204 (§10.6) |
 | PATCH | `/api/artworks/{artworkId}` | 필수 (본인) | 작품 수정 |
 | PATCH | `/api/artworks/{artworkId}/publication` | 필수 (본인) | 노출 위치 재선언 (`publishToFeed` × `portfolioIds`) |
 | DELETE | `/api/artworks/{artworkId}` | 필수 (본인) | 작품 삭제 (휴지통 이동) |
@@ -414,6 +415,7 @@ Authorization: Bearer {accessToken}
 | 메서드 | 경로 | 인증 | 설명 |
 |--------|------|------|------|
 | GET | `/api/community/artworks` | 선택 | 작품 목록 (페이지네이션) |
+| GET | `/api/community/artworks/hot` | 선택 | 이번 주 가장 핫한 작품 (최대 6개, §10.6) |
 
 ```
 GET /api/community/artworks
@@ -669,6 +671,56 @@ public void onPermanentlyDeleted(ArtworkPermanentlyDeletedEvent event) {
 ```
 
 `MemberDeactivatedEvent`는 같은 트랜잭션에서 동기로 처리하지만, R2 삭제는 되돌릴 수 없는 외부 호출이라 커밋 뒤로 미룬다.
+
+### 10.6 작품 열람 집계와 이번 주 가장 핫한 작품 (2026-09-22, 홈-R03·R14)
+
+> 근거: Notion 명세 홈-R03(2026-08-08)·홈-R14(2026-08-27), Figma `UI개편_홈(구 커뮤니티)` > `promotion Card`.
+> 결정 원장은 `plans/260922-hot-artworks/PLAN-AGENT.md` "결정" 표. 마이그레이션은 `V44__artwork_view_tracking.sql`.
+
+**V34 정책 폐기.** V34(이슈 #78)는 작품 상세 `GET`마다 dedup 없이 `view_count`를 +1 했다. 이 방식은 두 가지
+이유로 폐기했다 — ① 홈-R14가 핫 작품 순위에 "최근 7일 기간 조회수(24시간 dedup)"를 요구하고 누적 조회수 사용을
+금지한다, ② FE 상세 페이지가 SSR에서 토큰 없이 `GET`을 호출해 열람자를 식별할 수 없었고, 편집 화면·포트폴리오의
+같은 `GET` 호출까지 조회수에 섞였다. 기존 `view_count`는 신뢰할 수 없어 V44에서 0으로 초기화했다.
+
+**집계 경로.** `GET /api/artworks/{id}`는 조회수를 올리지 않는다(응답 스키마는 그대로). 브라우저가 상세 화면을 연 뒤
+`POST /api/artworks/{id}/views`를 호출한다.
+
+| 항목 | 규칙 |
+|---|---|
+| 열람자 식별 | 로그인 회원 = 회원 ID(`MEMBER`), 비로그인 = `X-Anonymous-Id` 헤더의 익명 UUID(`ANONYMOUS`, FE가 1st-party 쿠키로 발급). 둘 다 있으면 회원 기준이며 헤더는 보지 않는다. 둘 다 없으면 기록하지 않는다 |
+| 형식 검증 | 비로그인 요청의 헤더가 표준 36자 UUID가 아니면 400 `INVALID_ANONYMOUS_ID`. 대소문자는 소문자로 맞춰 같은 열람자로 본다 |
+| 무시 대상 | 24시간 이내 반복 열람, 본인 작품, `accessFor != ALLOWED`, 없는 작품 — 전부 204로 응답해 기록 여부를 드러내지 않는다 |
+| dedup | `artwork_view_dedup`(작품, 열람자 유형, 열람자 키)당 한 행. 조건부 UPDATE(마지막 집계 24시간 경과) 성공 = `REVISIT` → 실패 시 `INSERT IGNORE` 성공 = `FIRST` → 둘 다 0행 = 반복 열람 |
+| 유효 열람 | `FIRST`/`REVISIT`일 때만 `artwork_view_events`에 한 행 남기고 `artworks.view_count` +1 |
+| 로그인 전후 | 회원 기록과 익명 기록은 합치지 않는다(열람자 유형이 키에 포함) |
+
+**동시성.** 판정을 "조회 후 판단"이 아니라 쓰기의 영향 행 수로 하므로 같은 열람자의 동시 요청은 한 번만 집계된다.
+PK 충돌은 예외가 아니라 `INSERT IGNORE`의 영향 행 수 0으로 받는다 — 예외로 받으면 리포지토리 트랜잭션 경계를 넘는
+순간 바깥 트랜잭션이 rollback-only가 된다. 트랜잭션 격리 수준은 `READ COMMITTED`다. 기본값(`REPEATABLE READ`)에서는
+없는 행에 대한 조건부 UPDATE가 갭 락을 잡아, 같은 작품을 동시에 처음 여는 요청끼리(열람자가 달라도) INSERT 단계에서
+교착됐다(통합 테스트로 재현). 원천 테이블에는 외래 키를 두지 않는다 — 이벤트 INSERT가 `artworks` 행에 S 락을 잡으면
+뒤이은 `view_count` +1의 X 락과 엇갈려 교착된다.
+
+**핫 점수 배치(`HotScoreScheduler`, 매시 정각 UTC).** 한 트랜잭션에서 `artwork_hot_scores`를 비우고 `[now-168h, now)`
+구간 이벤트를 작품별로 세어 다시 채운다. 이전 결과에 기대지 않아 멱등이며, 다중 인스턴스에서 동시에 돌아도 결과가
+같다(ShedLock 미도입). `READ COMMITTED`로 돌려 `INSERT ... SELECT`가 원본 이벤트에 락을 걸지 않게 한다.
+
+**핫 작품 조회(`GET /api/community/artworks/hot`, 인증 불필요, 최대 6개).**
+- 후보 필터는 `/api/community/artworks`와 같은 Specification을 재사용한다(공개·READY·미차단·언어 세그먼트·성인 콘텐츠
+  설정). 언어 조건이 EXISTS라 여러 언어가 일치해도 한 번만 나온다.
+- 정렬: 기간 조회수 DESC → 현재 `bookmark_count` DESC → `created_at` DESC → `id` ASC.
+- 기간 조회수가 있는 후보로 6개가 차지 않으면 점수 행이 없는(기간 조회수 0) 후보로 같은 규칙(북마크 수 이하)을 따라
+  채운다. 필터 미통과 작품으로는 채우지 않는다. 두 조회는 한 읽기 트랜잭션이라 같은 점수표 스냅샷을 본다.
+
+**보관(`ViewRetentionScheduler`, 매일 03:30 UTC).** 1년(UTC 달력 기준)이 지난 익명 이벤트를
+`artwork_view_daily_stats`(작품, UTC 날짜, 열람자 유형, 열람 종류)에 UPSERT로 더한 뒤 원본을 지우고, 같은 기준으로 익명
+dedup 행을 지운다. 한 트랜잭션이라 재실행해도 이중 합산이 없다. 회원 기록은 대상이 아니다(활성 회원은 기한 없이 보관).
+
+**탈퇴 비식별화(`ArtworkViewMemberEventListener`).** `MemberDeactivatedEvent`를 탈퇴 트랜잭션 안에서 동기로 받아 해당
+회원의 `MEMBER` 이벤트 `viewer_key`를 NULL로 바꾸고 `MEMBER` dedup 행을 지운다. 이벤트 행 수와 `view_count`는 유지된다
+(개인정보처리방침 "탈퇴 후 삭제 또는 비식별화").
+
+**범위 밖.** 쿠키 발급·CORS `allowCredentials` 변경, referrer·기기·국가 같은 마케팅 속성(PostHog 몫), 레이트 리밋.
 
 ### 10.5 추후 별도 설계 (1차 구현 범위 외)
 

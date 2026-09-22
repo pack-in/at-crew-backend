@@ -2,6 +2,7 @@ package com.atcrew.artwork.internal.application;
 
 import com.atcrew.artwork.AgeRating;
 import com.atcrew.artwork.ArtworkField;
+import com.atcrew.artwork.ArtworkAccess;
 import com.atcrew.artwork.ArtworkInfo;
 import com.atcrew.artwork.ArtworkService;
 import com.atcrew.artwork.ArtworkSort;
@@ -17,6 +18,8 @@ import com.atcrew.artwork.ArtworkPortfolioSelectionRequested;
 import com.atcrew.artwork.internal.domain.artwork.Artwork;
 import com.atcrew.artwork.internal.domain.artwork.ArtworkImage;
 import com.atcrew.artwork.internal.domain.artwork.Material;
+import com.atcrew.artwork.internal.domain.view.ArtworkHotScore;
+import com.atcrew.artwork.internal.domain.view.ArtworkViewerType;
 import com.atcrew.artwork.internal.exception.ArtworkErrorCode;
 import com.atcrew.artwork.internal.exception.ArtworkException;
 import com.atcrew.artwork.internal.persistence.ArtworkRepository;
@@ -44,15 +47,18 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
@@ -64,6 +70,15 @@ class ArtworkServiceImpl implements ArtworkService {
     private static final int STARTER_ARTWORK_LIMIT = 4;
     // 게시물 언어 칩 4종(로그인-R19) — 프로도 전체 선택이 상한이다
     private static final int MAX_LANGUAGE_COUNT = 4;
+    /** 이번 주 가장 핫한 작품 노출 상한(홈-R03, Figma promotion Card). */
+    private static final int HOT_ARTWORK_LIMIT = 6;
+    /** 기간 조회수가 같을 때의 순서(홈-R14) — 북마크 수 → 등록일(최신) → ID. ID는 동률 순서를 고정하는 마지막 키다. */
+    private static final Sort HOT_TIEBREAK_SORT = Sort.by(
+            Sort.Order.desc("bookmarkCount"), Sort.Order.desc("createdAt"), Sort.Order.asc("id"));
+    // FE가 crypto.randomUUID()로 발급하는 표준 36자 표기만 받는다. UUID.fromString은 "1-1-1-1-1"도 받아 같은
+    // 값이 여러 표기로 dedup을 비껴갈 수 있다.
+    private static final Pattern ANONYMOUS_ID_PATTERN =
+            Pattern.compile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
 
     private final ArtworkRepository artworkRepository;
     private final MemberService memberService;
@@ -71,19 +86,22 @@ class ArtworkServiceImpl implements ArtworkService {
     private final BillingService billingService;
     private final ApplicationEventPublisher eventPublisher;
     private final ArtworkPurger artworkPurger;
+    private final ArtworkViewRecorder artworkViewRecorder;
 
     ArtworkServiceImpl(ArtworkRepository artworkRepository,
                        MemberService memberService,
                        MediaService mediaService,
                        BillingService billingService,
                        ApplicationEventPublisher eventPublisher,
-                       ArtworkPurger artworkPurger) {
+                       ArtworkPurger artworkPurger,
+                       ArtworkViewRecorder artworkViewRecorder) {
         this.artworkRepository = artworkRepository;
         this.memberService = memberService;
         this.mediaService = mediaService;
         this.billingService = billingService;
         this.eventPublisher = eventPublisher;
         this.artworkPurger = artworkPurger;
+        this.artworkViewRecorder = artworkViewRecorder;
     }
 
     @Override
@@ -161,7 +179,7 @@ class ArtworkServiceImpl implements ArtworkService {
     }
 
     @Override
-    @Transactional
+    @Transactional(readOnly = true)
     public ArtworkInfo getArtwork(String artworkId, String viewerMemberId) {
         Artwork artwork = findArtworkById(artworkId);
         switch (artwork.accessFor(viewerMemberId)) {
@@ -171,13 +189,50 @@ class ArtworkServiceImpl implements ArtworkService {
             case BLOCKED -> throw new ArtworkException(ArtworkErrorCode.ARTWORK_BLOCKED, artworkId);
             case ALLOWED -> { }
         }
-        // 조회순 정렬용 집계(이슈 #78) — 접근이 허용된 뒤에만, 본인 조회는 빼고 센다. dedup은 두지 않는다
-        // (recruit 구인글과 동일 정책). 비로그인 조회도 남의 조회이므로 함께 센다.
-        if (!artwork.getAuthorId().equals(viewerMemberId)) {
-            artworkRepository.incrementViewCount(artworkId);
-        }
+        // 조회수는 여기서 올리지 않는다(홈-R14) — 이 GET은 FE SSR이 토큰 없이 부르고 편집 화면·포트폴리오도 부르므로
+        // 열람자를 식별할 수 없다. 집계는 브라우저가 호출하는 recordView(POST /views)가 담당한다.
         MemberInfo author = memberService.findById(artwork.getAuthorId());
         return ArtworkMapper.toInfo(artwork, author);
+    }
+
+    /**
+     * 트랜잭션 격리 수준을 READ COMMITTED로 낮춘다. 기본값(REPEATABLE READ)에서는 없는 dedup 행을 조건부
+     * UPDATE할 때 갭 락이 잡혀, 같은 작품을 처음 여는 두 요청이 서로의 갭 락 때문에 INSERT를 못 하고 교착된다
+     * (열람자가 달라도 인덱스상 같은 갭이면 생긴다). READ COMMITTED에는 갭 락이 없어 PK 행 락만으로 직렬화된다.
+     * 운영 DB는 바이너리 로그를 쓰지 않아(deploy/docker-compose.app.yml) STATEMENT 형식 제약도 해당하지 않는다.
+     */
+    @Override
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public void recordView(String artworkId, String viewerMemberId, String anonymousId) {
+        ArtworkViewerType viewerType;
+        String viewerKey;
+        if (viewerMemberId != null) {
+            // 회원 우선 — 헤더는 보지 않는다. FE는 로그인 후에도 익명 쿠키를 계속 보내므로 헤더 형식 오류로
+            // 회원 열람까지 400이 되면 안 된다.
+            // JWT 필터는 탈퇴 여부를 보지 않아 탈퇴 직후에도 액세스 토큰이 만료 전까지 통과한다. 여기서 막지 않으면
+            // 탈퇴 비식별화(ArtworkViewMemberEventListener)가 끝난 뒤 회원 ID가 열람 기록에 다시 영구 저장된다.
+            if (memberService.findAllByIds(Set.of(viewerMemberId)).isEmpty()) {
+                return;
+            }
+            viewerType = ArtworkViewerType.MEMBER;
+            viewerKey = viewerMemberId;
+        } else if (anonymousId != null) {
+            if (!ANONYMOUS_ID_PATTERN.matcher(anonymousId).matches()) {
+                throw new ArtworkException(ArtworkErrorCode.INVALID_ANONYMOUS_ID, "anonymousId=" + anonymousId);
+            }
+            // 대소문자만 다른 같은 UUID가 서로 다른 열람자로 집계되지 않게 한다.
+            viewerType = ArtworkViewerType.ANONYMOUS;
+            viewerKey = anonymousId.toLowerCase(Locale.ROOT);
+        } else {
+            return; // 식별할 수 없는 열람 — dedup 키가 없으면 새로고침만으로 조회수가 오른다
+        }
+        Optional<Artwork> artwork = artworkRepository.findById(artworkId);
+        if (artwork.isEmpty()
+                || artwork.get().getAuthorId().equals(viewerMemberId)
+                || artwork.get().accessFor(viewerMemberId) != ArtworkAccess.ALLOWED) {
+            return; // 없는 작품·본인 작품·열람 불가 작품은 집계하지 않는다(응답으로 구분하지 않는다)
+        }
+        artworkViewRecorder.record(artworkId, viewerType, viewerKey, Instant.now());
     }
 
     @Override
@@ -317,6 +372,61 @@ class ArtworkServiceImpl implements ArtworkService {
                 .findAll(spec, PageRequest.of(0, limit, sortOf(resolvedSort)))
                 .getContent();
         return toSummaryPage(artworks, size, last -> communityCursorOf(last, resolvedSort));
+    }
+
+    /**
+     * 후보 필터는 커뮤니티 피드와 같은 {@link #buildCommunitySpecification}을 그대로 쓴다(분야·연령·커서 없음).
+     * 두 조회를 한 읽기 트랜잭션에 묶어 같은 스냅샷을 보게 한다 — 그 사이 매시간 배치가 점수를 다시 쓰면
+     * 1단계와 2단계가 서로 다른 점수표를 보고 같은 작품을 두 번 뽑거나 빠뜨릴 수 있다.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public List<ArtworkSummaryInfo> getHotArtworks(List<Language> viewerLanguages, String viewerMemberId,
+                                                   boolean viewerAdultContentVisible) {
+        Specification<Artwork> candidates = buildCommunitySpecification(null, null, viewerLanguages,
+                ArtworkSort.LATEST, null, viewerMemberId, viewerAdultContentVisible);
+        List<Artwork> picked = new ArrayList<>(artworkRepository
+                .findAll(candidates.and(rankedByWindowViews()), PageRequest.of(0, HOT_ARTWORK_LIMIT))
+                .getContent());
+        if (picked.size() < HOT_ARTWORK_LIMIT) {
+            // 점수 행이 있는 후보는 1단계에서 전부 뽑혔으므로 점수 행이 없는(기간 조회수 0) 후보만 보면 중복이 없다.
+            picked.addAll(artworkRepository
+                    .findAll(candidates.and(withoutWindowViews()),
+                            PageRequest.of(0, HOT_ARTWORK_LIMIT - picked.size(), HOT_TIEBREAK_SORT))
+                    .getContent());
+        }
+        return toSummaryInfos(picked);
+    }
+
+    /**
+     * 기간 조회수가 있는 후보만 남기고 기간 조회수 순으로 정렬한다. 정렬 키가 다른 엔티티(점수표)에 있어
+     * {@link Sort}로는 표현할 수 없으므로 상관 서브쿼리로 정렬한다 — 대상이 점수 행이 있는 작품으로 좁혀진
+     * 뒤라 작품 수만큼 서브쿼리가 도는 비용은 작다.
+     */
+    private Specification<Artwork> rankedByWindowViews() {
+        return (root, query, cb) -> {
+            // 페이지 조회가 함께 부르는 count 쿼리에는 정렬을 붙이지 않는다.
+            if (!Long.class.equals(query.getResultType())) {
+                Subquery<Long> windowViews = query.subquery(Long.class);
+                Root<ArtworkHotScore> score = windowViews.from(ArtworkHotScore.class);
+                windowViews.select(score.get("windowViews"))
+                        .where(cb.equal(score.get("artworkId"), root.get("id")));
+                query.orderBy(cb.desc(windowViews), cb.desc(root.get("bookmarkCount")),
+                        cb.desc(root.get("createdAt")), cb.asc(root.get("id")));
+            }
+            return cb.exists(hotScoreOf(root, query, cb));
+        };
+    }
+
+    private Specification<Artwork> withoutWindowViews() {
+        return (root, query, cb) -> cb.not(cb.exists(hotScoreOf(root, query, cb)));
+    }
+
+    private Subquery<String> hotScoreOf(Root<Artwork> root, CriteriaQuery<?> query, CriteriaBuilder cb) {
+        Subquery<String> subquery = query.subquery(String.class);
+        Root<ArtworkHotScore> score = subquery.from(ArtworkHotScore.class);
+        return subquery.select(score.get("artworkId"))
+                .where(cb.equal(score.get("artworkId"), root.get("id")));
     }
 
     // Mongo Criteria 동적 쿼리 → JPA Specification (docs/design/mariadb-migration-design.md §3.6)
@@ -562,19 +672,22 @@ class ArtworkServiceImpl implements ArtworkService {
         boolean hasNext = artworks.size() > size;
         List<Artwork> page = hasNext ? artworks.subList(0, size) : artworks;
 
+        String nextCursor = hasNext ? nextCursorOf.apply(page.get(page.size() - 1)) : null;
+        return CursorPage.of(toSummaryInfos(page), nextCursor);
+    }
+
+    private List<ArtworkSummaryInfo> toSummaryInfos(List<Artwork> artworks) {
+        if (artworks.isEmpty()) return List.of();
         // 작가 정보 일괄 조회 (N+1 완화 — 향후 batch API 추가 예정)
-        Set<String> authorIds = page.stream().map(Artwork::getAuthorId).collect(Collectors.toSet());
+        Set<String> authorIds = artworks.stream().map(Artwork::getAuthorId).collect(Collectors.toSet());
         // 배치 조회 — 예전에는 작가마다 findById를 부르고 실패 시 null을 반환했는데,
         // Collectors.toMap이 null 값에 NPE를 던져 작가 한 명의 조회 실패가 페이지 전체를
         // 500으로 만들었다(이슈 #112). 없는 작가는 맵에 담기지 않고 조회 결과가 null이 된다.
         java.util.Map<String, MemberInfo> authorMap = memberService.findAllByIds(authorIds);
 
-        List<ArtworkSummaryInfo> items = page.stream()
+        return artworks.stream()
                 .map(a -> ArtworkMapper.toSummaryInfo(a, authorMap.get(a.getAuthorId())))
                 .toList();
-
-        String nextCursor = hasNext ? nextCursorOf.apply(page.get(page.size() - 1)) : null;
-        return CursorPage.of(items, nextCursor);
     }
 
     private Artwork findArtworkById(String artworkId) {

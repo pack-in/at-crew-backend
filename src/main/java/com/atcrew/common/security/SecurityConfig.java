@@ -99,7 +99,10 @@ class SecurityConfig {
                     auth.requestMatchers(HttpMethod.GET, "/api/members/me").authenticated()
                             .requestMatchers(HttpMethod.GET, "/api/members/{handle}").permitAll()
                             .requestMatchers(HttpMethod.GET, "/api/artworks/{artworkId}").permitAll()
+                            // 작품 열람 기록 — 비로그인 열람도 익명 UUID로 집계한다(홈-R14).
+                            .requestMatchers(HttpMethod.POST, "/api/artworks/{artworkId}/views").permitAll()
                             .requestMatchers(HttpMethod.GET, "/api/community/artworks").permitAll()
+                            .requestMatchers(HttpMethod.GET, "/api/community/artworks/hot").permitAll()
                             .requestMatchers(HttpMethod.GET, "/api/community/authors").permitAll()
                             .requestMatchers(HttpMethod.GET, "/api/community/job-postings").permitAll()
                             .requestMatchers(HttpMethod.GET, "/api/community/team-recruits").permitAll()

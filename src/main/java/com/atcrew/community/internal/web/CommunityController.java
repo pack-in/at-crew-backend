@@ -75,6 +75,18 @@ class CommunityController {
                 viewerMemberId, memberService.isAdultContentVisible(viewerMemberId)));
     }
 
+    @Operation(summary = "이번 주 가장 핫한 작품", description =
+            "최근 7일(168시간) 기간 조회수 순으로 최대 6개를 조회합니다. 인증 불필요. 기간 조회수는 매시 정각 갱신됩니다. "
+            + "노출 조건은 포트폴리오 탭 목록과 같고(공개·언어·성인 콘텐츠 설정), 기간 조회수가 같으면 북마크 수 → 최신 등록순입니다. "
+            + "기간 조회수가 있는 작품이 6개 미만이면 조회수가 없는 작품으로 같은 순서에 따라 채웁니다.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공")
+    @GetMapping("/artworks/hot")
+    public ApiResponse<List<ArtworkSummaryInfo>> getHotArtworks() {
+        String viewerMemberId = getOptionalMemberId();
+        return ApiResponse.success(artworkService.getHotArtworks(
+                viewerLanguages(viewerMemberId), viewerMemberId, memberService.isAdultContentVisible(viewerMemberId)));
+    }
+
     @Operation(summary = "작가 프로필 탭 — 작가 찾아보기", description =
             "구인 가능 상태(신규 작업 가능·협의 가능)인 창작자 프로필 목록을 조회합니다. 인증 불필요. "
             + "노출 대상 항목(사용자 이름·활동 분야·활동 경력·희망 담당 업무·희망 장르·희망 채용 형태·연락처)이 "

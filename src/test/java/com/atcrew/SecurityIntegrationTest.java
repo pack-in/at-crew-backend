@@ -267,6 +267,21 @@ class SecurityIntegrationTest extends RestDocsIntegrationSupport {
     }
 
     @Test
+    void 작품_열람_기록_토큰_없이_401_아님() throws Exception {
+        // 없는 작품이어도 기록 여부를 응답으로 구분하지 않는다 → 204
+        mockMvc.perform(post("/api/artworks/{artworkId}/views", UUID.randomUUID().toString())
+                        .header("X-Anonymous-Id", UUID.randomUUID().toString()))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void 핫_작품_토큰_없이_401_아님() throws Exception {
+        mockMvc.perform(get("/api/community/artworks/hot"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"));
+    }
+
+    @Test
     void 검색_토큰_없이_401_아님() throws Exception {
         // 검색어·필터 없음 → 최초 진입 상태로 빈 결과, 401이 아님을 확인
         mockMvc.perform(get("/api/search"))
