@@ -42,8 +42,8 @@ docs/zzz ─┘   (통합)   (배포)
 
 - **작업 브랜치는 `dev`에서 분기하고, PR도 `dev`로 보낸다.**
 - **`dev` → `main`은 실제로 배포할 때만 연다.** main에 push되는 순간 CI가 빌드·테스트 후 prod EC2에
-  자동 배포하고([.github/workflows/deploy.yml](.github/workflows/deploy.yml)), API 문서 사이트 갱신과
-  릴리스 노트 생성도 함께 돈다. 즉 **main 병합 = 배포 실행**이다.
+  자동 배포하고([.github/workflows/deploy.yml](.github/workflows/deploy.yml)), API 문서 사이트 갱신도
+  함께 돈다. 즉 **main 병합 = 배포 실행**이다.
 - 어느 쪽이든 직접 push하지 않고 PR로 병합한다. CI는 두 대상 브랜치의 PR을 모두 검증한다.
 
 ### 병합 방식
@@ -51,7 +51,7 @@ docs/zzz ─┘   (통합)   (배포)
 | 경로 | 방식 | 이유 |
 |---|---|---|
 | 작업 브랜치 → `dev` | **Squash merge** | PR 제목이 그대로 커밋이 되어 히스토리가 한 줄로 정리된다. 작업 중의 중간 커밋은 남길 가치가 없다 |
-| `dev` → `main` | **Merge commit** | squash하면 개별 `feat`·`fix` 커밋이 하나로 뭉개져 릴리스 노트가 "배포"라는 한 줄이 된다. release-please는 main의 개별 커밋을 읽어 CHANGELOG를 만든다 |
+| `dev` → `main` | **Merge commit** | squash하면 개별 `feat`·`fix` 커밋이 "배포"라는 한 줄로 뭉개져, main 히스토리에서 어떤 변경이 어느 배포에 실렸는지 추적할 수 없다 |
 
 ### 예외 — Dependabot 보안 PR
 
@@ -100,9 +100,6 @@ type(scope): 제목        ← 50자 이내, 마침표 없음, 명령형
 
 본문은 선택이지만, **되돌리기 어려운 결정이나 겉보기와 다른 이유가 있는 변경에는 반드시 쓴다.**
 "무엇"은 diff에 이미 있다. 6개월 뒤에 사라지는 것은 "왜"다.
-
-커밋 타입은 릴리스 노트 생성에도 쓰인다([release-please-config.json](release-please-config.json)) —
-`feat`·`fix`·`perf`만 CHANGELOG에 노출되고 나머지는 숨겨진다.
 
 ## Pull Request
 
