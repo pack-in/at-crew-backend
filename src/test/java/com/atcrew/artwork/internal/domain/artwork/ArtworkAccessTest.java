@@ -9,6 +9,7 @@ import com.atcrew.artwork.Visibility;
 import com.atcrew.member.Language;
 import org.junit.jupiter.api.Test;
 
+import com.atcrew.artwork.ImageProcessingStatus;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -69,7 +70,7 @@ class ArtworkAccessTest {
                 ImageLayoutType.VERTICAL_SCROLL, ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
                 List.of(), List.of(), null, List.of(), AgeRating.ALL, List.of(Language.KO), visibility,
                 List.of(), null, null, List.of(), List.of());
-        artwork.markImageProcessed("raw/1.png", "thumb/1.avif", null, "original/1.avif", true);
+        artwork.applyImageStatuses(List.of(ImageProcessingStatus.DONE));
         return artwork;
     }
 }

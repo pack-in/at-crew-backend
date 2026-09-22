@@ -4,7 +4,11 @@ import com.atcrew.artwork.ArtworkChangedEvent;
 import com.atcrew.artwork.ArtworkPermanentlyDeletedEvent;
 import com.atcrew.artwork.internal.domain.artwork.Artwork;
 import com.atcrew.artwork.internal.persistence.ArtworkRepository;
+import com.atcrew.media.MediaOwnerType;
+import com.atcrew.media.MediaService;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
@@ -24,17 +28,24 @@ class ArtworkPurger {
 
     private final ArtworkRepository artworkRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final MediaService mediaService;
 
-    ArtworkPurger(ArtworkRepository artworkRepository, ApplicationEventPublisher eventPublisher) {
+    ArtworkPurger(ArtworkRepository artworkRepository, ApplicationEventPublisher eventPublisher,
+                  MediaService mediaService) {
         this.artworkRepository = artworkRepository;
         this.eventPublisher = eventPublisher;
+        this.mediaService = mediaService;
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
     void purge(List<Artwork> artworks) {
+        // key 목록은 행을 지우기 전에 만든다 — media 행은 리스너가 나중에 정리한다.
+        Map<String, List<String>> keysByArtwork = artworks.stream()
+                .collect(Collectors.toMap(Artwork::getId, this::allImageKeys));
         artworkRepository.deleteAll(artworks);
         for (Artwork artwork : artworks) {
-            eventPublisher.publishEvent(new ArtworkPermanentlyDeletedEvent(artwork.getId(), allImageKeys(artwork)));
+            eventPublisher.publishEvent(new ArtworkPermanentlyDeletedEvent(artwork.getId(),
+                    keysByArtwork.get(artwork.getId())));
             eventPublisher.publishEvent(new ArtworkChangedEvent(artwork.getId()));
         }
     }
@@ -51,12 +62,12 @@ class ArtworkPurger {
      * 조회하므로 후보 구성과 무관하다(docs/design/portfolio-module-design.md §5.6).
      */
     private List<String> allImageKeys(Artwork artwork) {
-        Stream<String> imageKeys = artwork.getImages().stream()
+        Stream<String> imageKeys = mediaService.getAssets(MediaOwnerType.ARTWORK, artwork.getId()).stream()
                 .flatMap(img -> Stream.of(
-                        img.getOriginalKey(),
-                        img.getThumbKey(),
-                        img.getThumbAdultKey(),
-                        img.getOriginalAvifKey()
+                        img.originalKey(),
+                        img.thumbKey(),
+                        img.thumbAdultKey(),
+                        img.originalAvifKey()
                 ));
         return Stream.concat(imageKeys, Stream.of(artwork.getThumbnailKey()))
                 .filter(k -> k != null && !k.isBlank())

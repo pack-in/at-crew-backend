@@ -243,7 +243,7 @@ public record MediaAssetProcessedEvent(MediaOwnerType ownerType, String ownerId,
 
 - **artwork 소비**: 자신의 `artwork_images` 행 중 `originalKey`가 일치하는 것을 찾아
   `thumbKey`/`thumbAdultKey`/`originalAvifKey`/`processingStatus`를 갱신한다. `Artwork.status`를
-  `PROCESSING → READY`로 전환하는 조건은 **"모든 이미지 DONE"이 아니라** `Artwork.markImageProcessed`의
+  `PROCESSING → READY`로 전환하는 조건은 **"모든 이미지 DONE"이 아니라** `Artwork.applyImageStatuses`의
   기존 규칙 그대로 **"PENDING이 하나도 없고(재시도 여지 없음) DONE이 하나 이상"** — 부분 실패를 허용한다
   (QA에서 발견: 최초 초안이 "모든 이미지 DONE"으로 잘못 적어, 그대로 구현했다면 이미지 하나라도 FAILED면
   영원히 READY로 못 넘어가는 회귀가 생겼을 것). **PENDING이 없는데 DONE도 없으면(전량 실패) `FAILED`로

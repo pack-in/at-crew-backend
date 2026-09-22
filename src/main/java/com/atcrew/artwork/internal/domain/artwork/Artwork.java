@@ -7,6 +7,7 @@ import com.atcrew.artwork.ArtworkCustomTagType;
 import com.atcrew.artwork.ArtworkField;
 import com.atcrew.artwork.ArtworkRole;
 import com.atcrew.artwork.ArtworkStatus;
+import com.atcrew.artwork.ImageProcessingStatus;
 import com.atcrew.artwork.CreativeType;
 import com.atcrew.artwork.Genre;
 import com.atcrew.artwork.ImageLayoutType;
@@ -76,10 +77,8 @@ public class Artwork implements Persistable<String> {
     // 양방향 매핑(mappedBy) — 단방향 @OneToMany+@JoinColumn은 Hibernate가 INSERT 시 FK 없이 먼저 쓰고
     // 뒤이어 UPDATE로 채우는 2단계 패턴이라 artwork_id NOT NULL 제약과 충돌한다
     // (docs/design/mariadb-migration-design.md §11/§12에서 이미 발견된 함정과 동일 패턴).
-    @OneToMany(mappedBy = "artwork", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
-    @BatchSize(size = 100)   // 목록 조회 시 컬렉션 N+1 완화 (recruit 모듈과 동일 패턴, 이슈 #112)
-    @OrderBy("ordinal ASC")
-    private List<ArtworkImage> images = new ArrayList<>();
+    // 이미지의 상태와 변형본 key는 media_assets 한 곳에만 둔다(#193) — 예전에는 artwork_images에도 같은 값을
+    // 이중으로 갖고 originalKey 문자열로 맞췄다. 작품이 아는 것은 "몇 장인지"와 "몇 번째가 대표인지"뿐이다.
 
     @Column(name = "representative_image_index")
     private int representativeImageIndex;
@@ -238,7 +237,8 @@ public class Artwork implements Persistable<String> {
         artwork.authorId = authorId;
         artwork.title = title;
         artwork.description = description;
-        artwork.attachImages(imageKeys, representativeImageIndex);
+        artwork.representativeImageIndex = representativeImageIndex;
+        artwork.status = ArtworkStatus.PROCESSING;
         artwork.thumbnailKey = thumbnailKey;
         artwork.imageLayoutType = imageLayoutType;
         artwork.artworkField = artworkField;
@@ -273,7 +273,7 @@ public class Artwork implements Persistable<String> {
     }
 
     public void updateDetails(String title, String description,
-                              ImageLayoutType imageLayoutType, Integer representativeImageIndex,
+                              ImageLayoutType imageLayoutType,
                               String thumbnailKey,
                               ArtworkField artworkField, CreativeType creativeType,
                               List<ArtworkRole> roles, List<Genre> genres,
@@ -284,12 +284,6 @@ public class Artwork implements Persistable<String> {
         if (title != null) this.title = title;
         if (description != null) this.description = description;
         if (imageLayoutType != null) this.imageLayoutType = imageLayoutType;
-        if (representativeImageIndex != null) {
-            if (representativeImageIndex < 0 || representativeImageIndex >= this.images.size()) {
-                throw new ArtworkException(ArtworkErrorCode.INVALID_REPRESENTATIVE_INDEX);
-            }
-            this.representativeImageIndex = representativeImageIndex;
-        }
         if (thumbnailKey != null) this.thumbnailKey = thumbnailKey;
         if (artworkField != null) this.artworkField = artworkField;
         if (creativeType != null) this.creativeType = creativeType;
@@ -333,29 +327,15 @@ public class Artwork implements Persistable<String> {
         return normalized;
     }
 
-    // 이미지 교체 1단계 — 기존 이미지를 컬렉션에서 제거해 orphanRemoval 삭제를 예약하고 원본 데이터를 반환한다.
-    // 호출자(Service)는 이 메서드 뒤에 saveAndFlush로 삭제를 물리적으로 확정한 다음 attachImages를 호출해야 한다 —
-    // 그렇지 않으면 Hibernate가 같은 flush에서 신규 이미지 INSERT를 기존 이미지 DELETE보다 먼저 실행해
-    // uk_ai_order(artwork_id, ordinal) 유니크 제약과 충돌한다(§3.3.2 RefreshToken과 동일 계열의 함정, 신규 발견).
-    public List<ArtworkImage> detachImages() {
-        List<ArtworkImage> removed = new ArrayList<>(this.images);
-        this.images.clear();
-        return removed;
-    }
-
-    // 이미지 교체 2단계 — 신규 이미지를 ordinal 0부터 채우고 PROCESSING 상태로 전환한다.
-    public void attachImages(List<String> newImageKeys, int newRepresentativeIndex) {
-        if (newImageKeys == null || newImageKeys.isEmpty() || newImageKeys.size() > 30) {
+    /** 이미지 목록을 바꾼 뒤 대표 이미지 자리를 옮긴다. 개수는 media가 확정한 목록에서 받는다. */
+    public void repositionRepresentative(int newRepresentativeIndex, int imageCount) {
+        if (imageCount <= 0 || imageCount > 30) {
             throw new ArtworkException(ArtworkErrorCode.INVALID_IMAGE_COUNT);
         }
-        if (newRepresentativeIndex < 0 || newRepresentativeIndex >= newImageKeys.size()) {
+        if (newRepresentativeIndex < 0 || newRepresentativeIndex >= imageCount) {
             throw new ArtworkException(ArtworkErrorCode.INVALID_REPRESENTATIVE_INDEX);
         }
-        for (int i = 0; i < newImageKeys.size(); i++) {
-            this.images.add(ArtworkImage.pending(this, i, newImageKeys.get(i)));
-        }
         this.representativeImageIndex = newRepresentativeIndex;
-        this.status = ArtworkStatus.PROCESSING;
     }
 
     // 자재 교체 1단계 — detachImages와 동일한 이유로 삭제를 먼저 예약한다(uk_am_order 충돌 방지).
@@ -415,56 +395,46 @@ public class Artwork implements Persistable<String> {
      *
      * <p>상태는 삭제 전 값을 스냅샷으로 들고 있다가 되돌리는 대신 <b>이미지의 현재 상태로 다시 계산한다</b>.
      * 휴지통에 있는 동안에도 Worker 콜백은 이미지 행을 계속 갱신하므로(상태만 덮어쓰지 않을 뿐,
-     * {@link #markImageProcessed} 참고) 삭제 시점 스냅샷은 낡은 값이 될 수 있다 — PROCESSING일 때 버린
+     * {@link #applyImageStatuses} 참고) 삭제 시점 스냅샷은 낡은 값이 될 수 있다 — PROCESSING일 때 버린
      * 작품이 그사이 전부 처리됐는데도 다시 PROCESSING으로 되살아나는 식이다.
      *
      * <p>예전에는 삭제 전 상태와 무관하게 항상 READY로 만들었다. 이미지가 아직 처리되지 않았거나 전량
      * 실패한 작품이 정상 공개 상태가 되어 피드·검색에 깨진 채로 노출됐다.
      */
-    public void restore() {
+    public void restore(List<ImageProcessingStatus> imageStatuses) {
         assertDeleted();
-        this.status = resolveStatusFromImages();
+        this.status = resolveStatus(imageStatuses);
         this.visibility = this.visibilityBeforeDelete != null ? this.visibilityBeforeDelete : Visibility.PRIVATE;
         this.visibilityBeforeDelete = null;
         this.deletedAt = null;
     }
 
     /**
-     * 이미지 처리 현황만 보고 작품 상태를 정한다 — {@link #markImageProcessed}의 전환 규칙과 같은 판정이라
-     * 두 곳이 어긋나지 않도록 여기로 모았다.
+     * 이미지 처리 현황만 보고 작품 상태를 정한다 — 처리 중인 이미지가 없고 하나라도 성공하면 READY(부분 실패
+     * 허용), 전량 실패면 FAILED로 끝낸다. 재시도 스케줄러는 PENDING만 다루므로 끝내지 않으면 PROCESSING에 남는다.
      *
      * <p>이미지가 하나도 없는 작품은 업로드 경로상 만들어질 수 없지만, 그 경우 PROCESSING으로 두면
      * 아무도 끝내주지 않아 고착되므로 FAILED로 본다.
      */
-    private ArtworkStatus resolveStatusFromImages() {
-        if (images.stream().anyMatch(ArtworkImage::isPending)) {
+    private static ArtworkStatus resolveStatus(List<ImageProcessingStatus> imageStatuses) {
+        if (imageStatuses.contains(ImageProcessingStatus.PENDING)) {
             return ArtworkStatus.PROCESSING;
         }
-        return images.stream().anyMatch(ArtworkImage::isDone) ? ArtworkStatus.READY : ArtworkStatus.FAILED;
+        return imageStatuses.contains(ImageProcessingStatus.DONE) ? ArtworkStatus.READY : ArtworkStatus.FAILED;
     }
 
-    public void markImageProcessed(String originalKey, String thumbKey,
-                                   String thumbAdultKey, String originalAvifKey,
-                                   boolean success) {
-        images.stream()
-                .filter(img -> originalKey.equals(img.getOriginalKey()))
-                .findFirst()
-                .ifPresent(img -> {
-                    if (success) {
-                        img.markDone(thumbKey, thumbAdultKey, originalAvifKey);
-                    } else {
-                        img.markFailed();
-                    }
-                });
-        // 휴지통 작품의 상태는 콜백으로 덮어쓰지 않는다 — 업로드 직후 PROCESSING 상태에서 삭제하면
-        // Worker 콜백이 그 뒤에 도착하는데, 그대로 두면 사용자가 버린 작품이 휴지통에서 사라지고
-        // 되살아난다. 이미지 변환 결과는 위에서 이미 반영했으므로 복구하면 그대로 쓸 수 있다.
+    /**
+     * 이미지 처리 현황을 반영한다. 현황은 media가 갖고 있으므로 호출자가 읽어 넘긴다(#193).
+     *
+     * <p>휴지통 작품의 상태는 콜백으로 덮어쓰지 않는다 — 업로드 직후 PROCESSING 상태에서 삭제하면 Worker
+     * 콜백이 그 뒤에 도착하는데, 그대로 두면 사용자가 버린 작품이 휴지통에서 사라지고 되살아난다. 변환 결과는
+     * media에 남아 있으므로 복구하면 그대로 쓸 수 있다.
+     */
+    public void applyImageStatuses(List<ImageProcessingStatus> imageStatuses) {
         if (status == ArtworkStatus.DELETED) {
             return;
         }
-        // 처리 중인 이미지가 없고 하나라도 성공하면 READY(부분 실패 허용), 전량 실패면 FAILED로 끝낸다 —
-        // 재시도 스케줄러는 PENDING만 다루므로 끝내지 않으면 PROCESSING에 영원히 남는다.
-        this.status = resolveStatusFromImages();
+        this.status = resolveStatus(imageStatuses);
     }
 
     // 뷰어별 접근 판정 — 공개 여부는 "피드 공개 여부 × 라이브 포트폴리오 편입 여부" 2요소로 계산한다
@@ -488,12 +458,6 @@ public class Artwork implements Persistable<String> {
         this.portfolioIncluded = included;
     }
 
-    public ArtworkImage getRepresentativeImage() {
-        if (images == null || images.isEmpty()) return null;
-        int idx = Math.min(representativeImageIndex, images.size() - 1);
-        return images.get(idx);
-    }
-
     private void setWorkDuration(WorkDuration workDuration) {
         if (workDuration == null) {
             this.workDurationMonths = null;
@@ -512,7 +476,6 @@ public class Artwork implements Persistable<String> {
     public String getAuthorId() { return authorId; }
     public String getTitle() { return title; }
     public String getDescription() { return description; }
-    public List<ArtworkImage> getImages() { return List.copyOf(images); }
     public int getRepresentativeImageIndex() { return representativeImageIndex; }
     public String getThumbnailKey() { return thumbnailKey; }
     public ImageLayoutType getImageLayoutType() { return imageLayoutType; }

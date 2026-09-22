@@ -219,8 +219,10 @@ class ArtworkModuleTests {
         assertThat(countOrphanRows()).isEqualTo(orphansBefore);
     }
 
+    // #193 — 이미지를 더해도 이미 처리된 이미지는 그대로 둔다. 예전에는 목록이 달라지기만 하면 전량 교체라
+    // 남긴 이미지의 파일이 고아 큐로 가 지워지고 재변환이 FAILED가 됐다.
     @Test
-    void 이미지_목록이_바뀌면_교체하고_기존_파일을_고아_처리한다() {
+    void 이미지를_추가하면_기존_이미지는_변환_결과를_유지하고_고아_처리하지_않는다() {
         String memberId = registerAuthor();
         ArtworkInfo uploaded = uploadMinimal(memberId, "raw/u2.png");
         processImage(uploaded.id(), "raw/u2.png", MediaProcessingStatus.DONE);
@@ -233,6 +235,27 @@ class ArtworkModuleTests {
 
         assertThat(updated.images()).extracting(ArtworkImageInfo::originalKey)
                 .containsExactly("raw/u2.png", "raw/u3.png");
+        assertThat(updated.images().get(0).thumbKey()).isEqualTo("thumb/u2.avif");
+        assertThat(updated.images().get(0).processingStatus()).isEqualTo(ImageProcessingStatus.DONE);
+        assertThat(updated.images().get(1).processingStatus()).isEqualTo(ImageProcessingStatus.PENDING);
+        assertThat(countOrphanRows()).isEqualTo(orphansBefore);
+    }
+
+    @Test
+    void 이미지를_빼면_빠진_이미지만_고아_처리한다() {
+        String memberId = registerAuthor();
+        ArtworkInfo uploaded = uploadMinimal(memberId, "raw/u4.png", "raw/u5.png");
+        processImage(uploaded.id(), "raw/u4.png", MediaProcessingStatus.DONE);
+        processImage(uploaded.id(), "raw/u5.png", MediaProcessingStatus.DONE);
+        awaitReady(memberId, uploaded.id());
+        int orphansBefore = countOrphanRows();
+
+        ArtworkInfo updated = artworkService.updateArtwork(memberId, uploaded.id(), new UpdateArtworkCommand(
+                List.of("raw/u4.png"), 0, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null));
+
+        assertThat(updated.images()).extracting(ArtworkImageInfo::originalKey).containsExactly("raw/u4.png");
+        assertThat(updated.images().get(0).thumbKey()).isEqualTo("thumb/u4.avif");
         assertThat(countOrphanRows()).isGreaterThan(orphansBefore);
     }
 

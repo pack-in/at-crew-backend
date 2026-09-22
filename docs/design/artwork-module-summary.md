@@ -43,7 +43,7 @@ com.atcrew.artwork/                        ← 외부에 공개되는 인터페�
 
 com.atcrew.artwork.internal/               ← 모듈 외부에서 직접 접근 불가
   application/    서비스 구현체, 스케줄러, 이벤트 리스너, Mapper
-  domain/         도메인 엔티티 (Artwork, ArtworkImage, BookmarkFolder 등)
+  domain/         도메인 엔티티 (Artwork, BookmarkFolder 등 — 이미지는 media 모듈)
   exception/      ArtworkErrorCode, ArtworkException
   infra/storage/  R2StoragePort 인터페이스 + R2StorageAdapter 구현체
   persistence/    MongoDB Repository 인터페이스들
@@ -66,7 +66,7 @@ com.atcrew.artwork.internal/               ← 모듈 외부에서 직접 접근
 | `authorId` | String | 작성자 member ID |
 | `title` | String | 작품 제목 (최대 100자) |
 | `description` | String | 설명 (최대 500자) |
-| `images` | `List<ArtworkImage>` | 이미지 목록 (1~30장) |
+| (이미지) | — | `media_assets`에만 있다(#193). 작품 행에는 없고 `MediaService.getAssets`로 읽는다 |
 | `representativeImageIndex` | int | 대표 이미지 인덱스 |
 | `thumbnailKey` | String | 사용자 지정 썸네일 R2 키 (별도 업로드). null이면 대표 이미지의 Worker 생성 썸네일 사용 |
 | `imageLayoutType` | enum | VERTICAL_SCROLL / HORIZONTAL_SWIPE |
@@ -162,7 +162,7 @@ record WorkDuration(Integer months, Integer days, Integer hours, Integer minutes
   접근 불가. 재시도 대상이 아니므로 작가가 이미지를 교체하면(`updateArtwork`) 다시 PROCESSING으로 간다.
 - **DELETED**: 휴지통. 다른 조회 API에 노출되지 않음. 복구 또는 영구 삭제 가능.
 
-#### 이미지 처리 상태 (각 ArtworkImage)
+#### 이미지 처리 상태 (각 media 자산)
 
 ```
 PENDING → (Worker DONE 콜백) → DONE
@@ -171,7 +171,7 @@ PENDING → (Worker DONE 콜백) → DONE
 
 모든 이미지가 PENDING이 아니게 되고(DONE or FAILED), 하나라도 DONE이면 Artwork status를 READY로 전환. 전부 FAILED면 `FAILED`로 전환한다 — 재시도 스케줄러는 PENDING만 다루므로 PROCESSING에 두면 영구 고착된다.
 
-### ArtworkImage (Artwork에 내장)
+### 이미지 (media 모듈 `media_assets`)
 
 | 필드 | 설명 |
 |------|------|
@@ -181,7 +181,7 @@ PENDING → (Worker DONE 콜백) → DONE
 | `originalAvifKey` | Worker 생성 AVIF 변환본 키 |
 | `processingStatus` | PENDING / DONE / FAILED |
 
-**썸네일 우선순위**: `Artwork.thumbnailKey`(사용자 업로드) → 대표 이미지의 `ArtworkImage.thumbKey`(Worker 생성) 순으로 사용. `ArtworkSummaryInfo`의 `thumbKey` 필드에 최종 값이 담김.
+**썸네일 우선순위**: `Artwork.thumbnailKey`(사용자 업로드) → 대표 이미지의 `thumbKey`(Worker 생성) 순으로 사용. `ArtworkSummaryInfo`의 `thumbKey` 필드에 최종 값이 담김.
 
 ### Material (Artwork에 내장)
 
@@ -265,7 +265,7 @@ PENDING → (Worker DONE 콜백) → DONE
      │                        │ {artworkId, imageKey,     │                   │
      │                        │  thumbKey, status:DONE}   │                   │
      │                        │←──────────────────────────────────────────────│
-     │                        │ markImageProcessed()      │                   │
+     │                        │ applyImageStatuses()      │                   │
      │                        │ 전체 완료 → READY         │                   │
 ```
 
@@ -522,7 +522,7 @@ Cloudflare Worker가 이미지 처리 완료 후 호출. Swagger에서 숨김(`@
 ```
 
 - `X-Internal-Secret`는 `MessageDigest.isEqual()`로 상수 시간 비교
-- `status: DONE` → `ArtworkImage.markDone()`, `FAILED` → `markFailed()`
+- `status: DONE`/`FAILED` → media가 자산 행을 갱신하고, 작품은 현황을 받아 상태만 다시 계산한다
 - 처리 중인 이미지가 없고 하나라도 DONE이면 Artwork status → `READY`
 
 ---

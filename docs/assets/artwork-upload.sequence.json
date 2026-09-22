@@ -196,7 +196,7 @@
       "from": "artwork",
       "to": "db",
       "y": 832,
-      "label": "작품 행 잠금 후 markImageProcessed",
+      "label": "작품 행 잠금 후 applyImageStatuses",
       "variant": "emphasis"
     },
     {
