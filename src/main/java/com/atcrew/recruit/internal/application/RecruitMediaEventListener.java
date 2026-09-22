@@ -1,10 +1,12 @@
 package com.atcrew.recruit.internal.application;
 
+import com.atcrew.media.MediaAssetInfo;
 import com.atcrew.media.MediaAssetProcessedEvent;
+import com.atcrew.media.MediaProcessingStatus;
+import com.atcrew.media.MediaService;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.recruit.internal.domain.JobPosting;
 import com.atcrew.recruit.internal.domain.JobSeekingPost;
-import com.atcrew.recruit.internal.domain.RecruitPostingImage;
 import com.atcrew.recruit.internal.domain.TeamPosting;
 import com.atcrew.recruit.internal.persistence.JobPostingRepository;
 import com.atcrew.recruit.internal.persistence.JobSeekingPostRepository;
@@ -31,14 +33,14 @@ class RecruitMediaEventListener {
 
     private static final Logger log = LoggerFactory.getLogger(RecruitMediaEventListener.class);
 
-    private final RecruitImageService recruitImageService;
+    private final MediaService mediaService;
     private final JobPostingRepository jobPostingRepository;
     private final TeamPostingRepository teamPostingRepository;
     private final JobSeekingPostRepository jobSeekingPostRepository;
 
-    RecruitMediaEventListener(RecruitImageService recruitImageService, JobPostingRepository jobPostingRepository,
+    RecruitMediaEventListener(MediaService mediaService, JobPostingRepository jobPostingRepository,
             TeamPostingRepository teamPostingRepository, JobSeekingPostRepository jobSeekingPostRepository) {
-        this.recruitImageService = recruitImageService;
+        this.mediaService = mediaService;
         this.jobPostingRepository = jobPostingRepository;
         this.teamPostingRepository = teamPostingRepository;
         this.jobSeekingPostRepository = jobSeekingPostRepository;
@@ -54,18 +56,17 @@ class RecruitMediaEventListener {
         // (동시성 레이스 수정, docs/NEXT_STEPS.md "지금 바로 처리할 것" 0번).
         lockPosting(event.ownerType(), event.ownerId());
 
-        List<? extends RecruitPostingImage> images =
-                recruitImageService.findImages(event.ownerType(), event.ownerId());
-        images.stream()
-                .filter(image -> event.imageKey().equals(image.getOriginalKey()))
-                .findFirst()
-                .ifPresentOrElse(
-                        image -> image.markProcessed(event.thumbKey(), event.originalAvifKey(), event.status()),
-                        () -> log.warn("처리 결과에 해당하는 게시글 이미지가 없습니다: ownerType={} ownerId={} imageKey={}",
-                                event.ownerType(), event.ownerId(), event.imageKey()));
+        // 변환 결과는 media가 이미 저장했다(#193) — 게시글은 현황만 보고 자기 상태를 정한다.
+        List<MediaAssetInfo> assets = mediaService.getAssets(event.ownerType(), event.ownerId());
+        if (assets.stream().noneMatch(a -> event.imageKey().equals(a.originalKey()))) {
+            log.warn("처리 결과에 해당하는 게시글 이미지가 없습니다: ownerType={} ownerId={} imageKey={}",
+                    event.ownerType(), event.ownerId(), event.imageKey());
+        }
 
         // 부분 실패 허용 — PENDING이 하나도 없고 DONE이 하나 이상이면 READY (설계 §5·§10.3).
-        if (RecruitPostingImage.readyFor(images)) {
+        boolean ready = assets.stream().noneMatch(a -> a.status() == MediaProcessingStatus.PENDING)
+                && assets.stream().anyMatch(a -> a.status() == MediaProcessingStatus.DONE);
+        if (ready) {
             markReady(event.ownerType(), event.ownerId());
         }
     }

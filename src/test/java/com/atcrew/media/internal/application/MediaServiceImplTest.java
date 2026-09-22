@@ -226,9 +226,9 @@ class MediaServiceImplTest {
     }
 
     @Test void 교체도_커밋된_뒤_한_번만_트리거한다() {
-        when(assets.findByOwnerForUpdate(MediaOwnerType.JOB_POSTING, "posting-1")).thenReturn(List.of());
+        stubOwner();
         inTransaction(() -> {
-            service.replaceAndTriggerProcessing(MediaOwnerType.JOB_POSTING, "posting-1", List.of("raw/2.jpg"),
+            service.syncAssets(MediaOwnerType.JOB_POSTING, "posting-1", specs("raw/2.jpg"),
                     MediaVariantProfile.STANDARD, MediaQualityTier.WEB);
             verifyNoInteractions(worker);
             TransactionSynchronizationManager.getSynchronizations().forEach(TransactionSynchronization::afterCommit);
