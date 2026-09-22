@@ -197,6 +197,45 @@ class ArtworkModuleTests {
         assertThat(updated.representativeImageIndex()).isEqualTo(2);
     }
 
+    // 프론트는 수정 요청마다 폼 전체(기존 imageKeys 포함)를 보낸다. 교체로 처리하면 끝난 변환을 버리고
+    // 파일을 고아 큐로 넘겨, 이미지를 건드리지 않은 수정만으로 작품 이미지가 전부 깨진다(#193).
+    @Test
+    void 같은_이미지_목록으로_수정하면_변환_결과를_유지하고_고아_처리하지_않는다() {
+        String memberId = registerAuthor();
+        ArtworkInfo uploaded = uploadMinimal(memberId, "raw/u1.png");
+        processImage(uploaded.id(), "raw/u1.png", MediaProcessingStatus.DONE);
+        awaitReady(memberId, uploaded.id());
+        int orphansBefore = countOrphanRows();
+
+        ArtworkInfo updated = artworkService.updateArtwork(memberId, uploaded.id(), new UpdateArtworkCommand(
+                List.of("raw/u1.png"), 0, null, null, "새 제목",
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null));
+
+        assertThat(updated.title()).isEqualTo("새 제목");
+        assertThat(updated.images()).extracting(ArtworkImageInfo::thumbKey).containsExactly("thumb/u1.avif");
+        assertThat(updated.images()).extracting(ArtworkImageInfo::processingStatus)
+                .containsExactly(ImageProcessingStatus.DONE);
+        assertThat(artworkService.getArtworkStatus(memberId, uploaded.id())).isEqualTo(ArtworkStatus.READY);
+        assertThat(countOrphanRows()).isEqualTo(orphansBefore);
+    }
+
+    @Test
+    void 이미지_목록이_바뀌면_교체하고_기존_파일을_고아_처리한다() {
+        String memberId = registerAuthor();
+        ArtworkInfo uploaded = uploadMinimal(memberId, "raw/u2.png");
+        processImage(uploaded.id(), "raw/u2.png", MediaProcessingStatus.DONE);
+        awaitReady(memberId, uploaded.id());
+        int orphansBefore = countOrphanRows();
+
+        ArtworkInfo updated = artworkService.updateArtwork(memberId, uploaded.id(), new UpdateArtworkCommand(
+                List.of("raw/u2.png", "raw/u3.png"), 0, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null));
+
+        assertThat(updated.images()).extracting(ArtworkImageInfo::originalKey)
+                .containsExactly("raw/u2.png", "raw/u3.png");
+        assertThat(countOrphanRows()).isGreaterThan(orphansBefore);
+    }
+
     @Test
     void 자재_교체_후_기존_자재_행이_삭제되고_새_자재로_대체된다() {
         String memberId = registerAuthor();
@@ -465,6 +504,10 @@ class ArtworkModuleTests {
     /** 운영 차단 SQL 1건을 재현한다 — 관리자 API가 없어 실제 운영도 같은 UPDATE로 수행한다. */
     private void blockArtwork(String artworkId) {
         jdbcTemplate.update("UPDATE artworks SET blocked_at = UTC_TIMESTAMP(6) WHERE id = ?", artworkId);
+    }
+
+    private int countOrphanRows() {
+        return jdbcTemplate.queryForObject("select count(*) from orphaned_media_keys", Integer.class);
     }
 
     /** Worker webhook 1건을 재현한다 — media가 자산 상태를 갱신하고 MediaAssetProcessedEvent를 발행한다. */
