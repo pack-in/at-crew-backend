@@ -184,9 +184,21 @@ public interface MediaService {
     // 알려진 결함: 새 목록에 남는 key까지 고아로 넘기고 다시 트리거한다 — 별도 이슈에서 media 중심으로 재설계한다.
     void replaceAndTriggerProcessing(MediaOwnerType ownerType, String ownerId,
                                       List<String> newImageKeys, MediaVariantProfile variantProfile,
-                                      MediaQualityTier qualityTier);
+                                      MediaQualityTier qualityTier);   // syncAssets로 대체 예정(#193)
+
+    // 소유자의 목록을 desired와 같게 맞추고 맞춘 결과를 돌려준다(#193). 유지·추가·삭제 판정은 여기서만 한다 —
+    // 소유자는 돌려받은 결과만 반영한다. 남는 key가 DONE이면 그대로 두고 재트리거하지 않는다(Worker가 DONE
+    // 콜백 뒤 raw를 지우므로 재트리거하면 FAILED가 된다). PENDING·FAILED면 다시 트리거하고, 빠진 key만 고아
+    // 큐로 보낸다. variantProfile·qualityTier는 새로 등록하는 행에만 쓴다(업로드 시점 플랜 고정).
+    // desired의 순서가 ordinal이고, MediaAssetSpec의 slotRole은 소유자가 정하는 슬롯 이름이다(recruit의
+    // THUMBNAIL/REFERENCE). media는 값을 해석하지 않고 보관·반환만 한다.
+    List<MediaAssetInfo> syncAssets(MediaOwnerType ownerType, String ownerId, List<MediaAssetSpec> desired,
+                                    MediaVariantProfile variantProfile, MediaQualityTier qualityTier);
 
     List<MediaAssetInfo> getAssets(MediaOwnerType ownerType, String ownerId);
+
+    // 목록 화면용 일괄 조회 — 소유자 수만큼 쿼리가 나가지 않게 한 번에 읽는다.
+    Map<String, List<MediaAssetInfo>> getAssets(MediaOwnerType ownerType, Collection<String> ownerIds);
 
     // 영구 삭제 시 즉시 R2 파일 제거를 시도하고, 실패하면 호출자가 markOrphaned로 정리 큐에 적재한다.
     // ArtworkEventListener.onPermanentlyDeleted가 지금 ArtworkStoragePort.deleteFiles를 직접 호출하는

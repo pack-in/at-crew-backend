@@ -23,6 +23,111 @@ class MediaServiceImplTest {
     private final OrphanedMediaKeyRepository orphans = mock(OrphanedMediaKeyRepository.class);
     private final MediaService service = new MediaServiceImpl(assets, orphans, storage, worker);
 
+    // #193 — 이미지 일부만 바꾸면 남는 이미지는 그대로 두고, 빠진 것만 고아 큐로 보낸다.
+    @Test void 부분_교체는_남는_이미지를_그대로_두고_빠진_것만_고아로_보낸다() {
+        var a = done("raw/a.jpg", 0, "thumb/a.avif");
+        var b = done("raw/b.jpg", 1, "thumb/b.avif");
+        var c = done("raw/c.jpg", 2, "thumb/c.avif");
+        stubOwner(a, b, c);
+
+        var result = service.syncAssets(MediaOwnerType.ARTWORK, OWNER,
+                specs("raw/a.jpg", "raw/b.jpg", "raw/d.jpg"), MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.ORIGINAL);
+
+        // 빠진 c만 지우고 고아 큐로 보낸다.
+        verify(assets).deleteAll(List.of(c));
+        var orphaned = ArgumentCaptor.forClass(OrphanedMediaKey.class);
+        verify(orphans).save(orphaned.capture());
+        assertThat(orphaned.getValue().getKeys()).containsExactly("raw/c.jpg", "thumb/c.avif");
+        // 새로 들어온 d만 트리거한다 — a·b는 DONE이라 raw가 이미 지워졌다.
+        verify(worker).triggerAsync(MediaOwnerType.ARTWORK, OWNER, List.of("raw/d.jpg"),
+                MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.ORIGINAL);
+        assertThat(result).extracting(MediaAssetInfo::originalKey).containsExactly("raw/a.jpg", "raw/b.jpg", "raw/d.jpg");
+        assertThat(result).extracting(MediaAssetInfo::ordinal).containsExactly(0, 1, 2);
+        assertThat(result.get(0).thumbKey()).isEqualTo("thumb/a.avif");
+        assertThat(result.get(0).status()).isEqualTo(MediaProcessingStatus.DONE);
+        assertThat(result.get(2).status()).isEqualTo(MediaProcessingStatus.PENDING);
+    }
+
+    // 실패·대기 중인 이미지는 raw가 남아 있으므로 다시 트리거해야 복구된다.
+    @Test void 남는_이미지가_실패_상태면_다시_트리거한다() {
+        var failed = pending("raw/f.jpg", 0);
+        failed.markProcessed(null, null, null, MediaProcessingStatus.FAILED);
+        stubOwner(failed);
+
+        service.syncAssets(MediaOwnerType.ARTWORK, OWNER, specs("raw/f.jpg", "raw/g.jpg"),
+                MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.ORIGINAL);
+
+        verify(worker).triggerAsync(MediaOwnerType.ARTWORK, OWNER, List.of("raw/f.jpg", "raw/g.jpg"),
+                MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.ORIGINAL);
+        verify(orphans, never()).save(any());
+    }
+
+    @Test void 순서만_바꾸면_행을_유지하고_트리거하지_않는다() {
+        var a = done("raw/a.jpg", 0, "thumb/a.avif");
+        var b = done("raw/b.jpg", 1, "thumb/b.avif");
+        stubOwner(a, b);
+
+        var result = service.syncAssets(MediaOwnerType.ARTWORK, OWNER, specs("raw/b.jpg", "raw/a.jpg"),
+                MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.ORIGINAL);
+
+        verifyNoInteractions(worker);
+        verify(orphans, never()).save(any());
+        verify(assets).deleteAll(List.of());
+        assertThat(result).extracting(MediaAssetInfo::originalKey).containsExactly("raw/b.jpg", "raw/a.jpg");
+        assertThat(result).extracting(MediaAssetInfo::ordinal).containsExactly(0, 1);
+    }
+
+    @Test void 목록이_비면_자산을_전부_지운다() {
+        var a = done("raw/a.jpg", 0, "thumb/a.avif");
+        stubOwner(a);
+
+        var result = service.syncAssets(MediaOwnerType.ARTWORK, OWNER, List.of(),
+                MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.ORIGINAL);
+
+        assertThat(result).isEmpty();
+        verify(assets).deleteAll(List.of(a));
+        verifyNoInteractions(worker);
+    }
+
+    // 같은 key가 두 번 들어오면 콜백이 행을 특정하지 못해 그 소유자의 처리가 영구히 막힌다.
+    @Test void 중복된_키는_거부한다() {
+        assertThatIllegalArgumentException().isThrownBy(() -> service.syncAssets(MediaOwnerType.ARTWORK, OWNER,
+                specs("raw/a.jpg", "raw/a.jpg"), MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.ORIGINAL));
+    }
+
+    // recruit은 썸네일과 참고 이미지를 슬롯 이름으로 가른다 — media는 값을 해석하지 않고 그대로 돌려준다.
+    @Test void 슬롯_이름은_그대로_보관하고_돌려준다() {
+        stubOwner();
+
+        var result = service.syncAssets(MediaOwnerType.JOB_POSTING, OWNER,
+                List.of(new MediaAssetSpec("raw/t.jpg", "THUMBNAIL"), new MediaAssetSpec("raw/r.jpg", "REFERENCE")),
+                MediaVariantProfile.STANDARD, MediaQualityTier.WEB);
+
+        assertThat(result).extracting(MediaAssetInfo::slotRole).containsExactly("THUMBNAIL", "REFERENCE");
+    }
+
+    private static final String OWNER = "owner-1";
+
+    private void stubOwner(MediaAsset... existing) {
+        when(assets.findByOwnerForUpdate(any(), eq(OWNER))).thenReturn(new java.util.ArrayList<>(List.of(existing)));
+        when(assets.save(any(MediaAsset.class))).thenAnswer(inv -> inv.getArgument(0));
+    }
+
+    private static List<MediaAssetSpec> specs(String... keys) {
+        return java.util.Arrays.stream(keys).map(MediaAssetSpec::of).toList();
+    }
+
+    private static MediaAsset pending(String key, int ordinal) {
+        return MediaAsset.pending(MediaOwnerType.ARTWORK, OWNER, ordinal, key,
+                MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.ORIGINAL);
+    }
+
+    private static MediaAsset done(String key, int ordinal, String thumbKey) {
+        MediaAsset asset = pending(key, ordinal);
+        asset.markProcessed(thumbKey, null, null, MediaProcessingStatus.DONE);
+        return asset;
+    }
+
     @Test void deleteAssetsForOwnerRemovesAllMatchingRows() {
         var existing = List.of(MediaAsset.pending(MediaOwnerType.ARTWORK, "artwork-1", 0, "raw/1.jpg", MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.ORIGINAL));
         when(assets.findByOwnerForUpdate(MediaOwnerType.ARTWORK, "artwork-1")).thenReturn(existing);
