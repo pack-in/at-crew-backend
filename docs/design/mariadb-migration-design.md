@@ -331,7 +331,7 @@ LIMIT ?;
 | `artworks` | id PK, author_id, title, description, thumbnail_key, image_layout_type, artwork_field, creative_type, work_duration, cut_count, age_rating, visibility, visibility_before_delete, status, video_links JSON, deleted_at, version, created_at, updated_at | `idx_aw_author`(author_id), `idx_aw_retry`(status, updated_at) — Worker 재시도 스케줄러 쿼리(`status='PROCESSING' AND updated_at < ?`)용 |
 | `artwork_images` | id PK(대리키 BIGINT AUTO_INCREMENT — 외부 노출 없는 순수 내부 자식 행), artwork_id FK, ordinal, original_key, thumb_key, thumb_adult_key, original_avif_key, processing_status | `uk_ai_order`(artwork_id, ordinal) |
 | `artwork_materials` | id PK(동일 대리키), artwork_id FK, ordinal, name, targets JSON, attachment_keys JSON, links JSON | `uk_am_order`(artwork_id, ordinal) |
-| `artwork_roles` / `artwork_genres` / `artwork_tags` / `artwork_tools` | (artwork_id, value) PK | `idx_*_value`(value, artwork_id) |
+| `artwork_roles` / `artwork_genres` / `artwork_tags` / `artwork_tools` | (artwork_id, value) PK — 단 `artwork_tags`는 V45부터 (artwork_id, tag_order) PK(등록 순서 보존, 이슈 #199) | `idx_*_value`(value, artwork_id) |
 | `orphaned_image_keys` | id PK, keys JSON, marked_at | `idx_oik_marked`(marked_at) |
 | `bookmark_folders` | id PK, member_id, name, sort_order, created_at | `uk_bf_member_name`(member_id, name), `idx_bf_member_sort`(member_id, sort_order) |
 | `bookmark_entries` | id PK, member_id, artwork_id, folder_id NULL, artwork_visibility_at_save, saved_at | `idx_be_cursor`(member_id, folder_id, saved_at DESC, id), `uk_be_member_artwork`(member_id, artwork_id)*, `idx_be_folder`(folder_id) |

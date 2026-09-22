@@ -29,6 +29,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
+import jakarta.persistence.OrderColumn;
 import jakarta.persistence.PostLoad;
 import jakarta.persistence.PostPersist;
 import jakarta.persistence.Table;
@@ -49,6 +50,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -120,7 +122,8 @@ public class Artwork implements Persistable<String> {
     @BatchSize(size = 100)   // 목록 조회 시 컬렉션 N+1 완화 (recruit 모듈과 동일 패턴, 이슈 #112)
     @CollectionTable(name = "artwork_tags", joinColumns = @JoinColumn(name = "artwork_id"))
     @Column(name = "value")
-    private Set<String> tags = new HashSet<>();
+    @OrderColumn(name = "tag_order")   // 등록 순서대로 노출한다(홈-R05, 이슈 #199)
+    private List<String> tags = new ArrayList<>();
 
     @ElementCollection(fetch = FetchType.EAGER)
     @BatchSize(size = 100)   // 목록 조회 시 컬렉션 N+1 완화 (recruit 모듈과 동일 패턴, 이슈 #112)
@@ -246,7 +249,7 @@ public class Artwork implements Persistable<String> {
         artwork.roles = new HashSet<>(roles != null ? roles : List.of());
         artwork.genres = new HashSet<>(genres != null ? genres : List.of());
         artwork.customTags = normalizeCustomTags(customTags != null ? customTags : List.of());
-        artwork.tags = new HashSet<>(tags != null ? tags : List.of());
+        artwork.tags = distinctInOrder(tags != null ? tags : List.of());
         artwork.ageRating = ageRating;
         artwork.languages = new HashSet<>(languages != null ? languages : List.of());
         artwork.visibility = visibility;
@@ -296,7 +299,7 @@ public class Artwork implements Persistable<String> {
         if (roles != null) this.roles = new HashSet<>(roles);
         if (genres != null) this.genres = new HashSet<>(genres);
         if (customTags != null) this.customTags = normalizeCustomTags(customTags);
-        if (tags != null) this.tags = new HashSet<>(tags);
+        if (tags != null) this.tags = distinctInOrder(tags);
         if (ageRating != null) this.ageRating = ageRating;
         if (languages != null) this.languages = new HashSet<>(languages);
         if (tools != null) this.tools = new HashSet<>(tools);
@@ -312,6 +315,11 @@ public class Artwork implements Persistable<String> {
      * 최대 10자, 같은 항목 안에서 중복 불가. 항목당 개수 상한은 명세에 없지만, 무제한 저장을
      * 막기 위해 10개로 둔다(com.atcrew.member.internal.domain.Member.normalizeCustomTags와 동일 규칙).
      */
+    // 중복 태그는 처음 등록한 위치만 남긴다 — 종전 Set 저장과 같은 중복 제거를 순서를 유지한 채 한다.
+    private static List<String> distinctInOrder(List<String> values) {
+        return new ArrayList<>(new LinkedHashSet<>(values));
+    }
+
     private static Set<ArtworkCustomTag> normalizeCustomTags(List<ArtworkCustomTagInfo> tags) {
         Set<ArtworkCustomTag> normalized = new HashSet<>();
         Map<ArtworkCustomTagType, Integer> counts = new EnumMap<>(ArtworkCustomTagType.class);
@@ -528,7 +536,7 @@ public class Artwork implements Persistable<String> {
                 .toList();
     }
 
-    public List<String> getTags() { return tags.stream().sorted().toList(); }
+    public List<String> getTags() { return List.copyOf(tags); }
     public List<String> getTools() { return tools.stream().sorted().toList(); }
 
     public WorkDuration getWorkDuration() {
