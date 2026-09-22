@@ -6,6 +6,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import com.atcrew.billing.internal.persistence.SubscriptionRepository;
 import com.atcrew.common.exception.DomainException;
+import com.atcrew.common.response.OffsetPage;
 import com.atcrew.media.MediaConstraints;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaProcessingStatus;
@@ -792,16 +793,14 @@ class ArtworkModuleTests {
         jdbcTemplate.update("DELETE FROM artwork_languages WHERE artwork_id = ?", legacyArtworkId);
 
         List<String> koViewerFeed = artworkService
-                .getCommunityArtworks(null, null, List.of(Language.KO), null, null, 50, null, true)
-                .items().stream().map(ArtworkSummaryInfo::id).toList();
+                .getCommunityArtworks(null, null, List.of(Language.KO), null, 1, 50, null, true).items().stream().map(ArtworkSummaryInfo::id).toList();
 
         assertThat(koViewerFeed).contains(koArtworkId, legacyArtworkId);
         assertThat(koViewerFeed).doesNotContain(jaArtworkId);
 
         // 비로그인(빈 목록)은 필터를 적용하지 않는다
         List<String> anonymousFeed = artworkService
-                .getCommunityArtworks(null, null, List.of(), null, null, 50, null, true)
-                .items().stream().map(ArtworkSummaryInfo::id).toList();
+                .getCommunityArtworks(null, null, List.of(), null, 1, 50, null, true).items().stream().map(ArtworkSummaryInfo::id).toList();
         assertThat(anonymousFeed).contains(koArtworkId, jaArtworkId, legacyArtworkId);
     }
 
@@ -817,16 +816,40 @@ class ArtworkModuleTests {
         String ownR18ArtworkId = publishReady(viewer, "raw/adult-own-r18.png", AgeRating.R18);
 
         List<String> hiddenFeed = artworkService
-                .getCommunityArtworks(null, null, List.of(), null, null, 50, viewer, false)
-                .items().stream().map(ArtworkSummaryInfo::id).toList();
+                .getCommunityArtworks(null, null, List.of(), null, 1, 50, viewer, false).items().stream().map(ArtworkSummaryInfo::id).toList();
         assertThat(hiddenFeed).contains(allArtworkId, ownR18ArtworkId);
         assertThat(hiddenFeed).doesNotContain(r18ArtworkId, g18ArtworkId);
 
         // 표시 ON이면 필터가 걸리지 않는다
         List<String> visibleFeed = artworkService
-                .getCommunityArtworks(null, null, List.of(), null, null, 50, viewer, true)
-                .items().stream().map(ArtworkSummaryInfo::id).toList();
+                .getCommunityArtworks(null, null, List.of(), null, 1, 50, viewer, true).items().stream().map(ArtworkSummaryInfo::id).toList();
         assertThat(visibleFeed).contains(allArtworkId, r18ArtworkId, g18ArtworkId, ownR18ArtworkId);
+    }
+
+    @Test
+    void 커뮤니티_피드_전체_개수는_언어_세그먼트와_성인_콘텐츠_설정을_따른다() {
+        String author = registerAuthor();
+        String viewer = registerAuthor();
+        long koBefore = artworkService
+                .getCommunityArtworks(null, null, List.of(Language.KO), null, 1, 1, null, true).totalCount();
+        long hiddenBefore = artworkService
+                .getCommunityArtworks(null, null, List.of(), null, 1, 1, viewer, false).totalCount();
+
+        publishReady(author, "raw/count-ko.png", AgeRating.ALL, List.of(Language.KO));
+        publishReady(author, "raw/count-ja.png", AgeRating.ALL, List.of(Language.JA));
+        publishReady(author, "raw/count-ko-r18.png", AgeRating.R18, List.of(Language.KO));
+
+        // KO 뷰어에게는 KO 작품 2건만 늘어난다(JA 작품 제외)
+        assertThat(artworkService.getCommunityArtworks(null, null, List.of(Language.KO), null, 1, 1, null, true)
+                .totalCount()).isEqualTo(koBefore + 2);
+        // 성인 콘텐츠 표시 OFF 뷰어에게는 R18을 뺀 2건만 늘어난다
+        assertThat(artworkService.getCommunityArtworks(null, null, List.of(), null, 1, 1, viewer, false)
+                .totalCount()).isEqualTo(hiddenBefore + 2);
+
+        // 개수는 같은 조건의 목록 건수와 일치한다
+        OffsetPage<ArtworkSummaryInfo> koPage = artworkService
+                .getCommunityArtworks(null, null, List.of(Language.KO), null, 1, 1000, null, true);
+        assertThat(koPage.totalCount()).isEqualTo(koPage.items().size());
     }
 
     /** 피드는 READY 상태만 노출하므로 이미지 처리 콜백까지 재현해 공개 상태를 만든다. */

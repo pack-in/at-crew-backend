@@ -55,6 +55,15 @@ public interface TeamPostingRepository extends JpaRepository<TeamPosting, String
             @Param("epoch") Instant epoch, @Param("cursorBoostSortAt") Instant cursorBoostSortAt,
             @Param("cursorId") String cursorId, Pageable pageable);
 
+    // 공개 목록 전체 개수(커뮤니티 탭 totalCount) — 위 공개 목록 쿼리와 같은 WHERE 조건을 쓴다.
+    // 노출 조건을 바꿀 때는 세 쿼리를 함께 고쳐야 한다.
+    // (커뮤니티 탭은 첫 페이지 쿼리에 PageRequest를 넘겨 오프셋 조회로 재사용한다)
+    @Query("""
+            SELECT COUNT(p) FROM TeamPosting p
+            WHERE p.status = :status
+            """)
+    long countPublished(@Param("status") TeamPostingStatus status);
+
     // 내 목록(DELETED 제외) 첫 페이지
     List<TeamPosting> findByAuthorMemberIdAndStatusNotOrderByIdDesc(
             String authorMemberId, TeamPostingStatus excludedStatus, Pageable pageable);

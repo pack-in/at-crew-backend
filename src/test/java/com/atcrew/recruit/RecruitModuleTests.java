@@ -99,6 +99,46 @@ class RecruitModuleTests {
     }
 
     @Test
+    void 커뮤니티_구인글_탭은_끌어올린_글을_앞에_두고_페이지로_나눈다() {
+        String authorId = registerMember("feed-page");
+        String olderId = publishedJobPosting(authorId, "오래된 공고");
+        String newerId = publishedJobPosting(authorId, "최신 공고");
+        recruitService.boostJobPosting(authorId, olderId);
+
+        // 이 클래스의 다른 테스트가 만든 공개 구인글도 목록에 있으므로, 한 장씩 넘겨 모은 뒤
+        // 내 두 글의 상대 순서와 페이지 간 중복 여부만 본다.
+        List<String> paged = new java.util.ArrayList<>();
+        for (int page = 1; page <= 20; page++) {
+            List<String> items = recruitService.getJobPostingFeed(page, 1).items().stream()
+                    .map(CommunityJobPostingCardInfo::id).toList();
+            if (items.isEmpty()) {
+                break;
+            }
+            paged.addAll(items);
+        }
+
+        assertThat(paged).doesNotHaveDuplicates();
+        // 끌어올린 글이 최신 글보다 앞에 온다(설계 §2.1.1)
+        assertThat(paged).containsSubsequence(olderId, newerId);
+    }
+
+    @Test
+    void 커뮤니티_탭_전체_개수는_PUBLISHED_글만_센다() {
+        long jobBefore = recruitService.getJobPostingFeed(1, 1).totalCount();
+        long teamBefore = recruitService.getTeamRecruitFeed(1, 1).totalCount();
+        String authorId = registerMember("count-author");
+
+        publishedJobPosting(authorId, "공개 공고");
+        recruitService.createJobPosting(authorId, jobPostingCommand("승인 대기 공고"));
+        recruitService.createTeamPosting(authorId, teamPostingCommand());
+        String closedTeamId = recruitService.createTeamPosting(authorId, teamPostingCommand()).id();
+        recruitService.closeTeamPosting(authorId, closedTeamId);
+
+        assertThat(recruitService.getJobPostingFeed(1, 1).totalCount()).isEqualTo(jobBefore + 1);
+        assertThat(recruitService.getTeamRecruitFeed(1, 1).totalCount()).isEqualTo(teamBefore + 1);
+    }
+
+    @Test
     void 끌어올리기가_쿨다운으로_실패하면_보유_개수는_차감되지_않는다() {
         String authorId = registerMember("boost-no-charge");
         String jobPostingId = publishedJobPosting(authorId, "미차감 공고");

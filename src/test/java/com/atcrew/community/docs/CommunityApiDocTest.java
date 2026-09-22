@@ -122,6 +122,11 @@ class CommunityApiDocTest extends RestDocsIntegrationSupport {
                                 fieldWithPath("data.items[].id").description("회원 ID"),
                                 fieldWithPath("data.items[].handle").description("회원 핸들"),
                                 fieldWithPath("data.items[].employmentStatus").description("구인구직 상태"),
+                                fieldWithPath("data.page").description("현재 페이지 번호 (1부터)"),
+                                fieldWithPath("data.size").description("페이지 크기"),
+                                fieldWithPath("data.totalCount").description(
+                                        "전체 작가 수 (현재 필터와 뷰어 언어 세그먼트 기준)"),
+                                fieldWithPath("data.totalPages").description("전체 페이지 수"),
                                 fieldWithPath("data.hasNext").description("다음 페이지 존재 여부")
                         )
                 ));
@@ -129,10 +134,11 @@ class CommunityApiDocTest extends RestDocsIntegrationSupport {
 
     @Test
     void 포트폴리오_탭_정렬_조회_문서화() throws Exception {
-        // 정렬 기준별 커서 정확성은 ArtworkSortModuleTests가 검증한다 — 여기서는 파라미터 계약과
-        // 응답 구조(nextCursor 형식 포함)를 문서로 남긴다.
+        // 정렬 기준별 페이지 순회 정확성은 ArtworkSortModuleTests가 검증한다 — 여기서는 파라미터 계약과
+        // 응답 구조를 문서로 남긴다.
         mockMvc.perform(get("/api/community/artworks")
                         .param("sort", "VIEW_COUNT")
+                        .param("page", "1")
                         .param("size", "20"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
@@ -143,15 +149,17 @@ class CommunityApiDocTest extends RestDocsIntegrationSupport {
                                 parameterWithName("ageRating").description("연령 등급 필터 (선택)").optional(),
                                 parameterWithName("sort").description(
                                         "정렬 기준 — LATEST(최신순, 기본)·OLDEST(오래된순)·VIEW_COUNT(조회순)·BOOKMARK_COUNT(북마크순)"),
-                                parameterWithName("cursor").description(
-                                        "직전 응답의 nextCursor를 그대로 전달. 정렬 기준을 바꾸면 커서 의미가 달라지므로 생략해야 한다").optional(),
+                                parameterWithName("page").description(
+                                        "페이지 번호 (1부터, 기본 1). page × size가 10000을 넘으면 400 INVALID_PAGE").optional(),
                                 parameterWithName("size").description("페이지 크기 (기본 20, 최대 50)").optional()
                         ),
                         relaxedResponseFields(
                                 fieldWithPath("code").description("응답 코드 (SUCCESS)"),
                                 fieldWithPath("data.items").description("작품 카드 목록 (공개·이미지 처리 완료 작품만 노출)"),
-                                fieldWithPath("data.nextCursor").description(
-                                        "다음 페이지 커서 \"정렬값_작품ID\" (마지막 페이지면 null)").optional(),
+                                fieldWithPath("data.page").description("현재 페이지 번호 (1부터)"),
+                                fieldWithPath("data.size").description("페이지 크기"),
+                                fieldWithPath("data.totalCount").description("전체 작품 수 (현재 필터·뷰어 조건 기준)"),
+                                fieldWithPath("data.totalPages").description("전체 페이지 수"),
                                 fieldWithPath("data.hasNext").description("다음 페이지 존재 여부")
                         )
                 ));
@@ -184,11 +192,38 @@ class CommunityApiDocTest extends RestDocsIntegrationSupport {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.items").isEmpty())
+                .andExpect(jsonPath("$.data.totalCount").value(0))
                 .andDo(document("community/list-job-postings",
                         preprocessResponse(prettyPrint()),
                         relaxedResponseFields(
                                 fieldWithPath("code").description("응답 코드 (SUCCESS)"),
                                 fieldWithPath("data.items").description("구인글 카드 목록 (PUBLISHED 상태만 노출)"),
+                                fieldWithPath("data.page").description("현재 페이지 번호 (1부터)"),
+                                fieldWithPath("data.size").description("페이지 크기"),
+                                fieldWithPath("data.totalCount").description("PUBLISHED 구인글 전체 수"),
+                                fieldWithPath("data.totalPages").description("전체 페이지 수"),
+                                fieldWithPath("data.hasNext").description("다음 페이지 존재 여부")
+                        )
+                ));
+    }
+
+    @Test
+    void 팀원모집글_탭_빈_목록_문서화() throws Exception {
+        // 구인글 탭과 같은 계약이다 — 이 테스트에는 PUBLISHED 팀원모집글이 없어 빈 목록이 반환된다.
+        mockMvc.perform(get("/api/community/team-recruits"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.items").isEmpty())
+                .andExpect(jsonPath("$.data.totalCount").value(0))
+                .andDo(document("community/list-team-recruits",
+                        preprocessResponse(prettyPrint()),
+                        relaxedResponseFields(
+                                fieldWithPath("code").description("응답 코드 (SUCCESS)"),
+                                fieldWithPath("data.items").description("팀원모집글 카드 목록 (PUBLISHED 상태만 노출)"),
+                                fieldWithPath("data.page").description("현재 페이지 번호 (1부터)"),
+                                fieldWithPath("data.size").description("페이지 크기"),
+                                fieldWithPath("data.totalCount").description("PUBLISHED 팀원모집글 전체 수"),
+                                fieldWithPath("data.totalPages").description("전체 페이지 수"),
                                 fieldWithPath("data.hasNext").description("다음 페이지 존재 여부")
                         )
                 ));

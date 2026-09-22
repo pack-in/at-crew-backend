@@ -73,10 +73,10 @@ class ArtworkAuthorLookupTest {
     @Test
     void 작가를_찾을_수_없어도_커뮤니티_목록이_500이_되지_않는다() {
         assertThatCode(() -> {
-            CursorPage<ArtworkSummaryInfo> page = artworkService.getCommunityArtworks(
-                    null, null, null, null, null, 20, null, false);
+            List<ArtworkSummaryInfo> items = artworkService.getCommunityArtworks(
+                    null, null, null, null, 1, 20, null, false).items();
             // 작가 정보만 비고 작품 자체는 목록에 남아야 한다.
-            assertThat(page.items()).isNotEmpty();
+            assertThat(items).isNotEmpty();
         }).doesNotThrowAnyException();
     }
 

@@ -1,6 +1,6 @@
 package com.atcrew.member;
 
-import com.atcrew.common.response.CursorPage;
+import com.atcrew.common.response.OffsetPage;
 
 import java.util.Collection;
 import java.util.List;
@@ -59,7 +59,7 @@ public interface MemberService {
      * <p>구인 가능 상태여도 노출 대상 항목(사용자 이름·활동 분야·활동 경력·희망 담당 업무·희망 장르·
      * 희망 채용 형태·연락처)이 비어 있으면 결과에 포함되지 않는다 — 기획서 마이페이지_작가-R08.
      */
-    CursorPage<MemberProfileInfo> searchProfiles(SearchProfilesCommand command);
+    OffsetPage<MemberProfileInfo> searchProfiles(SearchProfilesCommand command);
 
     /**
      * 주어진 회원 ID 중 이름 또는 핸들에 검색어가 포함된 활성 회원의 ID만 반환한다.
