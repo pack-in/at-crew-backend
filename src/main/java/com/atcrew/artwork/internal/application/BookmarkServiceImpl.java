@@ -14,6 +14,9 @@ import com.atcrew.artwork.internal.persistence.ArtworkRepository;
 import com.atcrew.artwork.internal.persistence.BookmarkEntryRepository;
 import com.atcrew.artwork.internal.persistence.BookmarkFolderRepository;
 import com.atcrew.common.response.CursorPage;
+import com.atcrew.media.MediaAssetInfo;
+import com.atcrew.media.MediaOwnerType;
+import com.atcrew.media.MediaService;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
 import org.springframework.data.domain.PageRequest;
@@ -33,15 +36,18 @@ class BookmarkServiceImpl implements BookmarkService {
     private final BookmarkEntryRepository entryRepository;
     private final ArtworkRepository artworkRepository;
     private final MemberService memberService;
+    private final MediaService mediaService;
 
     BookmarkServiceImpl(BookmarkFolderRepository folderRepository,
                         BookmarkEntryRepository entryRepository,
                         ArtworkRepository artworkRepository,
-                        MemberService memberService) {
+                        MemberService memberService,
+                        MediaService mediaService) {
         this.folderRepository = folderRepository;
         this.entryRepository = entryRepository;
         this.artworkRepository = artworkRepository;
         this.memberService = memberService;
+        this.mediaService = mediaService;
     }
 
     @Override
@@ -146,12 +152,16 @@ class BookmarkServiceImpl implements BookmarkService {
         // 배치 조회 — 자세한 배경은 ArtworkServiceImpl의 같은 지점 주석 참고(이슈 #112).
         Map<String, MemberInfo> authorMap = memberService.findAllByIds(authorIds);
 
+        // 이미지는 media가 갖는다(#193) — 목록은 한 번에 읽는다.
+        Map<String, List<MediaAssetInfo>> imagesByArtwork = mediaService.getAssets(
+                MediaOwnerType.ARTWORK, artworkMap.keySet());
         List<BookmarkEntryInfo> items = page.stream()
                 .filter(e -> artworkMap.containsKey(e.getArtworkId()))
                 .map(e -> {
                     Artwork artwork = artworkMap.get(e.getArtworkId());
-                    return ArtworkMapper.toEntryInfo(e,
-                            ArtworkMapper.toSummaryInfo(artwork, authorMap.get(artwork.getAuthorId())));
+                    return ArtworkMapper.toEntryInfo(e, ArtworkMapper.toSummaryInfo(artwork,
+                            authorMap.get(artwork.getAuthorId()),
+                            imagesByArtwork.getOrDefault(artwork.getId(), List.of())));
                 })
                 .toList();
 
@@ -185,7 +195,8 @@ class BookmarkServiceImpl implements BookmarkService {
         // 북마크순 정렬용 집계(이슈 #78) — 중복 저장은 위에서 이미 막았으므로 여기서는 항상 1 증가한다.
         artworkRepository.incrementBookmarkCount(artworkId);
         MemberInfo author = memberService.findById(artwork.getAuthorId());
-        return ArtworkMapper.toEntryInfo(saved, ArtworkMapper.toSummaryInfo(artwork, author));
+        return ArtworkMapper.toEntryInfo(saved, ArtworkMapper.toSummaryInfo(artwork, author,
+                mediaService.getAssets(MediaOwnerType.ARTWORK, artwork.getId())));
     }
 
     @Override

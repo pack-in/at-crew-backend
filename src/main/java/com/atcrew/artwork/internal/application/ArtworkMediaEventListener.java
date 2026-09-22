@@ -3,9 +3,10 @@ package com.atcrew.artwork.internal.application;
 import com.atcrew.artwork.ArtworkChangedEvent;
 import com.atcrew.artwork.internal.domain.artwork.Artwork;
 import com.atcrew.artwork.internal.persistence.ArtworkRepository;
+import com.atcrew.media.MediaAssetInfo;
 import com.atcrew.media.MediaAssetProcessedEvent;
 import com.atcrew.media.MediaOwnerType;
-import com.atcrew.media.MediaProcessingStatus;
+import com.atcrew.media.MediaService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
@@ -27,11 +28,14 @@ class ArtworkMediaEventListener {
 
     private final ArtworkRepository artworkRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final MediaService mediaService;
 
     ArtworkMediaEventListener(ArtworkRepository artworkRepository,
-                              ApplicationEventPublisher eventPublisher) {
+                              ApplicationEventPublisher eventPublisher,
+                              MediaService mediaService) {
         this.artworkRepository = artworkRepository;
         this.eventPublisher = eventPublisher;
+        this.mediaService = mediaService;
     }
 
     @ApplicationModuleListener
@@ -42,13 +46,9 @@ class ArtworkMediaEventListener {
         // 같은 작품의 이미지 이벤트가 동시에 들어오면 각 트랜잭션이 서로의 갱신을 못 본 채 readyFor를
         // 판정해 READY 전이가 영구 유실될 수 있다 — findByIdForUpdate로 부모 행을 잠가 직렬화한다.
         artworkRepository.findByIdForUpdate(event.ownerId()).ifPresentOrElse(artwork -> {
-            artwork.markImageProcessed(
-                    event.imageKey(),
-                    event.thumbKey(),
-                    event.thumbAdultKey(),
-                    event.originalAvifKey(),
-                    event.status() == MediaProcessingStatus.DONE
-            );
+            // 변환 결과는 media가 이미 저장했다 — 작품은 그 현황만 보고 상태를 정한다(#193).
+            artwork.applyImageStatuses(mediaService.getAssets(MediaOwnerType.ARTWORK, event.ownerId()).stream()
+                    .map(MediaAssetInfo::status).map(ArtworkMapper::toImageStatus).toList());
             artworkRepository.save(artwork);
             // 검색 색인이 썸네일·상태 변경을 반영하도록 재발행 (기존 webhook 경로와 동일)
             eventPublisher.publishEvent(new ArtworkChangedEvent(artwork.getId()));

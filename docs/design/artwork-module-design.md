@@ -99,7 +99,7 @@ public class Artwork {
     private String title;
     private String description;
 
-    private List<ArtworkImage> images;
+    // 이미지 자체는 media_assets에만 있다(#193) — 작품은 몇 번째가 대표인지만 안다.
     private int representativeImageIndex;     // 대표 이미지 (0-based, 카드 썸네일)
     private ImageLayoutType imageLayoutType;  // 세로 스크롤 / 가로 스와이프
 
@@ -135,20 +135,20 @@ public class Artwork {
 }
 ```
 
-### 2.2 ArtworkImage (Artwork 내 embedded)
+### 2.2 이미지 (media 모듈의 `media_assets`)
 
-```java
-public class ArtworkImage {
-    private String originalKey;        // R2 원본 key ("raw/uuid.jpg")
+이미지의 원본 key·변형본 key·처리 상태는 **media가 갖는다**(#193). 예전에는 `artwork_images` 자식 테이블에
+같은 값을 이중으로 두고 `originalKey` 문자열로 맞췄는데, 교체할 때 두 축이 어긋나 남긴 이미지가 깨졌다.
 
-    // Worker 처리 완료 후 채워짐
-    private String thumbKey;           // 썸네일 key — 3:4, 294px ("thumb/uuid.avif")
-    private String thumbAdultKey;      // 성인물 blur 썸네일 key (ageRating=ADULT 시만)
-    private String originalAvifKey;    // 원본 avif key ("processed/uuid.avif")
+작품이 이미지를 다룰 때는 media를 통한다.
 
-    private ImageProcessingStatus processingStatus; // PENDING / DONE / FAILED
-}
-```
+- 조회: `MediaService.getAssets(ARTWORK, artworkId)` — 응답 조립(`ArtworkMapper`)이 쓴다. 목록은 소유자 ID를
+  모아 일괄 조회한다.
+- 교체: `MediaService.syncAssets(...)` — 남는 이미지는 변환 결과를 유지하고 빠진 것만 고아 큐로 간다.
+- 상태: 처리 현황(상태 목록)을 `Artwork.applyImageStatuses`에 넘긴다. "PENDING 없음 + DONE 하나 이상이면
+  READY, 전량 실패면 FAILED"라는 판정은 도메인 규칙이라 작품에 남는다.
+
+`artwork_images` 테이블은 전환 직후 배포에서는 남아 있고, 다음 배포에서 DROP한다(#193 4단계).
 
 **이미지 상태 전이:**
 ```
@@ -342,7 +342,8 @@ ArtworkStatus  : PROCESSING / READY / FAILED / DELETED
 
 8. 서버
    MediaCallbackService가 media_assets 상태 갱신 → MediaAssetProcessedEvent 발행
-   → ArtworkMediaEventListener가 작품 행을 잠그고(findByIdForUpdate) markImageProcessed
+   → ArtworkMediaEventListener가 작품 행을 잠그고(findByIdForUpdate) media에서 이미지 현황을 읽어
+     applyImageStatuses
    → PENDING이 남지 않았으면 상태 재계산: DONE 1장 이상 READY, 전부 실패 FAILED (§8.1)
 
 9. 클라이언트 (폴링 or SSE)

@@ -10,6 +10,8 @@ import com.atcrew.artwork.ImageProcessingStatus;
 import com.atcrew.artwork.Visibility;
 import com.atcrew.artwork.internal.domain.artwork.Artwork;
 import com.atcrew.artwork.internal.persistence.ArtworkRepository;
+import com.atcrew.media.MediaAssetInfo;
+import com.atcrew.media.MediaService;
 import com.atcrew.media.MediaAssetProcessedEvent;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaProcessingStatus;
@@ -33,33 +35,34 @@ class ArtworkMediaEventListenerTest {
 
     private final ArtworkRepository artworkRepository = mock(ArtworkRepository.class);
     private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
+    private final MediaService mediaService = mock(MediaService.class);
     private final ArtworkMediaEventListener listener =
-            new ArtworkMediaEventListener(artworkRepository, eventPublisher);
+            new ArtworkMediaEventListener(artworkRepository, eventPublisher, mediaService);
 
     @Test
     void ARTWORK_이벤트를_받으면_이미지_처리결과를_반영하고_변경이벤트를_발행한다() {
         Artwork artwork = artworkWith("raw/1.png");
         when(artworkRepository.findByIdForUpdate("artwork-1")).thenReturn(Optional.of(artwork));
+        // 변환 결과는 media가 이미 저장했다 — 리스너는 현황을 읽어 작품 상태만 정한다(#193).
+        givenAssets("artwork-1", MediaProcessingStatus.DONE);
 
         listener.onMediaAssetProcessed(new MediaAssetProcessedEvent(MediaOwnerType.ARTWORK, "artwork-1",
                 "raw/1.png", "thumb/1.avif", "thumb-adult/1.avif", "original/1.avif", MediaProcessingStatus.DONE));
 
-        assertThat(artwork.getImages().get(0).getProcessingStatus()).isEqualTo(ImageProcessingStatus.DONE);
-        assertThat(artwork.getImages().get(0).getThumbKey()).isEqualTo("thumb/1.avif");
         assertThat(artwork.getStatus()).isEqualTo(ArtworkStatus.READY);
         verify(artworkRepository).save(artwork);
         verify(eventPublisher).publishEvent(new ArtworkChangedEvent(artwork.getId()));
     }
 
     @Test
-    void FAILED_이벤트는_해당_이미지만_실패로_표시한다() {
+    void 아직_처리중인_이미지가_있으면_PROCESSING을_유지한다() {
         Artwork artwork = artworkWith("raw/1.png", "raw/2.png");
         when(artworkRepository.findByIdForUpdate("artwork-1")).thenReturn(Optional.of(artwork));
+        givenAssets("artwork-1", MediaProcessingStatus.FAILED, MediaProcessingStatus.PENDING);
 
         listener.onMediaAssetProcessed(new MediaAssetProcessedEvent(MediaOwnerType.ARTWORK, "artwork-1",
                 "raw/1.png", null, null, null, MediaProcessingStatus.FAILED));
 
-        assertThat(artwork.getImages().get(0).getProcessingStatus()).isEqualTo(ImageProcessingStatus.FAILED);
         assertThat(artwork.getStatus()).isEqualTo(ArtworkStatus.PROCESSING);
     }
 
@@ -81,6 +84,15 @@ class ArtworkMediaEventListenerTest {
 
         verify(artworkRepository, never()).save(any());
         verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    private void givenAssets(String artworkId, MediaProcessingStatus... statuses) {
+        List<MediaAssetInfo> assets = new java.util.ArrayList<>();
+        for (int i = 0; i < statuses.length; i++) {
+            assets.add(new MediaAssetInfo("raw/" + (i + 1) + ".png", "thumb/" + (i + 1) + ".avif", null,
+                    "original/" + (i + 1) + ".avif", statuses[i], i, null));
+        }
+        when(mediaService.getAssets(MediaOwnerType.ARTWORK, artworkId)).thenReturn(assets);
     }
 
     private Artwork artworkWith(String... imageKeys) {

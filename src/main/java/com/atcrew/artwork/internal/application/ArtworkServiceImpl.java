@@ -7,6 +7,7 @@ import com.atcrew.artwork.ArtworkInfo;
 import com.atcrew.artwork.ArtworkService;
 import com.atcrew.artwork.ArtworkSort;
 import com.atcrew.artwork.ArtworkStatus;
+import com.atcrew.artwork.ImageProcessingStatus;
 import com.atcrew.artwork.ArtworkSummaryInfo;
 import com.atcrew.artwork.MaterialData;
 import com.atcrew.artwork.PresignedUrlInfo;
@@ -16,7 +17,6 @@ import com.atcrew.artwork.Visibility;
 import com.atcrew.artwork.ArtworkChangedEvent;
 import com.atcrew.artwork.ArtworkPortfolioSelectionRequested;
 import com.atcrew.artwork.internal.domain.artwork.Artwork;
-import com.atcrew.artwork.internal.domain.artwork.ArtworkImage;
 import com.atcrew.artwork.internal.domain.artwork.Material;
 import com.atcrew.artwork.internal.domain.view.ArtworkHotScore;
 import com.atcrew.artwork.internal.domain.view.ArtworkViewerType;
@@ -27,6 +27,8 @@ import com.atcrew.billing.BillingService;
 import com.atcrew.common.response.CursorPage;
 import com.atcrew.media.MediaConstraints;
 import com.atcrew.media.MediaOwnerType;
+import com.atcrew.media.MediaAssetInfo;
+import com.atcrew.media.MediaAssetSpec;
 import com.atcrew.media.MediaQualityTier;
 import com.atcrew.media.MediaService;
 import com.atcrew.media.MediaVariantProfile;
@@ -55,6 +57,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
@@ -175,7 +178,7 @@ class ArtworkServiceImpl implements ArtworkService {
         eventPublisher.publishEvent(new ArtworkChangedEvent(saved.getId()));
         MemberInfo author = memberService.findById(memberId);
         log.info("작품 업로드 완료: artworkId={} memberId={}", saved.getId(), memberId);
-        return ArtworkMapper.toInfo(saved, author);
+        return toInfo(saved, author);
     }
 
     @Override
@@ -192,7 +195,7 @@ class ArtworkServiceImpl implements ArtworkService {
         // 조회수는 여기서 올리지 않는다(홈-R14) — 이 GET은 FE SSR이 토큰 없이 부르고 편집 화면·포트폴리오도 부르므로
         // 열람자를 식별할 수 없다. 집계는 브라우저가 호출하는 recordView(POST /views)가 담당한다.
         MemberInfo author = memberService.findById(artwork.getAuthorId());
-        return ArtworkMapper.toInfo(artwork, author);
+        return toInfo(artwork, author);
     }
 
     /**
@@ -255,13 +258,6 @@ class ArtworkServiceImpl implements ArtworkService {
             assertLanguagesAllowed(memberId, command.languages());
         }
 
-        // 프론트는 수정 요청마다 폼 전체를 보내므로 이미지를 건드리지 않아도 imageKeys가 그대로 실려 온다.
-        // 목록이 같으면 교체하지 않는다 — 교체하면 끝난 변환을 버리고 파일을 고아 큐로 넘겨 이미지가 깨진다(#193).
-        boolean imagesUnchanged = command.imageKeys() != null && command.imageKeys().equals(originalKeysOf(artwork));
-        if (command.imageKeys() != null && !imagesUnchanged) {
-            replaceImages(artwork, command.imageKeys(), command.representativeImageIndex());
-        }
-
         if (command.materials() != null) {
             replaceMaterials(artwork, toMaterials(command.materials()));
         }
@@ -270,8 +266,6 @@ class ArtworkServiceImpl implements ArtworkService {
                 command.title(),
                 command.description(),
                 command.imageLayoutType(),
-                // 교체했으면 대표 이미지 인덱스는 attachImages가 이미 반영했다.
-                command.imageKeys() == null || imagesUnchanged ? command.representativeImageIndex() : null,
                 command.thumbnailKey(),
                 command.artworkField(),
                 command.creativeType(),
@@ -287,30 +281,24 @@ class ArtworkServiceImpl implements ArtworkService {
                 command.videoLinks()
         );
 
-        Artwork saved = artworkRepository.save(artwork);
-        if (command.imageKeys() != null && !imagesUnchanged) {
-            mediaService.replaceAndTriggerProcessing(MediaOwnerType.ARTWORK, saved.getId(),
-                    command.imageKeys(), MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, qualityTierOf(memberId));
+        // 이미지 목록은 media가 맞춘다 — 남는 이미지는 변환 결과를 그대로 두고, 빠진 것만 고아 큐로 간다(#193).
+        // 프론트가 수정 요청마다 폼 전체를 보내 imageKeys가 항상 실려 오므로, 바뀐 게 없으면 여기서 아무 일도
+        // 일어나지 않는다.
+        List<MediaAssetInfo> images = command.imageKeys() != null
+                ? mediaService.syncAssets(MediaOwnerType.ARTWORK, artwork.getId(),
+                        command.imageKeys().stream().map(MediaAssetSpec::of).toList(),
+                        MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, qualityTierOf(memberId))
+                : mediaService.getAssets(MediaOwnerType.ARTWORK, artwork.getId());
+        if (command.representativeImageIndex() != null) {
+            artwork.repositionRepresentative(command.representativeImageIndex(), images.size());
         }
+        artwork.applyImageStatuses(images.stream().map(MediaAssetInfo::status)
+                .map(ArtworkMapper::toImageStatus).toList());
+
+        Artwork saved = artworkRepository.save(artwork);
         eventPublisher.publishEvent(new ArtworkChangedEvent(saved.getId()));
         MemberInfo author = memberService.findById(memberId);
-        return ArtworkMapper.toInfo(saved, author);
-    }
-
-    // 이미지 교체 — 기존 행 삭제를 saveAndFlush로 먼저 확정한 뒤 새 행을 붙인다.
-    // Hibernate가 같은 flush에서 신규 INSERT를 기존 DELETE보다 먼저 실행해
-    // uk_ai_order(artwork_id, ordinal) 유니크 제약과 충돌하는 것을 막기 위함
-    // (docs/design/mariadb-migration-design.md §3.3.2 RefreshToken과 동일 계열의 함정, 이번 전환에서 신규 발견).
-    // 교체로 버려지는 R2 key의 고아 처리는 mediaService.replaceAndTriggerProcessing이 담당한다.
-    private static List<String> originalKeysOf(Artwork artwork) {
-        return artwork.getImages().stream().map(ArtworkImage::getOriginalKey).toList();
-    }
-
-    private void replaceImages(Artwork artwork, List<String> newImageKeys, Integer representativeImageIndex) {
-        artwork.detachImages();
-        artworkRepository.saveAndFlush(artwork);
-        int newRepIndex = representativeImageIndex != null ? representativeImageIndex : 0;
-        artwork.attachImages(newImageKeys, newRepIndex);
+        return ArtworkMapper.toInfo(saved, author, images);
     }
 
     // 자재 교체 — replaceImages와 동일한 이유로 uk_am_order(artwork_id, ordinal) 충돌을 막기 위해 2단계로 처리한다.
@@ -593,7 +581,7 @@ class ArtworkServiceImpl implements ArtworkService {
         // 복구도 보유 작품이 늘어나는 행위라 스타터 제한을 그대로 적용한다(휴지통-R03).
         assertArtworkQuota(memberId, artworks.size());
         for (Artwork artwork : artworks) {
-            artwork.restore();
+            artwork.restore(imageStatusesOf(artwork.getId()));
         }
         artworkRepository.saveAll(artworks);
         artworks.forEach(a -> eventPublisher.publishEvent(new ArtworkChangedEvent(a.getId())));
@@ -629,7 +617,7 @@ class ArtworkServiceImpl implements ArtworkService {
                     } catch (Exception e) {
                         author = null;
                     }
-                    return ArtworkMapper.toInfo(artwork, author);
+                    return toInfo(artwork, author);
                 });
     }
 
@@ -650,8 +638,11 @@ class ArtworkServiceImpl implements ArtworkService {
         // 500으로 만들었다(이슈 #112). 없는 작가는 맵에 담기지 않고 조회 결과가 null이 된다.
         java.util.Map<String, MemberInfo> authorMap = memberService.findAllByIds(authorIds);
 
+        Map<String, List<MediaAssetInfo>> imagesByArtwork = mediaService.getAssets(
+                MediaOwnerType.ARTWORK, page.stream().map(Artwork::getId).toList());
         List<ArtworkInfo> items = page.stream()
-                .map(a -> ArtworkMapper.toInfo(a, authorMap.get(a.getAuthorId())))
+                .map(a -> ArtworkMapper.toInfo(a, authorMap.get(a.getAuthorId()),
+                        imagesByArtwork.getOrDefault(a.getId(), List.of())))
                 .toList();
 
         String nextCursor = hasNext
@@ -685,9 +676,24 @@ class ArtworkServiceImpl implements ArtworkService {
         // 500으로 만들었다(이슈 #112). 없는 작가는 맵에 담기지 않고 조회 결과가 null이 된다.
         java.util.Map<String, MemberInfo> authorMap = memberService.findAllByIds(authorIds);
 
+        // 이미지는 media가 갖는다(#193) — 목록은 소유자 ID를 모아 한 번에 읽는다.
+        Map<String, List<MediaAssetInfo>> imagesByArtwork = mediaService.getAssets(
+                MediaOwnerType.ARTWORK, artworks.stream().map(Artwork::getId).toList());
+
         return artworks.stream()
-                .map(a -> ArtworkMapper.toSummaryInfo(a, authorMap.get(a.getAuthorId())))
+                .map(a -> ArtworkMapper.toSummaryInfo(a, authorMap.get(a.getAuthorId()),
+                        imagesByArtwork.getOrDefault(a.getId(), List.of())))
                 .toList();
+    }
+
+    /** 이미지는 media가 갖는다(#193) — 응답을 만들 때마다 읽어 넘긴다. */
+    private ArtworkInfo toInfo(Artwork artwork, MemberInfo author) {
+        return ArtworkMapper.toInfo(artwork, author, mediaService.getAssets(MediaOwnerType.ARTWORK, artwork.getId()));
+    }
+
+    private List<ImageProcessingStatus> imageStatusesOf(String artworkId) {
+        return mediaService.getAssets(MediaOwnerType.ARTWORK, artworkId).stream()
+                .map(MediaAssetInfo::status).map(ArtworkMapper::toImageStatus).toList();
     }
 
     private Artwork findArtworkById(String artworkId) {
