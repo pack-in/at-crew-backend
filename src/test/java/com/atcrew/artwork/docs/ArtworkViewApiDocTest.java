@@ -1,5 +1,6 @@
 package com.atcrew.artwork.docs;
 
+import com.atcrew.media.internal.application.MediaKeySigner;
 import com.atcrew.artwork.AgeRating;
 import com.atcrew.artwork.ArtworkField;
 import com.atcrew.artwork.ArtworkService;
@@ -41,6 +42,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class ArtworkViewApiDocTest extends RestDocsIntegrationSupport {
 
     private static final String ANONYMOUS_ID_HEADER = "X-Anonymous-Id";
+
+    // 업로드 key의 소유자 서명(#190) — 테스트도 같은 규칙으로 key를 만든다.
+    @Autowired
+    MediaKeySigner keySigner;
 
     @Autowired
     ArtworkService artworkService;
@@ -140,7 +145,7 @@ class ArtworkViewApiDocTest extends RestDocsIntegrationSupport {
 
     private String publishReady(String authorId) {
         String artworkId = artworkService.uploadArtwork(authorId, new UploadArtworkCommand(
-                List.of("raw/view-doc-" + UUID.randomUUID() + ".png"), 0, null, ImageLayoutType.VERTICAL_SCROLL,
+                List.of(signedKey(authorId, "view-doc-" + UUID.randomUUID())), 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 "열람 문서화 작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
                 List.of(), List.of(), null, List.of(),
                 AgeRating.ALL, List.of(Language.KO), true, List.of(), List.of(), null, null, List.of(), List.of())).id();
@@ -152,4 +157,13 @@ class ArtworkViewApiDocTest extends RestDocsIntegrationSupport {
         String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
         return memberService.register("view-doc-" + suffix + "@atcrew.com", "viewdoc" + suffix, "열람문서");
     }
+
+    /**
+     * 그 회원에게 발급된 것과 같은 형태의 업로드 key(#190) — 소유 검증이 서명만 보므로 presign을 부르지 않고
+     * 같은 규칙으로 만든다.
+     */
+    private String signedKey(String memberId, String name) {
+        return "raw/" + keySigner.sign(memberId, name) + "/" + name + ".png";
+    }
+
 }

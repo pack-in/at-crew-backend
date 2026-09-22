@@ -118,6 +118,13 @@ cloudflare:
     # 기본값 없음 — jwt.secret과 같은 이유(application-local.yml 참고)
     callback-secret: ${WORKER_CALLBACK_SECRET}
 
+media:
+  key-signature:
+    # 업로드 key에 소유자 서명을 넣는 비밀값(#190). 기본값 없음 — 없으면 기동하지 않는다(callback-secret과 같은 이유).
+    secret: ${MEDIA_KEY_SIGNATURE_SECRET}
+    # 비밀값을 교체할 때 이전 값을 남긴다. 지우면 그 전에 발급된 key가 전부 검증에 실패해 수정 요청이 막힌다.
+    previous-secrets: ${MEDIA_KEY_SIGNATURE_PREVIOUS_SECRETS:}
+
 artwork:
   internal:
     secret: ${ARTWORK_INTERNAL_SECRET}

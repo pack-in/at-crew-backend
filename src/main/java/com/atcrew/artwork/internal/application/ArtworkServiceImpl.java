@@ -54,10 +54,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
@@ -108,7 +110,7 @@ class ArtworkServiceImpl implements ArtworkService {
     }
 
     @Override
-    public List<PresignedUrlInfo> generatePresignedUrls(int count, List<String> contentTypes, List<Long> fileSizes) {
+    public List<PresignedUrlInfo> generatePresignedUrls(String memberId, int count, List<String> contentTypes, List<Long> fileSizes) {
         // 발급 자체는 media에 위임하지만(docs/design/media-module-design.md §9.1-3), 입력 검증은 여기 남긴다 —
         // media는 IllegalArgumentException을 던지므로 그대로 흘리면 기존 400 ARTWORK 에러코드가 500으로 바뀐다.
         if (count < 1 || count > 30) {
@@ -134,7 +136,7 @@ class ArtworkServiceImpl implements ArtworkService {
                 }
             }
         }
-        return mediaService.generatePresignedUrls(count, contentTypes, fileSizes).stream()
+        return mediaService.generatePresignedUrls(memberId, count, contentTypes, fileSizes).stream()
                 .map(info -> new PresignedUrlInfo(info.key(), info.uploadUrl()))
                 .toList();
     }
@@ -144,6 +146,9 @@ class ArtworkServiceImpl implements ArtworkService {
     public ArtworkInfo uploadArtwork(String memberId, UploadArtworkCommand command) {
         assertArtworkQuota(memberId, 1);
         assertLanguagesAllowed(memberId, command.languages());
+        // 새 작품이라 물려받을 key가 없다 — 모든 key가 본인에게 발급된 것이어야 한다(#190).
+        assertKeysOwned(memberId,
+                submittedKeys(command.imageKeys(), command.thumbnailKey(), command.materials()), Set.of());
         List<Material> materials = toMaterials(command.materials());
         Artwork artwork = Artwork.create(
                 memberId,
@@ -257,6 +262,9 @@ class ArtworkServiceImpl implements ArtworkService {
         if (command.languages() != null) {
             assertLanguagesAllowed(memberId, command.languages());
         }
+        assertKeysOwned(memberId,
+                submittedKeys(command.imageKeys(), command.thumbnailKey(), command.materials()),
+                storedKeysOf(artwork));
 
         if (command.materials() != null) {
             replaceMaterials(artwork, toMaterials(command.materials()));
@@ -779,6 +787,45 @@ class ArtworkServiceImpl implements ArtworkService {
      * <p>주 사용 언어가 없는 마이그레이션 이전 회원은 포함 검사를 걸 수 없으므로 개수 제한만 적용한다 —
      * 임의의 언어를 강요하면 기존 회원이 업로드 자체를 못 하게 된다.
      */
+    /**
+     * 클라이언트가 보낸 R2 key가 본인이 발급받은 것인지 확인한다(#190). key는 공개 응답에 그대로 실리므로,
+     * 검증하지 않으면 남의 key를 지정 썸네일·첨부로 넣어 그 파일을 지우거나 삭제를 막을 수 있다.
+     *
+     * <p>{@code alreadyStored}는 이 작품에 이미 저장돼 있던 key다 — 프론트가 수정마다 기존 값을 다시 보내므로
+     * 검증 대상에서 뺀다. 그래서 서명이 없던 시절의 key도 계속 수정할 수 있고, 남의 key를 새로 붙이는 것만 막힌다.
+     */
+    private void assertKeysOwned(String memberId, Collection<String> keys, Collection<String> alreadyStored) {
+        List<String> candidates = keys.stream().filter(k -> k != null && !k.isBlank())
+                .filter(k -> !alreadyStored.contains(k)).toList();
+        Set<String> unowned = mediaService.unownedKeys(memberId, candidates);
+        if (!unowned.isEmpty()) {
+            throw new ArtworkException(ArtworkErrorCode.UNOWNED_IMAGE_KEY, String.join(", ", unowned));
+        }
+    }
+
+    /** 이 작품에 이미 저장돼 있는 key — 이미지(media), 지정 썸네일, 자료 첨부. */
+    private Set<String> storedKeysOf(Artwork artwork) {
+        Set<String> stored = new HashSet<>();
+        mediaService.getAssets(MediaOwnerType.ARTWORK, artwork.getId()).stream()
+                .map(MediaAssetInfo::originalKey).forEach(stored::add);
+        if (artwork.getThumbnailKey() != null) stored.add(artwork.getThumbnailKey());
+        artwork.getMaterials().stream().map(Material::getAttachmentKeys).filter(Objects::nonNull)
+                .forEach(stored::addAll);
+        return stored;
+    }
+
+    /** 요청이 담은 모든 R2 key — 이미지, 사용자 지정 썸네일, 자료 첨부. */
+    private static List<String> submittedKeys(List<String> imageKeys, String thumbnailKey,
+                                              List<MaterialData> materials) {
+        List<String> keys = new ArrayList<>();
+        if (imageKeys != null) keys.addAll(imageKeys);
+        if (thumbnailKey != null) keys.add(thumbnailKey);
+        if (materials != null) {
+            materials.stream().map(MaterialData::attachmentKeys).filter(Objects::nonNull).forEach(keys::addAll);
+        }
+        return keys;
+    }
+
     private void assertLanguagesAllowed(String memberId, List<Language> languages) {
         // 저장은 Set이라 중복은 어차피 합쳐진다 — 개수·플랜 판정도 중복 제거 후 값으로 해야 일치한다.
         Set<Language> distinct = languages == null ? Set.of() : new HashSet<>(languages);

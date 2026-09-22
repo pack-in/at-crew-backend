@@ -48,6 +48,10 @@ cloudflare:
     worker-trigger-url: http://localhost:8080/internal/artwork/images/processed
     callback-secret: test-internal-secret
 
+media:
+  key-signature:
+    secret: test-media-key-signature-secret
+
 artwork:
   internal:
     secret: test-internal-secret

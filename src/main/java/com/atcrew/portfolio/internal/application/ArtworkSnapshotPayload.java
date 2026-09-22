@@ -38,13 +38,16 @@ record ArtworkSnapshotPayload(
      * 스냅샷이 참조하는 R2 key — 카드 썸네일 2종과 본문 이미지 4종. 보존 판정 색인(portfolio_snapshot_media_keys)에 넣는다.
      * V41의 기존 행 채우기 SQL이 같은 경로를 JSON_TABLE로 읽으므로, 필드를 추가하면 둘을 함께 고친다.
      *
-     * <p>자료 첨부 key는 넣지 않는다. 소유 검증 없이 저장되는 클라이언트 입력이라(#190), 색인에 넣으면 남의 key를 첨부로
-     * 넣어 그 파일의 삭제를 무기한 막을 수 있다. 첨부는 영구 삭제 대상도 아니므로 보존할 일도 없다.
+     * <p>자료 첨부 key도 넣는다. 한동안 뺐던 것은 소유 검증이 없어 남의 key를 첨부로 넣고 그 파일의 삭제를 막을 수
+     * 있었기 때문인데(#188), 업로드 key에 소유자 서명이 들어가면서(#190) 그 전제가 사라졌다. 첨부도 영구 삭제
+     * 대상이라 보존 판정이 필요하다.
      */
     Set<String> referencedMediaKeys(String cardThumbKey, String cardThumbAdultKey) {
         Stream<String> imageKeys = images == null ? Stream.empty() : images.stream().flatMap(img -> Stream.of(
                 img.originalKey(), img.thumbKey(), img.thumbAdultKey(), img.originalAvifKey()));
-        return Stream.concat(Stream.of(cardThumbKey, cardThumbAdultKey), imageKeys)
+        Stream<String> attachmentKeys = materials == null ? Stream.empty() : materials.stream()
+                .flatMap(m -> m.attachmentKeys() == null ? Stream.empty() : m.attachmentKeys().stream());
+        return Stream.concat(Stream.concat(Stream.of(cardThumbKey, cardThumbAdultKey), imageKeys), attachmentKeys)
                 .filter(k -> k != null && !k.isBlank())
                 .collect(Collectors.toCollection(LinkedHashSet::new));
     }

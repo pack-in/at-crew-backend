@@ -1,5 +1,6 @@
 package com.atcrew.artwork;
 
+import com.atcrew.media.internal.application.MediaKeySigner;
 import com.atcrew.SharedContainersConfig;
 import com.atcrew.common.response.CursorPage;
 import com.atcrew.member.Language;
@@ -38,6 +39,10 @@ class ArtworkSortModuleTests {
     /** 스타터 플랜 작품 상한(마이페이지_작가-R20)이 4라 6건을 만들려면 작가를 나눠야 한다. */
     private static final int ARTWORKS_PER_AUTHOR = 3;
 
+    // 업로드 key의 소유자 서명(#190) — 테스트도 같은 규칙으로 key를 만든다.
+    @Autowired
+    MediaKeySigner keySigner;
+
     @Autowired
     ArtworkService artworkService;
 
@@ -54,7 +59,7 @@ class ArtworkSortModuleTests {
     void 조회수는_열람_기록으로만_오르고_본인과_24시간_내_반복_열람은_빼고_센다() {
         String author = registerMember();
         String viewer = registerMember();
-        String artworkId = publishReady(author, ArtworkField.ANIMATION, "raw/view-1.png");
+        String artworkId = publishReady(author, ArtworkField.ANIMATION, "view-1");
 
         // 상세 조회(GET)는 조회수를 올리지 않는다(홈-R14 — 열람자를 식별할 수 없는 경로라 집계에서 뺐다).
         artworkService.getArtwork(artworkId, viewer);
@@ -79,7 +84,7 @@ class ArtworkSortModuleTests {
     void 북마크_저장과_해제로_북마크수가_증감한다() {
         String author = registerMember();
         String member = registerMember();
-        String artworkId = publishReady(author, ArtworkField.ETC, "raw/bookmark-1.png");
+        String artworkId = publishReady(author, ArtworkField.ETC, "bookmark-1");
 
         bookmarkService.saveBookmark(member, artworkId, null);
         assertThat(bookmarkCountOf(artworkId)).isEqualTo(1L);
@@ -92,7 +97,7 @@ class ArtworkSortModuleTests {
     void 북마크수가_이미_0이면_해제해도_음수로_내려가지_않는다() {
         String author = registerMember();
         String member = registerMember();
-        String artworkId = publishReady(author, ArtworkField.ETC, "raw/bookmark-2.png");
+        String artworkId = publishReady(author, ArtworkField.ETC, "bookmark-2");
         bookmarkService.saveBookmark(member, artworkId, null);
 
         // 동시 해제나 마이그레이션 유입분처럼 저장 이력과 카운터가 어긋난 상태를 재현한다.
@@ -106,7 +111,7 @@ class ArtworkSortModuleTests {
     @Test
     void 최신순과_오래된순은_등록일이_같은_구간에서도_누락이나_중복_없이_전체를_돌려준다() {
         ArtworkField field = ArtworkField.PRINT_COMIC;
-        List<String> artworkIds = publishReadyArtworks(field, 6, "raw/date-");
+        List<String> artworkIds = publishReadyArtworks(field, 6, "date-");
         // 등록일이 겹치는 구간을 강제로 만든다 — 순차 업로드만으로는 마이크로초까지 모두 달라진다.
         // 동률 묶음을 3건씩 만들어 페이지 크기(2)와 어긋나게 한다. 묶음 크기가 페이지 크기와 같으면
         // 동률 구간이 항상 페이지 경계에 딱 떨어져 tiebreaker가 없어도 통과해버린다.
@@ -134,7 +139,7 @@ class ArtworkSortModuleTests {
     @Test
     void 조회순은_조회수가_같은_구간에서도_누락이나_중복_없이_전체를_돌려준다() {
         ArtworkField field = ArtworkField.ILLUSTRATION;
-        List<String> artworkIds = publishReadyArtworks(field, 6, "raw/views-");
+        List<String> artworkIds = publishReadyArtworks(field, 6, "views-");
         // 동률 묶음(3건)이 페이지 크기(2)와 어긋나게 배치한다 — 딱 떨어지면 tiebreaker 없이도 통과한다.
         // 조회수 0인 신규 작품이 섞이는 실제 상황도 함께 재현한다.
         Map<String, Long> viewCounts = Map.of(
@@ -157,7 +162,7 @@ class ArtworkSortModuleTests {
     @Test
     void 북마크순은_북마크수가_같은_구간에서도_누락이나_중복_없이_전체를_돌려준다() {
         ArtworkField field = ArtworkField.WEBTOON;
-        List<String> artworkIds = publishReadyArtworks(field, 6, "raw/bookmarks-");
+        List<String> artworkIds = publishReadyArtworks(field, 6, "bookmarks-");
         Map<String, Long> bookmarkCounts = Map.of(
                 artworkIds.get(0), 4L, artworkIds.get(1), 4L, artworkIds.get(2), 4L,
                 artworkIds.get(3), 1L, artworkIds.get(4), 0L, artworkIds.get(5), 0L);
@@ -201,7 +206,7 @@ class ArtworkSortModuleTests {
             if (i > 0 && i % ARTWORKS_PER_AUTHOR == 0) {
                 author = registerMember();
             }
-            artworkIds.add(publishReady(author, field, keyPrefix + i + ".png"));
+            artworkIds.add(publishReady(author, field, keyPrefix + i));
         }
         return artworkIds;
     }
@@ -212,9 +217,9 @@ class ArtworkSortModuleTests {
      * <p>피드는 READY 상태만 노출한다. 이 테스트의 관심사는 정렬과 커서라, Worker 콜백 왕복을 재현하는
      * 대신 상태만 직접 바꾼다(콜백 경로 자체는 {@code ArtworkModuleTests}가 검증한다).
      */
-    private String publishReady(String authorId, ArtworkField field, String imageKey) {
+    private String publishReady(String authorId, ArtworkField field, String imageName) {
         ArtworkInfo uploaded = artworkService.uploadArtwork(authorId, new UploadArtworkCommand(
-                List.of(imageKey), 0, null, ImageLayoutType.VERTICAL_SCROLL,
+                List.of(signedKey(authorId, imageName)), 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 "정렬 검증 작품", "설명", field, CreativeType.ORIGINAL,
                 List.of(), List.of(), null, List.of(),
                 AgeRating.ALL, List.of(Language.KO), true, List.of(), List.of(), null, null, List.of(), List.of()));
@@ -250,4 +255,13 @@ class ArtworkSortModuleTests {
                 "sort" + UUID.randomUUID().toString().replace("-", "").substring(0, 10),
                 "정렬작가").id();
     }
+
+    /**
+     * 그 회원에게 발급된 것과 같은 형태의 업로드 key(#190) — 소유 검증이 서명만 보므로 presign을 부르지 않고
+     * 같은 규칙으로 만든다.
+     */
+    private String signedKey(String memberId, String name) {
+        return "raw/" + keySigner.sign(memberId, name) + "/" + name + ".png";
+    }
+
 }

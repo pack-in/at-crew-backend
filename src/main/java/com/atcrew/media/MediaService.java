@@ -3,13 +3,23 @@ package com.atcrew.media;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public interface MediaService {
     /**
      * @param fileSizes 업로드할 원본의 바이트 크기. 클라이언트가 보내지 않으면 null이며 이때 크기 검사는
      *                  건너뛴다 — 신고값을 믿는 사전 검사라 Worker의 실측 검사를 대체하지 않는다.
      */
-    List<PresignedUrlInfo> generatePresignedUrls(int count, List<String> contentTypes, List<Long> fileSizes);
+    List<PresignedUrlInfo> generatePresignedUrls(String memberId, int count, List<String> contentTypes,
+                                                 List<Long> fileSizes);
+
+    /**
+     * {@code keys} 중 이 회원에게 발급되지 않은 key — 비어 있지 않으면 호출자가 요청을 거부한다(#190).
+     *
+     * <p>업로드 key에는 발급 시점에 소유자 서명이 들어간다. 조회 없이 서명만 다시 계산해 판정하므로 호출 비용이
+     * 없다. Worker가 만든 변형본(`thumb/…`)이나 옛 형식 key에는 서명이 없어 함께 걸린다.
+     */
+    Set<String> unownedKeys(String memberId, Collection<String> keys);
     void registerAndTriggerProcessing(MediaOwnerType ownerType, String ownerId, List<String> imageKeys,
                                       MediaVariantProfile variantProfile, MediaQualityTier qualityTier);
     /**

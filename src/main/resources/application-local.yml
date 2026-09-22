@@ -30,6 +30,10 @@ cloudflare:
   r2:
     callback-secret: ${WORKER_CALLBACK_SECRET:local-only-internal-secret}
 
+media:
+  key-signature:
+    secret: ${MEDIA_KEY_SIGNATURE_SECRET:local-only-media-key-signature-secret}
+
 artwork:
   internal:
     secret: ${ARTWORK_INTERNAL_SECRET:local-only-internal-secret}

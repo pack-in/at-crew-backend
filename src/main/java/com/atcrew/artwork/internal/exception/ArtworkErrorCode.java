@@ -24,6 +24,7 @@ public enum ArtworkErrorCode {
     // 상한값은 media 모듈이 Worker와 공유한다(MediaConstraints.MAX_ORIGINAL_BYTES) — 문구의 100MB는 그 값이다
     IMAGE_TOO_LARGE(HttpStatus.BAD_REQUEST, "이미지 한 장의 용량은 100MB를 넘을 수 없습니다"),
     INVALID_REPRESENTATIVE_INDEX(HttpStatus.BAD_REQUEST, "대표 이미지 인덱스가 유효하지 않습니다"),
+    UNOWNED_IMAGE_KEY(HttpStatus.BAD_REQUEST, "본인이 발급받은 업로드 키가 아닙니다"),
     INVALID_CUSTOM_TAG(HttpStatus.BAD_REQUEST, "직접입력 값은 최대 10자까지 입력할 수 있습니다"),
     BOOKMARK_FOLDER_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 북마크 폴더입니다"),
     BOOKMARK_FOLDER_DUPLICATE_NAME(HttpStatus.CONFLICT, "이미 존재하는 폴더명입니다"),

@@ -175,7 +175,11 @@ public enum MediaProcessingStatus { PENDING, DONE, FAILED }
 ```java
 public interface MediaService {
 
-    List<PresignedUrlInfo> generatePresignedUrls(int count, List<String> contentTypes);
+    // 발급 대상 회원이 필요하다 — 발급하는 key에 소유자 서명을 넣는다(#190).
+    List<PresignedUrlInfo> generatePresignedUrls(String memberId, int count, List<String> contentTypes);
+
+    // 이 회원에게 발급되지 않은 key만 돌려준다. 비어 있지 않으면 호출자가 요청을 거부한다(#190).
+    Set<String> unownedKeys(String memberId, Collection<String> keys);
 
     // artwork.uploadArtwork()/updateArtwork()가 imageProcessingWorker.triggerAsync를 직접 호출하던 자리를 대체.
     // MediaAsset PENDING 행을 저장하고 Worker를 비동기 트리거한다.
@@ -227,6 +231,25 @@ public record MediaAssetProcessedEvent(MediaOwnerType ownerType, String ownerId,
                                         String thumbKey, String thumbAdultKey, String originalAvifKey,
                                         MediaProcessingStatus status);
 ```
+
+### key 형식과 소유자 서명 (#190)
+
+발급 key는 `raw/{서명}/{UUIDv7}.{확장자}`다. 서명은 `HMAC(secret, memberId + ":" + uuid)`의 앞 12자이며,
+같은 회원이라도 key마다 다르다 — 회원마다 고정된 값이면 공개된 key를 모아 같은 업로더의 파일을 묶어볼 수 있다.
+
+검증(`unownedKeys`)은 문자열을 잘라 다시 계산하는 것뿐이라 조회가 없다. Worker가 만든 변형본(`thumb/…`,
+`original/…`)에는 서명이 없어 클라이언트가 제출하면 함께 걸린다. Worker는 key의 마지막 조각만 쓰므로
+(cloudflare-worker/src/index.js) 변환 결과 이름은 그대로다.
+
+왜 필요한가: key는 비인증 공개 API(작품 상세·커뮤니티·검색·공유 포트폴리오·구인 목록)에 그대로 실린다.
+검증이 없던 동안에는 남의 key를 수집해 자기 작품의 지정 썸네일로 넣고 그 작품을 영구 삭제하면 **남의 R2
+파일이 지워졌다.**
+
+기존 데이터는 그대로 둔다. 수정 요청에서 **그 리소스에 이미 저장돼 있던 key**는 검증을 건너뛰므로, 서명이
+없던 시절의 key도 계속 수정할 수 있다. 옛 형식 key를 새 리소스에 넣는 것은 막힌다.
+
+비밀값은 `media.key-signature.secret`이고 운영에서 비어 있으면 기동하지 않는다. 교체할 때는 이전 값을
+`previous-secrets`에 남긴다 — 지우면 그 전에 발급된 key가 전부 검증에 실패해 수정 요청이 막힌다.
 
 `generatePresignedUrls`의 count(1~30)/contentType 화이트리스트(jpeg/png/webp) 검증은 `ArtworkServiceImpl`에서
 그대로 옮겨온다 — 도메인과 무관한 범용 검증이라 변경 없음.

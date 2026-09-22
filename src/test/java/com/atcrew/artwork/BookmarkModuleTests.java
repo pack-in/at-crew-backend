@@ -1,5 +1,6 @@
 package com.atcrew.artwork;
 
+import com.atcrew.media.internal.application.MediaKeySigner;
 import com.atcrew.SharedContainersConfig;
 import com.atcrew.support.DatabaseCleanupExtension;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,6 +30,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ImportTestcontainers(SharedContainersConfig.class)
 @ExtendWith(DatabaseCleanupExtension.class)
 class BookmarkModuleTests {
+
+    // 업로드 key의 소유자 서명(#190) — 테스트도 같은 규칙으로 key를 만든다.
+    @Autowired
+    MediaKeySigner keySigner;
 
     @Autowired
     ArtworkService artworkService;
@@ -150,7 +155,7 @@ class BookmarkModuleTests {
     }
 
     private ArtworkInfo uploadReadyArtwork(String authorId) {
-        List<String> imageKeys = List.of("raw/" + UUID.randomUUID() + ".png");
+        List<String> imageKeys = List.of(signedKey(authorId, UUID.randomUUID().toString()));
         ArtworkInfo artwork = artworkService.uploadArtwork(authorId, new UploadArtworkCommand(
                 imageKeys, 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 "북마크테스트 작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
@@ -184,4 +189,13 @@ class BookmarkModuleTests {
                 "bm" + UUID.randomUUID().toString().replace("-", "").substring(0, 10),
                 "회원").id();
     }
+
+    /**
+     * 그 회원에게 발급된 것과 같은 형태의 업로드 key(#190) — 소유 검증이 서명만 보므로 presign을 부르지 않고
+     * 같은 규칙으로 만든다.
+     */
+    private String signedKey(String memberId, String name) {
+        return "raw/" + keySigner.sign(memberId, name) + "/" + name + ".png";
+    }
+
 }

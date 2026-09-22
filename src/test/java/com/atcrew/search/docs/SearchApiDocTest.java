@@ -1,5 +1,6 @@
 package com.atcrew.search.docs;
 
+import com.atcrew.media.internal.application.MediaKeySigner;
 import com.atcrew.artwork.AgeRating;
 import com.atcrew.artwork.ArtworkField;
 import com.atcrew.artwork.ArtworkInfo;
@@ -50,6 +51,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 필터 조합 검색과 최초 진입(결과 미노출) 상태의 요청/응답 구조를 REST Docs 스니펫으로 생성한다.
  */
 class SearchApiDocTest extends RestDocsIntegrationSupport {
+
+    // 업로드 key의 소유자 서명(#190) — 테스트도 같은 규칙으로 key를 만든다.
+    @Autowired
+    MediaKeySigner keySigner;
 
     @Autowired
     EntitlementBalanceRepository balanceRepository;
@@ -179,7 +184,7 @@ class SearchApiDocTest extends RestDocsIntegrationSupport {
                 "searchdoc" + UUID.randomUUID().toString().replace("-", "").substring(0, 8),
                 "검색문서작가").id();
 
-        List<String> imageKeys = List.of("raw/" + UUID.randomUUID() + ".png");
+        List<String> imageKeys = List.of(signedKey(memberId, UUID.randomUUID().toString()));
         ArtworkInfo artwork = artworkService.uploadArtwork(memberId, new UploadArtworkCommand(
                 imageKeys, 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 "검색문서화 작품", "설명",
@@ -229,4 +234,13 @@ class SearchApiDocTest extends RestDocsIntegrationSupport {
         }
         throw new AssertionError("색인 반영 대기 시간 초과");
     }
+
+    /**
+     * 그 회원에게 발급된 것과 같은 형태의 업로드 key(#190) — 소유 검증이 서명만 보므로 presign을 부르지 않고
+     * 같은 규칙으로 만든다.
+     */
+    private String signedKey(String memberId, String name) {
+        return "raw/" + keySigner.sign(memberId, name) + "/" + name + ".png";
+    }
+
 }
