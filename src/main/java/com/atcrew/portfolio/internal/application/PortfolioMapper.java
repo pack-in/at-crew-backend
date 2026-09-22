@@ -2,6 +2,7 @@ package com.atcrew.portfolio.internal.application;
 
 import com.atcrew.artwork.ArtworkImageInfo;
 import com.atcrew.artwork.ArtworkInfo;
+import com.atcrew.artwork.ArtworkRole;
 import com.atcrew.artwork.Visibility;
 import com.atcrew.portfolio.PortfolioArtworkCardInfo;
 import com.atcrew.portfolio.PortfolioCoverThumbnailInfo;
@@ -82,14 +83,14 @@ class PortfolioMapper {
                 thumbAdultKey,
                 artwork.ageRating(),
                 artwork.artworkField(),
-                artwork.tags(),
+                artwork.roles(),
                 artwork.visibility(),
                 artwork.createdAt()
         );
     }
 
     /**
-     * 고정형 카드는 스냅샷 행만으로 채운다(§2.3) — 원본을 다시 조회하지 않는다. {@code tags}는 컬럼이 아니라
+     * 고정형 카드는 스냅샷 행만으로 채운다(§2.3) — 원본을 다시 조회하지 않는다. {@code roles}는 컬럼이 아니라
      * {@code payload_json}에 있어 호출자가 넘긴다 — 구버전 payload에는 없을 수 있어 빈 목록으로 정규화한다.
      *
      * <p>{@code visibility}는 항상 {@code PUBLIC}으로 고정한다. 스냅샷은 생성 시점 구성이 얼어붙어
@@ -99,7 +100,7 @@ class PortfolioMapper {
      * 연결값이며 제3자에게 원본 작품 URL을 노출하는 근거로 쓰지 않는다(마이페이지_작가-R39).
      * 카드 클릭은 원본이 아니라 {@code snapshotId}로 여는 스냅샷 상세로 이동한다(R38).
      */
-    static PortfolioArtworkCardInfo toCardInfo(PortfolioItemSnapshot snapshot, List<String> tags) {
+    static PortfolioArtworkCardInfo toCardInfo(PortfolioItemSnapshot snapshot, List<ArtworkRole> roles) {
         return new PortfolioArtworkCardInfo(
                 null,
                 snapshot.getSnapshotPublicId(),
@@ -108,7 +109,7 @@ class PortfolioMapper {
                 snapshot.getThumbAdultKey(),
                 snapshot.getAgeRating(),
                 snapshot.getArtworkField(),
-                orEmpty(tags),
+                orEmpty(roles),
                 Visibility.PUBLIC,
                 snapshot.getSourceCreatedAt()
         );
