@@ -27,6 +27,9 @@ class MemberModuleTests {
     @Autowired
     MemberService memberService;
 
+    @Autowired
+    org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
     // ─── register ────────────────────────────────────────────────────
 
     @Test
@@ -310,6 +313,9 @@ class MemberModuleTests {
         memberService.findProfileByHandle("viewartist", viewer.id());
 
         awaitViewCount("viewartist", 1);
+        // 반복 조회도 이벤트 처리는 정상 완료돼야 한다 — PK 충돌 예외로 판정하던 때는 트랜잭션이 rollback-only가
+        // 되어 반복 조회마다 미완료 이벤트가 남았다(이슈 #201).
+        awaitNoIncompleteProfileViewEvents(viewer.id());
     }
 
     @Test
@@ -322,6 +328,74 @@ class MemberModuleTests {
         memberService.findProfileByHandle("viewartist2", v2.id());
 
         awaitViewCount("viewartist2", 2);
+    }
+
+    @Test
+    void 프로필_열람수_서로_다른_조회자가_동시에_처음_조회해도_전부_집계() throws Exception {
+        memberService.register("view-concurrent@atcrew.com", "viewconcurrent", "동시열람작가");
+        int viewerCount = 8;
+        List<String> viewerIds = java.util.stream.IntStream.range(0, viewerCount)
+                .mapToObj(i -> memberService.register("view-cc" + i + "@atcrew.com", "viewcc" + i, "동시조회자" + i).id())
+                .toList();
+
+        runConcurrently(viewerIds.stream()
+                .<Runnable>map(viewerId -> () -> memberService.findProfileByHandle("viewconcurrent", viewerId))
+                .toList());
+
+        awaitViewCount("viewconcurrent", viewerCount);
+    }
+
+    @Test
+    void 프로필_열람수_같은_조회자가_동시에_여러_번_조회해도_1회만_집계() throws Exception {
+        memberService.register("view-dup@atcrew.com", "viewdup", "중복열람작가");
+        String viewerId = memberService.register("view-dup-v@atcrew.com", "viewdupv", "중복조회자").id();
+
+        runConcurrently(java.util.Collections.nCopies(8,
+                () -> memberService.findProfileByHandle("viewdup", viewerId)));
+
+        awaitViewCount("viewdup", 1);
+        awaitNoIncompleteProfileViewEvents(viewerId);
+        assertThat(memberService.findProfileByHandle("viewdup").profileViewCount()).isEqualTo(1);
+    }
+
+    /**
+     * 해당 조회자의 열람 이벤트가 모두 처리 완료됐는지 기다린다. 조회자로 좁히는 이유: awaitViewCount가 부르는
+     * findProfileByHandle(handle) 오버로드는 셀프 호출이라 트랜잭션 없이 이벤트를 발행해 리스너가 돌지 않는다
+     * (그 오버로드 주석 참고) — 그 이벤트는 이 검증 대상이 아니다.
+     */
+    private void awaitNoIncompleteProfileViewEvents(String viewerMemberId) {
+        Instant deadline = Instant.now().plus(Duration.ofSeconds(10));
+        long incomplete = -1;
+        while (Instant.now().isBefore(deadline)) {
+            incomplete = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM EVENT_PUBLICATION WHERE COMPLETION_DATE IS NULL"
+                            + " AND LISTENER_ID LIKE ? AND SERIALIZED_EVENT LIKE ?",
+                    Long.class, "%ProfileViewCounter%", "%\"viewerMemberId\":\"" + viewerMemberId + "\"%");
+            if (incomplete == 0) return;
+            sleepBriefly();
+        }
+        throw new AssertionError("ProfileViewCounter 미완료 이벤트가 남음: " + incomplete);
+    }
+
+    /** 출발 신호 하나로 모든 작업을 동시에 시작하고, 작업이 던진 예외가 있으면 그대로 드러낸다. */
+    private void runConcurrently(List<Runnable> actions) throws Exception {
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(actions.size());
+        java.util.concurrent.CountDownLatch startSignal = new java.util.concurrent.CountDownLatch(1);
+        try {
+            List<java.util.concurrent.Future<Object>> futures = actions.stream()
+                    .map(action -> pool.submit(() -> {
+                        startSignal.await();
+                        action.run();
+                        return null;
+                    }))
+                    .toList();
+            startSignal.countDown();
+            for (java.util.concurrent.Future<?> future : futures) {
+                future.get();
+            }
+        } finally {
+            pool.shutdown();
+        }
     }
 
     @Test

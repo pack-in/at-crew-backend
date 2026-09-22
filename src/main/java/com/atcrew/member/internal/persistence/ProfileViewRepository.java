@@ -26,4 +26,14 @@ public interface ProfileViewRepository extends JpaRepository<ProfileView, Profil
                      @Param("viewerMemberId") String viewerMemberId,
                      @Param("now") Instant now,
                      @Param("staleBefore") Instant staleBefore);
+
+    /** 행이 없을 때만 넣는다. 1이면 최초 조회, 0이면 이미 기록이 있다(PK 충돌을 예외 대신 영향 행 수로 받는다). */
+    @Modifying
+    @Query(value = """
+            INSERT IGNORE INTO member_profile_views (artist_member_id, viewer_member_id, viewed_at)
+            VALUES (:artistMemberId, :viewerMemberId, :now)
+            """, nativeQuery = true)
+    int insertIfAbsent(@Param("artistMemberId") String artistMemberId,
+                       @Param("viewerMemberId") String viewerMemberId,
+                       @Param("now") Instant now);
 }
