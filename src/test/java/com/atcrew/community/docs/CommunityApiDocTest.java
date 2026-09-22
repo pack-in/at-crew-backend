@@ -157,6 +157,25 @@ class CommunityApiDocTest extends RestDocsIntegrationSupport {
     }
 
     @Test
+    void 이번_주_가장_핫한_작품_조회_문서화() throws Exception {
+        // 정렬·채움·필터 규칙은 HotArtworkTests가 검증한다 — 여기서는 응답 구조(목록, 최대 6개)를 문서로 남긴다.
+        mockMvc.perform(get("/api/community/artworks/hot"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data").isArray())
+                .andDo(document("community/list-hot-artworks",
+                        preprocessResponse(prettyPrint()),
+                        relaxedResponseFields(
+                                fieldWithPath("code").description("응답 코드 (SUCCESS)"),
+                                fieldWithPath("data").description(
+                                        "작품 카드 목록 (최대 6개). 최근 7일 기간 조회수 → 북마크 수 → 최신 등록순이며, "
+                                                + "기간 조회수가 있는 작품이 6개 미만이면 조회수가 없는 작품으로 채운다. "
+                                                + "노출 조건은 포트폴리오 탭 목록과 같다")
+                        )
+                ));
+    }
+
+    @Test
     void 구인글_탭_빈_목록_문서화() throws Exception {
         // recruit 모듈의 RecruitService를 호출한다 — 이 테스트에는 PUBLISHED 구인글이 없어 빈 목록이 반환된다.
         mockMvc.perform(get("/api/community/job-postings"))
