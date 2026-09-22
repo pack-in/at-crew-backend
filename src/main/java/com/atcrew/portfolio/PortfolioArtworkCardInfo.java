@@ -2,6 +2,7 @@ package com.atcrew.portfolio;
 
 import com.atcrew.artwork.AgeRating;
 import com.atcrew.artwork.ArtworkField;
+import com.atcrew.artwork.ArtworkRole;
 import com.atcrew.artwork.Visibility;
 
 import java.time.Instant;
@@ -23,7 +24,7 @@ public record PortfolioArtworkCardInfo(
         String thumbAdultKey,      // 성인 블러 썸네일 R2 키 — 사용자 지정 썸네일을 쓰는 경우 null
         AgeRating ageRating,       // 연령 등급
         ArtworkField artworkField, // 작품 분야
-        List<String> tags,         // 태그 — 고정형은 생성 시점에 얼린 값
+        List<ArtworkRole> roles,   // 담당 업무(역할) — ArtworkSummaryInfo와 동일. 고정형은 생성 시점에 얼린 값
         Visibility visibility,     // 원본 작품의 공개 범위
         Instant createdAt          // 원본 작품 등록 시각 — 포트폴리오 내 정렬(업로드순) 기준
 ) {

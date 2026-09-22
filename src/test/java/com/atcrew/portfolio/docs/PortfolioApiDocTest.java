@@ -127,7 +127,7 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
                                         .description("성인 블러 썸네일 R2 키 — 사용자 지정 썸네일을 쓰면 null").optional(),
                                 fieldWithPath("data.artworks[].ageRating").description("연령 등급 (ALL·ADULT)"),
                                 fieldWithPath("data.artworks[].artworkField").description("작품 분야"),
-                                fieldWithPath("data.artworks[].tags").description("태그 — 고정형은 생성 시점에 얼린 값"),
+                                fieldWithPath("data.artworks[].roles").description("담당 업무(역할) — 고정형은 생성 시점에 얼린 값"),
                                 fieldWithPath("data.artworks[].visibility")
                                         .description("원본 작품의 피드 공개 여부 (PUBLIC=공개 ON, PRIVATE=공개 OFF)"),
                                 fieldWithPath("data.artworks[].createdAt")
@@ -606,7 +606,7 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
                                         .description("성인 블러 썸네일 R2 키").optional(),
                                 fieldWithPath("data.items[].ageRating").description("연령 등급 (ALL·ADULT)"),
                                 fieldWithPath("data.items[].artworkField").description("작품 분야"),
-                                fieldWithPath("data.items[].tags").description("태그 — 고정형은 생성 시점에 얼린 값"),
+                                fieldWithPath("data.items[].roles").description("담당 업무(역할) — 고정형은 생성 시점에 얼린 값"),
                                 fieldWithPath("data.items[].visibility").description("원본 작품의 공개 범위"),
                                 fieldWithPath("data.items[].createdAt").description("원본 작품 등록 시각 (ISO 8601)"),
                                 fieldWithPath("data.nextCursor").type(JsonFieldType.STRING)
