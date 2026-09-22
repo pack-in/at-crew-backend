@@ -21,7 +21,7 @@ import com.atcrew.member.internal.exception.MemberErrorCode;
 import com.atcrew.member.internal.exception.MemberException;
 import com.atcrew.member.internal.persistence.MemberRepository;
 import com.atcrew.common.logging.LogMask;
-import com.atcrew.common.response.CursorPage;
+import com.atcrew.common.response.OffsetPage;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Predicate;
@@ -30,6 +30,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
@@ -221,19 +222,26 @@ class MemberServiceImpl implements MemberService {
     }
 
     @Override
-    public CursorPage<MemberProfileInfo> searchProfiles(SearchProfilesCommand command) {
-        int limit = command.size() + 1;
+    public OffsetPage<MemberProfileInfo> searchProfiles(SearchProfilesCommand command) {
         ProfileSort sort = command.sort() != null ? command.sort() : ProfileSort.RECENTLY_UPDATED;
+        Specification<Member> spec = buildSearchSpecification(command);
+        // 전체 개수는 이 조회가 이미 센 값을 쓴다 — 노출 조건 subquery가 7개라 COUNT를 두 번 돌리면 비싸다.
+        Page<Member> found = memberRepository.findAll(spec,
+                PageRequest.of(command.page() - 1, command.size(), sortOf(sort)));
+        return new OffsetPage<>(found.getContent().stream().map(MemberMapper::toProfileInfo).toList(),
+                found.getTotalElements());
+    }
 
-        Specification<Member> spec = buildSearchSpecification(command, sort);
-        Sort jpaSort = switch (sort) {
-            case EXPERIENCE -> Sort.by(Sort.Direction.DESC, "experienceRank").and(Sort.by(Sort.Direction.DESC, "updatedAt"));
-            case VIEW_COUNT -> Sort.by(Sort.Direction.DESC, "profileViewCount").and(Sort.by(Sort.Direction.DESC, "updatedAt"));
-            case RECENTLY_UPDATED -> Sort.by(Sort.Direction.DESC, "updatedAt");
+    /**
+     * 정렬은 <b>(정렬 키, id)</b> 2단이다. 정렬 키 하나만으로는 값이 같은 행들의 순서를 DB가 보장하지 않아
+     * 페이지 경계에서 회원이 빠지거나 중복된다(artwork 피드와 같은 규칙, 이슈 #78·#196).
+     */
+    private Sort sortOf(ProfileSort sort) {
+        return switch (sort) {
+            case EXPERIENCE -> Sort.by(Sort.Direction.DESC, "experienceRank", "updatedAt", "id");
+            case VIEW_COUNT -> Sort.by(Sort.Direction.DESC, "profileViewCount", "updatedAt", "id");
+            case RECENTLY_UPDATED -> Sort.by(Sort.Direction.DESC, "updatedAt", "id");
         };
-
-        List<Member> members = memberRepository.findAll(spec, PageRequest.of(0, limit, jpaSort)).getContent();
-        return toProfilePage(members, command.size(), sort);
     }
 
     @Override
@@ -246,7 +254,7 @@ class MemberServiceImpl implements MemberService {
     }
 
     // Mongo Criteria 동적 쿼리 → JPA Specification (docs/design/mariadb-migration-design.md §3.6)
-    private Specification<Member> buildSearchSpecification(SearchProfilesCommand command, ProfileSort sort) {
+    private Specification<Member> buildSearchSpecification(SearchProfilesCommand command) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             predicates.add(cb.isTrue(root.get("active")));
@@ -263,9 +271,6 @@ class MemberServiceImpl implements MemberService {
                 predicates.add(cb.or(
                         cb.isNull(root.get("primaryLanguage")),
                         root.get("primaryLanguage").in(command.viewerLanguages())));
-            }
-            if (command.cursor() != null) {
-                predicates.add(buildCursorPredicate(root, cb, sort, command.cursor()));
             }
             return cb.and(predicates.toArray(new Predicate[0]));
         };
@@ -294,65 +299,6 @@ class MemberServiceImpl implements MemberService {
     // 연락처는 빈 문자열 전송으로 삭제할 수 있어(UpdateInfoRequest) null과 "" 둘 다 미입력으로 본다.
     private Predicate notBlank(CriteriaBuilder cb, Path<String> path) {
         return cb.and(cb.isNotNull(path), cb.notEqual(path, ""));
-    }
-
-    // 기존 복합 커서(keyset) 비교 로직을 SQL 표준 형태로 그대로 이식 — 정렬 기준별 분기 무변경 (§3.6)
-    private Predicate buildCursorPredicate(Root<Member> root, CriteriaBuilder cb, ProfileSort sort, String cursor) {
-        String rankField = rankField(sort);
-        if (rankField != null) {
-            RankCursor c = parseRankCursor(cursor);
-            return cb.or(
-                    cb.lessThan(root.get(rankField), c.rank()),
-                    cb.and(cb.equal(root.get(rankField), c.rank()),
-                           cb.lessThan(root.get("updatedAt"), c.updatedAt())));
-        }
-        return cb.lessThan(root.get("updatedAt"), parseCursor(cursor));
-    }
-
-    /** 복합 커서(정렬 키 + updatedAt)를 쓰는 정렬이면 그 정렬 키 필드명을, 아니면 null을 반환한다. */
-    private String rankField(ProfileSort sort) {
-        return switch (sort) {
-            case EXPERIENCE -> "experienceRank";
-            case VIEW_COUNT -> "profileViewCount";
-            case RECENTLY_UPDATED -> null;
-        };
-    }
-
-    private CursorPage<MemberProfileInfo> toProfilePage(List<Member> members, int size, ProfileSort sort) {
-        if (members.isEmpty()) return CursorPage.empty();
-        boolean hasNext = members.size() > size;
-        List<Member> page = hasNext ? members.subList(0, size) : members;
-        List<MemberProfileInfo> items = page.stream().map(MemberMapper::toProfileInfo).toList();
-        String nextCursor = null;
-        if (hasNext) {
-            Member last = page.get(page.size() - 1);
-            nextCursor = switch (sort) {
-                case EXPERIENCE -> last.getExperienceRank() + "_" + last.getUpdatedAt().toEpochMilli();
-                case VIEW_COUNT -> last.getProfileViewCount() + "_" + last.getUpdatedAt().toEpochMilli();
-                case RECENTLY_UPDATED -> String.valueOf(last.getUpdatedAt().toEpochMilli());
-            };
-        }
-        return CursorPage.of(items, nextCursor);
-    }
-
-    private Instant parseCursor(String cursor) {
-        try {
-            return Instant.ofEpochMilli(Long.parseLong(cursor));
-        } catch (NumberFormatException e) {
-            throw new MemberException(MemberErrorCode.INVALID_CURSOR);
-        }
-    }
-
-    private record RankCursor(int rank, Instant updatedAt) {
-    }
-
-    private RankCursor parseRankCursor(String cursor) {
-        try {
-            String[] parts = cursor.split("_", 2);
-            return new RankCursor(Integer.parseInt(parts[0]), Instant.ofEpochMilli(Long.parseLong(parts[1])));
-        } catch (RuntimeException e) {
-            throw new MemberException(MemberErrorCode.INVALID_CURSOR);
-        }
     }
 
     @Override

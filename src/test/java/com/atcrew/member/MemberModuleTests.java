@@ -205,11 +205,11 @@ class MemberModuleTests {
                 "search-preparing@atcrew.com", "searchpreparing", "준비중작가");
         // PREPARING(기본값) 유지 — updateInfo 호출 없음
 
-        CursorPage<MemberProfileInfo> result = memberService.searchProfiles(new SearchProfilesCommand(
-                List.of(EmploymentStatus.AVAILABLE, EmploymentStatus.NEGOTIABLE), null, null, null, null, 20));
+        List<MemberProfileInfo> result = memberService.searchProfiles(new SearchProfilesCommand(
+                List.of(EmploymentStatus.AVAILABLE, EmploymentStatus.NEGOTIABLE), null, null, null, 1, 20)).items();
 
-        assertThat(result.items()).extracting(MemberProfileInfo::id).contains(available.id());
-        assertThat(result.items()).extracting(MemberProfileInfo::id).doesNotContain(preparing.id());
+        assertThat(result).extracting(MemberProfileInfo::id).contains(available.id());
+        assertThat(result).extracting(MemberProfileInfo::id).doesNotContain(preparing.id());
     }
 
     @Test
@@ -224,18 +224,73 @@ class MemberModuleTests {
                     EmploymentStatus.AVAILABLE, ActivityField.WEBTOON, ExperienceLevel.THREE_TO_FOUR));
         }
 
-        CursorPage<MemberProfileInfo> koViewer = memberService.searchProfiles(new SearchProfilesCommand(
-                List.of(EmploymentStatus.AVAILABLE), null, null, List.of(Language.KO), null, 50));
+        List<MemberProfileInfo> koViewer = memberService.searchProfiles(new SearchProfilesCommand(
+                List.of(EmploymentStatus.AVAILABLE), null, null, List.of(Language.KO), 1, 50)).items();
 
-        assertThat(koViewer.items()).extracting(MemberProfileInfo::id)
+        assertThat(koViewer).extracting(MemberProfileInfo::id)
                 .contains(koCreator.id(), legacyCreator.id())
                 .doesNotContain(jaCreator.id());
 
         // 비로그인(빈 목록)은 필터 미적용
-        CursorPage<MemberProfileInfo> anonymous = memberService.searchProfiles(new SearchProfilesCommand(
-                List.of(EmploymentStatus.AVAILABLE), null, null, List.of(), null, 50));
-        assertThat(anonymous.items()).extracting(MemberProfileInfo::id)
+        List<MemberProfileInfo> anonymous = memberService.searchProfiles(new SearchProfilesCommand(
+                List.of(EmploymentStatus.AVAILABLE), null, null, List.of(), 1, 50)).items();
+        assertThat(anonymous).extracting(MemberProfileInfo::id)
                 .contains(koCreator.id(), jaCreator.id(), legacyCreator.id());
+    }
+
+    @Test
+    void 프로필_검색_전체_개수는_필터를_따르고_페이지와_무관하다() {
+        SearchProfilesCommand koFirstPage = new SearchProfilesCommand(
+                List.of(EmploymentStatus.AVAILABLE, EmploymentStatus.NEGOTIABLE), null, null,
+                List.of(Language.KO), 1, 1);
+        long before = memberService.searchProfiles(koFirstPage).totalCount();
+
+        MemberInfo koFirst = registerWithPrimaryLanguage("count-ko1", "개수작가KO1", Language.KO);
+        MemberInfo koSecond = registerWithPrimaryLanguage("count-ko2", "개수작가KO2", Language.KO);
+        MemberInfo ja = registerWithPrimaryLanguage("count-ja", "개수작가JA", Language.JA);
+        for (MemberInfo creator : List.of(koFirst, koSecond, ja)) {
+            memberService.updateInfo(creator.id(), exposedProfile(
+                    EmploymentStatus.AVAILABLE, ActivityField.WEBTOON, ExperienceLevel.THREE_TO_FOUR));
+        }
+        // 구인 가능 상태지만 노출 항목(연락처)이 빈 KO 회원 — 목록과 마찬가지로 개수에서도 빠져야 한다
+        MemberInfo koNoContact = registerWithPrimaryLanguage("count-ko-empty", "개수작가빈프로필", Language.KO);
+        memberService.updateInfo(koNoContact.id(), exposure(
+                EmploymentStatus.AVAILABLE, List.of(ActivityField.WEBTOON), ExperienceLevel.THREE_TO_FOUR,
+                List.of(DesiredRole.STORYBOARD), List.of(DesiredGenre.BL),
+                List.of(DesiredEmploymentType.FREELANCE), null));
+        assertThat(memberService.searchProfiles(new SearchProfilesCommand(
+                koFirstPage.employmentStatuses(), null, null, List.of(Language.KO), 1, 50)).items())
+                .extracting(MemberProfileInfo::id).doesNotContain(koNoContact.id());
+
+        assertThat(memberService.searchProfiles(koFirstPage).totalCount()).isEqualTo(before + 2);
+
+        SearchProfilesCommand koSecondPage = new SearchProfilesCommand(
+                koFirstPage.employmentStatuses(), null, null, koFirstPage.viewerLanguages(), 2, 1);
+        // 개수는 페이지를 넘겨도 같다
+        assertThat(memberService.searchProfiles(koSecondPage).totalCount()).isEqualTo(before + 2);
+    }
+
+    @Test
+    void 프로필_검색은_페이지를_넘겨도_같은_회원이_빠지거나_중복되지_않는다() {
+        // 같은 트랜잭션에서 연속 저장하면 updatedAt이 같은 값이 되기 쉽다 — 정렬 키가 같아도
+        // (정렬 키, id) 2단 정렬이라 페이지 경계에서 누락·중복이 없어야 한다(이슈 #196).
+        List<String> registered = new java.util.ArrayList<>();
+        for (int i = 0; i < 5; i++) {
+            MemberInfo creator = registerWithPrimaryLanguage("page-tie-" + i, "동시수정작가" + i, Language.KO);
+            memberService.updateInfo(creator.id(), exposedProfile(
+                    EmploymentStatus.AVAILABLE, ActivityField.WEBTOON, ExperienceLevel.THREE_TO_FOUR));
+            registered.add(creator.id());
+        }
+
+        List<String> paged = new java.util.ArrayList<>();
+        for (int page = 1; page <= 5; page++) {
+            paged.addAll(memberService.searchProfiles(new SearchProfilesCommand(
+                            List.of(EmploymentStatus.AVAILABLE), null, null, List.of(Language.KO), page, 2))
+                    .items().stream().map(MemberProfileInfo::id).toList());
+        }
+
+        assertThat(paged).containsAll(registered);
+        assertThat(paged).doesNotHaveDuplicates();
     }
 
     @Test
@@ -277,11 +332,11 @@ class MemberModuleTests {
                 "search-illust@atcrew.com", "searchillust", "일러스트작가");
         memberService.updateInfo(illustration.id(), exposedProfile(EmploymentStatus.AVAILABLE, ActivityField.ILLUSTRATION, ExperienceLevel.THREE_TO_FOUR));
 
-        CursorPage<MemberProfileInfo> result = memberService.searchProfiles(new SearchProfilesCommand(
-                List.of(EmploymentStatus.AVAILABLE), ActivityField.WEBTOON, null, null, null, 20));
+        List<MemberProfileInfo> result = memberService.searchProfiles(new SearchProfilesCommand(
+                List.of(EmploymentStatus.AVAILABLE), ActivityField.WEBTOON, null, null, 1, 20)).items();
 
-        assertThat(result.items()).extracting(MemberProfileInfo::id).contains(webtoon.id());
-        assertThat(result.items()).extracting(MemberProfileInfo::id).doesNotContain(illustration.id());
+        assertThat(result).extracting(MemberProfileInfo::id).contains(webtoon.id());
+        assertThat(result).extracting(MemberProfileInfo::id).doesNotContain(illustration.id());
     }
 
     @Test
@@ -294,10 +349,10 @@ class MemberModuleTests {
                 "search-exp-senior@atcrew.com", "searchexpsenior", "시니어작가");
         memberService.updateInfo(senior.id(), exposedProfile(EmploymentStatus.AVAILABLE, ActivityField.WEBTOON, ExperienceLevel.TEN_PLUS));
 
-        CursorPage<MemberProfileInfo> result = memberService.searchProfiles(new SearchProfilesCommand(
-                List.of(EmploymentStatus.AVAILABLE), null, ProfileSort.EXPERIENCE, null, null, 20));
+        List<MemberProfileInfo> result = memberService.searchProfiles(new SearchProfilesCommand(
+                List.of(EmploymentStatus.AVAILABLE), null, ProfileSort.EXPERIENCE, null, 1, 20)).items();
 
-        List<String> ids = result.items().stream().map(MemberProfileInfo::id).toList();
+        List<String> ids = result.stream().map(MemberProfileInfo::id).toList();
         assertThat(ids.indexOf(senior.id())).isLessThan(ids.indexOf(newcomer.id()));
     }
 
@@ -434,9 +489,9 @@ class MemberModuleTests {
         awaitViewCount("sortpopular", 2);
         awaitViewCount("sortquiet", 1);
 
-        CursorPage<MemberProfileInfo> result = memberService.searchProfiles(new SearchProfilesCommand(
-                List.of(EmploymentStatus.AVAILABLE), null, ProfileSort.VIEW_COUNT, null, null, 50));
-        List<String> ids = result.items().stream().map(MemberProfileInfo::id).toList();
+        List<MemberProfileInfo> result = memberService.searchProfiles(new SearchProfilesCommand(
+                List.of(EmploymentStatus.AVAILABLE), null, ProfileSort.VIEW_COUNT, null, 1, 50)).items();
+        List<String> ids = result.stream().map(MemberProfileInfo::id).toList();
         assertThat(ids.indexOf(popular.id())).isLessThan(ids.indexOf(quiet.id()));
     }
 
@@ -481,11 +536,11 @@ class MemberModuleTests {
                         List.of(DesiredRole.STORYBOARD), List.of(DesiredGenre.BL),
                         List.of(DesiredEmploymentType.FREELANCE), null));
 
-        CursorPage<MemberProfileInfo> result = memberService.searchProfiles(new SearchProfilesCommand(
-                List.of(EmploymentStatus.AVAILABLE), null, null, null, null, 50));
+        List<MemberProfileInfo> result = memberService.searchProfiles(new SearchProfilesCommand(
+                List.of(EmploymentStatus.AVAILABLE), null, null, null, 1, 50)).items();
 
-        assertThat(result.items()).extracting(MemberProfileInfo::id).contains(complete.id());
-        assertThat(result.items()).extracting(MemberProfileInfo::id).doesNotContain(
+        assertThat(result).extracting(MemberProfileInfo::id).contains(complete.id());
+        assertThat(result).extracting(MemberProfileInfo::id).doesNotContain(
                 noField.id(), noLevel.id(), noRole.id(), noGenre.id(), noEmploymentType.id(), noContact.id());
     }
 
