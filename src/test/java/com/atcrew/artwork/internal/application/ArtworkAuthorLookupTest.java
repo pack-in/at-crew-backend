@@ -66,7 +66,7 @@ class ArtworkAuthorLookupTest {
                 List.of(ArtworkRole.values()[0]), List.of(Genre.values()[0]), null,
                 List.of("태그"), AgeRating.ALL, List.of(Language.KO), Visibility.PUBLIC,
                 List.of("도구"), null, null, List.of(), List.of());
-        artwork.markImageProcessed("raw/1.png", "thumb/1.avif", null, "original/1.avif", true);
+        artwork.applyImageStatuses(java.util.List.of(com.atcrew.artwork.ImageProcessingStatus.DONE));
         artworkRepository.save(artwork);
     }
 

@@ -72,7 +72,6 @@ class ArtworkCollectionFetchTest {
         List<Artwork> page = artworkRepository.findAllByOrderByCreatedAtAsc(PageRequest.of(0, PAGE_SIZE));
         // 컬렉션을 실제로 읽어야 로딩이 일어난다 — 엔티티 개수만 세면 검증이 무의미하다.
         page.forEach(artwork -> {
-            artwork.getImages().size();
             artwork.getRoles().size();
             artwork.getGenres().size();
             artwork.getCustomTags().size();

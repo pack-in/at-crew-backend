@@ -12,6 +12,9 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
+import static com.atcrew.artwork.ImageProcessingStatus.DONE;
+import static com.atcrew.artwork.ImageProcessingStatus.FAILED;
+import static com.atcrew.artwork.ImageProcessingStatus.PENDING;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -22,41 +25,35 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>PENDING이 없는데 DONE도 없는 경우(전량 실패)는 READY가 아니라 FAILED로 끝낸다 — 이 분기가 없으면
  * 작품이 PROCESSING에 영구 고착되고, 재시도 스케줄러는 PENDING만 다루므로 자력 복구도 불가능하다.
+ *
+ * <p>이미지의 변환 결과 자체는 media가 갖는다(#193) — 작품은 현황(상태 목록)만 받아 자기 상태를 정한다.
+ * 변환 결과 저장은 media 쪽 테스트가 다룬다.
  */
 class ArtworkImageProcessingTest {
 
     @Test
-    void 모든_이미지가_처리되면_READY로_전환되고_변환결과가_캐시된다() {
+    void 모든_이미지가_처리되면_READY로_전환된다() {
         Artwork artwork = artworkWith("raw/1.png", "raw/2.png");
 
-        artwork.markImageProcessed("raw/1.png", "thumb/1.avif", "thumb-adult/1.avif", "original/1.avif", true);
-        artwork.markImageProcessed("raw/2.png", "thumb/2.avif", null, "original/2.avif", true);
+        artwork.applyImageStatuses(List.of(DONE, DONE));
 
         assertThat(artwork.getStatus()).isEqualTo(ArtworkStatus.READY);
-        assertThat(artwork.getImages()).extracting(ArtworkImage::getThumbKey)
-                .containsExactly("thumb/1.avif", "thumb/2.avif");
-        assertThat(artwork.getImages().get(0).getThumbAdultKey()).isEqualTo("thumb-adult/1.avif");
-        assertThat(artwork.getImages()).extracting(ArtworkImage::getOriginalAvifKey)
-                .containsExactly("original/1.avif", "original/2.avif");
     }
 
     @Test
     void 일부_이미지가_실패해도_하나라도_성공했으면_READY로_전환된다() {
         Artwork artwork = artworkWith("raw/1.png", "raw/2.png");
 
-        artwork.markImageProcessed("raw/1.png", "thumb/1.avif", null, "original/1.avif", true);
-        artwork.markImageProcessed("raw/2.png", null, null, null, false);
+        artwork.applyImageStatuses(List.of(DONE, FAILED));
 
         assertThat(artwork.getStatus()).isEqualTo(ArtworkStatus.READY);
-        assertThat(artwork.getImages()).extracting(ArtworkImage::getProcessingStatus)
-                .containsExactly(ImageProcessingStatus.DONE, ImageProcessingStatus.FAILED);
     }
 
     @Test
     void 아직_처리중인_이미지가_남아있으면_PROCESSING을_유지한다() {
         Artwork artwork = artworkWith("raw/1.png", "raw/2.png");
 
-        artwork.markImageProcessed("raw/1.png", "thumb/1.avif", null, "original/1.avif", true);
+        artwork.applyImageStatuses(List.of(DONE, PENDING));
 
         assertThat(artwork.getStatus()).isEqualTo(ArtworkStatus.PROCESSING);
     }
@@ -65,8 +62,7 @@ class ArtworkImageProcessingTest {
     void 모든_이미지가_실패하면_FAILED로_전환된다() {
         Artwork artwork = artworkWith("raw/1.png", "raw/2.png");
 
-        artwork.markImageProcessed("raw/1.png", null, null, null, false);
-        artwork.markImageProcessed("raw/2.png", null, null, null, false);
+        artwork.applyImageStatuses(List.of(FAILED, FAILED));
 
         assertThat(artwork.getStatus()).isEqualTo(ArtworkStatus.FAILED);
     }
@@ -78,12 +74,9 @@ class ArtworkImageProcessingTest {
         Artwork artwork = artworkWith("raw/1.png");
         artwork.moveToTrash();
 
-        artwork.markImageProcessed("raw/1.png", "thumb/1.avif", null, "original/1.avif", true);
+        artwork.applyImageStatuses(List.of(DONE));
 
         assertThat(artwork.getStatus()).isEqualTo(ArtworkStatus.DELETED);
-        // 이미지 변환 결과 자체는 반영해 둔다 — 복구했을 때 그대로 쓸 수 있어야 한다.
-        assertThat(artwork.getImages().get(0).getProcessingStatus()).isEqualTo(ImageProcessingStatus.DONE);
-        assertThat(artwork.getImages().get(0).getThumbKey()).isEqualTo("thumb/1.avif");
     }
 
     @Test
@@ -91,68 +84,55 @@ class ArtworkImageProcessingTest {
         Artwork artwork = artworkWith("raw/1.png");
         artwork.moveToTrash();
 
-        artwork.markImageProcessed("raw/1.png", null, null, null, false);
+        artwork.applyImageStatuses(List.of(FAILED));
 
         assertThat(artwork.getStatus()).isEqualTo(ArtworkStatus.DELETED);
-        assertThat(artwork.getImages().get(0).getProcessingStatus()).isEqualTo(ImageProcessingStatus.FAILED);
     }
 
     // 휴지통 복구는 삭제 전 상태를 기억하는 대신 이미지 현황으로 다시 계산한다(이슈 #146) —
     // 예전에는 무조건 READY라 이미지가 없거나 전량 실패한 작품이 공개 상태로 살아났다.
     @Test
     void 처리_중에_버린_작품을_복구하면_PROCESSING으로_돌아온다() {
-        Artwork artwork = artworkWith("raw/1.png", "raw/2.png");
-        artwork.markImageProcessed("raw/1.png", "thumb/1.avif", null, "original/1.avif", true);
-        artwork.moveToTrash();
+        Artwork artwork = trashedArtwork();
 
-        artwork.restore();
+        artwork.restore(List.of(DONE, PENDING));
 
         assertThat(artwork.getStatus()).isEqualTo(ArtworkStatus.PROCESSING);
     }
 
     @Test
     void 전량_실패한_작품을_복구하면_FAILED로_돌아온다() {
-        Artwork artwork = artworkWith("raw/1.png");
-        artwork.markImageProcessed("raw/1.png", null, null, null, false);
-        artwork.moveToTrash();
+        Artwork artwork = trashedArtwork();
 
-        artwork.restore();
+        artwork.restore(List.of(FAILED));
 
         assertThat(artwork.getStatus()).isEqualTo(ArtworkStatus.FAILED);
     }
 
     @Test
     void 정상_작품을_복구하면_READY로_돌아온다() {
-        Artwork artwork = artworkWith("raw/1.png");
-        artwork.markImageProcessed("raw/1.png", "thumb/1.avif", null, "original/1.avif", true);
-        artwork.moveToTrash();
+        Artwork artwork = trashedArtwork();
 
-        artwork.restore();
+        artwork.restore(List.of(DONE));
 
         assertThat(artwork.getStatus()).isEqualTo(ArtworkStatus.READY);
     }
 
-    // 삭제 시점 상태를 스냅샷으로 저장하는 방식이었다면 PROCESSING으로 되살아났을 경우다 —
-    // 휴지통에 있는 동안에도 콜백은 이미지 행을 계속 갱신하므로 스냅샷은 낡은 값이 된다.
+    // 이미지가 하나도 없는 작품은 업로드 경로상 만들어질 수 없지만, PROCESSING으로 두면 아무도 끝내주지
+    // 않아 고착되므로 FAILED로 본다.
     @Test
-    void 버린_뒤_처리가_끝난_작품을_복구하면_READY로_돌아온다() {
+    void 이미지가_하나도_없으면_FAILED로_본다() {
         Artwork artwork = artworkWith("raw/1.png");
-        artwork.moveToTrash();
-        artwork.markImageProcessed("raw/1.png", "thumb/1.avif", null, "original/1.avif", true);
 
-        artwork.restore();
+        artwork.applyImageStatuses(List.<ImageProcessingStatus>of());
 
-        assertThat(artwork.getStatus()).isEqualTo(ArtworkStatus.READY);
+        assertThat(artwork.getStatus()).isEqualTo(ArtworkStatus.FAILED);
     }
 
-    @Test
-    void 알_수_없는_이미지_키_콜백은_무시된다() {
+    private Artwork trashedArtwork() {
         Artwork artwork = artworkWith("raw/1.png");
-
-        artwork.markImageProcessed("raw/없는키.png", "thumb/x.avif", null, "original/x.avif", true);
-
-        assertThat(artwork.getStatus()).isEqualTo(ArtworkStatus.PROCESSING);
-        assertThat(artwork.getImages().get(0).getProcessingStatus()).isEqualTo(ImageProcessingStatus.PENDING);
+        artwork.moveToTrash();
+        return artwork;
     }
 
     private Artwork artworkWith(String... imageKeys) {

@@ -43,7 +43,7 @@ com.atcrew.artwork/                        ← 외부에 공개되는 인터페�
 
 com.atcrew.artwork.internal/               ← 모듈 외부에서 직접 접근 불가
   application/    서비스 구현체, 스케줄러, 이벤트 리스너, Mapper
-  domain/         도메인 엔티티 (Artwork, ArtworkImage, BookmarkFolder 등)
+  domain/         도메인 엔티티 (Artwork, BookmarkFolder 등 — 이미지는 media 모듈)
   exception/      ArtworkErrorCode, ArtworkException
   infra/storage/  R2StoragePort 인터페이스 + R2StorageAdapter 구현체
   persistence/    MongoDB Repository 인터페이스들
@@ -66,7 +66,7 @@ com.atcrew.artwork.internal/               ← 모듈 외부에서 직접 접근
 | `authorId` | String | 작성자 member ID |
 | `title` | String | 작품 제목 (최대 100자) |
 | `description` | String | 설명 (최대 500자) |
-| `images` | `List<ArtworkImage>` | 이미지 목록 (1~30장) |
+| (이미지) | — | `media_assets`에만 있다(#193). 작품 행에는 없고 `MediaService.getAssets`로 읽는다 |
 | `representativeImageIndex` | int | 대표 이미지 인덱스 |
 | `thumbnailKey` | String | 사용자 지정 썸네일 R2 키 (별도 업로드). null이면 대표 이미지의 Worker 생성 썸네일 사용 |
 | `imageLayoutType` | enum | VERTICAL_SCROLL / HORIZONTAL_SWIPE |
@@ -164,7 +164,7 @@ record WorkDuration(Integer months, Integer days, Integer hours, Integer minutes
   접근 불가. 재시도 대상이 아니므로 작가가 이미지를 교체하면(`updateArtwork`) 다시 PROCESSING으로 간다.
 - **DELETED**: 휴지통. 다른 조회 API에 노출되지 않음. 복구 또는 영구 삭제 가능.
 
-#### 이미지 처리 상태 (각 ArtworkImage)
+#### 이미지 처리 상태 (각 media 자산)
 
 ```
 PENDING → (Worker DONE 콜백) → DONE
@@ -173,7 +173,7 @@ PENDING → (Worker DONE 콜백) → DONE
 
 모든 이미지가 PENDING이 아니게 되고(DONE or FAILED), 하나라도 DONE이면 Artwork status를 READY로 전환. 전부 FAILED면 `FAILED`로 전환한다 — 재시도 스케줄러는 PENDING만 다루므로 PROCESSING에 두면 영구 고착된다.
 
-### ArtworkImage (Artwork에 내장)
+### 이미지 (media 모듈 `media_assets`)
 
 | 필드 | 설명 |
 |------|------|
@@ -183,7 +183,7 @@ PENDING → (Worker DONE 콜백) → DONE
 | `originalAvifKey` | Worker 생성 AVIF 변환본 키 |
 | `processingStatus` | PENDING / DONE / FAILED |
 
-**썸네일 우선순위**: `Artwork.thumbnailKey`(사용자 업로드) → 대표 이미지의 `ArtworkImage.thumbKey`(Worker 생성) 순으로 사용. `ArtworkSummaryInfo`의 `thumbKey` 필드에 최종 값이 담김.
+**썸네일 우선순위**: `Artwork.thumbnailKey`(사용자 업로드) → 대표 이미지의 `thumbKey`(Worker 생성) 순으로 사용. `ArtworkSummaryInfo`의 `thumbKey` 필드에 최종 값이 담김.
 
 ### Material (Artwork에 내장)
 
@@ -267,7 +267,7 @@ PENDING → (Worker DONE 콜백) → DONE
      │                        │ {artworkId, imageKey,     │                   │
      │                        │  thumbKey, status:DONE}   │                   │
      │                        │←──────────────────────────────────────────────│
-     │                        │ markImageProcessed()      │                   │
+     │                        │ applyImageStatuses()      │                   │
      │                        │ 전체 완료 → READY         │                   │
 ```
 
@@ -302,7 +302,9 @@ PENDING → (Worker DONE 콜백) → DONE
 | 엔드포인트 | 인증 |
 |---|---|
 | `GET /api/artworks/{artworkId}` | 선택적 (비인증 가능, 공개 작품만 노출) |
+| `POST /api/artworks/{artworkId}/views` | 선택적 (비인증은 `X-Anonymous-Id` 헤더로 식별) |
 | `GET /api/community/artworks` | 불필요 (완전 공개) |
+| `GET /api/community/artworks/hot` | 불필요 (완전 공개) |
 | `POST /internal/artwork/images/processed` | X-Internal-Secret 헤더 |
 | 나머지 모든 엔드포인트 | JWT 필수 |
 
@@ -363,6 +365,18 @@ R2 업로드 완료 후 작품 메타데이터를 저장. 바로 `PROCESSING` �
 
 - 인증 선택적. 비인증 또는 타인의 경우 `READY`이면서 `PUBLIC`이거나 라이브 포트폴리오에 편입된 작품만 노출(§11).
 - 작가 본인은 `PROCESSING` / `DELETED` 포함 항상 조회 가능.
+- 조회수를 올리지 않는다(2026-09-22, 홈-R14). FE SSR·편집 화면·포트폴리오가 같은 GET을 부르므로 열람자를
+  식별할 수 없다 — 집계는 아래 `POST /views`가 담당한다.
+
+#### `POST /api/artworks/{artworkId}/views` — 작품 열람 기록
+
+- 브라우저가 상세 화면을 연 뒤 호출한다. 응답은 **항상 204**(기록 여부를 드러내지 않는다).
+- 로그인 회원은 회원 ID, 비로그인은 `X-Anonymous-Id`(FE 1st-party 쿠키로 발급한 익명 UUID)로 식별한다.
+  둘 다 있으면 회원 기준이고 헤더는 보지 않는다. 둘 다 없으면 기록하지 않는다.
+- 비로그인 요청의 헤더가 표준 36자 UUID가 아니면 400 `INVALID_ANONYMOUS_ID`.
+- 동일 열람자의 24시간 이내 반복 열람, 본인 작품, 열람 불가(`accessFor != ALLOWED`)·없는 작품은 기록하지 않는다.
+- 유효 열람(최초 `FIRST`, 24시간 경과 재방문 `REVISIT`)이면 `artwork_view_events`에 남기고 `view_count` +1.
+  회원 기록과 로그인 전 익명 기록은 합치지 않는다. 판정·동시성·격리 수준은 `artwork-module-design.md` §10.6.
 
 #### `GET /api/artworks/{artworkId}/status` — 처리 상태 폴링
 
@@ -410,6 +424,17 @@ R2 업로드 완료 후 작품 메타데이터를 저장. 바로 `PROCESSING` �
 ```
 
 **ageRating 정책**: `null`이면 ALL / R18 / G18 전부 반환. 설계상 성인물도 피드에 노출하되 블러 처리는 클라이언트 담당. 특정 값으로 필터링하면 해당 등급만 반환.
+
+`sort=VIEW_COUNT`의 조회수는 `POST /views`로 집계된 누적 조회수(24시간 dedup)다. 2026-09-22 V44에서 0으로 초기화됐다.
+
+#### `GET /api/community/artworks/hot` — 이번 주 가장 핫한 작품
+
+인증 불필요. `ApiResponse<List<ArtworkSummaryInfo>>`, 최대 6개(홈-R03·R14).
+
+- 후보: `GET /api/community/artworks`와 같은 노출 조건(공개·READY·미차단·언어 세그먼트·성인 콘텐츠 설정).
+- 정렬: 최근 168시간 기간 조회수 DESC → 현재 북마크 수 DESC → 등록일 DESC → ID ASC.
+- 기간 조회수는 매시 정각 `HotScoreScheduler`가 `artwork_hot_scores`에 다시 계산한다(요청 시 계산하지 않는다).
+- 기간 조회수가 있는 후보로 6개가 차지 않으면 기간 조회수 0 후보로 같은 규칙(북마크 수 이하)을 따라 채운다.
 
 ---
 
@@ -499,7 +524,7 @@ Cloudflare Worker가 이미지 처리 완료 후 호출. Swagger에서 숨김(`@
 ```
 
 - `X-Internal-Secret`는 `MessageDigest.isEqual()`로 상수 시간 비교
-- `status: DONE` → `ArtworkImage.markDone()`, `FAILED` → `markFailed()`
+- `status: DONE`/`FAILED` → media가 자산 행을 갱신하고, 작품은 현황을 받아 상태만 다시 계산한다
 - 처리 중인 이미지가 없고 하나라도 DONE이면 Artwork status → `READY`
 
 ---
@@ -550,6 +575,10 @@ onMemberDeactivated() [동기, @EventListener]
 
 `changeVisibility()`는 `DELETED` 상태를 거부하지만, 탈퇴 이벤트 처리는 `PROCESSING` / `DELETED` 작품에도 적용해야 하므로 `forcePrivate()`를 별도로 구현해 상태 체크를 건너뜀.
 
+같은 이벤트를 `ArtworkViewMemberEventListener`도 탈퇴 트랜잭션 안에서 동기로 받아 열람 기록을 비식별화한다 —
+해당 회원의 `MEMBER` 열람 이벤트 `viewer_key`를 NULL로 바꾸고 `MEMBER` dedup 행을 지운다. 이벤트 행 수와
+`view_count`는 그대로다.
+
 ### ArtworkPermanentlyDeletedEvent 발행 (비동기)
 
 영구 삭제 후 R2 파일 정리를 **트랜잭션 커밋 뒤에** 비동기로 처리한다. 롤백되면 파일을 지우지 않는다.
@@ -587,6 +616,17 @@ onPermanentlyDeleted() [@Async, @TransactionalEventListener(AFTER_COMMIT)]
 작품마다 별도 트랜잭션이라 한 건이 실패해도 나머지는 지우고, 실패한 작품은 하루 동안 조회에서 빼 뒤의 작품이
 밀리지 않게 한다(건너뛴 수만큼 더 조회해 배치를 채운다. 기록은 메모리에만 두며 재기동 시 비워진다).
 
+### HotScoreScheduler (매시 정각 UTC)
+
+한 트랜잭션에서 `artwork_hot_scores`를 비우고 최근 168시간(`[now-168h, now)`) `artwork_view_events`를 작품별로 세어
+다시 채운다. 멱등이라 다중 인스턴스에서 동시에 돌아도 결과가 같다. `READ COMMITTED`로 돌려 원본 이벤트에 락을 걸지 않는다.
+
+### ViewRetentionScheduler (매일 03:30 UTC)
+
+1년(UTC 달력 기준)이 지난 **익명** 열람 이벤트를 `artwork_view_daily_stats`(작품·UTC 날짜·열람자 유형·열람 종류)에
+UPSERT로 더한 뒤 원본을 지우고, 같은 기준으로 익명 dedup 행을 지운다. 한 트랜잭션이라 재실행해도 이중 합산이 없다.
+회원 기록은 대상이 아니다.
+
 ### OrphanImageCleanupScheduler (1시간마다)
 
 R2 삭제에 실패해 `orphanedImageKeys`에 쌓인 파일 키들을 배치로 정리.
@@ -610,6 +650,15 @@ orphanedRepo.findAll(PageRequest.of(0, 100))  // 한 번에 최대 100건
 | `idx_artwork_author_status` | `{authorId:1, status:1, createdAt:-1}` | 내 작품 목록, 휴지통 목록 |
 | `idx_artwork_community_feed` | `{status:1, visibility:1, ageRating:1, createdAt:-1}` | 커뮤니티 피드 기본 경로 (artworkField 없을 때) |
 | `idx_artwork_field_filter` | `{status:1, visibility:1, artworkField:1, ageRating:1, createdAt:-1}` | 커뮤니티 피드 artworkField 필터 경로 |
+
+### 작품 열람 집계 테이블 (V44, MariaDB)
+
+| 테이블 | 키·인덱스 | 용도 |
+|---|---|---|
+| `artwork_view_dedup` | PK `(artwork_id, viewer_type, viewer_key)`, `idx_avd_viewer (viewer_type, viewer_key)`, `idx_avd_retention (viewer_type, last_counted_at)` | 24시간 dedup 판정, 탈퇴·보관 기간 삭제 |
+| `artwork_view_events` | PK `id`, `idx_avev_viewed_at (viewed_at, artwork_id)`, `idx_avev_viewer (viewer_type, viewer_key)` | 유효 열람 원천, 168시간 집계·1년 보관 범위, 탈퇴 비식별화 |
+| `artwork_hot_scores` | PK `artwork_id` | 매시간 재계산되는 기간 조회수 |
+| `artwork_view_daily_stats` | PK `(artwork_id, stat_date, viewer_type, view_kind)` | 1년 경과 익명 이벤트의 일별 합계 |
 
 ### bookmarkEntries 컬렉션
 
@@ -661,6 +710,7 @@ R2는 Cloudflare R2 (S3 호환). AWS SDK S3 v2를 사용하되 `Region.of("auto"
 | `INVALID_CONTENT_TYPE` | 400 | jpeg/png/webp 외 형식 |
 | `INVALID_REPRESENTATIVE_INDEX` | 400 | 대표 이미지 인덱스 범위 초과 |
 | `INVALID_CURSOR` | 400 | 비정수 커서 값 |
+| `INVALID_ANONYMOUS_ID` | 400 | 비로그인 열람 기록의 `X-Anonymous-Id`가 UUID 형식이 아님 |
 | `BOOKMARK_FOLDER_NOT_FOUND` | 404 | 폴더 없음 |
 | `BOOKMARK_FOLDER_DUPLICATE_NAME` | 409 | 폴더명 중복 |
 | `BOOKMARK_FOLDER_NAME_BLANK` | 400 | 빈 폴더명 |

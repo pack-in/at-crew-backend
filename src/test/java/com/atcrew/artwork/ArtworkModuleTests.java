@@ -110,6 +110,36 @@ class ArtworkModuleTests {
         assertThat(found.status()).isEqualTo(ArtworkStatus.PROCESSING);
     }
 
+    // 홈-R05 — 작품 태그는 업로드 폼에서 등록한 순서대로 노출한다(이슈 #199).
+    @Test
+    void 태그는_등록한_순서대로_조회되고_수정하면_새_순서를_따른다() {
+        String memberId = registerAuthor();
+
+        ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, new UploadArtworkCommand(
+                List.of("raw/1.png"), 0, null, ImageLayoutType.VERTICAL_SCROLL,
+                "제목", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
+                List.of(ArtworkRole.LINEART), List.of(Genre.FANTASY), null, List.of("캐릭터", "SF", "캐릭터", "배경"),
+                AgeRating.ALL, List.of(Language.KO), true, List.of(), List.of(),
+                null, null, List.of(), List.of()
+        ));
+
+        // 중복은 처음 등록한 위치만 남긴다.
+        assertThat(artworkService.getArtwork(uploaded.id(), memberId).tags())
+                .containsExactly("캐릭터", "SF", "배경");
+
+        // 같은 값의 순서만 뒤바꾸는 수정 — 행 단위 갱신이면 (artwork_id, value) 충돌이 날 수 있는 경우다.
+        artworkService.updateArtwork(memberId, uploaded.id(), new UpdateArtworkCommand(
+                null, null, null, null, null, null, null, null,
+                null, null, null, List.of("배경", "캐릭터", "SF"), null, null, null, null, null, null, null));
+        assertThat(artworkService.getArtwork(uploaded.id(), memberId).tags())
+                .containsExactly("배경", "캐릭터", "SF");
+
+        artworkService.updateArtwork(memberId, uploaded.id(), new UpdateArtworkCommand(
+                null, null, null, null, null, null, null, null,
+                null, null, null, List.of("SF"), null, null, null, null, null, null, null));
+        assertThat(artworkService.getArtwork(uploaded.id(), memberId).tags()).containsExactly("SF");
+    }
+
     @Test
     void 업로드_시_담당업무_장르_소재대상_직접입력_값이_저장되고_조회에_반영된다() {
         String memberId = registerAuthor();
@@ -219,8 +249,10 @@ class ArtworkModuleTests {
         assertThat(countOrphanRows()).isEqualTo(orphansBefore);
     }
 
+    // #193 — 이미지를 더해도 이미 처리된 이미지는 그대로 둔다. 예전에는 목록이 달라지기만 하면 전량 교체라
+    // 남긴 이미지의 파일이 고아 큐로 가 지워지고 재변환이 FAILED가 됐다.
     @Test
-    void 이미지_목록이_바뀌면_교체하고_기존_파일을_고아_처리한다() {
+    void 이미지를_추가하면_기존_이미지는_변환_결과를_유지하고_고아_처리하지_않는다() {
         String memberId = registerAuthor();
         ArtworkInfo uploaded = uploadMinimal(memberId, "raw/u2.png");
         processImage(uploaded.id(), "raw/u2.png", MediaProcessingStatus.DONE);
@@ -233,6 +265,27 @@ class ArtworkModuleTests {
 
         assertThat(updated.images()).extracting(ArtworkImageInfo::originalKey)
                 .containsExactly("raw/u2.png", "raw/u3.png");
+        assertThat(updated.images().get(0).thumbKey()).isEqualTo("thumb/u2.avif");
+        assertThat(updated.images().get(0).processingStatus()).isEqualTo(ImageProcessingStatus.DONE);
+        assertThat(updated.images().get(1).processingStatus()).isEqualTo(ImageProcessingStatus.PENDING);
+        assertThat(countOrphanRows()).isEqualTo(orphansBefore);
+    }
+
+    @Test
+    void 이미지를_빼면_빠진_이미지만_고아_처리한다() {
+        String memberId = registerAuthor();
+        ArtworkInfo uploaded = uploadMinimal(memberId, "raw/u4.png", "raw/u5.png");
+        processImage(uploaded.id(), "raw/u4.png", MediaProcessingStatus.DONE);
+        processImage(uploaded.id(), "raw/u5.png", MediaProcessingStatus.DONE);
+        awaitReady(memberId, uploaded.id());
+        int orphansBefore = countOrphanRows();
+
+        ArtworkInfo updated = artworkService.updateArtwork(memberId, uploaded.id(), new UpdateArtworkCommand(
+                List.of("raw/u4.png"), 0, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null));
+
+        assertThat(updated.images()).extracting(ArtworkImageInfo::originalKey).containsExactly("raw/u4.png");
+        assertThat(updated.images().get(0).thumbKey()).isEqualTo("thumb/u4.avif");
         assertThat(countOrphanRows()).isGreaterThan(orphansBefore);
     }
 

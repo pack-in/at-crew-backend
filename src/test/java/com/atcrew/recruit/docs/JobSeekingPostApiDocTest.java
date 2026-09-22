@@ -1,6 +1,7 @@
 package com.atcrew.recruit.docs;
 
 import com.atcrew.support.RestDocsIntegrationSupport;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -27,6 +28,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * JobSeekingPost는 관리자 승인 절차가 없으며, 별도의 publish 엔드포인트로 DRAFT/CLOSED에서
  * PUBLISHED로 전이한다(설계 §4.2).
  */
+@Disabled("MVP 범위 밖 — recruit(구인·구직·팀원모집) 미출시, 출시 시 해제")
 class JobSeekingPostApiDocTest extends RestDocsIntegrationSupport {
 
     @Test

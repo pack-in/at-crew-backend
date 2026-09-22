@@ -8,11 +8,14 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
 public interface MediaAssetRepository extends JpaRepository<MediaAsset, Long> {
     List<MediaAsset> findByOwnerTypeAndOwnerIdOrderByOrdinalAsc(MediaOwnerType ownerType, String ownerId);
+    // 목록 화면이 소유자 수만큼 쿼리를 내지 않도록 한 번에 읽는다.
+    List<MediaAsset> findByOwnerTypeAndOwnerIdInOrderByOwnerIdAscOrdinalAsc(MediaOwnerType ownerType, Collection<String> ownerIds);
     // 교체·삭제와 Worker 콜백이 같은 행을 두고 경쟁한다 — 잠근 뒤 읽어 순서를 정한다. 콜백이 먼저면 삭제 쪽이 콜백이
     // 기록한 변형본을 보고 고아로 넘기고, 삭제가 먼저면 콜백은 행이 없다고 보고 변형본을 고아로 넘긴다.
     // 두 쿼리 모두 idx_ma_owner(owner_type, owner_id, ordinal)를 ordinal 순으로 훑으며 잠그므로 잠금 순서가 같아

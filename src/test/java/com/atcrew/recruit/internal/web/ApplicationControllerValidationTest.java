@@ -5,6 +5,7 @@ import com.atcrew.common.web.GlobalExceptionHandler;
 import com.atcrew.recruit.RecruitService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -35,6 +36,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 구인글/팀원모집글 지원 요청은 동일한 요청 DTO({@code CreateApplicationRequest},
  * {@code UpdateApplicationReviewStatusRequest})를 공유하므로 구인글 엔드포인트를 기준으로 검증한다.
  */
+@Disabled("MVP 범위 밖 — recruit(구인·구직·팀원모집) 미출시, 출시 시 해제")
 @ExtendWith(RestDocumentationExtension.class)
 class ApplicationControllerValidationTest {
 

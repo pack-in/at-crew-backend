@@ -273,16 +273,20 @@ public class PortfolioServiceImpl {
             scanFrom = rows.getLast().getOrdinal();
         }
 
+        // 행과 커서를 먼저 고르고 매핑은 한 번만 한다 — 매핑이 JSON 파싱이라 잘라낼 size+1번째 행은 읽지 않는다.
+        List<PortfolioItemSnapshot> pageRows;
+        String nextCursor;
         if (viewableRows.size() > size) {
-            return CursorPage.of(
-                    viewableRows.subList(0, size).stream().map(PortfolioMapper::toCardInfo).toList(),
-                    String.valueOf(viewableRows.get(size - 1).getOrdinal()));
+            pageRows = viewableRows.subList(0, size);
+            nextCursor = String.valueOf(viewableRows.get(size - 1).getOrdinal());
+        } else if (exhausted || lastScannedOrdinal == null) {
+            pageRows = viewableRows;
+            nextCursor = null;
+        } else {
+            pageRows = viewableRows;
+            nextCursor = String.valueOf(lastScannedOrdinal);
         }
-        if (exhausted || lastScannedOrdinal == null) {
-            return CursorPage.of(viewableRows.stream().map(PortfolioMapper::toCardInfo).toList(), null);
-        }
-        return CursorPage.of(viewableRows.stream().map(PortfolioMapper::toCardInfo).toList(),
-                String.valueOf(lastScannedOrdinal));
+        return CursorPage.of(pageRows.stream().map(this::toSnapshotCardInfo).toList(), nextCursor);
     }
 
     private boolean isAdultRating(AgeRating ageRating) {
@@ -318,6 +322,27 @@ public class PortfolioServiceImpl {
         ArtworkSnapshotPayload payload = jsonMapper.readValue(snapshot.getPayloadJson(),
                 ArtworkSnapshotPayload.class);
         return PortfolioMapper.toSnapshotDetailInfo(snapshot, payload, portfolio.getSnapshotOwnerName());
+    }
+
+    private PortfolioArtworkCardInfo toSnapshotCardInfo(PortfolioItemSnapshot snapshot) {
+        return PortfolioMapper.toCardInfo(snapshot, readCardTags(snapshot));
+    }
+
+    /**
+     * 고정형 카드용 tags만 {@code payload_json}에서 읽는다. 상세 본문 전체({@link ArtworkSnapshotPayload})를
+     * 바인딩하지 않는 이유는 images·materials·roles의 중첩 enum·필드가 바뀌어 옛 행이 역직렬화되지 않게 돼도
+     * 스냅샷 상세 1건만 깨지고 카드 목록 전체는 계속 열려야 하기 때문이다(알 수 없는 속성은 무시된다).
+     */
+    private List<String> readCardTags(PortfolioItemSnapshot snapshot) {
+        String payloadJson = snapshot.getPayloadJson();
+        if (payloadJson == null || payloadJson.isBlank()) {
+            return List.of();
+        }
+        return jsonMapper.readValue(payloadJson, SnapshotCardTags.class).tags();
+    }
+
+    // payload_json 중 카드가 읽는 필드만 담는 역직렬화 전용 타입 — 키 이름은 ArtworkSnapshotPayload와 같아야 한다.
+    record SnapshotCardTags(List<String> tags) {
     }
 
     /**
@@ -517,11 +542,15 @@ public class PortfolioServiceImpl {
         portfolioItemSnapshotRepository.saveAll(snapshots);
         portfolio.updateItemCount(snapshots.size());
 
-        return PortfolioMapper.toInfo(portfolio, snapshots.size(),
-                snapshots.stream().map(PortfolioMapper::toCardInfo).toList());
+        // 방금 직렬화한 payload를 다시 파싱하지 않고 메모리의 원본 tags를 쓴다 — 저장 값과 동일하다.
+        List<PortfolioArtworkCardInfo> cards = new ArrayList<>();
+        for (int ordinal = 0; ordinal < snapshots.size(); ordinal++) {
+            cards.add(PortfolioMapper.toCardInfo(snapshots.get(ordinal), artworks.get(ordinal).tags()));
+        }
+        return PortfolioMapper.toInfo(portfolio, snapshots.size(), cards);
     }
 
-    // 카드용 컬럼과 상세 본문 JSON을 함께 채운다(§2.3 하이브리드 저장).
+    // 카드용 컬럼과 상세 본문 JSON을 함께 채운다(§2.3 하이브리드 저장). 카드 tags는 컬럼이 없어 JSON에서 읽는다.
     // 썸네일 판정은 라이브 카드와 동일해야 하므로 PortfolioMapper.toCardInfo 결과를 그대로 쓴다.
     private PortfolioItemSnapshot toSnapshot(String portfolioId, int ordinal, ArtworkInfo artwork) {
         PortfolioArtworkCardInfo card = PortfolioMapper.toCardInfo(artwork);
@@ -815,7 +844,7 @@ public class PortfolioServiceImpl {
             // 예외는 운영 차단뿐이다 — 차단은 고정형 설정보다 우선한다(마이페이지_작가-R39).
             return portfolioItemSnapshotRepository
                     .findByPortfolioIdAndBlockedAtIsNullOrderByOrdinal(portfolio.getId()).stream()
-                    .map(PortfolioMapper::toCardInfo)
+                    .map(this::toSnapshotCardInfo)
                     .toList();
         }
         return loadItemArtworks(portfolio.getId()).stream()

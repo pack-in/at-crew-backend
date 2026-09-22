@@ -18,6 +18,7 @@ import com.atcrew.recruit.TeamWorkLocationType;
 import com.atcrew.billing.internal.persistence.EntitlementBalanceRepository;
 import com.atcrew.support.BillingTestSupport;
 import com.atcrew.support.RestDocsIntegrationSupport;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
@@ -49,6 +50,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>구인글/팀원모집글을 PUBLISHED 상태로 만들려면 작성→(구인글은 제출→관리자 승인) 흐름이 필요하므로,
  * REST 엔드포인트 대신 {@link RecruitService}를 직접 호출해 테스트 데이터를 준비한다.
  */
+@Disabled("MVP 범위 밖 — recruit(구인·구직·팀원모집) 미출시, 출시 시 해제")
 class ApplicationApiDocTest extends RestDocsIntegrationSupport {
 
     @Autowired

@@ -13,7 +13,29 @@ public interface ArtworkService {
 
     ArtworkInfo uploadArtwork(String memberId, UploadArtworkCommand command);
 
+    /** 작품 상세 조회. 조회수는 올리지 않는다 — 열람 집계는 {@link #recordView}가 담당한다(홈-R14). */
     ArtworkInfo getArtwork(String artworkId, String viewerMemberId);
+
+    /**
+     * 작품 열람 기록(홈-R14) — 유효 열람(최초 또는 24시간 경과 재방문)이면 기간 조회수 원천 이벤트를 남기고
+     * 누적 조회수를 올린다. 24시간 안의 반복 열람·본인 작품·열람 불가 작품·없는 작품·탈퇴 회원은 조용히 무시한다.
+     *
+     * @param viewerMemberId 로그인 회원 ID. 있으면 회원 기록으로 남기고 {@code anonymousId}는 보지 않는다
+     * @param anonymousId    비로그인 열람자의 익명 UUID(X-Anonymous-Id). 회원 ID와 둘 다 없으면 기록하지 않는다
+     * @throws com.atcrew.common.exception.DomainException 회원 ID가 없고 익명 UUID가 UUID 형식이 아닐 때(INVALID_ANONYMOUS_ID)
+     */
+    void recordView(String artworkId, String viewerMemberId, String anonymousId);
+
+    /**
+     * 이번 주 가장 핫한 작품(홈-R03·R14) — 최근 168시간 기간 조회수 순으로 최대 6개.
+     *
+     * <p>후보는 {@link #getCommunityArtworks}와 같은 노출 조건(공개·처리 완료·미차단·언어 세그먼트·성인 콘텐츠
+     * 설정)을 통과한 작품이다. 기간 조회수 → 북마크 수 → 등록일(최신) → ID 순으로 정렬하고, 기간 조회수가
+     * 있는 후보로 6개가 차지 않으면 기간 조회수가 0인 후보로 같은 규칙(북마크 수 이하)을 따라 채운다.
+     * 파라미터 의미는 {@link #getCommunityArtworks}와 같다.
+     */
+    List<ArtworkSummaryInfo> getHotArtworks(List<Language> viewerLanguages, String viewerMemberId,
+                                            boolean viewerAdultContentVisible);
 
     ArtworkStatus getArtworkStatus(String memberId, String artworkId);
 

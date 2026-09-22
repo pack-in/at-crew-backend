@@ -4,6 +4,7 @@ import com.atcrew.common.security.JwtProvider;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
 import com.atcrew.support.RestDocsIntegrationSupport;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
@@ -257,6 +258,7 @@ class SecurityIntegrationTest extends RestDocsIntegrationSupport {
                 .andExpect(jsonPath("$.code").value("INTERNAL_SECRET_INVALID"));
     }
 
+    @Disabled("MVP 범위 밖 — recruit(구인·구직·팀원모집) 미출시, 출시 시 해제")
     @Test
     void 재색인_recruit_permitAll_통과() throws Exception {
         // 이슈 #114 회귀 테스트 — SecurityConfig의 permitAll 목록에서 이 경로만 빠져 있어서
@@ -264,6 +266,21 @@ class SecurityIntegrationTest extends RestDocsIntegrationSupport {
         mockMvc.perform(post("/internal/search/reindex/recruit")
                         .header("X-Internal-Secret", "wrong-secret"))
                 .andExpect(jsonPath("$.code").value("INTERNAL_SECRET_INVALID"));
+    }
+
+    @Test
+    void 작품_열람_기록_토큰_없이_401_아님() throws Exception {
+        // 없는 작품이어도 기록 여부를 응답으로 구분하지 않는다 → 204
+        mockMvc.perform(post("/api/artworks/{artworkId}/views", UUID.randomUUID().toString())
+                        .header("X-Anonymous-Id", UUID.randomUUID().toString()))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void 핫_작품_토큰_없이_401_아님() throws Exception {
+        mockMvc.perform(get("/api/community/artworks/hot"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"));
     }
 
     @Test

@@ -1,6 +1,7 @@
 package com.atcrew.recruit.internal.application;
 
 import com.atcrew.member.ArtistProfileViewedEvent;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -14,6 +15,7 @@ import static org.mockito.Mockito.verify;
 /**
  * member 모듈의 ArtistProfileViewedEvent를 수신해 최근 본 작가로 기록하는 리스너 단위 테스트(이슈 #37).
  */
+@Disabled("MVP 범위 밖 — recruit(구인·구직·팀원모집) 미출시, 출시 시 해제")
 class ArtistProfileViewListenerTest {
 
     LikedArtistService likedArtistService = mock(LikedArtistService.class);

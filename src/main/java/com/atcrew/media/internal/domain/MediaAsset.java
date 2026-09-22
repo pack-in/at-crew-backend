@@ -20,6 +20,8 @@ public class MediaAsset {
     @Enumerated(EnumType.STRING) private MediaOwnerType ownerType;
     private String ownerId;
     private Integer ordinal;
+    // 소유자가 정하는 슬롯 이름(recruit의 THUMBNAIL/REFERENCE). media는 값을 해석하지 않고 보관·반환만 한다.
+    @Column(name = "slot_role", length = 30) private String slotRole;
     private String originalKey;
     private String thumbKey;
     private String thumbAdultKey;
@@ -39,12 +41,22 @@ public class MediaAsset {
     protected MediaAsset() { }
     public static MediaAsset pending(MediaOwnerType ownerType, String ownerId, int ordinal, String originalKey,
                                      MediaVariantProfile variantProfile, MediaQualityTier qualityTier) {
+        return pending(ownerType, ownerId, ordinal, null, originalKey, variantProfile, qualityTier);
+    }
+
+    public static MediaAsset pending(MediaOwnerType ownerType, String ownerId, int ordinal, String slotRole,
+                                     String originalKey, MediaVariantProfile variantProfile, MediaQualityTier qualityTier) {
         MediaAsset asset = new MediaAsset();
-        asset.ownerType = ownerType; asset.ownerId = ownerId; asset.ordinal = ordinal;
+        asset.ownerType = ownerType; asset.ownerId = ownerId; asset.ordinal = ordinal; asset.slotRole = slotRole;
         asset.originalKey = originalKey; asset.variantProfile = variantProfile; asset.qualityTier = qualityTier;
         asset.processingStatus = MediaProcessingStatus.PENDING;
         return asset;
     }
+    /** 목록 안에서의 자리만 옮긴다 — 변환 결과와 상태는 그대로 둔다(부분 교체 시 유지되는 이미지). */
+    public void relocate(int ordinal, String slotRole) {
+        this.ordinal = ordinal; this.slotRole = slotRole;
+    }
+
     public void markProcessed(String thumbKey, String thumbAdultKey, String originalAvifKey,
                               MediaProcessingStatus status) {
         this.thumbKey = thumbKey; this.thumbAdultKey = thumbAdultKey; this.originalAvifKey = originalAvifKey;
@@ -53,6 +65,7 @@ public class MediaAsset {
     public MediaOwnerType getOwnerType() { return ownerType; }
     public String getOwnerId() { return ownerId; }
     public Integer getOrdinal() { return ordinal; }
+    public String getSlotRole() { return slotRole; }
     public String getOriginalKey() { return originalKey; }
     public String getThumbKey() { return thumbKey; }
     public String getThumbAdultKey() { return thumbAdultKey; }

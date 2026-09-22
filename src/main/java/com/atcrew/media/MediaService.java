@@ -2,6 +2,7 @@ package com.atcrew.media;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 public interface MediaService {
     /**
@@ -13,7 +14,30 @@ public interface MediaService {
                                       MediaVariantProfile variantProfile, MediaQualityTier qualityTier);
     void replaceAndTriggerProcessing(MediaOwnerType ownerType, String ownerId, List<String> newImageKeys,
                                      MediaVariantProfile variantProfile, MediaQualityTier qualityTier);
+
+    /**
+     * 소유자의 이미지 목록을 {@code desired}와 같게 맞추고, 맞춘 결과를 순서대로 돌려준다. 이미지 상태·변형본 key의
+     * 단일 원천이 media이므로 유지·추가·삭제 판정도 여기서만 한다 — 소유자는 돌려받은 결과만 반영한다(#193).
+     *
+     * <p>판정 규칙:
+     * <ul>
+     *   <li>남는 key가 DONE이면 행과 변환 결과를 그대로 두고 <b>다시 트리거하지 않는다</b>. Worker는 DONE 콜백이
+     *       도달한 뒤 raw를 지우므로, 재트리거하면 "원본 없음"으로 FAILED가 된다.</li>
+     *   <li>남는 key가 PENDING·FAILED면 raw가 아직 있으므로 다시 트리거한다.</li>
+     *   <li>빠진 key만 고아 큐로 보내고 행을 지운다.</li>
+     *   <li>새 key는 PENDING으로 등록하고 트리거한다.</li>
+     * </ul>
+     *
+     * <p>{@code variantProfile}·{@code qualityTier}는 <b>새로 등록하는 행에만</b> 쓴다. 기존 행은 업로드 시점에
+     * 확정된 값을 유지한다(요금제 변경으로 이미 올라간 이미지의 화질이 바뀌지 않게).
+     *
+     * @param desired 원하는 목록. 순서가 곧 ordinal이고, 빈 목록이면 소유자의 자산을 전부 지운다.
+     */
+    List<MediaAssetInfo> syncAssets(MediaOwnerType ownerType, String ownerId, List<MediaAssetSpec> desired,
+                                    MediaVariantProfile variantProfile, MediaQualityTier qualityTier);
     List<MediaAssetInfo> getAssets(MediaOwnerType ownerType, String ownerId);
+    /** 목록 화면용 일괄 조회 — 소유자 ID마다 ordinal 순 자산 목록. 자산이 없는 ID는 결과에 담기지 않는다. */
+    Map<String, List<MediaAssetInfo>> getAssets(MediaOwnerType ownerType, Collection<String> ownerIds);
     /**
      * 소유자의 media_assets 행을 전부 제거하고, 행이 가리키던 파일 중 {@code handledKeys}에 없는 것을 고아 큐로 넘긴다.
      * {@code handledKeys}는 호출자가 이미 지웠거나 고아 큐에 넣은 key다 — 같은 key를 두 번 적재하지 않기 위해 받는다.

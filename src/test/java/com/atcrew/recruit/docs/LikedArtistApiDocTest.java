@@ -1,6 +1,7 @@
 package com.atcrew.recruit.docs;
 
 import com.atcrew.support.RestDocsIntegrationSupport;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -29,6 +30,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>기업 계정 전용 기능이지만 기업 인증 게이팅은 아직 스텁이므로, 인증된 회원 2명(기업 역할·작가 역할)을
  * 회원가입으로 준비해 관심 작가 저장/해제, 최근 본 작가 기록/조회 흐름을 문서화한다.
  */
+@Disabled("MVP 범위 밖 — recruit(구인·구직·팀원모집) 미출시, 출시 시 해제")
 class LikedArtistApiDocTest extends RestDocsIntegrationSupport {
 
     @Test

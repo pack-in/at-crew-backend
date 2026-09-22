@@ -51,24 +51,28 @@ class ArtworkSortModuleTests {
     JdbcTemplate jdbcTemplate;
 
     @Test
-    void 작품_상세_조회는_본인을_빼고_타인과_비로그인_조회만_센다() {
+    void 조회수는_열람_기록으로만_오르고_본인과_24시간_내_반복_열람은_빼고_센다() {
         String author = registerMember();
         String viewer = registerMember();
         String artworkId = publishReady(author, ArtworkField.ANIMATION, "raw/view-1.png");
 
-        artworkService.getArtwork(artworkId, author);
+        // 상세 조회(GET)는 조회수를 올리지 않는다(홈-R14 — 열람자를 식별할 수 없는 경로라 집계에서 뺐다).
+        artworkService.getArtwork(artworkId, viewer);
         assertThat(viewCountOf(artworkId)).isZero();
 
-        artworkService.getArtwork(artworkId, viewer);
+        artworkService.recordView(artworkId, author, null);
+        assertThat(viewCountOf(artworkId)).isZero();
+
+        artworkService.recordView(artworkId, viewer, null);
         assertThat(viewCountOf(artworkId)).isEqualTo(1L);
 
-        // 비로그인 조회도 남의 조회다 — dedup 없이 열람마다 증가한다.
-        artworkService.getArtwork(artworkId, null);
+        // 비로그인 열람은 익명 UUID 기준으로 센다.
+        artworkService.recordView(artworkId, null, UUID.randomUUID().toString());
         assertThat(viewCountOf(artworkId)).isEqualTo(2L);
 
-        // 같은 사람이 다시 봐도 계속 증가한다(단순 증가 정책).
-        artworkService.getArtwork(artworkId, viewer);
-        assertThat(viewCountOf(artworkId)).isEqualTo(3L);
+        // 같은 사람이 24시간 안에 다시 보면 세지 않는다.
+        artworkService.recordView(artworkId, viewer, null);
+        assertThat(viewCountOf(artworkId)).isEqualTo(2L);
     }
 
     @Test
@@ -137,8 +141,12 @@ class ArtworkSortModuleTests {
                 artworkIds.get(0), 7L, artworkIds.get(1), 7L, artworkIds.get(2), 7L,
                 artworkIds.get(3), 3L, artworkIds.get(4), 3L,
                 artworkIds.get(5), 0L);
-        viewCounts.forEach((id, count) ->
-                jdbcTemplate.update("UPDATE artworks SET view_count = ? WHERE id = ?", count, id));
+        // 조회수는 실제 열람 기록 경로로 만든다 — 열람자마다 다른 익명 UUID라 24시간 dedup에 걸리지 않는다.
+        viewCounts.forEach((id, count) -> {
+            for (int i = 0; i < count; i++) {
+                artworkService.recordView(id, null, UUID.randomUUID().toString());
+            }
+        });
 
         List<String> paged = pageThrough(field, ArtworkSort.VIEW_COUNT, 2);
 

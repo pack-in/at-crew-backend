@@ -12,7 +12,7 @@ public record ArtworkSummaryInfo(
         String thumbKey,           // 카드 썸네일 R2 키
         String thumbAdultKey,      // 성인 블러 썸네일 R2 키
         ArtworkField artworkField, // 작품 분야
-        List<String> tags,         // 태그
+        List<ArtworkRole> roles,   // 담당 업무(역할)
         AgeRating ageRating,       // 연령 등급
         Visibility visibility,     // 작품 피드 공개 여부
         // 운영 정책·법적 조치에 따른 외부 노출 중단 여부(마이페이지_작가-R39) — 작품 관리 화면에서

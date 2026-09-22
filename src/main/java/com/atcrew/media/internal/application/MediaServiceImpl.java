@@ -13,7 +13,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.Collection;
 import java.util.Set;
@@ -85,9 +88,61 @@ class MediaServiceImpl implements MediaService {
         assets.flush();
         registerAndTriggerProcessing(ownerType, ownerId, newImageKeys, variantProfile, qualityTier);
     }
+    /**
+     * 유지되는 행의 ordinal을 확정값(0부터)으로 바로 옮기면 아직 자리를 비우지 않은 다른 행과
+     * uk_ma_owner_order가 충돌한다. 한 번에 이 오프셋만큼 밀어 두고 확정한다 — 소유자당 이미지 30장 상한보다
+     * 충분히 크다.
+     */
+    private static final int ORDINAL_STAGING_OFFSET = 1_000;
+
+    @Override @Transactional public List<MediaAssetInfo> syncAssets(MediaOwnerType ownerType, String ownerId,
+            List<MediaAssetSpec> desired, MediaVariantProfile variantProfile, MediaQualityTier qualityTier) {
+        validateSpecs(ownerType, ownerId, desired, variantProfile, qualityTier);
+        List<MediaAsset> existing = assets.findByOwnerForUpdate(ownerType, ownerId);
+        Set<String> desiredKeys = desired.stream().map(MediaAssetSpec::key).collect(Collectors.toSet());
+
+        List<MediaAsset> removed = existing.stream().filter(a -> !desiredKeys.contains(a.getOriginalKey())).toList();
+        markOrphaned(keysOf(removed));
+        assets.deleteAll(removed);
+        assets.flush();
+
+        Map<String, MediaAsset> kept = existing.stream().filter(a -> desiredKeys.contains(a.getOriginalKey()))
+                .collect(Collectors.toMap(MediaAsset::getOriginalKey, a -> a));
+        kept.values().forEach(a -> a.relocate(a.getOrdinal() + ORDINAL_STAGING_OFFSET, a.getSlotRole()));
+        assets.flush();
+
+        List<MediaAsset> result = new ArrayList<>();
+        List<String> toTrigger = new ArrayList<>();
+        for (int i = 0; i < desired.size(); i++) {
+            MediaAssetSpec spec = desired.get(i);
+            MediaAsset asset = kept.get(spec.key());
+            if (asset == null) {
+                asset = assets.save(MediaAsset.pending(ownerType, ownerId, i, spec.slotRole(), spec.key(), variantProfile, qualityTier));
+                toTrigger.add(spec.key());
+            } else {
+                asset.relocate(i, spec.slotRole());
+                // DONE은 raw가 이미 지워져 다시 트리거하면 FAILED가 된다 — 변환 결과를 그대로 물려받는다.
+                if (asset.getProcessingStatus() != MediaProcessingStatus.DONE) toTrigger.add(spec.key());
+            }
+            result.add(asset);
+        }
+        assets.flush();
+        if (!toTrigger.isEmpty()) triggerAfterCommit(ownerType, ownerId, toTrigger, variantProfile, qualityTier);
+        return result.stream().map(MediaServiceImpl::toInfo).toList();
+    }
+
     @Override @Transactional(readOnly = true) public List<MediaAssetInfo> getAssets(MediaOwnerType ownerType, String ownerId) {
         return assets.findByOwnerTypeAndOwnerIdOrderByOrdinalAsc(ownerType, ownerId).stream()
-                .map(a -> new MediaAssetInfo(a.getOriginalKey(), a.getThumbKey(), a.getThumbAdultKey(), a.getOriginalAvifKey(), a.getProcessingStatus())).toList();
+                .map(MediaServiceImpl::toInfo).toList();
+    }
+    @Override @Transactional(readOnly = true) public Map<String, List<MediaAssetInfo>> getAssets(MediaOwnerType ownerType, Collection<String> ownerIds) {
+        if (ownerIds == null || ownerIds.isEmpty()) return Map.of();
+        return assets.findByOwnerTypeAndOwnerIdInOrderByOwnerIdAscOrdinalAsc(ownerType, Set.copyOf(ownerIds)).stream()
+                .collect(Collectors.groupingBy(MediaAsset::getOwnerId, Collectors.mapping(MediaServiceImpl::toInfo, Collectors.toList())));
+    }
+    private static MediaAssetInfo toInfo(MediaAsset a) {
+        return new MediaAssetInfo(a.getOriginalKey(), a.getThumbKey(), a.getThumbAdultKey(), a.getOriginalAvifKey(),
+                a.getProcessingStatus(), a.getOrdinal(), a.getSlotRole());
     }
     /**
      * 자산 행을 지우면 그 행이 가리키던 파일(원본·변형본)은 고아 큐로 보낸다. 영구 삭제 키 목록은 삭제 시점의 소유자
@@ -109,6 +164,15 @@ class MediaServiceImpl implements MediaService {
 
     /** 고아 key 적재의 유일한 경로 — null·빈 key는 걸러내고, 남는 것이 없으면 행을 만들지 않는다. */
     @Override @Transactional public void markOrphaned(List<String> keys) { if (keys != null && keys.stream().anyMatch(k -> k != null && !k.isBlank())) orphans.save(OrphanedMediaKey.ofKeys(keys)); }
+    // 같은 key를 두 번 넣으면 콜백이 행을 하나로 특정하지 못해 그 소유자의 처리가 영구히 막힌다.
+    private static void validateSpecs(MediaOwnerType ownerType, String ownerId, List<MediaAssetSpec> desired,
+                                      MediaVariantProfile profile, MediaQualityTier qualityTier) {
+        if (ownerType == null || ownerId == null || ownerId.isBlank() || profile == null || qualityTier == null
+                || desired == null || desired.size() > 30
+                || desired.stream().anyMatch(s -> s == null || s.key() == null || s.key().isBlank())
+                || desired.stream().map(MediaAssetSpec::key).distinct().count() != desired.size())
+            throw new IllegalArgumentException("유효하지 않은 media asset 요청입니다.");
+    }
     private static void validate(MediaOwnerType ownerType, String ownerId, List<String> imageKeys, MediaVariantProfile profile, MediaQualityTier qualityTier) {
         if (ownerType == null || ownerId == null || ownerId.isBlank() || profile == null || qualityTier == null || imageKeys == null || imageKeys.isEmpty() || imageKeys.stream().anyMatch(k -> k == null || k.isBlank())) throw new IllegalArgumentException("유효하지 않은 media asset 요청입니다.");
     }

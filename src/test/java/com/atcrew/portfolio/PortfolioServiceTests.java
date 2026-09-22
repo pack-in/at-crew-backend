@@ -1280,6 +1280,73 @@ class PortfolioServiceTests {
         assertThat(detail.images()).isEmpty();
         assertThat(detail.tags()).isEmpty();
         assertThat(detail.representativeImageIndex()).isZero();
+        // 카드 목록도 tags가 없는 구버전 행을 빈 목록으로 내려준다.
+        assertThat(portfolioService.getSharedPortfolioArtworks(created.shareSlug(), null, 20).items())
+                .extracting(PortfolioArtworkCardInfo::tags)
+                .containsExactly(List.of(), List.of("태그"));
+    }
+
+    // 작품 카드에는 태그가 함께 노출된다 — 최신 반영형은 원본 작품의 현재 태그를 쓴다.
+    @Test
+    void 최신_반영형_공유_작품_목록_카드에_태그가_담긴다() {
+        String memberId = registerProMember();
+        String firstArtworkId = uploadReadyArtwork(memberId);
+        String secondArtworkId = uploadReadyArtwork(memberId);
+        PortfolioInfo created = portfolioService.createShared(memberId, "공유 포트폴리오", ReflectionType.LIVE,
+                List.of(firstArtworkId, secondArtworkId));
+
+        // 포트폴리오 생성 뒤 한 작품의 태그만 바꾼다 — 카드가 작품별 현재 값을 따라가는지 본다.
+        artworkService.updateArtwork(memberId, secondArtworkId, new UpdateArtworkCommand(
+                null, null, null, null, null, null, null, null,
+                null, null, null, List.of("바뀐 태그"), null, null, null, null, null, null, null));
+
+        assertThat(portfolioService.getSharedPortfolioArtworks(created.shareSlug(), null, 20).items())
+                .extracting(PortfolioArtworkCardInfo::artworkId, PortfolioArtworkCardInfo::tags)
+                .containsExactly(tuple(firstArtworkId, List.of("태그")), tuple(secondArtworkId, List.of("바뀐 태그")));
+    }
+
+    // 고정형 카드의 태그는 payload_json에 얼린 값을 쓴다 — 원본 태그가 바뀌어도 따라가지 않는다(§5.1).
+    @Test
+    void 고정형_카드에는_생성_시점_태그가_담긴다() {
+        String memberId = registerProMember();
+        String artworkId = uploadArtwork(memberId);
+        String fillerArtworkId = uploadArtwork(memberId);
+        PortfolioInfo created = portfolioService.createShared(
+                memberId, "고정형", ReflectionType.SNAPSHOT, List.of(artworkId, fillerArtworkId));
+
+        artworkService.updateArtwork(memberId, artworkId, new UpdateArtworkCommand(
+                null, null, null, null, null, null, null, null,
+                null, null, null, List.of("바뀐 태그"), null, null, null, null, null, null, null));
+
+        assertThat(portfolioService.getSharedPortfolioArtworks(created.shareSlug(), null, 20).items())
+                .extracting(PortfolioArtworkCardInfo::tags)
+                .containsExactly(List.of("태그"), List.of("태그"));
+        assertThat(portfolioService.getPortfolio(memberId, created.id()).artworks())
+                .extracting(PortfolioArtworkCardInfo::tags)
+                .containsExactly(List.of("태그"), List.of("태그"));
+    }
+
+    // 카드는 payload_json의 tags만 읽는다 — 상세 본문의 중첩 enum이 역직렬화되지 않는 옛 행이 있어도
+    // 카드 목록 전체가 깨지지 않아야 한다(깨지는 건 그 스냅샷의 상세뿐이다).
+    @Test
+    void 상세_본문을_읽을_수_없는_스냅샷도_카드_목록에는_태그와_함께_나온다() {
+        String memberId = registerProMember();
+        String artworkId = uploadArtwork(memberId);
+        String fillerArtworkId = uploadArtwork(memberId);
+        PortfolioInfo created = portfolioService.createShared(
+                memberId, "고정형", ReflectionType.SNAPSHOT, List.of(artworkId, fillerArtworkId));
+        String snapshotId = created.artworks().getFirst().snapshotId();
+
+        jdbcTemplate.update(
+                "UPDATE portfolio_item_snapshots SET payload_json = ? WHERE snapshot_public_id = ?",
+                "{\"tags\":[\"옛 태그\"],\"roles\":[\"REMOVED_ROLE\"]}", snapshotId);
+
+        assertThat(portfolioService.getSharedPortfolioArtworks(created.shareSlug(), null, 20).items())
+                .extracting(PortfolioArtworkCardInfo::tags)
+                .containsExactly(List.of("옛 태그"), List.of("태그"));
+        assertThat(portfolioService.getPortfolio(memberId, created.id()).artworks())
+                .extracting(PortfolioArtworkCardInfo::tags)
+                .containsExactly(List.of("옛 태그"), List.of("태그"));
     }
 
     @Test
