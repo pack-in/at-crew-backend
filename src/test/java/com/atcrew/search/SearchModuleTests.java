@@ -1,5 +1,6 @@
 package com.atcrew.search;
 
+import com.atcrew.media.internal.application.MediaKeySigner;
 import com.atcrew.SharedContainersConfig;
 import com.atcrew.support.DatabaseCleanupExtension;
 import org.junit.jupiter.api.Disabled;
@@ -62,6 +63,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ImportTestcontainers(SharedContainersConfig.class)
 @ExtendWith(DatabaseCleanupExtension.class)
 class SearchModuleTests {
+
+    // 업로드 key의 소유자 서명(#190) — 테스트도 같은 규칙으로 key를 만든다.
+    @Autowired
+    MediaKeySigner keySigner;
 
     @Autowired
     EntitlementBalanceRepository balanceRepository;
@@ -221,7 +226,7 @@ class SearchModuleTests {
         String token = uniqueToken();
         String authorId = registerMember();
         // 커맨드의 submit=true라 저장 즉시 PENDING이며, 공개 검색 대상이 아니다
-        JobPostingInfo pending = recruitService.createJobPosting(authorId, jobPostingCommand(token + " 미공개 공고"));
+        JobPostingInfo pending = recruitService.createJobPosting(authorId, jobPostingCommand(authorId, token + " 미공개 공고"));
 
         SearchPage<SearchResultItem> beforeApproval = searchService.search(recruitQuery(token, 20));
         assertThat(beforeApproval.items()).isEmpty();
@@ -396,12 +401,12 @@ class SearchModuleTests {
 
     // 작성 → 관리자 승인까지 마친 PUBLISHED 구인글 ID를 반환한다(커맨드의 submit=true라 저장 즉시 PENDING).
     private String publishedJobPosting(String authorMemberId, String title) {
-        JobPostingInfo created = recruitService.createJobPosting(authorMemberId, jobPostingCommand(title));
+        JobPostingInfo created = recruitService.createJobPosting(authorMemberId, jobPostingCommand(authorMemberId, title));
         return recruitService.approveJobPosting(created.id()).id();
     }
 
     // submit=true라 저장 즉시 PENDING — 검색 노출 전 상태를 검증할 때는 approveJobPosting을 호출하지 않는다.
-    private CreateJobPostingCommand jobPostingCommand(String title) {
+    private CreateJobPostingCommand jobPostingCommand(String authorMemberId, String title) {
         return new CreateJobPostingCommand(
                 title, "앳크루", "대표", "웹툰", "서울", "02-000-0000", "https://example.com",
                 "회사 소개", true, true, false,
@@ -411,7 +416,8 @@ class SearchModuleTests {
                 null, null, true, true, true,
                 JobPaymentType.ANNUAL_SALARY, JobPaymentUnit.ANNUAL, 3000L, 4000L, true,
                 null, null, false, "복지 설명", List.of("식대"),
-                "https://img.example/thumb.png", List.of("https://img.example/ref.png"), true);
+                // 이미지 필드는 R2 key다(이름과 달리 URL이 아니다) — 소유 검증(#190)을 통과하려면 서명이 필요하다.
+                signedKey(authorMemberId, "search-thumb"), List.of(signedKey(authorMemberId, "search-ref")), true);
     }
 
     private ArtworkInfo uploadReadyArtwork(ArtworkField field, CreativeType creativeType,
@@ -429,7 +435,7 @@ class SearchModuleTests {
     private ArtworkInfo uploadReadyArtwork(String memberId, ArtworkField field, CreativeType creativeType,
                                             List<ArtworkRole> roles, List<Genre> genres, AgeRating ageRating,
                                             String title) {
-        List<String> imageKeys = List.of("raw/" + UUID.randomUUID() + ".png");
+        List<String> imageKeys = List.of(signedKey(memberId, UUID.randomUUID().toString()));
         ArtworkInfo artwork = artworkService.uploadArtwork(memberId, new UploadArtworkCommand(
                 imageKeys, 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 title, "설명",
@@ -482,4 +488,13 @@ class SearchModuleTests {
     private String uniqueHandle() {
         return "search" + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
     }
+
+    /**
+     * 그 회원에게 발급된 것과 같은 형태의 업로드 key(#190) — 소유 검증이 서명만 보므로 presign을 부르지 않고
+     * 같은 규칙으로 만든다.
+     */
+    private String signedKey(String memberId, String name) {
+        return "raw/" + keySigner.sign(memberId, name) + "/" + name + ".png";
+    }
+
 }

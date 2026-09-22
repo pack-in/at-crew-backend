@@ -27,16 +27,30 @@ class MediaServiceImpl implements MediaService {
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of("image/jpeg", "image/png", "image/webp");
     private final MediaAssetRepository assets; private final OrphanedMediaKeyRepository orphans;
     private final ArtworkStoragePort storagePort; private final ImageProcessingWorker worker;
+    private final MediaKeySigner signer;
     MediaServiceImpl(MediaAssetRepository assets, OrphanedMediaKeyRepository orphans, ArtworkStoragePort storagePort,
-                     ImageProcessingWorker worker) { this.assets = assets; this.orphans = orphans; this.storagePort = storagePort; this.worker = worker; }
-    @Override public List<PresignedUrlInfo> generatePresignedUrls(int count, List<String> contentTypes, List<Long> fileSizes) {
+                     ImageProcessingWorker worker, MediaKeySigner signer) { this.assets = assets; this.orphans = orphans; this.storagePort = storagePort; this.worker = worker; this.signer = signer; }
+
+    @Override public Set<String> unownedKeys(String memberId, Collection<String> keys) {
+        if (keys == null || keys.isEmpty()) return Set.of();
+        return keys.stream().filter(k -> k != null && !k.isBlank())
+                .filter(k -> !signer.isOwnedBy(k, memberId))
+                .collect(Collectors.toCollection(java.util.LinkedHashSet::new));
+    }
+    @Override public List<PresignedUrlInfo> generatePresignedUrls(String memberId, int count, List<String> contentTypes, List<Long> fileSizes) {
+        if (memberId == null || memberId.isBlank()) throw new IllegalArgumentException("발급 대상 회원이 필요합니다.");
         if (count < 1 || count > 30) throw new IllegalArgumentException("이미지 개수는 1~30개여야 합니다.");
         if (contentTypes == null || contentTypes.size() != count || contentTypes.stream().anyMatch(t -> !ALLOWED_CONTENT_TYPES.contains(t)))
             throw new IllegalArgumentException("지원하지 않는 이미지 content type입니다.");
         // fileSizes는 선택 입력이다 — 보내지 않는 클라이언트도 계속 받아준다(Worker가 실측으로 다시 거른다).
         if (fileSizes != null && fileSizes.stream().anyMatch(s -> s != null && s > MediaConstraints.MAX_ORIGINAL_BYTES))
             throw new IllegalArgumentException("이미지 용량이 상한을 초과했습니다.");
-        return contentTypes.stream().map(type -> { String key = "raw/" + UuidV7Generator.generate() + extensionFor(type); return new PresignedUrlInfo(key, storagePort.generatePresignedPutUrl(key, type)); }).toList();
+        // key에 소유자 서명을 넣는다(#190) — 제출 시 이 서명으로 "내가 발급받은 key인가"를 조회 없이 판정한다.
+        return contentTypes.stream().map(type -> {
+            String uuid = UuidV7Generator.generate();
+            String key = "raw/" + signer.sign(memberId, uuid) + "/" + uuid + extensionFor(type);
+            return new PresignedUrlInfo(key, storagePort.generatePresignedPutUrl(key, type));
+        }).toList();
     }
     @Override @Transactional public void registerAndTriggerProcessing(MediaOwnerType ownerType, String ownerId,
             List<String> imageKeys, MediaVariantProfile variantProfile, MediaQualityTier qualityTier) {
@@ -161,8 +175,14 @@ class MediaServiceImpl implements MediaService {
                 || desired.stream().map(MediaAssetSpec::key).distinct().count() != desired.size())
             throw new IllegalArgumentException("유효하지 않은 media asset 요청입니다.");
     }
+    // 중복 key는 교체 경로와 같은 이유로 여기서도 막는다 — 같은 소유자에 같은 original_key가 둘이면 콜백이 행을
+    // 특정하지 못해 그 소유자의 이미지 처리가 영구히 멈춘다.
     private static void validate(MediaOwnerType ownerType, String ownerId, List<String> imageKeys, MediaVariantProfile profile, MediaQualityTier qualityTier) {
-        if (ownerType == null || ownerId == null || ownerId.isBlank() || profile == null || qualityTier == null || imageKeys == null || imageKeys.isEmpty() || imageKeys.stream().anyMatch(k -> k == null || k.isBlank())) throw new IllegalArgumentException("유효하지 않은 media asset 요청입니다.");
+        if (ownerType == null || ownerId == null || ownerId.isBlank() || profile == null || qualityTier == null
+                || imageKeys == null || imageKeys.isEmpty() || imageKeys.size() > 30
+                || imageKeys.stream().anyMatch(k -> k == null || k.isBlank())
+                || imageKeys.stream().distinct().count() != imageKeys.size())
+            throw new IllegalArgumentException("유효하지 않은 media asset 요청입니다.");
     }
     private static String extensionFor(String contentType) { return switch (contentType) { case "image/jpeg" -> ".jpg"; case "image/png" -> ".png"; case "image/webp" -> ".webp"; default -> throw new IllegalArgumentException("지원하지 않는 이미지 content type입니다."); }; }
 }

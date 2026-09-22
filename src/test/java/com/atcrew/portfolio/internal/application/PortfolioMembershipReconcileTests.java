@@ -1,5 +1,6 @@
 package com.atcrew.portfolio.internal.application;
 
+import com.atcrew.media.internal.application.MediaKeySigner;
 import com.atcrew.SharedContainersConfig;
 import com.atcrew.support.DatabaseCleanupExtension;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -49,6 +50,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ImportTestcontainers(SharedContainersConfig.class)
 @ExtendWith(DatabaseCleanupExtension.class)
 class PortfolioMembershipReconcileTests {
+
+    // 업로드 key의 소유자 서명(#190) — 테스트도 같은 규칙으로 key를 만든다.
+    @Autowired
+    MediaKeySigner keySigner;
 
     @Autowired
     PortfolioMembershipReconcileScheduler scheduler;
@@ -229,7 +234,7 @@ class PortfolioMembershipReconcileTests {
     }
 
     private String uploadArtwork(String memberId) {
-        return uploadArtwork(memberId, "raw/" + UUID.randomUUID() + ".png");
+        return uploadArtwork(memberId, signedKey(memberId, UUID.randomUUID().toString()));
     }
 
     private String uploadArtwork(String memberId, String imageKey) {
@@ -243,7 +248,7 @@ class PortfolioMembershipReconcileTests {
 
     /** 공개 범위 변경은 READY 상태를 요구하므로 media webhook 경로로 READY까지 올린다(PortfolioServiceTests와 동일). */
     private String uploadReadyArtwork(String memberId) {
-        String imageKey = "raw/" + UUID.randomUUID() + ".png";
+        String imageKey = signedKey(memberId, UUID.randomUUID().toString());
         String artworkId = uploadArtwork(memberId, imageKey);
         mediaCallbackService.process(MediaOwnerType.ARTWORK, artworkId, imageKey,
                 "thumb", null, "avif", MediaProcessingStatus.DONE);
@@ -290,4 +295,13 @@ class PortfolioMembershipReconcileTests {
         // 실패 시 마지막 관측 상태를 남긴다 — 상태 이름만 알아도 어느 단계에서 멈췄는지 좁혀진다(#72).
         throw new AssertionError("READY 전환 대기 시간 초과: artworkId=" + artworkId + " actual=" + lastSeen);
     }
+
+    /**
+     * 그 회원에게 발급된 것과 같은 형태의 업로드 key(#190) — 소유 검증이 서명만 보므로 presign을 부르지 않고
+     * 같은 규칙으로 만든다.
+     */
+    private String signedKey(String memberId, String name) {
+        return "raw/" + keySigner.sign(memberId, name) + "/" + name + ".png";
+    }
+
 }

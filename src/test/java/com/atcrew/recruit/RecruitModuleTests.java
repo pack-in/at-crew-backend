@@ -14,6 +14,7 @@ import com.atcrew.common.exception.DomainException;
 import com.atcrew.media.MediaAssetProcessedEvent;
 import com.atcrew.media.MediaAssetInfo;
 import com.atcrew.media.internal.application.MediaCallbackService;
+import com.atcrew.media.internal.application.MediaKeySigner;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaProcessingStatus;
 import com.atcrew.media.MediaService;
@@ -80,6 +81,10 @@ class RecruitModuleTests {
     // Worker webhook이 도달하는 지점 — 여기서 media 자산이 갱신되고 MediaAssetProcessedEvent가 발행된다.
     @Autowired
     MediaCallbackService mediaCallbackService;
+
+    // 업로드 key의 소유자 서명(#190) — 테스트도 같은 규칙으로 key를 만든다.
+    @Autowired
+    MediaKeySigner keySigner;
 
     @Autowired
     PlatformTransactionManager transactionManager;
@@ -354,8 +359,8 @@ class RecruitModuleTests {
     @Test
     void 구인글_이미지는_처리_전에는_원본키_처리_후에는_AVIF키로_응답한다() {
         String authorId = registerMember("media-job-author");
-        String thumbnailKey = presignKey();
-        String referenceKey = presignKey();
+        String thumbnailKey = presignKey(authorId);
+        String referenceKey = presignKey(authorId);
 
         JobPostingInfo created = recruitService.createJobPosting(authorId,
                 jobPostingCommand("이미지 구인글", thumbnailKey, List.of(referenceKey)));
@@ -388,8 +393,8 @@ class RecruitModuleTests {
     @Test
     void 같은_구인글의_이미지_이벤트가_동시에_도착해도_READY로_전이된다() throws Exception {
         String authorId = registerMember("media-race-author");
-        String thumbnailKey = presignKey();
-        String referenceKey = presignKey();
+        String thumbnailKey = presignKey(authorId);
+        String referenceKey = presignKey(authorId);
         JobPostingInfo created = recruitService.createJobPosting(authorId,
                 jobPostingCommand("동시 이벤트 구인글", thumbnailKey, List.of(referenceKey)));
 
@@ -407,7 +412,7 @@ class RecruitModuleTests {
     @Test
     void 구인글_이미지를_전부_지우면_media_assets_행도_즉시_정리된다() {
         String authorId = registerMember("media-clear-author");
-        String thumbnailKey = presignKey();
+        String thumbnailKey = presignKey(authorId);
         JobPostingInfo created = recruitService.createJobPosting(authorId,
                 jobPostingCommand("이미지 지울 구인글", thumbnailKey, List.of()));
         assertThat(mediaService.getAssets(MediaOwnerType.JOB_POSTING, created.id())).isNotEmpty();
@@ -464,8 +469,8 @@ class RecruitModuleTests {
     @Test
     void 이미지_일부가_실패해도_나머지가_성공하면_READY로_전환된다() {
         String authorId = registerMember("media-partial-author");
-        String thumbnailKey = presignKey();
-        String referenceKey = presignKey();
+        String thumbnailKey = presignKey(authorId);
+        String referenceKey = presignKey(authorId);
 
         JobPostingInfo created = recruitService.createJobPosting(authorId,
                 jobPostingCommand("부분 실패 구인글", thumbnailKey, List.of(referenceKey)));
@@ -488,7 +493,7 @@ class RecruitModuleTests {
     @Test
     void 구직글_이미지를_교체하면_자식행이_새_키로_대체되고_다시_PENDING이_된다() {
         String authorId = registerMember("media-seeking-author");
-        String firstKey = presignKey();
+        String firstKey = presignKey(authorId);
         JobSeekingPostInfo created = recruitService.createJobSeekingPost(authorId, new CreateJobSeekingPostCommand(
                 "이미지 구직글", List.of(ArtworkRole.TOTAL_ARTWORK), List.of(Genre.FANTASY), "선화 위주",
                 FeedbackStyle.PERIODIC, WorkStyle.COLLABORATIVE, "협의", "포트폴리오 소개",
@@ -501,7 +506,7 @@ class RecruitModuleTests {
         awaitCondition(() -> jobSeekingPostRepository.findById(created.id()).orElseThrow()
                 .getImageProcessingStatus() == RecruitImageProcessingStatus.READY);
 
-        String secondKey = presignKey();
+        String secondKey = presignKey(authorId);
         JobSeekingPostInfo updated = recruitService.updateJobSeekingPost(authorId, created.id(),
                 new UpdateJobSeekingPostCommand(null, null, null, null, null, null, null, null,
                         List.of(secondKey)));
@@ -513,8 +518,12 @@ class RecruitModuleTests {
     }
 
     // presign이 발급하는 key 형태(raw/<uuid>.jpg)를 흉내낸다.
-    private String presignKey() {
-        return "raw/" + UUID.randomUUID() + ".jpg";
+    /**
+     * presign이 발급하는 key 형태 — 소유자 서명이 들어간다(#190). 검증이 서명만 보므로 테스트도 같은 규칙으로 만든다.
+     */
+    private String presignKey(String memberId) {
+        String uuid = UUID.randomUUID().toString();
+        return "raw/" + keySigner.sign(memberId, uuid) + "/" + uuid + ".jpg";
     }
 
     private RecruitImageProcessingStatus imageProcessingStatusOf(String jobPostingId) {

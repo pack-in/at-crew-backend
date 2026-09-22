@@ -2,6 +2,7 @@ package com.atcrew.recruit.internal.web;
 
 import com.atcrew.common.response.ApiResponse;
 import com.atcrew.media.MediaConstraints;
+import com.atcrew.common.security.SecurityUtils;
 import com.atcrew.media.MediaService;
 import com.atcrew.media.PresignedUrlInfo;
 import com.atcrew.recruit.internal.exception.RecruitErrorCode;
@@ -29,9 +30,11 @@ import java.util.List;
 class RecruitImageController {
 
     private final MediaService mediaService;
+    private final SecurityUtils securityUtils;
 
-    RecruitImageController(MediaService mediaService) {
+    RecruitImageController(MediaService mediaService, SecurityUtils securityUtils) {
         this.mediaService = mediaService;
+        this.securityUtils = securityUtils;
     }
 
     @Operation(summary = "이미지 Presigned URL 발급",
@@ -53,6 +56,7 @@ class RecruitImageController {
             }
         }
         return ApiResponse.success(
-                mediaService.generatePresignedUrls(request.count(), request.contentTypes(), request.fileSizes()));
+                mediaService.generatePresignedUrls(securityUtils.getCurrentMemberId(), request.count(),
+                        request.contentTypes(), request.fileSizes()));
     }
 }

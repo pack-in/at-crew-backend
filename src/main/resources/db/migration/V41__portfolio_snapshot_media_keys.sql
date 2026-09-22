@@ -16,7 +16,7 @@ CREATE TABLE portfolio_snapshot_media_keys (
         REFERENCES portfolio_item_snapshots (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
--- 기존 스냅샷 채우기: 카드 썸네일 2종, 상세 이미지 4종. 자료 첨부 key는 소유 검증 없는 입력이라 넣지 않는다(#190).
+-- 기존 스냅샷 채우기: 카드 썸네일 2종, 상세 이미지 4종. 자료 첨부 key는 소유 검증이 생긴 뒤 V46에서 채운다(#190).
 -- 기존 컬럼은 utf8mb4_unicode_ci라 UNION에서 JSON_TABLE 결과와 섞이지 않는다 — 모두 utf8mb4_bin으로 맞춘다.
 INSERT IGNORE INTO portfolio_snapshot_media_keys (snapshot_id, media_key)
 SELECT k.snapshot_id, k.media_key FROM (

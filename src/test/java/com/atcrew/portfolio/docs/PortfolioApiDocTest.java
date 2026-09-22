@@ -1,5 +1,6 @@
 package com.atcrew.portfolio.docs;
 
+import com.atcrew.media.internal.application.MediaKeySigner;
 import com.atcrew.artwork.AgeRating;
 import com.atcrew.artwork.ArtworkField;
 import com.atcrew.artwork.ArtworkRole;
@@ -63,6 +64,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * (PortfolioServiceTests와 동일).
  */
 class PortfolioApiDocTest extends RestDocsIntegrationSupport {
+
+    // 업로드 key의 소유자 서명(#190) — 테스트도 같은 규칙으로 key를 만든다.
+    @Autowired
+    MediaKeySigner keySigner;
 
     @Autowired
     ArtworkService artworkService;
@@ -676,7 +681,7 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
 
     /** presign·R2 업로드 HTTP 플로우 대신 ArtworkService를 직접 호출해 작품을 준비한다. */
     private String uploadArtwork(String memberId, String title) {
-        return uploadArtwork(memberId, title, "raw/" + UUID.randomUUID() + ".png");
+        return uploadArtwork(memberId, title, signedKey(memberId, UUID.randomUUID().toString()));
     }
 
     private String uploadArtwork(String memberId, String title, String imageKey) {
@@ -690,7 +695,7 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
 
     /** 비인증 공유 목록은 처리 완료된 작품만 노출하므로(§5.4) media webhook 경로로 READY까지 올린다. */
     private String uploadReadyArtwork(String memberId, String title) {
-        String imageKey = "raw/" + UUID.randomUUID() + ".png";
+        String imageKey = signedKey(memberId, UUID.randomUUID().toString());
         String artworkId = uploadArtwork(memberId, title, imageKey);
         mediaCallbackService.process(MediaOwnerType.ARTWORK, artworkId, imageKey,
                 "thumb", null, "avif", MediaProcessingStatus.DONE);
@@ -758,4 +763,13 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
             String countryCode,
             String primaryLanguage
     ) {}
+
+    /**
+     * 그 회원에게 발급된 것과 같은 형태의 업로드 key(#190) — 소유 검증이 서명만 보므로 presign을 부르지 않고
+     * 같은 규칙으로 만든다.
+     */
+    private String signedKey(String memberId, String name) {
+        return "raw/" + keySigner.sign(memberId, name) + "/" + name + ".png";
+    }
+
 }

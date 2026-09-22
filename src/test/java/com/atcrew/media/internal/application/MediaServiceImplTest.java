@@ -21,7 +21,8 @@ class MediaServiceImplTest {
     private final MediaAssetRepository assets = mock(MediaAssetRepository.class);
     private final ImageProcessingWorker worker = mock(ImageProcessingWorker.class);
     private final OrphanedMediaKeyRepository orphans = mock(OrphanedMediaKeyRepository.class);
-    private final MediaService service = new MediaServiceImpl(assets, orphans, storage, worker);
+    private final MediaKeySigner signer = new MediaKeySigner("test-secret", List.of());
+    private final MediaService service = new MediaServiceImpl(assets, orphans, storage, worker, signer);
 
     // #193 — 이미지 일부만 바꾸면 남는 이미지는 그대로 두고, 빠진 것만 고아 큐로 보낸다.
     @Test void 부분_교체는_남는_이미지를_그대로_두고_빠진_것만_고아로_보낸다() {
@@ -165,7 +166,7 @@ class MediaServiceImplTest {
 
     @Test void presignAcceptsOneToThirtySupportedImageTypes() {
         when(storage.generatePresignedPutUrl(anyString(), eq("image/jpeg"))).thenReturn("https://upload.example");
-        var urls = service.generatePresignedUrls(1, List.of("image/jpeg"), null);
+        var urls = service.generatePresignedUrls("member-1", 1, List.of("image/jpeg"), null);
         assertThat(urls).hasSize(1);
         assertThat(urls.getFirst().key()).startsWith("raw/").endsWith(".jpg");
         assertThat(urls.getFirst().uploadUrl()).isEqualTo("https://upload.example");
@@ -189,15 +190,15 @@ class MediaServiceImplTest {
     }
 
     @Test void presignRejectsCountsOutsideOneToThirtyAndUnsupportedContentTypes() {
-        assertThatIllegalArgumentException().isThrownBy(() -> service.generatePresignedUrls(0, List.of(), null));
-        assertThatIllegalArgumentException().isThrownBy(() -> service.generatePresignedUrls(31, java.util.Collections.nCopies(31, "image/jpeg"), null));
-        assertThatIllegalArgumentException().isThrownBy(() -> service.generatePresignedUrls(1, List.of("image/gif"), null));
+        assertThatIllegalArgumentException().isThrownBy(() -> service.generatePresignedUrls("member-1", 0, List.of(), null));
+        assertThatIllegalArgumentException().isThrownBy(() -> service.generatePresignedUrls("member-1", 31, java.util.Collections.nCopies(31, "image/jpeg"), null));
+        assertThatIllegalArgumentException().isThrownBy(() -> service.generatePresignedUrls("member-1", 1, List.of("image/gif"), null));
     }
 
     // 소비 모듈(artwork·recruit)이 자체 에러코드로 먼저 거르지만, media 자체도 상한을 지켜야
     // 다른 소비자가 검증을 빠뜨렸을 때 그대로 통과하지 않는다.
     @Test void presignRejectsFileSizesOverLimit() {
-        assertThatIllegalArgumentException().isThrownBy(() -> service.generatePresignedUrls(1, List.of("image/jpeg"),
+        assertThatIllegalArgumentException().isThrownBy(() -> service.generatePresignedUrls("member-1", 1, List.of("image/jpeg"),
                 List.of(MediaConstraints.MAX_ORIGINAL_BYTES + 1)));
     }
 

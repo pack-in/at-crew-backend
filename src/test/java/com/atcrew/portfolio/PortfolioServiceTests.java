@@ -1,5 +1,6 @@
 package com.atcrew.portfolio;
 
+import com.atcrew.media.internal.application.MediaKeySigner;
 import com.atcrew.SharedContainersConfig;
 import com.atcrew.support.DatabaseCleanupExtension;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -66,6 +67,10 @@ import static org.assertj.core.api.Assertions.tuple;
 @ImportTestcontainers(SharedContainersConfig.class)
 @ExtendWith(DatabaseCleanupExtension.class)
 class PortfolioServiceTests {
+
+    // 업로드 key의 소유자 서명(#190) — 테스트도 같은 규칙으로 key를 만든다.
+    @Autowired
+    MediaKeySigner keySigner;
 
     @Autowired
     PortfolioServiceImpl portfolioService;
@@ -1443,7 +1448,7 @@ class PortfolioServiceTests {
         String fillerArtworkId2 = uploadReadyArtwork(memberId);
         PortfolioInfo created = portfolioService.createShared(
                 memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of(fillerArtworkId1, fillerArtworkId2));
-        String imageKey = "raw/" + UUID.randomUUID() + ".png";
+        String imageKey = signedKey(memberId, UUID.randomUUID().toString());
         String artworkId = uploadWithSelection(memberId, true, List.of(created.id()), imageKey);
 
         assertThat(portfolioService.getSharedPortfolioArtworks(created.shareSlug(), null, 20).items())
@@ -1920,17 +1925,17 @@ class PortfolioServiceTests {
     }
 
     private String uploadArtwork(String memberId) {
-        return uploadArtwork(memberId, "raw/" + UUID.randomUUID() + ".png");
+        return uploadArtwork(memberId, signedKey(memberId, UUID.randomUUID().toString()));
     }
 
     /** 업로드-R09 조합(피드 공개 여부 × 담을 포트폴리오)을 그대로 넘기는 업로드. */
     private String uploadWithSelection(String memberId, boolean publishToFeed, List<String> portfolioIds) {
-        return uploadWithSelection(memberId, publishToFeed, portfolioIds, "raw/" + UUID.randomUUID() + ".png");
+        return uploadWithSelection(memberId, publishToFeed, portfolioIds, signedKey(memberId, UUID.randomUUID().toString()));
     }
 
     /** 노출 위치 재선언(`updatePublication`)은 READY 상태를 요구하므로 이미지 처리까지 태운다. */
     private String uploadReadyWithSelection(String memberId, boolean publishToFeed, List<String> portfolioIds) {
-        String imageKey = "raw/" + UUID.randomUUID() + ".png";
+        String imageKey = signedKey(memberId, UUID.randomUUID().toString());
         String artworkId = uploadWithSelection(memberId, publishToFeed, portfolioIds, imageKey);
         mediaCallbackService.process(MediaOwnerType.ARTWORK, artworkId, imageKey,
                 "thumb", null, "avif", MediaProcessingStatus.DONE);
@@ -1959,7 +1964,7 @@ class PortfolioServiceTests {
 
     /** 커버 썸네일 값을 구분하려면 이미지 처리 완료까지 태워야 하므로 media webhook 경로로 썸네일 키를 지정한다. */
     private String uploadArtworkWithThumb(String memberId, String thumbKey) {
-        String imageKey = "raw/" + UUID.randomUUID() + ".png";
+        String imageKey = signedKey(memberId, UUID.randomUUID().toString());
         String artworkId = uploadArtwork(memberId, imageKey);
         mediaCallbackService.process(MediaOwnerType.ARTWORK, artworkId, imageKey,
                 thumbKey, thumbKey + "-adult", "avif", MediaProcessingStatus.DONE);
@@ -2015,7 +2020,7 @@ class PortfolioServiceTests {
      * (BookmarkModuleTests와 동일한 패턴).
      */
     private String uploadReadyArtwork(String memberId) {
-        String imageKey = "raw/" + UUID.randomUUID() + ".png";
+        String imageKey = signedKey(memberId, UUID.randomUUID().toString());
         String artworkId = uploadArtwork(memberId, imageKey);
         mediaCallbackService.process(MediaOwnerType.ARTWORK, artworkId, imageKey,
                 "thumb", null, "avif", MediaProcessingStatus.DONE);
@@ -2024,7 +2029,7 @@ class PortfolioServiceTests {
     }
 
     private String uploadReadyArtwork(String memberId, AgeRating ageRating) {
-        String imageKey = "raw/" + UUID.randomUUID() + ".png";
+        String imageKey = signedKey(memberId, UUID.randomUUID().toString());
         String artworkId = artworkService.uploadArtwork(memberId, new UploadArtworkCommand(
                 List.of(imageKey), 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 "작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
@@ -2179,4 +2184,13 @@ class PortfolioServiceTests {
         }
         throw new AssertionError("READY 전환 대기 시간 초과");
     }
+
+    /**
+     * 그 회원에게 발급된 것과 같은 형태의 업로드 key(#190) — 소유 검증이 서명만 보므로 presign을 부르지 않고
+     * 같은 규칙으로 만든다.
+     */
+    private String signedKey(String memberId, String name) {
+        return "raw/" + keySigner.sign(memberId, name) + "/" + name + ".png";
+    }
+
 }

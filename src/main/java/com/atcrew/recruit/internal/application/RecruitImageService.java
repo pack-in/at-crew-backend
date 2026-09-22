@@ -7,6 +7,8 @@ import com.atcrew.media.MediaProcessingStatus;
 import com.atcrew.media.MediaQualityTier;
 import com.atcrew.media.MediaService;
 import com.atcrew.media.MediaVariantProfile;
+import com.atcrew.recruit.internal.exception.RecruitErrorCode;
+import com.atcrew.recruit.internal.exception.RecruitException;
 import com.atcrew.recruit.internal.domain.RecruitImageRole;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,6 +17,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -59,11 +62,32 @@ class RecruitImageService {
      * 게시글의 이미지 목록을 요청과 같게 맞춘다. 남는 이미지는 media가 변환 결과를 그대로 두고, 빠진 것만
      * 고아 큐로 보낸다(#193) — 예전에는 목록이 조금이라도 달라지면 전량 교체라 남긴 이미지가 깨졌다.
      */
-    ImageSyncResult sync(MediaOwnerType ownerType, String postingId, String thumbnail, List<String> references) {
+    ImageSyncResult sync(String memberId, MediaOwnerType ownerType, String postingId, String thumbnail,
+            List<String> references) {
         assertRecruitOwner(ownerType);
+        assertKeysOwned(memberId, ownerType, postingId, thumbnail, references);
         List<MediaAssetInfo> assets = mediaService.syncAssets(ownerType, postingId,
                 specs(thumbnail, references), MediaVariantProfile.STANDARD, MediaQualityTier.WEB);
         return resultOf(assets);
+    }
+
+    /**
+     * 클라이언트가 보낸 R2 key가 본인이 발급받은 것인지 확인한다(#190). key는 공개 응답에 그대로 실리므로,
+     * 검증하지 않으면 남의 key를 게시글에 붙여 그 파일의 삭제를 막거나 남의 이미지를 자기 게시글에 띄울 수 있다.
+     *
+     * <p>이미 이 게시글에 등록된 key는 대상에서 뺀다 — 프론트가 수정마다 기존 값을 다시 보내므로, 서명이 없던
+     * 시절의 key도 계속 수정할 수 있어야 한다.
+     */
+    private void assertKeysOwned(String memberId, MediaOwnerType ownerType, String postingId, String thumbnail,
+            List<String> references) {
+        Set<String> stored = mediaService.getAssets(ownerType, postingId).stream()
+                .map(MediaAssetInfo::originalKey).collect(Collectors.toSet());
+        List<String> candidates = specs(thumbnail, references).stream().map(MediaAssetSpec::key)
+                .filter(key -> !stored.contains(key)).toList();
+        Set<String> unowned = mediaService.unownedKeys(memberId, candidates);
+        if (!unowned.isEmpty()) {
+            throw new RecruitException(RecruitErrorCode.UNOWNED_IMAGE_KEY, String.join(", ", unowned));
+        }
     }
 
     // === 읽기 ===

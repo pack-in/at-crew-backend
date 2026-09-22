@@ -1,5 +1,6 @@
 package com.atcrew.artwork.internal.application;
 
+import com.atcrew.media.internal.application.MediaKeySigner;
 import com.atcrew.SharedContainersConfig;
 import com.atcrew.artwork.AgeRating;
 import com.atcrew.artwork.ArtworkField;
@@ -38,6 +39,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @ImportTestcontainers(SharedContainersConfig.class)
 @ExtendWith(DatabaseCleanupExtension.class)
 class ArtworkViewRecordTests {
+
+    // 업로드 key의 소유자 서명(#190) — 테스트도 같은 규칙으로 key를 만든다.
+    @Autowired
+    MediaKeySigner keySigner;
 
     @Autowired
     ArtworkService artworkService;
@@ -287,7 +292,7 @@ class ArtworkViewRecordTests {
 
     private String publishReady(String authorId) {
         ArtworkInfo uploaded = artworkService.uploadArtwork(authorId, new UploadArtworkCommand(
-                List.of("raw/view-" + UUID.randomUUID() + ".png"), 0, null, ImageLayoutType.VERTICAL_SCROLL,
+                List.of(signedKey(authorId, "view-" + UUID.randomUUID())), 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 "열람 검증 작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
                 List.of(), List.of(), null, List.of(),
                 AgeRating.ALL, List.of(Language.KO), true, List.of(), List.of(), null, null, List.of(), List.of()));
@@ -299,4 +304,13 @@ class ArtworkViewRecordTests {
         String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
         return memberService.register("view-" + suffix + "@atcrew.com", "view" + suffix, "열람작가").id();
     }
+
+    /**
+     * 그 회원에게 발급된 것과 같은 형태의 업로드 key(#190) — 소유 검증이 서명만 보므로 presign을 부르지 않고
+     * 같은 규칙으로 만든다.
+     */
+    private String signedKey(String memberId, String name) {
+        return "raw/" + keySigner.sign(memberId, name) + "/" + name + ".png";
+    }
+
 }

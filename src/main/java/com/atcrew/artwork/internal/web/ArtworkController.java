@@ -62,7 +62,8 @@ class ArtworkController {
     public ApiResponse<List<PresignedUrlInfo>> generatePresignedUrls(
             @RequestBody @Valid PresignRequest request) {
         return ApiResponse.success(
-                artworkService.generatePresignedUrls(request.count(), request.contentTypes(), request.fileSizes()));
+                artworkService.generatePresignedUrls(securityUtils.getCurrentMemberId(), request.count(),
+                        request.contentTypes(), request.fileSizes()));
     }
 
     @Operation(summary = "작품 업로드", description = "R2 업로드 완료 후 작품 정보를 저장합니다. 이미지 처리(PROCESSING) 상태로 시작됩니다. "
