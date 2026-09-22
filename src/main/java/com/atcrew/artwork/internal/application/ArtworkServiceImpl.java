@@ -15,6 +15,7 @@ import com.atcrew.artwork.Visibility;
 import com.atcrew.artwork.ArtworkChangedEvent;
 import com.atcrew.artwork.ArtworkPortfolioSelectionRequested;
 import com.atcrew.artwork.internal.domain.artwork.Artwork;
+import com.atcrew.artwork.internal.domain.artwork.ArtworkImage;
 import com.atcrew.artwork.internal.domain.artwork.Material;
 import com.atcrew.artwork.internal.exception.ArtworkErrorCode;
 import com.atcrew.artwork.internal.exception.ArtworkException;
@@ -199,7 +200,10 @@ class ArtworkServiceImpl implements ArtworkService {
             assertLanguagesAllowed(memberId, command.languages());
         }
 
-        if (command.imageKeys() != null) {
+        // 프론트는 수정 요청마다 폼 전체를 보내므로 이미지를 건드리지 않아도 imageKeys가 그대로 실려 온다.
+        // 목록이 같으면 교체하지 않는다 — 교체하면 끝난 변환을 버리고 파일을 고아 큐로 넘겨 이미지가 깨진다(#193).
+        boolean imagesUnchanged = command.imageKeys() != null && command.imageKeys().equals(originalKeysOf(artwork));
+        if (command.imageKeys() != null && !imagesUnchanged) {
             replaceImages(artwork, command.imageKeys(), command.representativeImageIndex());
         }
 
@@ -211,7 +215,8 @@ class ArtworkServiceImpl implements ArtworkService {
                 command.title(),
                 command.description(),
                 command.imageLayoutType(),
-                command.imageKeys() == null ? command.representativeImageIndex() : null,
+                // 교체했으면 대표 이미지 인덱스는 attachImages가 이미 반영했다.
+                command.imageKeys() == null || imagesUnchanged ? command.representativeImageIndex() : null,
                 command.thumbnailKey(),
                 command.artworkField(),
                 command.creativeType(),
@@ -228,7 +233,7 @@ class ArtworkServiceImpl implements ArtworkService {
         );
 
         Artwork saved = artworkRepository.save(artwork);
-        if (command.imageKeys() != null) {
+        if (command.imageKeys() != null && !imagesUnchanged) {
             mediaService.replaceAndTriggerProcessing(MediaOwnerType.ARTWORK, saved.getId(),
                     command.imageKeys(), MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, qualityTierOf(memberId));
         }
@@ -242,6 +247,10 @@ class ArtworkServiceImpl implements ArtworkService {
     // uk_ai_order(artwork_id, ordinal) 유니크 제약과 충돌하는 것을 막기 위함
     // (docs/design/mariadb-migration-design.md §3.3.2 RefreshToken과 동일 계열의 함정, 이번 전환에서 신규 발견).
     // 교체로 버려지는 R2 key의 고아 처리는 mediaService.replaceAndTriggerProcessing이 담당한다.
+    private static List<String> originalKeysOf(Artwork artwork) {
+        return artwork.getImages().stream().map(ArtworkImage::getOriginalKey).toList();
+    }
+
     private void replaceImages(Artwork artwork, List<String> newImageKeys, Integer representativeImageIndex) {
         artwork.detachImages();
         artworkRepository.saveAndFlush(artwork);

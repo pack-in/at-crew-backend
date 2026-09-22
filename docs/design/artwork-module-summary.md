@@ -153,7 +153,7 @@ record WorkDuration(Integer months, Integer days, Integer hours, Integer minutes
            [DB에서 삭제]
 
            PROCESSING ──(모든 이미지 콜백 수신, 전부 FAILED)──▶ FAILED
-           READY·FAILED ──(updateArtwork로 이미지 교체)──▶ PROCESSING
+           READY·FAILED ──(updateArtwork로 이미지 목록 변경)──▶ PROCESSING
 ```
 
 - **PROCESSING**: 이미지 Worker 처리 중. 작가 본인은 조회 가능, 다른 사람은 접근 불가.
@@ -370,7 +370,8 @@ R2 업로드 완료 후 작품 메타데이터를 저장. 바로 `PROCESSING` �
 
 모든 필드가 Optional (null이면 기존 값 유지).
 
-- `imageKeys`가 포함되면 기존 이미지는 `OrphanedImageKey`로 등록 후 새 이미지로 교체, 상태는 다시 `PROCESSING`으로 전환.
+- `imageKeys`가 **현재 목록과 다르면** 기존 이미지는 `OrphanedImageKey`로 등록 후 새 이미지로 교체, 상태는 다시 `PROCESSING`으로 전환.
+- `imageKeys`가 현재 목록과 순서까지 같으면 교체하지 않는다(recruit의 `ImageSyncResult.UNCHANGED`와 같은 규칙). 프론트가 수정 요청마다 폼 전체를 보내므로, 교체하면 이미지를 건드리지 않은 수정도 변환 결과를 버리고 파일을 고아 큐로 넘겨 이미지가 깨진다(#193). 일부만 바꾸는 경우는 여전히 전체 교체이며 #193에서 재설계한다. `representativeImageIndex`는 이 경우에도 반영된다.
 - `thumbnailKey`는 이미지 교체와 무관하게 독립적으로 수정 가능.
 - `DELETED` 상태 작품은 수정 불가 (404).
 - `imageLayoutType`은 이미지 교체 여부와 무관하게 항상 반영.
