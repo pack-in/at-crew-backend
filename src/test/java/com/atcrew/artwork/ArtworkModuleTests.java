@@ -110,6 +110,36 @@ class ArtworkModuleTests {
         assertThat(found.status()).isEqualTo(ArtworkStatus.PROCESSING);
     }
 
+    // 홈-R05 — 작품 태그는 업로드 폼에서 등록한 순서대로 노출한다(이슈 #199).
+    @Test
+    void 태그는_등록한_순서대로_조회되고_수정하면_새_순서를_따른다() {
+        String memberId = registerAuthor();
+
+        ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, new UploadArtworkCommand(
+                List.of("raw/1.png"), 0, null, ImageLayoutType.VERTICAL_SCROLL,
+                "제목", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
+                List.of(ArtworkRole.LINEART), List.of(Genre.FANTASY), null, List.of("캐릭터", "SF", "캐릭터", "배경"),
+                AgeRating.ALL, List.of(Language.KO), true, List.of(), List.of(),
+                null, null, List.of(), List.of()
+        ));
+
+        // 중복은 처음 등록한 위치만 남긴다.
+        assertThat(artworkService.getArtwork(uploaded.id(), memberId).tags())
+                .containsExactly("캐릭터", "SF", "배경");
+
+        // 같은 값의 순서만 뒤바꾸는 수정 — 행 단위 갱신이면 (artwork_id, value) 충돌이 날 수 있는 경우다.
+        artworkService.updateArtwork(memberId, uploaded.id(), new UpdateArtworkCommand(
+                null, null, null, null, null, null, null, null,
+                null, null, null, List.of("배경", "캐릭터", "SF"), null, null, null, null, null, null, null));
+        assertThat(artworkService.getArtwork(uploaded.id(), memberId).tags())
+                .containsExactly("배경", "캐릭터", "SF");
+
+        artworkService.updateArtwork(memberId, uploaded.id(), new UpdateArtworkCommand(
+                null, null, null, null, null, null, null, null,
+                null, null, null, List.of("SF"), null, null, null, null, null, null, null));
+        assertThat(artworkService.getArtwork(uploaded.id(), memberId).tags()).containsExactly("SF");
+    }
+
     @Test
     void 업로드_시_담당업무_장르_소재대상_직접입력_값이_저장되고_조회에_반영된다() {
         String memberId = registerAuthor();
