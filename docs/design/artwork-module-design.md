@@ -675,12 +675,12 @@ public void onPermanentlyDeleted(ArtworkPermanentlyDeletedEvent event) {
 ### 10.6 작품 열람 집계와 이번 주 가장 핫한 작품 (2026-09-22, 홈-R03·R14)
 
 > 근거: Notion 명세 홈-R03(2026-08-08)·홈-R14(2026-08-27), Figma `UI개편_홈(구 커뮤니티)` > `promotion Card`.
-> 결정 원장은 `plans/260922-hot-artworks/PLAN-AGENT.md` "결정" 표. 마이그레이션은 `V42__artwork_view_tracking.sql`.
+> 결정 원장은 `plans/260922-hot-artworks/PLAN-AGENT.md` "결정" 표. 마이그레이션은 `V44__artwork_view_tracking.sql`.
 
 **V34 정책 폐기.** V34(이슈 #78)는 작품 상세 `GET`마다 dedup 없이 `view_count`를 +1 했다. 이 방식은 두 가지
 이유로 폐기했다 — ① 홈-R14가 핫 작품 순위에 "최근 7일 기간 조회수(24시간 dedup)"를 요구하고 누적 조회수 사용을
 금지한다, ② FE 상세 페이지가 SSR에서 토큰 없이 `GET`을 호출해 열람자를 식별할 수 없었고, 편집 화면·포트폴리오의
-같은 `GET` 호출까지 조회수에 섞였다. 기존 `view_count`는 신뢰할 수 없어 V42에서 0으로 초기화했다.
+같은 `GET` 호출까지 조회수에 섞였다. 기존 `view_count`는 신뢰할 수 없어 V44에서 0으로 초기화했다.
 
 **집계 경로.** `GET /api/artworks/{id}`는 조회수를 올리지 않는다(응답 스키마는 그대로). 브라우저가 상세 화면을 연 뒤
 `POST /api/artworks/{id}/views`를 호출한다.

@@ -423,7 +423,7 @@ R2 업로드 완료 후 작품 메타데이터를 저장. 바로 `PROCESSING` �
 
 **ageRating 정책**: `null`이면 ALL / R18 / G18 전부 반환. 설계상 성인물도 피드에 노출하되 블러 처리는 클라이언트 담당. 특정 값으로 필터링하면 해당 등급만 반환.
 
-`sort=VIEW_COUNT`의 조회수는 `POST /views`로 집계된 누적 조회수(24시간 dedup)다. 2026-09-22 V42에서 0으로 초기화됐다.
+`sort=VIEW_COUNT`의 조회수는 `POST /views`로 집계된 누적 조회수(24시간 dedup)다. 2026-09-22 V44에서 0으로 초기화됐다.
 
 #### `GET /api/community/artworks/hot` — 이번 주 가장 핫한 작품
 
@@ -649,7 +649,7 @@ orphanedRepo.findAll(PageRequest.of(0, 100))  // 한 번에 최대 100건
 | `idx_artwork_community_feed` | `{status:1, visibility:1, ageRating:1, createdAt:-1}` | 커뮤니티 피드 기본 경로 (artworkField 없을 때) |
 | `idx_artwork_field_filter` | `{status:1, visibility:1, artworkField:1, ageRating:1, createdAt:-1}` | 커뮤니티 피드 artworkField 필터 경로 |
 
-### 작품 열람 집계 테이블 (V42, MariaDB)
+### 작품 열람 집계 테이블 (V44, MariaDB)
 
 | 테이블 | 키·인덱스 | 용도 |
 |---|---|---|
