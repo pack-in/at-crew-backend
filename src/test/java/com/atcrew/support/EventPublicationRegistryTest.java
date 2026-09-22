@@ -96,11 +96,15 @@ class EventPublicationRegistryTest {
         assertThat((String) column("STATUS").get("DATA_TYPE")).isEqualToIgnoringCase("varchar");
         assertThat((String) column("COMPLETION_ATTEMPTS").get("DATA_TYPE")).isEqualToIgnoringCase("int");
         assertThat((String) column("LAST_RESUBMISSION_DATE").get("DATA_TYPE")).isEqualToIgnoringCase("timestamp");
+
+        // 공식 스키마와 의도적으로 다른 한 곳 — VARCHAR(4000)이면 작품 key 전체를 싣는 영구 삭제 이벤트가
+        // 'Data too long'으로 실패한다(V40). 공식 스키마로 되돌리면 이 검증이 잡는다.
+        assertThat((String) column("SERIALIZED_EVENT").get("DATA_TYPE")).isEqualToIgnoringCase("longtext");
     }
 
     @Test
     @Order(3)
-    void 재기동하면_미완료_이벤트가_재발행되어_완료_마킹된다() {
+    void 재기동하면_미완료_이벤트가_재발행되어_완료된다() {
         // 다른 테스트가 남긴 미완료 행까지 재발행되면 이 테스트의 검증 대상이 흐려지므로 프로브 행만 남긴다.
         jdbcTemplate.update("DELETE FROM EVENT_PUBLICATION WHERE EVENT_TYPE <> ?", ProbeEvent.class.getName());
         assertThat(findProbeRow().get("COMPLETION_DATE")).isNull();
@@ -121,10 +125,18 @@ class EventPublicationRegistryTest {
                         "spring.elasticsearch.uris=http://" + SharedContainersConfig.elasticsearch.getHttpHostAddress())
                 .run()) {
 
-            await(() -> findProbeRow().get("COMPLETION_DATE") != null);
+            // completion-mode: delete — 완료되면 발행 기록이 지워진다.
+            await(() -> probeRowCount() == 0);
         }
 
         assertThat(ProbeListener.invocations.get()).isGreaterThan(before);
+    }
+
+    private int probeRowCount() {
+        Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM EVENT_PUBLICATION WHERE EVENT_TYPE = ? AND SERIALIZED_EVENT LIKE ?",
+                Integer.class, ProbeEvent.class.getName(), "%" + PROBE_PAYLOAD + "%");
+        return count == null ? 0 : count;
     }
 
     private Map<String, Object> findProbeRow() {

@@ -155,7 +155,7 @@ record WorkDuration(Integer months, Integer days, Integer hours, Integer minutes
            [DB에서 삭제]
 
            PROCESSING ──(모든 이미지 콜백 수신, 전부 FAILED)──▶ FAILED
-           READY·FAILED ──(updateArtwork로 이미지 교체)──▶ PROCESSING
+           READY·FAILED ──(updateArtwork로 이미지 목록 변경)──▶ PROCESSING
 ```
 
 - **PROCESSING**: 이미지 Worker 처리 중. 작가 본인은 조회 가능, 다른 사람은 접근 불가.
@@ -372,7 +372,8 @@ R2 업로드 완료 후 작품 메타데이터를 저장. 바로 `PROCESSING` �
 
 모든 필드가 Optional (null이면 기존 값 유지).
 
-- `imageKeys`가 포함되면 기존 이미지는 `OrphanedImageKey`로 등록 후 새 이미지로 교체, 상태는 다시 `PROCESSING`으로 전환.
+- `imageKeys`가 **현재 목록과 다르면** 기존 이미지는 `OrphanedImageKey`로 등록 후 새 이미지로 교체, 상태는 다시 `PROCESSING`으로 전환.
+- `imageKeys`가 현재 목록과 순서까지 같으면 교체하지 않는다(recruit의 `ImageSyncResult.UNCHANGED`와 같은 규칙). 프론트가 수정 요청마다 폼 전체를 보내므로, 교체하면 이미지를 건드리지 않은 수정도 변환 결과를 버리고 파일을 고아 큐로 넘겨 이미지가 깨진다(#193). 일부만 바꾸는 경우는 여전히 전체 교체이며 #193에서 재설계한다. `representativeImageIndex`는 이 경우에도 반영된다.
 - `thumbnailKey`는 이미지 교체와 무관하게 독립적으로 수정 가능.
 - `DELETED` 상태 작품은 수정 불가 (404).
 - `imageLayoutType`은 이미지 교체 여부와 무관하게 항상 반영.
@@ -551,16 +552,18 @@ onMemberDeactivated() [동기, @EventListener]
 
 ### ArtworkPermanentlyDeletedEvent 발행 (비동기)
 
-영구 삭제 후 R2 파일 정리를 비동기로 처리.
+영구 삭제 후 R2 파일 정리를 **트랜잭션 커밋 뒤에** 비동기로 처리한다. 롤백되면 파일을 지우지 않는다.
 
 ```
-permanentlyDeleteArtworks()
-  → artworkRepository.deleteAll()
-  → eventPublisher.publishEvent(ArtworkPermanentlyDeletedEvent)
+permanentlyDeleteArtworks() / TrashPurgeScheduler
+  → ArtworkPurger.purge()  (호출자 트랜잭션 필수)
+      → artworkRepository.deleteAll()
+      → publishEvent(ArtworkPermanentlyDeletedEvent)  — key: 이미지 4종 + 지정 썸네일(자료 첨부는 제외, #190)
 
-onPermanentlyDeleted() [@Async, @EventListener]
-  → storagePort.deleteFiles(allImageKeys)
-  → 실패 시 orphanedRepo.save(OrphanedImageKey.ofKeys(keys))
+onPermanentlyDeleted() [@Async, @TransactionalEventListener(AFTER_COMMIT)]
+  → 스냅샷 보존 key 제외 후 mediaService.deleteFiles()
+  → 실패 시 mediaService.markOrphaned()
+  → mediaService.deleteAssetsForOwner(handledKeys)  (위에서 처리하지 않은 행의 key만 고아 큐로)
 ```
 
 ---
@@ -578,8 +581,11 @@ onPermanentlyDeleted() [@Async, @EventListener]
 
 ### TrashPurgeScheduler (1시간마다)
 
-휴지통으로 옮긴 지 보관 기간(기본 1년, `artwork.trash.retention`)이 지난 작품을 최대 100건씩 영구 삭제한다(#178).
+휴지통으로 옮긴 지 보관 기간(기본 `P1Y`, `artwork.trash.retention`)이 지난 작품을 최대 100건씩 영구 삭제한다(#178).
+보관 기간은 `Period`라 윤년을 끼어도 달력 기준 1년이고, 30일 미만으로 설정하면 앱이 기동하지 않는다.
 사용자 영구 삭제와 같은 `ArtworkPurger`를 거치므로 스냅샷 보존·R2 정리가 똑같이 적용된다.
+작품마다 별도 트랜잭션이라 한 건이 실패해도 나머지는 지우고, 실패한 작품은 하루 동안 조회에서 빼 뒤의 작품이
+밀리지 않게 한다(건너뛴 수만큼 더 조회해 배치를 채운다. 기록은 메모리에만 두며 재기동 시 비워진다).
 
 ### OrphanImageCleanupScheduler (1시간마다)
 

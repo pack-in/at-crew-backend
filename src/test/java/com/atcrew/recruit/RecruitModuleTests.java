@@ -72,6 +72,7 @@ class RecruitModuleTests {
     @Autowired
     JobSeekingPostImageRepository jobSeekingPostImageRepository;
 
+
     @Autowired
     MediaService mediaService;
 

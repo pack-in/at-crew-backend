@@ -7,7 +7,9 @@
 #   HEALTH    헬스체크 대기
 #   ROLLBACK  직전 이미지로 롤백
 #   MIG_HAS   마이그레이션 포함 여부(true | false | 빈 값)
-#   PREV_IMAGE  배포 직전 실행 중이던 이미지(빈 값이면 롤백 불가)
+#   MIG_REASON  MIG_HAS=true의 근거(detected: 새 마이그레이션 발견 | unknown-base: 직전 배포 커밋을 특정할 수 없어
+#               안전측으로 true). 직전 이미지가 없거나 latest면 unknown-base다.
+#   PREV_IMAGE  배포 직전 실행 중이던 이미지
 #   SHA_SHORT, ACTOR, RUN_URL  메시지에 넣을 값
 #
 # 출력: 첫 줄에 P1 또는 P2, 둘째 줄에 메시지(줄바꿈은 \n 문자열).
@@ -30,14 +32,15 @@ elif [ "${HEALTH:-}" = "failure" ]; then
   echo "P1"
   if [ "${ROLLBACK:-}" = "success" ]; then
     echo "**배포 실패 → 자동 롤백 완료** ${head}\n직전 이미지로 되돌렸고 liveness는 UP이다. 원인 확인 필요.\n${RUN_URL}"
+  elif [ "${MIG_HAS:-}" = "true" ] && [ "${MIG_REASON:-}" = "unknown-base" ]; then
+    # 직전 이미지가 없거나 latest라 기준 커밋을 못 구한 경우 — 마이그레이션이 있다는 뜻이 아니다.
+    echo "**배포 실패 — 자동 롤백 안 함(직전 배포 커밋 특정 불가)** ${head}\n직전 이미지(${PREV_IMAGE:-없음})에서 배포 커밋을 알 수 없어 마이그레이션 여부를 판단하지 못했다. 서비스가 내려가 있을 수 있다. 즉시 확인 필요.\n${RUN_URL}"
   elif [ "${MIG_HAS:-}" = "true" ]; then
     echo "**배포 실패 — 자동 롤백 안 함(마이그레이션 포함)** ${head}\n스키마가 전진해 구버전 앱은 validate에서 죽는다. 수동 대응 필요: docs/operations/incident-runbook.md\n${RUN_URL}"
   elif [ "${ROLLBACK:-}" = "failure" ]; then
     echo "**배포 실패 — 롤백도 실패** ${head}\n서비스가 내려가 있을 수 있다. 즉시 확인 필요.\n${RUN_URL}"
-  elif [ -z "${PREV_IMAGE:-}" ]; then
-    echo "**배포 실패 — 자동 롤백 안 함(직전 이미지 모름)** ${head}\n헬스체크가 실패했고 되돌릴 이미지를 특정하지 못했다. 서비스가 내려가 있을 수 있다. 즉시 확인 필요.\n${RUN_URL}"
   else
-    echo "**배포 실패 — 롤백 중단(${ROLLBACK:-미실행})** ${head}\n헬스체크 실패 후 롤백이 끝나지 않았다. 서비스가 내려가 있을 수 있다. 즉시 확인 필요.\n${RUN_URL}"
+    echo "**배포 실패 — 자동 롤백되지 않음(롤백 단계 ${ROLLBACK:-미실행})** ${head}\n헬스체크 실패 후 롤백이 실행되지 않았거나 끝나지 않았다. 서비스가 내려가 있을 수 있다. 즉시 확인 필요.\n${RUN_URL}"
   fi
 elif [ "${RESTART:-}" = "success" ]; then
   # 교체는 끝났는데 헬스체크 결과가 없다(헬스체크 도중 취소 등).

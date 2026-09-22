@@ -2,11 +2,12 @@
   "anchors": [
     {
       "text": "/artwork/images/presign",
-      "path": "src/main/java/com/atcrew/artwork"
+      "path": "src/main/java/com/atcrew/artwork/internal/web/ArtworkController.java"
     },
     {
-      "text": "/artworks",
-      "path": "src/main/java/com/atcrew/artwork"
+      "text": "POST /api/artworks",
+      "code": "@PostMapping(\"/artworks\")",
+      "path": "src/main/java/com/atcrew/artwork/internal/web/ArtworkController.java"
     },
     {
       "text": "ArtworkServiceImpl",
@@ -34,7 +35,7 @@
     },
     {
       "text": "/images/processed",
-      "path": "src/main/java/com/atcrew/media"
+      "path": "src/main/java/com/atcrew/media/internal/web/MediaInternalController.java"
     },
     {
       "text": "X-Internal-Secret",

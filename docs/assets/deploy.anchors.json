@@ -9,10 +9,6 @@
       "path": ".github/workflows/deploy.yml"
     },
     {
-      "text": "deploy/ 동기화",
-      "path": ".github/workflows/deploy.yml"
-    },
-    {
       "text": "nginx -t",
       "path": ".github/workflows/deploy.yml"
     },
@@ -21,7 +17,7 @@
       "path": ".github/workflows/deploy.yml"
     },
     {
-      "text": "liveness",
+      "text": "/health/liveness",
       "path": ".github/workflows/deploy.yml"
     },
     {
@@ -29,15 +25,11 @@
       "path": ".github/workflows/deploy.yml"
     },
     {
-      "text": "마이그레이션",
-      "path": ".github/workflows/deploy.yml"
-    },
-    {
       "text": "배포 성공",
       "path": "deploy/deploy-notify.sh"
     },
     {
-      "text": "SSM",
+      "text": "--diff-filter=A",
       "path": ".github/workflows/deploy.yml"
     }
   ]

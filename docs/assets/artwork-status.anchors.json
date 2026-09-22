@@ -2,23 +2,23 @@
   "anchors": [
     {
       "text": "ArtworkStatus",
-      "path": "src/main/java/com/atcrew/artwork"
+      "path": "src/main/java/com/atcrew/artwork/ArtworkStatus.java"
     },
     {
       "text": "PROCESSING",
-      "path": "src/main/java/com/atcrew/artwork"
+      "path": "src/main/java/com/atcrew/artwork/ArtworkStatus.java"
     },
     {
       "text": "READY",
-      "path": "src/main/java/com/atcrew/artwork"
+      "path": "src/main/java/com/atcrew/artwork/ArtworkStatus.java"
     },
     {
       "text": "FAILED",
-      "path": "src/main/java/com/atcrew/artwork"
+      "path": "src/main/java/com/atcrew/artwork/ArtworkStatus.java"
     },
     {
       "text": "DELETED",
-      "path": "src/main/java/com/atcrew/artwork"
+      "path": "src/main/java/com/atcrew/artwork/ArtworkStatus.java"
     },
     {
       "text": "uploadArtwork",
@@ -26,11 +26,11 @@
     },
     {
       "text": "moveToTrash",
-      "path": "src/main/java/com/atcrew/artwork"
+      "path": "src/main/java/com/atcrew/artwork/internal/domain/artwork/Artwork.java"
     },
     {
       "text": "restore",
-      "path": "src/main/java/com/atcrew/artwork"
+      "path": "src/main/java/com/atcrew/artwork/internal/domain/artwork/Artwork.java"
     },
     {
       "text": "TrashPurgeScheduler",

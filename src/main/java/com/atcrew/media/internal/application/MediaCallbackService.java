@@ -2,6 +2,7 @@ package com.atcrew.media.internal.application;
 
 import com.atcrew.media.*;
 import com.atcrew.media.internal.persistence.MediaAssetRepository;
+import java.util.Arrays;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
@@ -13,7 +14,10 @@ public class MediaCallbackService {
     private static final Logger log = LoggerFactory.getLogger(MediaCallbackService.class);
     private final MediaAssetRepository assets;
     private final ApplicationEventPublisher events;
-    public MediaCallbackService(MediaAssetRepository assets, ApplicationEventPublisher events) { this.assets = assets; this.events = events; }
+    private final MediaService mediaService;
+    public MediaCallbackService(MediaAssetRepository assets, ApplicationEventPublisher events, MediaService mediaService) {
+        this.assets = assets; this.events = events; this.mediaService = mediaService;
+    }
 
     /**
      * 실패 사유 없이 처리한다(구버전 Worker 콜백·테스트 진입점).
@@ -46,14 +50,22 @@ public class MediaCallbackService {
             log.warn("이미지 변환 실패: ownerType={} ownerId={} imageKey={} reason={}",
                     ownerType, ownerId, imageKey, failureReason != null ? failureReason : "(사유 미제공)");
         }
-        assets.findByOwnerTypeAndOwnerIdAndOriginalKey(ownerType, ownerId, imageKey).ifPresentOrElse(asset -> {
+        assets.findByOwnerAndOriginalKeyForUpdate(ownerType, ownerId, imageKey).ifPresentOrElse(asset -> {
             asset.markProcessed(thumbKey, thumbAdultKey, originalAvifKey, status);
             events.publishEvent(new MediaAssetProcessedEvent(ownerType, ownerId, imageKey, thumbKey, thumbAdultKey,
                     originalAvifKey, status));
         },
         // 트리거는 커밋 뒤에만 나가므로(#174) 정상 흐름에서는 일어나지 않는다. 이미지 교체·소유자 삭제 뒤 늦게
-        // 도착한 옛 콜백이거나, Worker가 받은 키와 서버 기록이 어긋난 경우다. 예전에는 흔적 없이 버려졌다.
-        () -> log.warn("콜백 대상 자산 없음 — 무시: ownerType={} ownerId={} imageKey={} status={}",
-                ownerType, ownerId, imageKey, status));
+        // 도착한 옛 콜백이거나, Worker가 받은 키와 서버 기록이 어긋난 경우다. Worker가 이미 R2에 써 둔 변형본은
+        // 어디서도 참조하지 않으므로 고아 큐에 넣어 OrphanImageCleanupScheduler가 지우게 한다. 원본(imageKey)은
+        // 교체·영구 삭제 경로가 이미 정리 대상으로 넘겼으므로 넣지 않는다.
+        () -> orphanDerivedKeys(ownerType, ownerId, imageKey, status, thumbKey, thumbAdultKey, originalAvifKey));
+    }
+
+    private void orphanDerivedKeys(MediaOwnerType ownerType, String ownerId, String imageKey, MediaProcessingStatus status,
+                                   String thumbKey, String thumbAdultKey, String originalAvifKey) {
+        log.warn("콜백 대상 자산 없음 — 변형본을 고아 정리 대상에 넣고 무시: ownerType={} ownerId={} imageKey={} status={}",
+                ownerType, ownerId, imageKey, status);
+        mediaService.markOrphaned(Arrays.asList(thumbKey, thumbAdultKey, originalAvifKey));
     }
 }

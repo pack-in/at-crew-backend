@@ -26,6 +26,9 @@ spring:
   # 이 파일이 test classpath에서 main application.yml을 완전히 대체하므로 별도로 명시해야 한다.
   modulith:
     events:
+      # 완료된 발행 기록은 지운다. 기본값(update)은 완료 시각만 찍고 행을 영원히 남겨, 작품 key 전체를 싣는 영구 삭제
+      # 이벤트 같은 큰 행이 계속 쌓인다(PR #188 코드 리뷰). 미완료 건만 세는 EventPublicationMetrics와 호환된다.
+      completion-mode: delete
       jdbc:
         schema-initialization:
           enabled: false

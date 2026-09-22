@@ -356,17 +356,18 @@ GET /api/portfolios/{id}/duplication-source:
 **채택: 삭제 시점 조회형 보존 판정.** 상태를 따로 저장하지 않고 지우려는 순간 스냅샷 테이블에 물어본다 — 어긋날 상태가 없다.
 
 - `com.atcrew.media.RetainedMediaKeyProvider`(media 공개 SPI) — `Set<String> retainedKeys(Collection<String> candidateKeys)`. media는 누가 왜 키를 붙잡는지 모른다. 구현체가 없으면(모듈 단위 테스트 부트스트랩) 보존 대상 없음으로 동작한다.
-- `SnapshotRetainedMediaKeyProvider`(portfolio) — `PortfolioItemSnapshotRepository.findActiveByThumbnailKeys()`로 후보 키가 카드 썸네일(`thumb_key`/`thumb_adult_key`)로 걸린 스냅샷을 찾고, 그 스냅샷의 `payload_json`을 펼쳐 상세 본문 이미지 키(`originalKey`/`thumbKey`/`thumbAdultKey`/`originalAvifKey`)까지 보존 집합에 넣는다. **포트폴리오 행이 남아있는 스냅샷만** 대상이라 포트폴리오를 지우면 다음 정리 배치에서 자연히 회수된다.
-- `ArtworkEventListener.onPermanentlyDeleted` — 보존 키를 뺀 나머지만 `deleteFiles`. 보존 판정 자체가 실패하면 전체 키를 고아 큐로 넘긴다(스케줄러가 같은 판정을 다시 하므로 즉시 삭제되지 않는다). **보존된 키도 고아 큐에 함께 적재한다**(PA-20) — 원본 행이 사라진 뒤에는 이 키를 아는 곳이 스냅샷뿐이라, 그 스냅샷을 담은 고정형 포트폴리오까지 삭제되면 추적 기록 없이 R2에 영구 누수된다. 큐에 넣어두면 배치가 매번 같은 보존 판정을 다시 해 참조가 남아 있는 동안 유예하고, 참조가 끊기는 순간 정리한다(`deletePortfolio()`에 media 정리 호출을 넣지 않고 이 경로로 회수하는 이유 — 포트폴리오가 어떤 경로로 사라지든 동작한다).
+- `SnapshotRetainedMediaKeyProvider`(portfolio) — 스냅샷마다 참조 key를 색인 테이블 `portfolio_snapshot_media_keys(snapshot_id, media_key)`(V41)에 두고, 후보 key로 바로 조회한다(`findActiveReferencedKeys`). 색인은 스냅샷 생성 시점(`PortfolioItemSnapshot.of`의 필수 인자)에 카드 썸네일 2종·상세 이미지 4종으로 채우고(`ArtworkSnapshotPayload.referencedMediaKeys`, 자료 첨부는 소유 검증이 없어 제외 — #190), 스냅샷이 지워지면 FK CASCADE로 함께 지워진다. **포트폴리오 행이 남아있는 스냅샷만** 대상이라 포트폴리오를 지우면 다음 정리 배치에서 자연히 회수된다.
+  - 예전에는 후보가 카드 썸네일과 일치할 때만 스냅샷을 찾고 payload를 펼쳤다. 후보에 썸네일이 없으면(이미지 한 장의 변형본만 담은 고아 행, 지정 썸네일이 빠진 media 자산 행) 스냅샷을 못 찾아 스냅샷 이미지가 지워졌다(PR #188 코드 리뷰). 색인은 후보의 모양에 의존하지 않는다.
+- `ArtworkEventListener.onPermanentlyDeleted` — 영구 삭제 트랜잭션이 **커밋된 뒤에만** 실행된다(`@TransactionalEventListener(AFTER_COMMIT)`, 롤백되면 파일을 지우지 않는다). 후보는 `ArtworkPurger`가 만든 키 전체 — 이미지 4종과 사용자 지정 썸네일. 자료 첨부 키는 소유 검증이 없어 넣지 않는다. 보존 키를 뺀 나머지만 `deleteFiles`. 보존 판정 자체가 실패하면 전체 키를 고아 큐로 넘긴다(스케줄러가 같은 판정을 다시 하므로 즉시 삭제되지 않는다). **보존된 키도 고아 큐에 함께 적재한다**(PA-20) — 원본 행이 사라진 뒤에는 이 키를 아는 곳이 스냅샷뿐이라, 그 스냅샷을 담은 고정형 포트폴리오까지 삭제되면 추적 기록 없이 R2에 영구 누수된다. 큐에 넣어두면 배치가 매번 같은 보존 판정을 다시 해 참조가 남아 있는 동안 유예하고, 참조가 끊기는 순간 정리한다(`deletePortfolio()`에 media 정리 호출을 넣지 않고 이 경로로 회수하는 이유 — 포트폴리오가 어떤 경로로 사라지든 동작한다).
 - `OrphanImageCleanupScheduler` — 배치마다 같은 판정을 거쳐 보존 키를 건너뛰고, 남은 보존 키만 남긴 채 행을 큐에 유지한다(`OrphanedMediaKey.keepOnly`). 포트폴리오가 삭제되면 그때 정리된다. 보존 행이 큐 앞을 계속 차지해 뒤의 행이 굶지 않도록 배치는 `marked_at` 오름차순으로 읽고, 보존된 행은 재판정 시점으로 `marked_at`을 갱신해 뒤로 보낸다.
 
-**사용자 지정 썸네일(PA-20)**: `PortfolioMapper.toCardInfo()`는 작품에 `thumbnailKey`(사용자가 따로 올린 썸네일)가 있으면 그 키를 스냅샷 `thumb_key`로 쓴다. 그런데 영구 삭제 후보 키 목록은 `artwork.getImages()`만으로 만들고 있어 이 키가 빠져 있었다 — 후보에 없으면 `findActiveByThumbnailKeys()`가 스냅샷을 찾지 못해 **보존 판정이 통째로 무력화**되고, 그 스냅샷이 참조하는 상세 이미지까지 삭제된다(지정 썸네일 자체도 media_assets에 행이 없어 영원히 지워지지 않는 누수였다). `ArtworkServiceImpl.permanentlyDeleteArtworks`의 후보 목록에 `artwork.getThumbnailKey()`를 포함시켜 두 문제를 함께 해소했다.
+**사용자 지정 썸네일(PA-20)**: `PortfolioMapper.toCardInfo()`는 작품에 `thumbnailKey`(사용자가 따로 올린 썸네일)가 있으면 그 키를 스냅샷 `thumb_key`로 쓴다. 그런데 영구 삭제 후보 키 목록은 `artwork.getImages()`만으로 만들고 있어 이 키가 빠져 있었다 — 후보에 없으면 `findActiveByThumbnailKeys()`가 스냅샷을 찾지 못해 **보존 판정이 통째로 무력화**되고, 그 스냅샷이 참조하는 상세 이미지까지 삭제된다(지정 썸네일 자체도 media_assets에 행이 없어 영원히 지워지지 않는 누수였다). `ArtworkServiceImpl.permanentlyDeleteArtworks`의 후보 목록에 `artwork.getThumbnailKey()`를 포함시켜 두 문제를 함께 해소했다. 보존 판정이 색인 기반(V41)으로 바뀐 뒤로는 후보에 지정 썸네일이 빠져도 판정이 무력화되지 않는다 — 후보에 넣는 이유는 지정 썸네일 파일 자체의 정리만 남았다.
 
 남은 제약:
-- 매칭 기준이 카드 썸네일 컬럼이라, 스냅샷 생성 시점에 이미지 처리가 끝나지 않아 `thumb_key`가 비어 있는 스냅샷은 판정에 걸리지 않는다. 실제 삭제 후보는 항상 한 작품의 키 전체로 들어오므로 처리 완료된 작품에서는 문제되지 않는다.
-- 같은 이유로, **지정 썸네일을 쓰는 작품의 이미지를 교체**하는 경로(고아 큐)는 여전히 매칭되지 않는다 — 고아 후보에는 교체된 이미지 키만 들어가고 지정 썸네일 키는 들어가지 않아 스냅샷을 찾을 단서가 없다. 해소하려면 매칭 기준을 썸네일 컬럼이 아니라 스냅샷이 참조하는 키 전체를 담는 색인(별도 자식 테이블)으로 바꿔야 해서 스키마 변경이 필요하다 — 이번 범위 밖으로 두고 여기 기록해둔다.
+- (해소, PR #188) 예전에는 카드 썸네일 컬럼으로 스냅샷을 찾아, 썸네일이 비었거나 후보에 없으면 판정이 무력화됐다. V41 색인이 스냅샷이 참조하는 key 전체로 바로 조회하므로 더는 해당하지 않는다.
+- 사용자 지정 썸네일 key는 첨부처럼 소유 검증 없는 입력인데 색인과 영구 삭제 후보에 들어간다 — 남의 key를 지정해 삭제를 막거나 지울 수 있다. 소유 검증(#190)과 함께 다룬다.
 - 보존된 키는 참조가 사라질 때까지 R2에 남는다 — 유실 대신 소량의 스토리지 누수를 택했다(원본 교체를 반복하면 스냅샷이 안 쓰는 중간 버전도 함께 남을 수 있다).
-- 자료(`materials`)의 첨부 키는 어떤 삭제 경로에도 들어가 있지 않아 보존 대상에서 제외했다.
+- 자료(`materials`)의 첨부 키는 어떤 삭제 경로에도 들어가 있지 않고, 소유 검증이 없어 색인에서도 뺐다(#190).
 
 ---
 

@@ -547,9 +547,10 @@ public void onMemberDeactivated(MemberDeactivatedEvent event) {
 - `ImageRetryScheduler`는 Worker를 다시 부를 뿐 작품 상태를 바꾸지 않는다. 콜백이 서버에 닿지 않는 동안 작품은
   PROCESSING에 머무는데, 이는 의도된 동작이다. 재시도가 유일한 자동 복구 수단이고, PENDING 잔량 알람(P2)이 장애를
   드러낸다. 원본·용량 문제는 Worker가 FAILED 콜백을 보내 FAILED로 끝난다.
-- 휴지통 보관 기간(기본 1년, 설정 `artwork.trash.retention`)이 지나면 `TrashPurgeScheduler`가 1시간마다 최대 100건씩
+- 휴지통 보관 기간(기본 1년, 설정 `artwork.trash.retention` — `Period`라 달력 기준이고 단위 없는 숫자는 일, 30일 미만이면 기동 실패)이 지나면 `TrashPurgeScheduler`가 1시간마다 최대 100건씩
   자동 영구 삭제한다([#178](https://github.com/pack-in/at-crew-backend/issues/178)). 사용자 영구 삭제와 같은 `ArtworkPurger`를
-  거치므로 고정형 스냅샷 보존·R2 정리·포트폴리오 구성 정리가 똑같이 적용된다.
+  거치므로 고정형 스냅샷 보존·R2 정리·포트폴리오 구성 정리가 똑같이 적용된다. 작품마다 별도 트랜잭션이고,
+  실패한 작품은 하루 동안 건너뛰어 뒤의 작품이 밀리지 않는다.
 
 원본은 [`docs/assets/artwork-status.lifecycle.json`](../assets/artwork-status.lifecycle.json)(archify IR)이다.
 고친 뒤 `python3 scripts/diagrams/build.py artwork-status`로 SVG를 다시 만든다.
@@ -652,24 +653,22 @@ DB 삭제 트랜잭션 커밋 후 `ArtworkPermanentlyDeletedEvent`를 발행한�
 
 ```java
 // ArtworkServiceImpl.java
-public void permanentlyDelete(String memberId, List<String> artworkIds) {
-    List<Artwork> artworks = ...; // 조회 + 권한 검증
-    artworkRepository.deleteAll(artworks);
-    artworks.forEach(a ->
-        eventPublisher.publishEvent(new ArtworkPermanentlyDeletedEvent(a))
-    );
+public void permanentlyDeleteArtworks(String memberId, List<String> artworkIds) {
+    List<Artwork> artworks = ...; // 조회 + 소유자·휴지통 상태 검증
+    artworkPurger.purge(artworks);  // 행 삭제 + 이벤트 발행. TrashPurgeScheduler(1년 만료)도 같은 경로
 }
 
-// ArtworkEventListener.java
+// ArtworkEventListener.java — 영구 삭제 트랜잭션이 커밋된 뒤에만 실행된다(롤백되면 파일을 지우지 않는다)
 @Async
-@EventListener
+@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 public void onPermanentlyDeleted(ArtworkPermanentlyDeletedEvent event) {
-    // R2에서 모든 variant 파일 삭제
-    // 실패 시 orphanedImageKeys에 적재 → 10.3 배치 스케줄러가 재처리
+    // 고정형 스냅샷이 참조하는 key는 보존하고 나머지를 R2에서 삭제
+    // 실패 시 고아 큐에 적재 → OrphanImageCleanupScheduler가 재처리
+    // 마지막으로 media 자산 행 삭제(행이 가리키던 파일도 고아 큐로)
 }
 ```
 
-`MemberDeactivatedEvent` 처리와 동일한 패턴으로 일관성을 유지한다.
+`MemberDeactivatedEvent`는 같은 트랜잭션에서 동기로 처리하지만, R2 삭제는 되돌릴 수 없는 외부 호출이라 커밋 뒤로 미룬다.
 
 ### 10.5 추후 별도 설계 (1차 구현 범위 외)
 

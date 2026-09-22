@@ -181,6 +181,7 @@ public interface MediaService {
                                        MediaQualityTier qualityTier);
 
     // 소유자가 이미지 목록을 교체할 때(artwork replaceImages와 동일 패턴) 기존 행을 고아 처리하고 새로 등록.
+    // 알려진 결함: 새 목록에 남는 key까지 고아로 넘기고 다시 트리거한다 — 별도 이슈에서 media 중심으로 재설계한다.
     void replaceAndTriggerProcessing(MediaOwnerType ownerType, String ownerId,
                                       List<String> newImageKeys, MediaVariantProfile variantProfile,
                                       MediaQualityTier qualityTier);
@@ -192,8 +193,19 @@ public interface MediaService {
     // 자리를 대체 — QA에서 발견: 최초 초안은 이 소비자를 놓쳐 deleteFiles를 공개 API에서 빠뜨렸었다.
     void deleteFiles(List<String> keys);
 
+    // 자산 행을 지우면 그 행이 가리키던 파일(원본·변형본)을 고아 큐로 보낸다 — 영구 삭제 이벤트를 만든 뒤 도착한
+    // 콜백이 기록한 변형본도 놓치지 않는다. 호출자가 이미 지웠거나 고아 큐에 넣은 key(handledKeys)는 다시 넣지 않는다.
+    void deleteAssetsForOwner(MediaOwnerType ownerType, String ownerId, Collection<String> handledKeys);
+
+    // 고아 key 적재의 유일한 경로(null·빈 key는 거른다). 정리 배치(OrphanImageCleanupScheduler)는 지우기 전에
+    // RetainedMediaKeyProvider로 보존 판정을 한다 — 판정은 key 단위라 행에 어떤 key 조합이 들어와도 안전하다.
     void markOrphaned(List<String> keys);
 }
+
+교체·삭제(`findByOwnerForUpdate`)와 Worker 콜백(`findByOwnerAndOriginalKeyForUpdate`)은 자산 행을 잠근 뒤 읽는다.
+콜백이 먼저면 삭제 쪽이 콜백이 기록한 변형본을 보고 고아로 넘기고, 삭제가 먼저면 콜백은 행이 없다고 보고
+변형본을 고아로 넘긴다. 두 쿼리 모두 `idx_ma_owner(owner_type, owner_id, ordinal)`를 ordinal 순으로 훑으며 소유자의 행 전체를
+잠그므로(콜백도 한 행이 아니라 소유자 범위를 잠근다) 잠금 순서가 같아 순환이 없다. 대신 한 소유자의 콜백은 직렬화된다.
 
 public record PresignedUrlInfo(String key, String uploadUrl);
 
@@ -252,6 +264,10 @@ Body: {
 }
 ```
 
+대응하는 `media_assets` 행이 없는 콜백(이미지 교체·소유자 삭제 뒤 늦게 도착한 콜백)은 무시하되, Worker가 이미 써 둔
+변형본 키(`thumbKey`/`thumbAdultKey`/`originalAvifKey`)를 고아 큐에 넣어 `OrphanImageCleanupScheduler`가 지우게 한다.
+원본 키는 교체·영구 삭제 경로가 이미 정리 대상으로 넘겼으므로 넣지 않는다.
+
 `failureReason`은 **저장하지 않고 서버 로그(WARN)로만 남긴다.** 실패는 드문 이벤트이고 필요한 것은
 "왜 실패했나"를 되짚는 것이라 컬럼을 늘릴 이유가 없다 — 로그는 Grafana Loki로 수집되므로 검색된다.
 이 값이 없으면 운영 중에는 `FAILED`라는 사실만 남아 용량 초과·**면적 초과(Images는 100MP를 넘기면
@@ -286,7 +302,9 @@ void triggerAsync(MediaOwnerType ownerType, String ownerId, List<String> imageKe
 ```
 
 `registerAndTriggerProcessing`은 이 메서드를 바로 부르지 않고 호출자 트랜잭션의 `afterCommit`에 등록한다(#174).
-외부 호출은 되돌릴 수 없으므로 자산 행이 커밋된 뒤에만 보낸다. 트랜잭션 밖(재시도 스케줄러)에서는 바로 부른다.
+외부 호출은 되돌릴 수 없으므로 자산 행이 커밋된 뒤에만 보낸다. 트랜잭션 없이 불리는 경우(단위 테스트 등)에만 바로
+부른다 — 재시도 스케줄러는 이 경로를 거치지 않고 `triggerAsync`를 직접 부른다. afterCommit에서 트리거 제출이 실패하면
+(배포 종료 중 executor 거부 등) 예외를 호출자에게 넘기지 않고 로그만 남긴다. 자산이 PENDING으로 남아 재시도 스케줄러가 복구한다.
 
 `R2StorageAdapter.triggerWorker`의 요청 바디가 `{"artworkId":..., "imageKeys":[...]}`에서
 `{"ownerType":..., "ownerId":..., "imageKeys":[...], "variantProfile":..., "qualityTier":...}`로 바뀐다 —
@@ -424,6 +442,8 @@ Worker가 먼저 하면 된다"는 가정이 틀렸다. 서버가 새 필드를 
 별도 `imageProcessingStatus`(PENDING/READY) 필드를 posting에 추가해 발행 상태와 이미지 처리 상태를
 독립 축으로 관리한다 — artwork는 이미지가 곧 콘텐츠라 상태를 합쳤지만, recruit은 텍스트 게시글에 이미지가
 부속이라 두 흐름을 분리하는 편이 상태 전이 로직을 단순하게 유지한다.
+
+이미지를 모두 지우면 `deleteAssetsForOwner`가 지운 자산 행의 파일을 고아 큐로 넘긴다(PR #188).
 
 ### 10.3 API
 

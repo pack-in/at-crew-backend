@@ -15,9 +15,12 @@ import com.atcrew.portfolio.internal.persistence.PortfolioItemSnapshotRepository
 import com.atcrew.portfolio.internal.persistence.PortfolioRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.modulith.test.ApplicationModuleTest;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -47,6 +50,9 @@ class SnapshotRetainedMediaKeyProviderTests {
     @Autowired
     JsonMapper jsonMapper;
 
+    @Autowired
+    JdbcTemplate jdbcTemplate;
+
     @Test
     void 스냅샷이_참조하는_썸네일과_상세_이미지_키를_보존_대상으로_돌려준다() {
         String portfolioId = givenSnapshotPortfolio();
@@ -59,6 +65,34 @@ class SnapshotRetainedMediaKeyProviderTests {
 
         assertThat(retained)
                 .containsExactlyInAnyOrder("raw/a.png", "thumb/a.avif", "thumb-adult/a.avif", "raw/a.avif");
+    }
+
+    // 고아 행은 이미지 한 장의 변형본만 담기도 한다 — 썸네일이 후보에 없어도 스냅샷이 참조하는 key는 보존한다.
+    @Test
+    void 후보에_썸네일이_없어도_스냅샷이_참조하는_상세_이미지_키를_보존한다() {
+        String portfolioId = givenSnapshotPortfolio();
+        snapshotRepository.save(snapshotOf(portfolioId, "thumb/e1.avif", null,
+                new ArtworkImageInfo("raw/e1.png", "thumb/e1.avif", null, "original/e1.avif", ImageProcessingStatus.DONE),
+                new ArtworkImageInfo("raw/e2.png", "thumb/e2.avif", "thumb-adult/e2.avif", "original/e2.avif",
+                        ImageProcessingStatus.DONE)));
+
+        var retained = provider.retainedKeys(List.of("thumb/e2.avif", "thumb-adult/e2.avif", "original/e2.avif"));
+
+        assertThat(retained).containsExactlyInAnyOrder("thumb/e2.avif", "thumb-adult/e2.avif", "original/e2.avif");
+    }
+
+    // 사용자 지정 썸네일을 쓴 스냅샷은 카드 thumb_key가 지정 썸네일이다. media 자산 행에서 나온 후보에는 그 key가
+    // 없다 — 예전 판정은 여기서 스냅샷을 못 찾아 상세 이미지를 지웠다.
+    @Test
+    void 사용자_지정_썸네일을_쓴_스냅샷도_자산_키만으로_보존한다() {
+        String portfolioId = givenSnapshotPortfolio();
+        snapshotRepository.save(snapshotOf(portfolioId, "raw/custom-thumb.png", null,
+                new ArtworkImageInfo("raw/f.png", "thumb/f.avif", "thumb-adult/f.avif", "original/f.avif",
+                        ImageProcessingStatus.DONE)));
+
+        var retained = provider.retainedKeys(List.of("raw/f.png", "thumb/f.avif", "thumb-adult/f.avif", "original/f.avif"));
+
+        assertThat(retained).containsExactlyInAnyOrder("raw/f.png", "thumb/f.avif", "thumb-adult/f.avif", "original/f.avif");
     }
 
     @Test
@@ -84,6 +118,41 @@ class SnapshotRetainedMediaKeyProviderTests {
         assertThat(retained).isEmpty();
     }
 
+    // V41 이전에 만들어진 스냅샷은 색인이 없다 — 마이그레이션의 채우기 SQL이 payload의 key를 빠짐없이 옮기는지 본다.
+    @Test
+    void V41_채우기_SQL은_기존_스냅샷의_key를_모두_색인에_넣는다() throws Exception {
+        String portfolioId = givenSnapshotPortfolio();
+        String payload = """
+                {"images":[{"originalKey":"raw/g.png","thumbKey":"thumb/g.avif","thumbAdultKey":null,
+                "originalAvifKey":"original/g.avif","processingStatus":"DONE"}],
+                "materials":[{"name":"소재","attachmentKeys":["raw/att-g.png"]}],"description":"본문"}
+                """;
+        jdbcTemplate.update("""
+                INSERT INTO portfolio_item_snapshots (portfolio_id, ordinal, source_artwork_id, snapshot_public_id,
+                    title, thumb_key, thumb_adult_key, payload_json)
+                VALUES (?, 0, ?, ?, '옛 작품', 'raw/custom-g.png', NULL, ?)
+                """, portfolioId, UUID.randomUUID().toString(), UUID.randomUUID().toString(), payload);
+        Long snapshotId = jdbcTemplate.queryForObject(
+                "SELECT id FROM portfolio_item_snapshots WHERE portfolio_id = ?", Long.class, portfolioId);
+
+        jdbcTemplate.execute(backfillSql());
+
+        assertThat(jdbcTemplate.queryForList(
+                "SELECT media_key FROM portfolio_snapshot_media_keys WHERE snapshot_id = ?", String.class, snapshotId))
+                .containsExactlyInAnyOrder("raw/custom-g.png", "raw/g.png", "thumb/g.avif", "original/g.avif");
+        // 자료 첨부 key는 소유 검증 없는 입력이라(#190) 색인하지 않는다 — 남의 파일 삭제를 막는 데 쓰일 수 있다.
+        assertThat(provider.retainedKeys(List.of("raw/att-g.png"))).isEmpty();
+        assertThat(provider.retainedKeys(List.of("original/g.avif"))).containsExactly("original/g.avif");
+    }
+
+    /** V41 파일의 채우기 INSERT 문 — 테스트가 따로 SQL을 적으면 실제 마이그레이션과 어긋나도 모른다. */
+    private static String backfillSql() throws java.io.IOException {
+        String migration = Files.readString(
+                Path.of("src/main/resources/db/migration/V41__portfolio_snapshot_media_keys.sql"));
+        String insert = migration.substring(migration.indexOf("INSERT IGNORE INTO"));
+        return insert.substring(0, insert.lastIndexOf(';'));
+    }
+
     @Test
     void 후보_키가_비어_있으면_조회하지_않고_빈_집합을_돌려준다() {
         assertThat(provider.retainedKeys(List.of())).isEmpty();
@@ -95,13 +164,14 @@ class SnapshotRetainedMediaKeyProviderTests {
         return portfolio.getId();
     }
 
+    // 운영 경로(PortfolioServiceImpl.toSnapshot)와 같은 메서드로 색인 key를 만든다.
     private PortfolioItemSnapshot snapshotOf(String portfolioId, String thumbKey, String thumbAdultKey,
-                                             ArtworkImageInfo image) {
-        ArtworkSnapshotPayload payload = new ArtworkSnapshotPayload(List.of(image), List.of(), List.of(),
+                                             ArtworkImageInfo... images) {
+        ArtworkSnapshotPayload payload = new ArtworkSnapshotPayload(List.of(images), List.of(), List.of(),
                 List.of(), List.of(), List.of(), List.of(), "본문", 0);
         return PortfolioItemSnapshot.of(portfolioId, 0, UUID.randomUUID().toString(), "작품",
                 thumbKey, thumbAdultKey, AgeRating.ALL, ArtworkField.ILLUSTRATION, Instant.now(),
-                jsonMapper.writeValueAsString(payload));
+                jsonMapper.writeValueAsString(payload), payload.referencedMediaKeys(thumbKey, thumbAdultKey));
     }
 
     private String newSlug() {

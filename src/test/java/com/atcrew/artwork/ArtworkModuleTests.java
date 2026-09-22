@@ -26,6 +26,7 @@ import org.springframework.modulith.test.PublishedEvents;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.stream.IntStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -37,7 +38,9 @@ import java.util.function.BooleanSupplier;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 /**
  * artwork 모듈 통합 검증.
@@ -192,6 +195,45 @@ class ArtworkModuleTests {
         assertThat(updated.images()).extracting(ArtworkImageInfo::originalKey)
                 .containsExactly("raw/new1.png", "raw/new2.png", "raw/new3.png");
         assertThat(updated.representativeImageIndex()).isEqualTo(2);
+    }
+
+    // 프론트는 수정 요청마다 폼 전체(기존 imageKeys 포함)를 보낸다. 교체로 처리하면 끝난 변환을 버리고
+    // 파일을 고아 큐로 넘겨, 이미지를 건드리지 않은 수정만으로 작품 이미지가 전부 깨진다(#193).
+    @Test
+    void 같은_이미지_목록으로_수정하면_변환_결과를_유지하고_고아_처리하지_않는다() {
+        String memberId = registerAuthor();
+        ArtworkInfo uploaded = uploadMinimal(memberId, "raw/u1.png");
+        processImage(uploaded.id(), "raw/u1.png", MediaProcessingStatus.DONE);
+        awaitReady(memberId, uploaded.id());
+        int orphansBefore = countOrphanRows();
+
+        ArtworkInfo updated = artworkService.updateArtwork(memberId, uploaded.id(), new UpdateArtworkCommand(
+                List.of("raw/u1.png"), 0, null, null, "새 제목",
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null));
+
+        assertThat(updated.title()).isEqualTo("새 제목");
+        assertThat(updated.images()).extracting(ArtworkImageInfo::thumbKey).containsExactly("thumb/u1.avif");
+        assertThat(updated.images()).extracting(ArtworkImageInfo::processingStatus)
+                .containsExactly(ImageProcessingStatus.DONE);
+        assertThat(artworkService.getArtworkStatus(memberId, uploaded.id())).isEqualTo(ArtworkStatus.READY);
+        assertThat(countOrphanRows()).isEqualTo(orphansBefore);
+    }
+
+    @Test
+    void 이미지_목록이_바뀌면_교체하고_기존_파일을_고아_처리한다() {
+        String memberId = registerAuthor();
+        ArtworkInfo uploaded = uploadMinimal(memberId, "raw/u2.png");
+        processImage(uploaded.id(), "raw/u2.png", MediaProcessingStatus.DONE);
+        awaitReady(memberId, uploaded.id());
+        int orphansBefore = countOrphanRows();
+
+        ArtworkInfo updated = artworkService.updateArtwork(memberId, uploaded.id(), new UpdateArtworkCommand(
+                List.of("raw/u2.png", "raw/u3.png"), 0, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null));
+
+        assertThat(updated.images()).extracting(ArtworkImageInfo::originalKey)
+                .containsExactly("raw/u2.png", "raw/u3.png");
+        assertThat(countOrphanRows()).isGreaterThan(orphansBefore);
     }
 
     @Test
@@ -364,6 +406,24 @@ class ArtworkModuleTests {
                 .contains("raw/ct.png", "raw/custom-thumb.png");
     }
 
+    // 영구 삭제 이벤트는 작품의 R2 key 전체를 싣고 이벤트 레지스트리(EVENT_PUBLICATION.SERIALIZED_EVENT)에 저장된다.
+    // V13의 VARCHAR(4000)이면 처리된 이미지가 많은 작품에서 'Data too long'으로 영구 삭제 전체가 롤백됐다(V40).
+    @Test
+    void 이미지가_많은_작품도_영구삭제된다() {
+        String memberId = registerAuthor();
+        List<String> keys = IntStream.range(0, 15)
+                .mapToObj(i -> "raw/" + "long-image-name-to-grow-the-serialized-event-".repeat(2) + i + ".png")
+                .toList();
+        ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, baseUploadCommand(keys, List.of()));
+        keys.forEach(key -> processImage(uploaded.id(), key, MediaProcessingStatus.DONE));
+        awaitReady(memberId, uploaded.id());
+        artworkService.deleteArtwork(memberId, uploaded.id());
+
+        assertThatNoException().isThrownBy(() ->
+                artworkService.permanentlyDeleteArtworks(memberId, List.of(uploaded.id())));
+        assertThat(statusInDb(uploaded.id())).isNull();
+    }
+
     // 휴지통 보관 기간(기본 1년) 만료 자동 영구 삭제(#178). 사용자 영구 삭제와 같은 경로를 거쳐야
     // 스냅샷 보존·R2 정리가 똑같이 적용되므로, 같은 이벤트가 같은 키 목록으로 나가는지 본다.
     @Test
@@ -390,6 +450,8 @@ class ArtworkModuleTests {
         artworkService.deleteArtwork(memberId, recentlyTrashed.id());
         setDeletedAt(recentlyTrashed.id(), Instant.now().minus(Duration.ofDays(364)));
         ArtworkInfo active = uploadMinimal(memberId, "raw/active.png");
+        // 휴지통 밖 작품에도 오래된 deleted_at을 넣는다 — 그래야 쿼리에서 status 조건이 빠졌을 때 걸린다.
+        setDeletedAt(active.id(), Instant.now().minus(Duration.ofDays(366)));
 
         int purged = trashPurgeScheduler.purgeExpiredTrash();
 
@@ -442,6 +504,10 @@ class ArtworkModuleTests {
     /** 운영 차단 SQL 1건을 재현한다 — 관리자 API가 없어 실제 운영도 같은 UPDATE로 수행한다. */
     private void blockArtwork(String artworkId) {
         jdbcTemplate.update("UPDATE artworks SET blocked_at = UTC_TIMESTAMP(6) WHERE id = ?", artworkId);
+    }
+
+    private int countOrphanRows() {
+        return jdbcTemplate.queryForObject("select count(*) from orphaned_media_keys", Integer.class);
     }
 
     /** Worker webhook 1건을 재현한다 — media가 자산 상태를 갱신하고 MediaAssetProcessedEvent를 발행한다. */

@@ -1,4 +1,4 @@
-<svg data-source-sha256="a2ccf39d238e1252e241893b485bc60ecbbe652896f5cda903751b36660de52b" viewBox="0 0 886 652" role="img" lang="en" aria-labelledby="archify-diagram-title archify-diagram-description" data-preset="classic" data-quality-profile="showcase" style="" width="886" height="652" xmlns="http://www.w3.org/2000/svg"><style>@font-face { font-family: 'JetBrains Mono'; font-weight: 400; src: local('JetBrains Mono'), local('JetBrainsMono-Regular'); }
+<svg data-source-sha256="efb05de2cddec140322f2d8762c4425b0d953b0984e25ff71de4951699936712" viewBox="0 0 886 652" role="img" lang="en" aria-labelledby="archify-diagram-title archify-diagram-description" data-preset="classic" data-quality-profile="showcase" style="" width="886" height="652" xmlns="http://www.w3.org/2000/svg"><style>@font-face { font-family: 'JetBrains Mono'; font-weight: 400; src: local('JetBrains Mono'), local('JetBrainsMono-Regular'); }
 @font-face { font-family: 'JetBrains Mono'; font-weight: 500; src: local('JetBrains Mono'), local('JetBrainsMono-Regular'); }
 @font-face { font-family: 'JetBrains Mono'; font-weight: 600; src: local('JetBrains Mono'), local('JetBrainsMono-Regular'); }
 @font-face { font-family: 'JetBrains Mono'; font-weight: 700; src: local('JetBrains Mono'), local('JetBrainsMono-Regular'); }
@@ -407,8 +407,8 @@ rect.c-bg-rect { fill: var(--bg); }
           <text x="624" y="255" class="t-muted" font-size="8" text-anchor="middle">up -d, 기동 시 Flyway</text>
         </g>
 
-        <g id="node-health" data-node-id="health" data-node-label="헬스체크" tabindex="0" role="button" aria-label="Focus 헬스체크, liveness 36회 × 5초, EC2 (SSM으로 원격 실행) › 검증" aria-pressed="false" data-node-kind="security" data-node-sublabel="liveness 36회 × 5초" data-node-context="EC2 (SSM으로 원격 실행) › 검증">
-          <title>헬스체크 · liveness 36회 × 5초 · EC2 (SSM으로 원격 실행) › 검증</title>
+        <g id="node-health" data-node-id="health" data-node-label="헬스체크" tabindex="0" role="button" aria-label="Focus 헬스체크, /health/liveness 최대 3분, EC2 (SSM으로 원격 실행) › 검증" aria-pressed="false" data-node-kind="security" data-node-sublabel="/health/liveness 최대 3분" data-node-context="EC2 (SSM으로 원격 실행) › 검증">
+          <title>헬스체크 · /health/liveness 최대 3분 · EC2 (SSM으로 원격 실행) › 검증</title>
           <rect x="718" y="217" width="132" height="52" rx="6" class="c-mask"/>
           <rect x="718" y="217" width="132" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(724 223) scale(0.6875)">
@@ -416,7 +416,7 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
           <text data-node-label="" x="784" y="238" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">헬스체크</text>
-          <text x="784" y="255" class="t-muted" font-size="8" text-anchor="middle">liveness 36회 × 5초</text>
+          <text x="784" y="255" class="t-muted" font-size="8" text-anchor="middle">/health/liveness 최대 3분</text>
         </g>
 
         <g id="node-rollback" data-node-id="rollback" data-node-label="직전 이미지로 롤백" tabindex="0" role="button" aria-label="Focus 직전 이미지로 롤백, 실행 중이던 이미지, 헬스체크 실패 처리 › 서버 반영" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="실행 중이던 이미지" data-node-context="헬스체크 실패 처리 › 서버 반영">
@@ -433,8 +433,8 @@ rect.c-bg-rect { fill: var(--bg); }
           <text x="454" y="379" class="t-muted" font-size="8" text-anchor="middle">실행 중이던 이미지</text>
         </g>
 
-        <g id="node-mig" data-node-id="mig" data-node-label="마이그레이션 판정" tabindex="0" role="button" aria-label="Focus 마이그레이션 판정, 추가된 V 파일?, 헬스체크 실패 처리 › 서버 반영" aria-pressed="false" data-node-kind="security" data-node-sublabel="추가된 V 파일?" data-node-context="헬스체크 실패 처리 › 서버 반영">
-          <title>마이그레이션 판정 · 추가된 V 파일? · 헬스체크 실패 처리 › 서버 반영</title>
+        <g id="node-mig" data-node-id="mig" data-node-label="마이그레이션 판정" tabindex="0" role="button" aria-label="Focus 마이그레이션 판정, --diff-filter=A, 헬스체크 실패 처리 › 서버 반영" aria-pressed="false" data-node-kind="security" data-node-sublabel="--diff-filter=A" data-node-context="헬스체크 실패 처리 › 서버 반영">
+          <title>마이그레이션 판정 · --diff-filter=A · 헬스체크 실패 처리 › 서버 반영</title>
           <rect x="558" y="341" width="132" height="52" rx="6" class="c-mask"/>
           <rect x="558" y="341" width="132" height="52" rx="6" class="c-security" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(564 347) scale(0.6875)">
@@ -442,7 +442,7 @@ rect.c-bg-rect { fill: var(--bg); }
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
           <text data-node-label="" x="624" y="362" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">마이그레이션 판정</text>
-          <text x="624" y="379" class="t-muted" font-size="8" text-anchor="middle">추가된 V 파일?</text>
+          <text x="624" y="379" class="t-muted" font-size="8" text-anchor="middle">--diff-filter=A</text>
         </g>
 
         <g id="node-fail" data-node-id="fail" data-node-label="P1 배포 실패" tabindex="0" role="button" aria-label="Focus P1 배포 실패, 롤백 결과 · 수동 대응, Discord 통지 › 빌드와 이미지" aria-pressed="false" data-node-kind="external" data-node-sublabel="롤백 결과 · 수동 대응" data-node-context="Discord 통지 › 빌드와 이미지">
