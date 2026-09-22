@@ -240,6 +240,21 @@ class ArtworkViewRecordTests {
         assertThat(viewCountOf(otherArtworkId)).isEqualTo(1L);
     }
 
+    @Test
+    void 탈퇴한_회원의_남은_토큰으로_열람해도_기록하지_않는다() {
+        String artworkId = publishReady(registerMember());
+        String leaving = registerMember();
+        memberService.deactivate(leaving);
+
+        // 액세스 토큰은 탈퇴 후에도 만료 전까지 유효해 컨트롤러가 회원 ID를 그대로 넘긴다.
+        artworkService.recordView(artworkId, leaving, UUID.randomUUID().toString());
+
+        assertThat(eventKindsOf(artworkId)).isEmpty();
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM artwork_view_dedup WHERE viewer_key = ?", Long.class, leaving)).isZero();
+        assertThat(viewCountOf(artworkId)).isZero();
+    }
+
     private void runConcurrently(int threads, Runnable action) throws Exception {
         ExecutorService pool = Executors.newFixedThreadPool(threads);
         CountDownLatch startSignal = new CountDownLatch(1);

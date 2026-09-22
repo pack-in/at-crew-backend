@@ -209,6 +209,11 @@ class ArtworkServiceImpl implements ArtworkService {
         if (viewerMemberId != null) {
             // 회원 우선 — 헤더는 보지 않는다. FE는 로그인 후에도 익명 쿠키를 계속 보내므로 헤더 형식 오류로
             // 회원 열람까지 400이 되면 안 된다.
+            // JWT 필터는 탈퇴 여부를 보지 않아 탈퇴 직후에도 액세스 토큰이 만료 전까지 통과한다. 여기서 막지 않으면
+            // 탈퇴 비식별화(ArtworkViewMemberEventListener)가 끝난 뒤 회원 ID가 열람 기록에 다시 영구 저장된다.
+            if (memberService.findAllByIds(Set.of(viewerMemberId)).isEmpty()) {
+                return;
+            }
             viewerType = ArtworkViewerType.MEMBER;
             viewerKey = viewerMemberId;
         } else if (anonymousId != null) {
