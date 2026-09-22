@@ -76,18 +76,6 @@ class MediaServiceImpl implements MediaService {
             }
         });
     }
-    // 소유자가 이미지 목록을 교체할 때 기존 행의 파일을 고아로 넘기고 새로 등록한다. 남는 key의 처리 결과를 넘겨받는
-    // 개선은 artwork·recruit와 함께 설계해야 해 별도 이슈로 분리했다(PR #188).
-    @Override @Transactional public void replaceAndTriggerProcessing(MediaOwnerType ownerType, String ownerId,
-            List<String> newImageKeys, MediaVariantProfile variantProfile, MediaQualityTier qualityTier) {
-        var previous = assets.findByOwnerForUpdate(ownerType, ownerId);
-        markOrphaned(keysOf(previous));
-        // 삭제를 flush로 먼저 확정한 뒤 새 행을 넣는다 — 같은 flush에 묶이면 Hibernate가 INSERT를 DELETE보다
-        // 먼저 실행해 uk_ma_owner_order와 충돌한다(설계 §2.1이 artwork에서 그대로 옮겨오라고 명시한 2단계 패턴).
-        assets.deleteAll(previous);
-        assets.flush();
-        registerAndTriggerProcessing(ownerType, ownerId, newImageKeys, variantProfile, qualityTier);
-    }
     /**
      * 유지되는 행의 ordinal을 확정값(0부터)으로 바로 옮기면 아직 자리를 비우지 않은 다른 행과
      * uk_ma_owner_order가 충돌한다. 한 번에 이 오프셋만큼 밀어 두고 확정한다 — 소유자당 이미지 30장 상한보다

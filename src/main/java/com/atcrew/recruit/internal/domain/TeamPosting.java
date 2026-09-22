@@ -296,7 +296,7 @@ public class TeamPosting {
         this.imageProcessingStatus = RecruitImageProcessingStatus.PENDING;
     }
 
-    /** 처리할 이미지가 없거나 {@link RecruitPostingImage#readyFor} 조건을 만족했을 때 호출한다. */
+    /** 처리할 이미지가 없거나, PENDING이 없고 DONE이 하나 이상일 때 호출한다(media 자산 기준). */
     public void markImageProcessingReady() {
         this.imageProcessingStatus = RecruitImageProcessingStatus.READY;
     }

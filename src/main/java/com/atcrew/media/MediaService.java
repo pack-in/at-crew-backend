@@ -12,9 +12,6 @@ public interface MediaService {
     List<PresignedUrlInfo> generatePresignedUrls(int count, List<String> contentTypes, List<Long> fileSizes);
     void registerAndTriggerProcessing(MediaOwnerType ownerType, String ownerId, List<String> imageKeys,
                                       MediaVariantProfile variantProfile, MediaQualityTier qualityTier);
-    void replaceAndTriggerProcessing(MediaOwnerType ownerType, String ownerId, List<String> newImageKeys,
-                                     MediaVariantProfile variantProfile, MediaQualityTier qualityTier);
-
     /**
      * 소유자의 이미지 목록을 {@code desired}와 같게 맞추고, 맞춘 결과를 순서대로 돌려준다. 이미지 상태·변형본 key의
      * 단일 원천이 media이므로 유지·추가·삭제 판정도 여기서만 한다 — 소유자는 돌려받은 결과만 반영한다(#193).
