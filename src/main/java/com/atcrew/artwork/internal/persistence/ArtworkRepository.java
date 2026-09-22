@@ -85,6 +85,8 @@ public interface ArtworkRepository extends JpaRepository<Artwork, String>, JpaSp
 
     List<Artwork> findAllByOrderByCreatedAtAsc(Pageable pageable);
 
-    /** 휴지통 보관 기간이 지난 작품 — {@code TrashPurgeScheduler}가 배치로 가져간다(#178). */
-    List<Artwork> findByStatusAndDeletedAtBefore(ArtworkStatus status, Instant threshold, Pageable pageable);
+    /** 휴지통 보관 기간이 지난 작품 id, 오래된 것부터 — {@code TrashPurgeScheduler}가 작품마다 따로 지운다(#178). */
+    @Query("select a.id from Artwork a where a.status = :status and a.deletedAt < :threshold order by a.deletedAt asc")
+    List<String> findIdsByStatusAndDeletedAtBefore(@Param("status") ArtworkStatus status,
+                                                   @Param("threshold") Instant threshold, Pageable pageable);
 }

@@ -32,8 +32,8 @@ import tools.jackson.databind.json.JsonMapper;
  * <ul>
  *   <li>modules.mmd의 화살표가 Spring Modulith가 계산한 모듈 의존과 같은지 — 완전한 대조</li>
  *   <li>archify SVG가 지금의 IR·archify 버전으로 만들어졌는지 — build.py가 새긴 해시와 비교</li>
- *   <li>IR에 적힌 코드 식별자(앵커)가 아직 코드에 있는지 — 이름 변경·삭제만 잡고 흐름에 단계가
- *       추가된 것은 잡지 못한다</li>
+ *   <li>IR에 적힌 코드 식별자(앵커)가 아직 코드에 있는지 — 주석은 빼고 찾는다. 이름 변경·삭제만 잡고
+ *       흐름에 단계가 추가된 것은 잡지 못한다</li>
  * </ul>
  */
 class DiagramConsistencyTests {
@@ -41,6 +41,9 @@ class DiagramConsistencyTests {
     private static final Path ASSETS = Path.of("docs", "assets");
     private static final Path ARCHIFY_LOCK = Path.of("scripts", "diagrams", "archify.lock.json");
     private static final String COMMON = "common";
+    /** scripts/diagrams/build.py의 MERMAID_SOURCE_TAG와 같은 값. */
+    private static final String MERMAID_SOURCE_TAG = "mermaid";
+    private static final Pattern HASH_COMMENT_LINE = Pattern.compile("^\\s*#.*$", Pattern.MULTILINE);
 
     private static final Pattern IR_FILE =
             Pattern.compile("(.+)\\.(architecture|workflow|sequence|dataflow|lifecycle)\\.json");
@@ -78,6 +81,31 @@ class DiagramConsistencyTests {
                 .isEmpty();
     }
 
+    // 앵커가 주석에만 남아 있으면 코드에서 사라진 요소를 그림이 계속 보여 준다 — 주석은 빼고 찾는다.
+    @Test
+    void 앵커는_주석을_뺀_본문에서_찾는다() {
+        String java = "class A {\n  // TrashPurgeScheduler가 지운다\n  /* moveToTrash 참고 */\n  String url = \"https://x\";\n}";
+        assertThat(withoutComments(Path.of("A.java"), java))
+                .doesNotContain("TrashPurgeScheduler").doesNotContain("moveToTrash").contains("https://x");
+        // 문자열 안의 /*·// 는 주석이 아니다 — 여기서 주석으로 보면 뒤의 코드가 통째로 지워진다.
+        String withGlobs = "String a = \"/api/**\"; String b = \"image/*\";\nString c = \"https://x\"; void keepMe() {}\n/** 끝 */";
+        assertThat(withoutComments(Path.of("B.java"), withGlobs))
+                .contains("/api/**").contains("image/*").contains("https://x").contains("keepMe").doesNotContain("끝");
+        String yaml = "      # nginx -t로 검증한다\n      - name: 헬스체크\n        run: curl liveness\n";
+        assertThat(withoutComments(Path.of("deploy.yml"), yaml))
+                .doesNotContain("nginx -t").contains("헬스체크").contains("liveness");
+    }
+
+    @Test
+    void 모듈_다이어그램_SVG가_지금의_mmd로_생성돼_있다() throws IOException {
+        Path svg = ASSETS.resolve("modules.svg");
+        Matcher m = SOURCE_SHA256.matcher(Files.readString(svg));
+        String expected = sourceSha256(MERMAID_SOURCE_TAG, ASSETS.resolve("modules.mmd"));
+        assertThat(m.find() ? m.group(1) : "(없음)")
+                .as("modules.mmd를 고쳤으면 python3 scripts/diagrams/build.py modules로 SVG를 다시 만든다")
+                .isEqualTo(expected);
+    }
+
     @Test
     void archify_다이어그램의_코드_앵커가_아직_코드에_있다() throws IOException {
         List<String> problems = new ArrayList<>();
@@ -96,14 +124,16 @@ class DiagramConsistencyTests {
             }
             for (JsonNode anchor : anchors) {
                 String text = anchor.get("text").asString();
+                // 그림의 문구와 코드의 문자열이 다를 때(예: "POST /api/artworks" ↔ @PostMapping("/artworks")) code로 따로 적는다.
+                String code = anchor.has("code") ? anchor.get("code").asString() : text;
                 Path scope = Path.of(anchor.get("path").asString());
                 if (!irText.contains(text)) {
                     problems.add(anchorsFile + ": '" + text + "' 가 " + ir + " 에 없다 — 그림에 없는 것은 앵커로 두지 않는다");
                 }
                 if (!Files.exists(scope)) {
                     problems.add(anchorsFile + ": 경로 " + scope + " 가 없다");
-                } else if (!containsText(scope, text)) {
-                    problems.add(anchorsFile + ": '" + text + "' 가 " + scope + " 아래 코드에 없다 — 이름이 바뀌었으면 IR과 앵커를 함께 고친다");
+                } else if (!containsText(scope, code)) {
+                    problems.add(anchorsFile + ": '" + code + "' 가 " + scope + " 아래 코드에 없다 — 이름이 바뀌었으면 IR과 앵커를 함께 고친다");
                 }
             }
         }
@@ -168,6 +198,9 @@ class DiagramConsistencyTests {
             List<Path> found = files.filter(p -> IR_FILE.matcher(p.getFileName().toString()).matches())
                     .sorted()
                     .toList();
+            // 이름이 같으면 두 IR이 SVG 하나를 나눠 써서 한쪽 검사는 영원히 실패한다(build.py도 같은 이유로 멈춘다).
+            assertThat(found.stream().map(DiagramConsistencyTests::diagramName).toList())
+                    .as("archify IR 이름이 겹친다 — SVG 이름이 IR 이름에서 나온다").doesNotHaveDuplicates();
             // 작업 디렉터리가 달라 아무것도 못 찾으면 검사가 조용히 통과해 버린다.
             assertThat(found).as(ASSETS.toAbsolutePath() + " 에서 archify IR을 찾지 못했다").isNotEmpty();
             return found;
@@ -198,8 +231,67 @@ class DiagramConsistencyTests {
     /** path는 디렉터리(아래 파일 전부)나 파일 하나를 가리킨다. 흔한 문자열이면 파일로 좁혀야 의미가 있다. */
     private static boolean containsText(Path path, String text) throws IOException {
         try (Stream<Path> files = Files.walk(path)) {
-            return files.filter(Files::isRegularFile).anyMatch(f -> readText(f).contains(text));
+            return files.filter(Files::isRegularFile).anyMatch(f -> withoutComments(f, readText(f)).contains(text));
         }
+    }
+
+    /**
+     * 주석을 뺀 본문. 식별자가 주석에만 남아 있어도 앵커가 통과하면, 코드에서 사라진 요소를 그림이 계속 보여 준다.
+     * 확장자로 주석 문법을 고른다 — 모르는 형식은 그대로 둔다.
+     *
+     * <p>한계: YAML·셸은 줄 전체가 주석인 경우만 지운다. 줄 끝 주석({@code cmd # ...})은 따옴표 안의 {@code #}과
+     * 구분하려면 셸 문법 해석이 필요해서 남겨 둔다.
+     */
+    static String withoutComments(Path file, String text) {
+        String name = file.getFileName().toString();
+        if (name.matches(".*\\.(java|kt|js|mjs|ts)$")) {
+            return withoutCStyleComments(text);
+        }
+        if (name.matches(".*\\.(ya?ml|sh|py|conf|toml)$")) {
+            return HASH_COMMENT_LINE.matcher(text).replaceAll("");
+        }
+        return text;
+    }
+
+    /**
+     * {@code //}·{@code /* *}{@code /} 주석을 지운다. 문자열 리터럴({@code " ' `}) 안은 건드리지 않는다 — 정규식으로 지우면
+     * {@code "/api/**"}의 {@code /*}부터 다음 주석 끝까지 코드가 통째로 사라져 앵커가 거짓으로 실패한다.
+     */
+    static String withoutCStyleComments(String text) {
+        StringBuilder out = new StringBuilder(text.length());
+        char quote = 0;
+        int i = 0;
+        while (i < text.length()) {
+            char c = text.charAt(i);
+            char next = i + 1 < text.length() ? text.charAt(i + 1) : 0;
+            if (quote != 0) {
+                out.append(c);
+                if (c == '\\' && next != 0) {
+                    out.append(next);
+                    i += 2;
+                    continue;
+                }
+                if (c == quote) {
+                    quote = 0;
+                }
+                i++;
+            } else if (c == '"' || c == '\'' || c == '`') {
+                quote = c;
+                out.append(c);
+                i++;
+            } else if (c == '/' && next == '/') {
+                while (i < text.length() && text.charAt(i) != '\n') {
+                    i++;
+                }
+            } else if (c == '/' && next == '*') {
+                int end = text.indexOf("*/", i + 2);
+                i = end < 0 ? text.length() : end + 2;
+            } else {
+                out.append(c);
+                i++;
+            }
+        }
+        return out.toString();
     }
 
     private static String readText(Path file) {

@@ -41,7 +41,8 @@ class ArtworkEventListenerTest {
 
         verify(mediaService).deleteFiles(keys);
         verify(mediaService, never()).markOrphaned(anyList());
-        verify(mediaService).deleteAssetsForOwner(MediaOwnerType.ARTWORK, "artwork-1");
+        // 지웠거나 고아 큐에 넣은 key는 자산 행 정리가 다시 적재하지 않도록 넘긴다.
+        verify(mediaService).deleteAssetsForOwner(MediaOwnerType.ARTWORK, "artwork-1", Set.of("raw/1.png", "thumb/1.avif"));
     }
 
     @Test
@@ -61,7 +62,7 @@ class ArtworkEventListenerTest {
 
         listener.onPermanentlyDeleted(new ArtworkPermanentlyDeletedEvent("artwork-1", keys));
 
-        verify(mediaService).deleteAssetsForOwner(MediaOwnerType.ARTWORK, "artwork-1");
+        verify(mediaService).deleteAssetsForOwner(MediaOwnerType.ARTWORK, "artwork-1", Set.of("raw/1.png"));
     }
 
     @Test
@@ -84,6 +85,7 @@ class ArtworkEventListenerTest {
         listener.onPermanentlyDeleted(new ArtworkPermanentlyDeletedEvent("artwork-1", keys));
 
         verify(mediaService).markOrphaned(List.of("thumb/1.avif"));
+        verify(mediaService).deleteAssetsForOwner(MediaOwnerType.ARTWORK, "artwork-1", Set.of("raw/1.png", "thumb/1.avif"));
     }
 
     @Test
@@ -116,6 +118,6 @@ class ArtworkEventListenerTest {
         listener.onPermanentlyDeleted(new ArtworkPermanentlyDeletedEvent("artwork-1", List.of()));
 
         verify(mediaService, never()).markOrphaned(anyList());
-        verify(mediaService).deleteAssetsForOwner(MediaOwnerType.ARTWORK, "artwork-1");
+        verify(mediaService).deleteAssetsForOwner(MediaOwnerType.ARTWORK, "artwork-1", Set.of());
     }
 }

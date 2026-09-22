@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 import java.util.Optional;
 
 public interface PortfolioItemSnapshotRepository extends JpaRepository<PortfolioItemSnapshot, Long> {
@@ -36,15 +37,15 @@ public interface PortfolioItemSnapshotRepository extends JpaRepository<Portfolio
     Optional<PortfolioItemSnapshot> findByPortfolioIdAndSnapshotPublicId(String portfolioId,
                                                                          String snapshotPublicId);
 
-    // R2 key 보존 판정(§5.6) — 후보 key가 카드 썸네일로 걸린 스냅샷을 찾는다. 상세 본문 이미지 key는
-    // payload_json 안에 있어 SQL로 조회할 수 없으므로, 걸린 스냅샷의 payload를 호출자가 펼쳐 보존
-    // 집합을 만든다. 포트폴리오 행이 남아있는(=삭제되지 않은) 스냅샷만 대상이다.
+    // R2 key 보존 판정(§5.6) — 후보 key 중 활성 스냅샷이 참조하는 것. 스냅샷마다 참조 key를 색인(V41)으로 두어
+    // 후보가 어떤 모양이든(썸네일 없이 변형본 몇 개만 와도) 정확히 찾는다. 포트폴리오 행이 남아 있는
+    // (=삭제되지 않은) 스냅샷만 대상이다.
     @Query("""
-            select s from PortfolioItemSnapshot s
-            where (s.thumbKey in :keys or s.thumbAdultKey in :keys)
+            select distinct k from PortfolioItemSnapshot s join s.mediaKeys k
+            where k in :keys
               and exists (select 1 from Portfolio p where p.id = s.portfolioId)
             """)
-    List<PortfolioItemSnapshot> findActiveByThumbnailKeys(@Param("keys") Collection<String> keys);
+    Set<String> findActiveReferencedKeys(@Param("keys") Collection<String> keys);
 
     // 포트폴리오 삭제 시 스냅샷 행 정리 — PortfolioItemRepository.deleteByPortfolioId와 동일하게
     // 즉시 실행되는 벌크 DML로 둔다.

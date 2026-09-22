@@ -148,7 +148,7 @@ class PortfolioModuleTests {
         portfolioItemSnapshotRepository.save(PortfolioItemSnapshot.of(
                 portfolio.getId(), 0, newArtworkId(), "작품 제목",
                 "thumb/a.avif", "thumb-adult/a.avif", AgeRating.ALL, ArtworkField.ILLUSTRATION,
-                sourceCreatedAt, "{\"description\":\"본문\"}"));
+                sourceCreatedAt, "{\"description\":\"본문\"}", List.of("thumb/a.avif", "thumb-adult/a.avif")));
 
         PortfolioItemSnapshot found = portfolioItemSnapshotRepository
                 .findByPortfolioIdOrderByOrdinal(portfolio.getId()).getFirst();

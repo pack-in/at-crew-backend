@@ -123,7 +123,7 @@
       "col": 5,
       "type": "security",
       "label": "헬스체크",
-      "sublabel": "liveness 36회 × 5초",
+      "sublabel": "/health/liveness 최대 3분",
       "width": 132
     },
     {
@@ -132,7 +132,7 @@
       "col": 4,
       "type": "security",
       "label": "마이그레이션 판정",
-      "sublabel": "추가된 V 파일?",
+      "sublabel": "--diff-filter=A",
       "width": 132
     },
     {

@@ -100,10 +100,9 @@ class RecruitImageService {
             return ImageSyncResult.UNCHANGED;
         }
         if (newKeys.isEmpty()) {
-            // 이미지를 모두 지운 경우. media는 새 키가 없으면 교체 API를 받지 않으므로 파일 고아 처리와
-            // media_assets 행 삭제를 직접 호출한다(등록될 때까지 미루지 않음).
-            mediaService.markOrphaned(derivedKeysOf(existing));
-            mediaService.deleteAssetsForOwner(ownerType, postingId);
+            // 이미지를 모두 지운 경우. media는 새 키가 없으면 교체 API를 받지 않으므로 media_assets 행 삭제를
+            // 직접 호출한다 — 지운 행이 가리키던 파일은 media가 고아 큐로 넘긴다(등록될 때까지 미루지 않음).
+            mediaService.deleteAssetsForOwner(ownerType, postingId, List.of());
             deleteImages(ownerType, postingId);
             return ImageSyncResult.NO_IMAGES;
         }
@@ -199,14 +198,6 @@ class RecruitImageService {
 
     private static List<String> keysOf(List<ImageSlot> slots) {
         return slots.stream().map(ImageSlot::key).toList();
-    }
-
-    // 교체·삭제 시 R2에서 지워야 할 키 — 업로드 원본과 Worker가 만든 변환본 전부.
-    private static List<String> derivedKeysOf(List<? extends RecruitPostingImage> images) {
-        return images.stream()
-                .flatMap(i -> java.util.stream.Stream.of(i.getOriginalKey(), i.getThumbKey(), i.getOriginalAvifKey()))
-                .filter(RecruitImageService::isPresent)
-                .toList();
     }
 
     private static boolean isPresent(String value) {
