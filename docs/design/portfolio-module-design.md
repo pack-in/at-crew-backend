@@ -140,7 +140,7 @@ INDEX(artwork_id)   -- 작품 → 포함 포트폴리오 역조회(삭제 시 �
 |---|---|---|
 | (A) 완전 정규화 | Artwork 필드 전체 + images/materials 1:N까지 복제 | 테이블 4개, 스키마 진화 시 이중 관리 — 과함 |
 | (B) 단일 JSON | `portfolios.snapshot_json` 한 컬럼 | 커버 썸네일 4장만 필요해도 매번 전체 JSON 파싱, 목록 API에서 N건 로드 — 부적합 |
-| **(C) 하이브리드(채택)** | 렌더 핵심 필드는 컬럼, 상세 본문은 JSON 1컬럼 | 목록/커버는 컬럼만 읽어 빠르고, 상세는 JSON 1회 파싱. `artworks.video_links`가 이미 이 패턴(JSON 컬럼)을 씀. 이후 카드 목록은 `tags` 키만 JSON에서 읽도록 바뀜(아래 보강 참고) |
+| **(C) 하이브리드(채택)** | 렌더 핵심 필드는 컬럼, 상세 본문은 JSON 1컬럼 | 목록/커버는 컬럼만 읽어 빠르고, 상세는 JSON 1회 파싱. `artworks.video_links`가 이미 이 패턴(JSON 컬럼)을 씀. 이후 카드 목록은 `roles` 키만 JSON에서 읽도록 바뀜(아래 보강 참고) |
 
 ```
 portfolio_item_snapshots
@@ -150,7 +150,7 @@ portfolio_item_snapshots
   UNIQUE(portfolio_id, ordinal)
 ```
 
-**카드 `tags` 보강(2026-09-19)** — 작품 카드(`PortfolioArtworkCardInfo`)는 설계 당시 컬럼 구성에 맞춰 tags를 빼두었는데, 다른 작품 카드(`ArtworkSummaryInfo`)와 달리 태그가 없어 추가했다. 고정형 카드는 `payload_json`에서 **`tags` 키만** 읽는다(`SnapshotCardTags`) — 상세 본문 전체(`ArtworkSnapshotPayload`)를 바인딩하면 images·materials·roles의 중첩 enum이 바뀌어 옛 행이 역직렬화되지 않을 때 상세 1건이 아니라 카드 목록 전체가 깨지기 때문이다. 고정형 생성 응답은 다시 파싱하지 않고 메모리의 원본 tags를 쓴다. 컬럼 추가(이중 저장)는 택하지 않았다 — `payload_json`은 지연 로딩이 아니라 행 조회 때 이미 함께 읽히므로 컬럼으로 줄일 수 있는 비용은 파싱뿐이다. 파싱 건수는 공유 목록이 페이지당 최대 50건이고, 본인 상세(`GET /api/portfolios/{id}`)는 페이징이 없어 담긴 작품 전체 N건이다(작품 수 상한 없음). N이 커져 문제가 되면 이때 컬럼 추가를 재검토한다. 커버 썸네일은 여전히 컬럼만 읽는다.
+**카드 담당 업무(`roles`) 보강(2026-09-19, 2026-09-22 정정)** — 작품 카드(`PortfolioArtworkCardInfo`)는 설계 당시 스냅샷 컬럼 구성에 맞춰 필드를 정해, 다른 작품 카드와 달리 카드 칩 정보가 없었다. 처음에는 `tags`(자유 해시태그)를 추가했으나(#209), 목록 카드에서 "태그"로 보이는 항목은 실제로는 담당 업무라는 FE 확인에 따라 `ArtworkSummaryInfo`가 `roles`로 바뀌었고(#212), 포트폴리오 카드도 같은 구성으로 `roles`로 교체했다. 고정형 카드는 `payload_json`에서 **`roles` 키만** 문자열로 읽고(`SnapshotCardRoles`), 지금 enum에 없는 옛 값은 버린다 — 상세 본문 전체(`ArtworkSnapshotPayload`)를 바인딩하면 images·materials·roles의 enum이 바뀌어 옛 행이 역직렬화되지 않을 때 상세 1건이 아니라 카드 목록 전체가 깨지기 때문이다. 고정형 생성 응답은 다시 파싱하지 않고 메모리의 원본 roles를 쓴다. 컬럼 추가(이중 저장)는 택하지 않았다 — `payload_json`은 지연 로딩이 아니라 행 조회 때 이미 함께 읽히므로 컬럼으로 줄일 수 있는 비용은 파싱뿐이다. 파싱 건수는 공유 목록이 페이지당 최대 50건이고, 본인 상세(`GET /api/portfolios/{id}`)는 페이징이 없어 담긴 작품 전체 N건이다(작품 수 상한 없음). N이 커져 문제가 되면 이때 컬럼 추가를 재검토한다. 커버 썸네일은 여전히 컬럼만 읽는다.
 
 ### 2.4 Enum
 

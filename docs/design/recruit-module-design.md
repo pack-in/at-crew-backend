@@ -299,8 +299,8 @@ boolean isCompanyAccount(String memberId);
   **2026-08-03 정정**: 애초 "artwork 모듈의 Presigned URL + Worker 파이프라인 재사용"으로 적었으나, artwork의
   Worker/webhook/재시도 구현은 `internal` 캡슐화라 재사용 불가하고 도메인 로직과도 강결합돼 있음을 확인.
   대신 그 인프라를 범용 `media` 모듈로 추출해 artwork·recruit이 함께 소비하는 구조로 재설계함
-  (`docs/design/media-module-design.md` §10에 recruit 적용 계획 — 신규 자식 테이블 3개, `imageProcessingStatus`
-  필드, `MediaAssetProcessedEvent` 리스너). 여전히 후속 스코프.
+  (`docs/design/media-module-design.md` §10에 recruit 적용 — 이미지는 `media_assets`에만 두고 `slot_role`로
+  썸네일·참고를 가른다. 게시글에는 `imageProcessingStatus` 필드와 `MediaAssetProcessedEvent` 리스너만 남는다).
 
 ---
 

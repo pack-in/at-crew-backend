@@ -1,17 +1,13 @@
 package com.atcrew.recruit.internal.application;
 
+import com.atcrew.media.MediaAssetInfo;
+import com.atcrew.media.MediaAssetSpec;
 import com.atcrew.media.MediaOwnerType;
+import com.atcrew.media.MediaProcessingStatus;
 import com.atcrew.media.MediaQualityTier;
 import com.atcrew.media.MediaService;
 import com.atcrew.media.MediaVariantProfile;
-import com.atcrew.recruit.internal.domain.JobPostingImage;
-import com.atcrew.recruit.internal.domain.JobSeekingPostImage;
 import com.atcrew.recruit.internal.domain.RecruitImageRole;
-import com.atcrew.recruit.internal.domain.RecruitPostingImage;
-import com.atcrew.recruit.internal.domain.TeamPostingImage;
-import com.atcrew.recruit.internal.persistence.JobPostingImageRepository;
-import com.atcrew.recruit.internal.persistence.JobSeekingPostImageRepository;
-import com.atcrew.recruit.internal.persistence.TeamPostingImageRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,11 +18,14 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * 게시글 이미지 자식 테이블 관리 + media 모듈 위임 (docs/design/media-module-design.md §10).
+ * 게시글 이미지를 media 모듈에 위임한다 (docs/design/media-module-design.md §10).
+ *
+ * <p>이미지의 상태와 변형본 key는 {@code media_assets} 한 곳에만 있다(#193). 예전에는 게시글마다 자식
+ * 테이블을 두고 같은 값을 이중으로 갖다가, 교체할 때 두 축이 어긋나 남긴 이미지가 깨졌다.
  *
  * <p>recruit은 성인 게이팅 대상이 아니라 항상 {@link MediaVariantProfile#STANDARD}로 요청한다(§3).
- * 게시글 본문의 {@code thumbnailImage}/{@code referenceImages} 컬럼은 그대로 유지하고(§10.4),
- * 이 클래스가 관리하는 자식 행이 변환본 키를 담아 응답 조립에 쓰인다.
+ * 썸네일과 참고 이미지는 media의 슬롯 이름({@link RecruitImageRole})으로 가른다 — 썸네일이 없으면 참고
+ * 이미지가 0번을 차지하므로 ordinal만으로는 구분할 수 없다.
  */
 @Service
 @Transactional
@@ -34,170 +33,91 @@ class RecruitImageService {
 
     /** 이미지 동기화 결과 — 호출자가 게시글의 imageProcessingStatus를 어떻게 둘지 결정하는 데 쓴다. */
     enum ImageSyncResult {
-        /** 요청이 이미지 필드를 건드리지 않았다 — 상태를 그대로 둔다. */
-        UNCHANGED,
-        /** 새 이미지를 등록해 Worker 처리를 기다린다 — PENDING. */
+        /** 처리를 기다리는 이미지가 있다 — PENDING. */
         PROCESSING,
-        /** 처리할 이미지가 없다 — READY. */
-        NO_IMAGES
+        /** 기다릴 이미지가 없다(이미지가 없거나 모두 끝났다) — READY. */
+        READY
     }
 
     /** 동기화 결과를 게시글의 이미지 처리 상태에 반영한다. */
     static void apply(ImageSyncResult result, Runnable markPending, Runnable markReady) {
         switch (result) {
             case PROCESSING -> markPending.run();
-            case NO_IMAGES -> markReady.run();
-            case UNCHANGED -> { }
+            case READY -> markReady.run();
         }
     }
 
     private final MediaService mediaService;
-    private final JobPostingImageRepository jobPostingImages;
-    private final TeamPostingImageRepository teamPostingImages;
-    private final JobSeekingPostImageRepository jobSeekingPostImages;
 
-    RecruitImageService(MediaService mediaService, JobPostingImageRepository jobPostingImages,
-            TeamPostingImageRepository teamPostingImages, JobSeekingPostImageRepository jobSeekingPostImages) {
+    RecruitImageService(MediaService mediaService) {
         this.mediaService = mediaService;
-        this.jobPostingImages = jobPostingImages;
-        this.teamPostingImages = teamPostingImages;
-        this.jobSeekingPostImages = jobSeekingPostImages;
     }
 
     // === 쓰기 ===
 
     /**
-     * 게시글 생성 시 — 자식 행을 PENDING으로 적재하고 media 모듈에 등록·Worker 트리거를 위임한다(§10.3).
-     * 새 게시글이라 기존 자산이 없으므로 {@code registerAndTriggerProcessing}을 쓴다.
+     * 게시글의 이미지 목록을 요청과 같게 맞춘다. 남는 이미지는 media가 변환 결과를 그대로 두고, 빠진 것만
+     * 고아 큐로 보낸다(#193) — 예전에는 목록이 조금이라도 달라지면 전량 교체라 남긴 이미지가 깨졌다.
      */
-    ImageSyncResult register(MediaOwnerType ownerType, String postingId, String thumbnail,
-            List<String> references) {
-        List<ImageSlot> slots = slots(thumbnail, references);
-        if (slots.isEmpty()) {
-            return ImageSyncResult.NO_IMAGES;
-        }
-        saveSlots(ownerType, postingId, slots);
-        // 구인글·팀원 모집글의 참고 이미지·썸네일은 플랜 차등 대상이 아니다(요금제-R03·R04는 작품 화질만 규정).
-        mediaService.registerAndTriggerProcessing(ownerType, postingId, keysOf(slots),
-                MediaVariantProfile.STANDARD, MediaQualityTier.WEB);
-        return ImageSyncResult.PROCESSING;
-    }
-
-    /**
-     * 게시글 수정 시 — 이미지 목록이 실제로 바뀐 경우에만 기존 자산을 고아 처리하고 새로 등록한다.
-     *
-     * <p>{@code registerAndTriggerProcessing}이 아니라 {@code replaceAndTriggerProcessing}을 쓴다(§4):
-     * media_assets는 (ownerType, ownerId, ordinal) 유니크 제약이 있어 재등록이 충돌하고, 교체된 옛 키는
-     * 고아 정리 큐에 넣어야 R2에 파일이 남지 않는다.
-     */
-    ImageSyncResult replace(MediaOwnerType ownerType, String postingId, String thumbnail,
-            List<String> references) {
-        List<ImageSlot> slots = slots(thumbnail, references);
-        List<String> newKeys = keysOf(slots);
-        List<? extends RecruitPostingImage> existing = findImages(ownerType, postingId);
-        if (newKeys.equals(existing.stream().map(RecruitPostingImage::getOriginalKey).toList())) {
-            // 같은 키를 다시 보낸 경우 — 이미 끝난 변환을 버리고 재처리하지 않는다.
-            return ImageSyncResult.UNCHANGED;
-        }
-        if (newKeys.isEmpty()) {
-            // 이미지를 모두 지운 경우. media는 새 키가 없으면 교체 API를 받지 않으므로 media_assets 행 삭제를
-            // 직접 호출한다 — 지운 행이 가리키던 파일은 media가 고아 큐로 넘긴다(등록될 때까지 미루지 않음).
-            mediaService.deleteAssetsForOwner(ownerType, postingId, List.of());
-            deleteImages(ownerType, postingId);
-            return ImageSyncResult.NO_IMAGES;
-        }
-        deleteImages(ownerType, postingId);
-        saveSlots(ownerType, postingId, slots);
-        mediaService.replaceAndTriggerProcessing(ownerType, postingId, newKeys,
-                MediaVariantProfile.STANDARD, MediaQualityTier.WEB);
-        return ImageSyncResult.PROCESSING;
+    ImageSyncResult sync(MediaOwnerType ownerType, String postingId, String thumbnail, List<String> references) {
+        assertRecruitOwner(ownerType);
+        List<MediaAssetInfo> assets = mediaService.syncAssets(ownerType, postingId,
+                specs(thumbnail, references), MediaVariantProfile.STANDARD, MediaQualityTier.WEB);
+        return resultOf(assets);
     }
 
     // === 읽기 ===
 
-    /** 자식 행이 없으면(이 변경 이전 데이터) {@code null} — 호출자가 기존 컬럼으로 폴백한다. */
+    /** media에 자산이 없으면(이 전환 이전 데이터) {@code null} — 호출자가 기존 컬럼으로 폴백한다. */
     @Transactional(readOnly = true)
     PostingImages load(MediaOwnerType ownerType, String postingId) {
-        List<? extends RecruitPostingImage> images = findImages(ownerType, postingId);
-        return images.isEmpty() ? null : PostingImages.of(images);
+        assertRecruitOwner(ownerType);
+        List<MediaAssetInfo> assets = mediaService.getAssets(ownerType, postingId);
+        return assets.isEmpty() ? null : PostingImages.of(assets);
     }
 
-    /** 목록 조회용 일괄 로딩 — 자식 행이 없는 게시글 ID는 결과 맵에 담기지 않는다. */
+    /** 목록 조회용 일괄 로딩 — 자산이 없는 게시글 ID는 결과 맵에 담기지 않는다. */
     @Transactional(readOnly = true)
     Map<String, PostingImages> loadAll(MediaOwnerType ownerType, Collection<String> postingIds) {
-        if (postingIds.isEmpty()) {
-            return Map.of();
-        }
-        return findImages(ownerType, postingIds).stream()
-                .collect(Collectors.groupingBy(RecruitPostingImage::getPostingId))
-                .entrySet().stream()
+        assertRecruitOwner(ownerType);
+        return mediaService.getAssets(ownerType, postingIds).entrySet().stream()
                 .collect(Collectors.toMap(Map.Entry::getKey, e -> PostingImages.of(e.getValue())));
-    }
-
-    // === 타입별 저장소 분기 ===
-
-    List<? extends RecruitPostingImage> findImages(MediaOwnerType ownerType, String postingId) {
-        return switch (ownerType) {
-            case JOB_POSTING -> jobPostingImages.findByPostingIdOrderByOrdinalAsc(postingId);
-            case TEAM_POSTING -> teamPostingImages.findByPostingIdOrderByOrdinalAsc(postingId);
-            case JOB_SEEKING_POST -> jobSeekingPostImages.findByPostingIdOrderByOrdinalAsc(postingId);
-            case ARTWORK -> throw new IllegalArgumentException("recruit이 다루는 ownerType이 아닙니다: " + ownerType);
-        };
-    }
-
-    private List<? extends RecruitPostingImage> findImages(MediaOwnerType ownerType, Collection<String> postingIds) {
-        return switch (ownerType) {
-            case JOB_POSTING -> jobPostingImages.findByPostingIdInOrderByOrdinalAsc(postingIds);
-            case TEAM_POSTING -> teamPostingImages.findByPostingIdInOrderByOrdinalAsc(postingIds);
-            case JOB_SEEKING_POST -> jobSeekingPostImages.findByPostingIdInOrderByOrdinalAsc(postingIds);
-            case ARTWORK -> throw new IllegalArgumentException("recruit이 다루는 ownerType이 아닙니다: " + ownerType);
-        };
-    }
-
-    private void deleteImages(MediaOwnerType ownerType, String postingId) {
-        switch (ownerType) {
-            case JOB_POSTING -> jobPostingImages.deleteByPostingId(postingId);
-            case TEAM_POSTING -> teamPostingImages.deleteByPostingId(postingId);
-            case JOB_SEEKING_POST -> jobSeekingPostImages.deleteByPostingId(postingId);
-            case ARTWORK -> throw new IllegalArgumentException("recruit이 다루는 ownerType이 아닙니다: " + ownerType);
-        }
-    }
-
-    private void saveSlots(MediaOwnerType ownerType, String postingId, List<ImageSlot> slots) {
-        switch (ownerType) {
-            case JOB_POSTING -> slots.forEach(s ->
-                    jobPostingImages.save(JobPostingImage.pending(postingId, s.role(), s.ordinal(), s.key())));
-            case TEAM_POSTING -> slots.forEach(s ->
-                    teamPostingImages.save(TeamPostingImage.pending(postingId, s.role(), s.ordinal(), s.key())));
-            case JOB_SEEKING_POST -> slots.forEach(s ->
-                    jobSeekingPostImages.save(JobSeekingPostImage.pending(postingId, s.role(), s.ordinal(), s.key())));
-            case ARTWORK -> throw new IllegalArgumentException("recruit이 다루는 ownerType이 아닙니다: " + ownerType);
-        }
     }
 
     // === 헬퍼 ===
 
-    private record ImageSlot(RecruitImageRole role, int ordinal, String key) {
+    /**
+     * 게시글 상태 판정 — 기다릴 이미지가 있으면 PROCESSING이다. 전량 실패는 READY로 넘기지 않는다.
+     * 콜백 경로({@code RecruitMediaEventListener})의 판정과 같은 규칙이다.
+     */
+    private static ImageSyncResult resultOf(List<MediaAssetInfo> assets) {
+        if (assets.isEmpty()) {
+            return ImageSyncResult.READY;
+        }
+        if (assets.stream().anyMatch(a -> a.status() == MediaProcessingStatus.PENDING)) {
+            return ImageSyncResult.PROCESSING;
+        }
+        return assets.stream().anyMatch(a -> a.status() == MediaProcessingStatus.DONE)
+                ? ImageSyncResult.READY : ImageSyncResult.PROCESSING;
     }
 
-    /** THUMBNAIL=0, REFERENCE=1..n — media_assets에 넘기는 키 리스트의 인덱스와 같은 축을 쓴다. */
-    private static List<ImageSlot> slots(String thumbnail, List<String> references) {
-        List<ImageSlot> slots = new ArrayList<>();
+    /** 썸네일이 먼저, 그다음 참고 이미지 순서대로 — 목록 순서가 media의 ordinal이 된다. */
+    private static List<MediaAssetSpec> specs(String thumbnail, List<String> references) {
+        List<MediaAssetSpec> specs = new ArrayList<>();
         if (isPresent(thumbnail)) {
-            slots.add(new ImageSlot(RecruitImageRole.THUMBNAIL, slots.size(), thumbnail));
+            specs.add(new MediaAssetSpec(thumbnail, RecruitImageRole.THUMBNAIL.name()));
         }
         if (references != null) {
-            for (String key : references) {
-                if (isPresent(key)) {
-                    slots.add(new ImageSlot(RecruitImageRole.REFERENCE, slots.size(), key));
-                }
-            }
+            references.stream().filter(RecruitImageService::isPresent)
+                    .forEach(key -> specs.add(new MediaAssetSpec(key, RecruitImageRole.REFERENCE.name())));
         }
-        return slots;
+        return specs;
     }
 
-    private static List<String> keysOf(List<ImageSlot> slots) {
-        return slots.stream().map(ImageSlot::key).toList();
+    private static void assertRecruitOwner(MediaOwnerType ownerType) {
+        if (ownerType == MediaOwnerType.ARTWORK) {
+            throw new IllegalArgumentException("recruit이 다루는 ownerType이 아닙니다: " + ownerType);
+        }
     }
 
     private static boolean isPresent(String value) {

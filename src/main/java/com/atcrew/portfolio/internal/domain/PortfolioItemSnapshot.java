@@ -28,7 +28,7 @@ import java.util.Set;
  *
  * <p>하이브리드 저장 — 카드·커버 렌더에 쓰는 필드는 컬럼으로, 상세 본문(images/materials/tags/tools/
  * roles/genres/videoLinks/description)은 {@code payloadJson} 1컬럼으로 둔다. 커버는 JSON 파싱 없이 끝나고,
- * 카드 목록은 {@code tags} 키만 읽는 가벼운 파싱을 행마다 1회 한다(payload는 행 조회 시 이미 함께 읽힌다).
+ * 카드 목록은 {@code roles} 키만 읽는 가벼운 파싱을 행마다 1회 한다(payload는 행 조회 시 이미 함께 읽힌다).
  *
  * <p>이미지 R2 키는 복사하지 않고 원본 키를 그대로 참조한다(§5.6). 원본을 영구 삭제하거나 이미지를
  * 교체해도 이 행이 참조하는 키는 남아야 하므로, media의 삭제·고아 정리 경로가

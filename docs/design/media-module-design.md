@@ -23,8 +23,11 @@
   소비자**로 처음부터 media 위에서 시작한다.
 - **연결 방식**: 이 프로젝트에 이미 확립된 이벤트 기반 로컬 읽기 모델 패턴(`ArtworkChangedEvent`를 `search`/`recruit`가
   `@ApplicationModuleListener`로 구독하는 것과 동일한 방식)을 그대로 따른다. `media`가 처리 완료를
-  `MediaAssetProcessedEvent`로 발행하면, artwork/recruit은 각자의 로컬 테이블(`artwork_images`,
-  `job_posting_images` 등)에 처리 상태를 반영한다 — 조회 시 `media`를 역참조하지 않는다.
+  `MediaAssetProcessedEvent`로 발행하면, artwork/recruit은 그것을 신호로 자기 상태(작품 status, 게시글
+  imageProcessingStatus)를 다시 계산한다. **처음에는 도메인마다 로컬 이미지 테이블(`artwork_images`,
+  `job_posting_images` 등)에 같은 값을 복제했으나, 교체할 때 두 축이 어긋나 남긴 이미지가 깨져(#193)
+  2026-09-22에 없앴다** — 이미지의 상태와 변형본 key는 `media_assets`에만 있고, 도메인은 조회 시 media를
+  읽는다(§4 `getAssets`).
 - **외부 의존성 경고**: Cloudflare Worker 트리거 페이로드가 `{"artworkId": ...}`에서 `{"ownerType": ...,
   "ownerId": ...}`로 바뀌므로, **이 리포지토리 밖에 있는 Cloudflare Worker 스크립트도 함께 수정해야 한다**(§9).
   이건 Orca 코딩 워커가 이 레포 안에서 끝낼 수 있는 작업이 아니다 — 별도로 조율 필요.
@@ -182,10 +185,6 @@ public interface MediaService {
 
     // 소유자가 이미지 목록을 교체할 때(artwork replaceImages와 동일 패턴) 기존 행을 고아 처리하고 새로 등록.
     // 알려진 결함: 새 목록에 남는 key까지 고아로 넘기고 다시 트리거한다 — 별도 이슈에서 media 중심으로 재설계한다.
-    void replaceAndTriggerProcessing(MediaOwnerType ownerType, String ownerId,
-                                      List<String> newImageKeys, MediaVariantProfile variantProfile,
-                                      MediaQualityTier qualityTier);   // syncAssets로 대체 예정(#193)
-
     // 소유자의 목록을 desired와 같게 맞추고 맞춘 결과를 돌려준다(#193). 유지·추가·삭제 판정은 여기서만 한다 —
     // 소유자는 돌려받은 결과만 반영한다. 남는 key가 DONE이면 그대로 두고 재트리거하지 않는다(Worker가 DONE
     // 콜백 뒤 raw를 지우므로 재트리거하면 FAILED가 된다). PENDING·FAILED면 다시 트리거하고, 빠진 key만 고아
@@ -252,8 +251,7 @@ public record MediaAssetProcessedEvent(MediaOwnerType ownerType, String ownerId,
   이 로직은 `Artwork` 애그리게잇에 그대로 남고, 리스너는
   이벤트를 받아 `Artwork`에 위임만 한다 — 부분 실패 허용 여부 판단 자체는 도메인 로직이라 media로 옮기지
   않는다.
-- **recruit 소비**(신규): 자신의 `job_posting_images`/`team_posting_images`/`job_seeking_post_images` 행을
-  갱신하고, 소유 게시글의 `imageProcessingStatus`를 갱신(§10). READY 전환 조건은 artwork와 동일하게
+- **recruit 소비**: media 자산 현황을 읽어 소유 게시글의 `imageProcessingStatus`를 갱신한다(§10). READY 전환 조건은 artwork와 동일하게
   "PENDING 없음 + DONE 1개 이상"을 기본값으로 따른다 — 다르게 할 이유가 없으면 두 도메인 규칙을 갈라놓지
   않는다.
 
@@ -372,7 +370,7 @@ media → artwork/recruit 방향 참조 없음 (ownerId는 불투명 문자열, 
 1. `media` 모듈 생성 — 엔티티/리포지토리/서비스/이벤트/컨트롤러/스케줄러를 §2~§7대로 신규 작성.
 2. Flyway `V10__media_assets.sql` — `media_assets`, `orphaned_media_keys` 테이블 생성.
 3. artwork 리팩터링: `ArtworkServiceImpl`이 `MediaService`를 주입받아 `generatePresignedUrls`/
-   `registerAndTriggerProcessing`/`replaceAndTriggerProcessing` 위임으로 교체. `ArtworkImage`는 도메인 필드
+   `registerAndTriggerProcessing`/`syncAssets` 위임으로 교체. `ArtworkImage`는 도메인 필드
    (ordinal, 대표이미지 판단)만 남기고 처리 상태 갱신은 `MediaAssetProcessedEvent` 리스너로 이동.
 4. 기존 `artwork_images.processing_status`/`thumb_key`/`thumb_adult_key`/`original_avif_key` 컬럼은
    당분간 유지(읽기 캐시 역할) — 즉시 제거하지 않는다. 데이터는 `media_assets`에서 이벤트로 채워진다.
@@ -431,10 +429,13 @@ Worker가 먼저 하면 된다"는 가정이 틀렸다. 서버가 새 필드를 
 
 ## 10. recruit 적용 계획
 
-### 10.1 신규 테이블
+### 10.1 이미지 저장 (media_assets)
 
-`job_posting_images` / `team_posting_images` / `job_seeking_post_images` — 각각 기존
-`thumbnail_image`(단일 VARCHAR)와 `reference_images`(JSON 리스트)를 대체하는 자식 테이블:
+recruit도 이미지를 `media_assets`에만 둔다(#193). 처음에는 아래 자식 테이블 3개를 만들었으나 이중 저장이
+결함의 원인이라 2026-09-22에 없앴다 — 썸네일·참고 이미지 구분은 `media_assets.slot_role`이 담는다.
+
+(과거 구조, 참고용) `job_posting_images` / `team_posting_images` / `job_seeking_post_images` — 각각 기존
+`thumbnail_image`(단일 VARCHAR)와 `reference_images`(JSON 리스트)를 대체하는 자식 테이블이었다:
 
 | 필드 | 타입 |
 |---|---|
@@ -460,11 +461,12 @@ Worker가 먼저 하면 된다"는 가정이 틀렸다. 서버가 새 필드를 
 ### 10.3 API
 
 - `POST /api/recruit/images/presign` — `MediaService.generatePresignedUrls` 위임.
-- `JobPosting`/`TeamPosting`/`JobSeekingPost` 생성·수정 시 `MediaService.registerAndTriggerProcessing(
-  MediaOwnerType.JOB_POSTING, postingId, imageKeys, MediaVariantProfile.STANDARD)` 호출.
-- `RecruitMediaEventListener`(신규) — `MediaAssetProcessedEvent` 구독, `ownerType`으로 세 자식 테이블 중
-  하나를 갱신. posting의 `imageProcessingStatus = READY` 전환 조건은 §5와 동일하게 "PENDING 없음 + DONE
-  1개 이상"(부분 실패 허용) — "전부 DONE"이 아니다.
+- `JobPosting`/`TeamPosting`/`JobSeekingPost` 생성·수정 시 `RecruitImageService.sync(...)` →
+  `MediaService.syncAssets(ownerType, postingId, specs, STANDARD, WEB)` 호출. 썸네일은 `slotRole=THUMBNAIL`,
+  참고 이미지는 `REFERENCE`로 넘긴다.
+- `RecruitMediaEventListener` — `MediaAssetProcessedEvent` 구독, media 자산 현황을 읽어 posting의
+  `imageProcessingStatus = READY` 전환을 판정한다. 조건은 §5와 동일하게 "PENDING 없음 + DONE 1개
+  이상"(부분 실패 허용) — "전부 DONE"이 아니다.
 
 ### 10.4 기존 REST 계약과의 호환성
 

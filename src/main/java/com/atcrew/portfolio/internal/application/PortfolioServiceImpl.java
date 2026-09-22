@@ -2,6 +2,7 @@ package com.atcrew.portfolio.internal.application;
 
 import com.atcrew.artwork.AgeRating;
 import com.atcrew.artwork.ArtworkInfo;
+import com.atcrew.artwork.ArtworkRole;
 import com.atcrew.artwork.ArtworkService;
 import com.atcrew.artwork.ArtworkStatus;
 import com.atcrew.artwork.Genre;
@@ -45,6 +46,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -325,24 +327,31 @@ public class PortfolioServiceImpl {
     }
 
     private PortfolioArtworkCardInfo toSnapshotCardInfo(PortfolioItemSnapshot snapshot) {
-        return PortfolioMapper.toCardInfo(snapshot, readCardTags(snapshot));
+        return PortfolioMapper.toCardInfo(snapshot, readCardRoles(snapshot));
     }
 
     /**
-     * 고정형 카드용 tags만 {@code payload_json}에서 읽는다. 상세 본문 전체({@link ArtworkSnapshotPayload})를
-     * 바인딩하지 않는 이유는 images·materials·roles의 중첩 enum·필드가 바뀌어 옛 행이 역직렬화되지 않게 돼도
+     * 고정형 카드용 roles만 {@code payload_json}에서 읽는다. 상세 본문 전체({@link ArtworkSnapshotPayload})를
+     * 바인딩하지 않는 이유는 images·materials의 중첩 enum·필드가 바뀌어 옛 행이 역직렬화되지 않게 돼도
      * 스냅샷 상세 1건만 깨지고 카드 목록 전체는 계속 열려야 하기 때문이다(알 수 없는 속성은 무시된다).
+     * 같은 이유로 roles도 문자열로 읽고, 지금 {@link ArtworkRole}에 없는 옛 값은 버린다.
      */
-    private List<String> readCardTags(PortfolioItemSnapshot snapshot) {
+    private List<ArtworkRole> readCardRoles(PortfolioItemSnapshot snapshot) {
         String payloadJson = snapshot.getPayloadJson();
         if (payloadJson == null || payloadJson.isBlank()) {
             return List.of();
         }
-        return jsonMapper.readValue(payloadJson, SnapshotCardTags.class).tags();
+        List<String> roles = jsonMapper.readValue(payloadJson, SnapshotCardRoles.class).roles();
+        if (roles == null) {
+            return List.of();
+        }
+        return roles.stream()
+                .flatMap(name -> Arrays.stream(ArtworkRole.values()).filter(role -> role.name().equals(name)))
+                .toList();
     }
 
     // payload_json 중 카드가 읽는 필드만 담는 역직렬화 전용 타입 — 키 이름은 ArtworkSnapshotPayload와 같아야 한다.
-    record SnapshotCardTags(List<String> tags) {
+    record SnapshotCardRoles(List<String> roles) {
     }
 
     /**
@@ -542,15 +551,15 @@ public class PortfolioServiceImpl {
         portfolioItemSnapshotRepository.saveAll(snapshots);
         portfolio.updateItemCount(snapshots.size());
 
-        // 방금 직렬화한 payload를 다시 파싱하지 않고 메모리의 원본 tags를 쓴다 — 저장 값과 동일하다.
+        // 방금 직렬화한 payload를 다시 파싱하지 않고 메모리의 원본 roles를 쓴다 — 저장 값과 동일하다.
         List<PortfolioArtworkCardInfo> cards = new ArrayList<>();
         for (int ordinal = 0; ordinal < snapshots.size(); ordinal++) {
-            cards.add(PortfolioMapper.toCardInfo(snapshots.get(ordinal), artworks.get(ordinal).tags()));
+            cards.add(PortfolioMapper.toCardInfo(snapshots.get(ordinal), artworks.get(ordinal).roles()));
         }
         return PortfolioMapper.toInfo(portfolio, snapshots.size(), cards);
     }
 
-    // 카드용 컬럼과 상세 본문 JSON을 함께 채운다(§2.3 하이브리드 저장). 카드 tags는 컬럼이 없어 JSON에서 읽는다.
+    // 카드용 컬럼과 상세 본문 JSON을 함께 채운다(§2.3 하이브리드 저장). 카드 roles는 컬럼이 없어 JSON에서 읽는다.
     // 썸네일 판정은 라이브 카드와 동일해야 하므로 PortfolioMapper.toCardInfo 결과를 그대로 쓴다.
     private PortfolioItemSnapshot toSnapshot(String portfolioId, int ordinal, ArtworkInfo artwork) {
         PortfolioArtworkCardInfo card = PortfolioMapper.toCardInfo(artwork);

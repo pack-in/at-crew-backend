@@ -12,6 +12,8 @@ import com.atcrew.billing.BillingService;
 import com.atcrew.billing.internal.persistence.EntitlementBalanceRepository;
 import com.atcrew.common.exception.DomainException;
 import com.atcrew.media.MediaAssetProcessedEvent;
+import com.atcrew.media.MediaAssetInfo;
+import com.atcrew.media.internal.application.MediaCallbackService;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaProcessingStatus;
 import com.atcrew.media.MediaService;
@@ -19,10 +21,8 @@ import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
 import com.atcrew.recruit.internal.domain.RecruitImageProcessingStatus;
 import com.atcrew.recruit.internal.domain.RecruitImageRole;
-import com.atcrew.recruit.internal.domain.RecruitPostingImage;
-import com.atcrew.recruit.internal.persistence.JobPostingImageRepository;
 import com.atcrew.recruit.internal.persistence.JobPostingRepository;
-import com.atcrew.recruit.internal.persistence.JobSeekingPostImageRepository;
+import com.atcrew.recruit.internal.persistence.JobSeekingPostRepository;
 import com.atcrew.support.BillingTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -69,17 +69,17 @@ class RecruitModuleTests {
     JobPostingRepository jobPostingRepository;
 
     @Autowired
-    JobPostingImageRepository jobPostingImageRepository;
-
-    @Autowired
-    JobSeekingPostImageRepository jobSeekingPostImageRepository;
-
+    JobSeekingPostRepository jobSeekingPostRepository;
 
     @Autowired
     MediaService mediaService;
 
     @Autowired
     ApplicationEventPublisher eventPublisher;
+
+    // Worker webhook이 도달하는 지점 — 여기서 media 자산이 갱신되고 MediaAssetProcessedEvent가 발행된다.
+    @Autowired
+    MediaCallbackService mediaCallbackService;
 
     @Autowired
     PlatformTransactionManager transactionManager;
@@ -325,13 +325,12 @@ class RecruitModuleTests {
         assertThat(created.referenceImages()).containsExactly(referenceKey);
         assertThat(imageProcessingStatusOf(created.id())).isEqualTo(RecruitImageProcessingStatus.PENDING);
 
-        // 자식 테이블에 THUMBNAIL/REFERENCE 행이 PENDING으로 적재된다(§10.1)
-        assertThat(jobPostingImageRepository.findByPostingIdOrderByOrdinalAsc(created.id()))
-                .extracting(RecruitPostingImage::getRole, RecruitPostingImage::getOriginalKey,
-                        RecruitPostingImage::getProcessingStatus)
+        // media 자산에 THUMBNAIL/REFERENCE 슬롯이 PENDING으로 적재된다(#193 — 자식 테이블은 없앴다)
+        assertThat(mediaService.getAssets(MediaOwnerType.JOB_POSTING, created.id()))
+                .extracting(MediaAssetInfo::slotRole, MediaAssetInfo::originalKey, MediaAssetInfo::status)
                 .containsExactly(
-                        tuple(RecruitImageRole.THUMBNAIL, thumbnailKey, MediaProcessingStatus.PENDING),
-                        tuple(RecruitImageRole.REFERENCE, referenceKey, MediaProcessingStatus.PENDING));
+                        tuple(RecruitImageRole.THUMBNAIL.name(), thumbnailKey, MediaProcessingStatus.PENDING),
+                        tuple(RecruitImageRole.REFERENCE.name(), referenceKey, MediaProcessingStatus.PENDING));
 
         publishProcessed(created.id(), thumbnailKey, "original/thumb.avif", MediaProcessingStatus.DONE);
         publishProcessed(created.id(), referenceKey, "original/ref.avif", MediaProcessingStatus.DONE);
@@ -417,7 +416,6 @@ class RecruitModuleTests {
                 List.of() // referenceImages — 빈 리스트로 지움
         ));
 
-        assertThat(jobPostingImageRepository.findByPostingIdOrderByOrdinalAsc(created.id())).isEmpty();
         assertThat(mediaService.getAssets(MediaOwnerType.JOB_POSTING, created.id())).isEmpty();
         assertThat(imageProcessingStatusOf(created.id())).isEqualTo(RecruitImageProcessingStatus.READY);
     }
@@ -458,8 +456,10 @@ class RecruitModuleTests {
 
         publishProcessed(MediaOwnerType.JOB_SEEKING_POST, created.id(), firstKey, "original/first.avif",
                 MediaProcessingStatus.DONE);
-        awaitCondition(() -> jobSeekingPostImageRepository.findByPostingIdOrderByOrdinalAsc(created.id()).stream()
-                .allMatch(RecruitPostingImage::isDone));
+        // 게시글 상태로 기다린다 — media 자산은 콜백에서 바로 DONE이 되지만 리스너는 그 뒤 비동기로 돌기 때문에,
+        // 자산만 보고 넘어가면 아래 수정이 리스너의 게시글 갱신과 겹쳐 낙관적 락 충돌이 난다.
+        awaitCondition(() -> jobSeekingPostRepository.findById(created.id()).orElseThrow()
+                .getImageProcessingStatus() == RecruitImageProcessingStatus.READY);
 
         String secondKey = presignKey();
         JobSeekingPostInfo updated = recruitService.updateJobSeekingPost(authorId, created.id(),
@@ -467,8 +467,8 @@ class RecruitModuleTests {
                         List.of(secondKey)));
 
         assertThat(updated.referenceImages()).containsExactly(secondKey);
-        assertThat(jobSeekingPostImageRepository.findByPostingIdOrderByOrdinalAsc(created.id()))
-                .extracting(RecruitPostingImage::getOriginalKey, RecruitPostingImage::getProcessingStatus)
+        assertThat(mediaService.getAssets(MediaOwnerType.JOB_SEEKING_POST, created.id()))
+                .extracting(MediaAssetInfo::originalKey, MediaAssetInfo::status)
                 .containsExactly(tuple(secondKey, MediaProcessingStatus.PENDING));
     }
 
@@ -482,10 +482,10 @@ class RecruitModuleTests {
     }
 
     private MediaProcessingStatus processingStatusOf(String jobPostingId, String originalKey) {
-        return jobPostingImageRepository.findByPostingIdOrderByOrdinalAsc(jobPostingId).stream()
-                .filter(i -> originalKey.equals(i.getOriginalKey()))
+        return mediaService.getAssets(MediaOwnerType.JOB_POSTING, jobPostingId).stream()
+                .filter(a -> originalKey.equals(a.originalKey()))
                 .findFirst().orElseThrow()
-                .getProcessingStatus();
+                .status();
     }
 
     private void publishProcessed(String postingId, String imageKey, String originalAvifKey,
@@ -493,13 +493,13 @@ class RecruitModuleTests {
         publishProcessed(MediaOwnerType.JOB_POSTING, postingId, imageKey, originalAvifKey, status);
     }
 
-    // @ApplicationModuleListener는 트랜잭션 커밋 이후에 동작하므로 이벤트를 트랜잭션 안에서 발행한다.
+    // Worker webhook 1건을 재현한다 — media가 자산을 갱신하고 MediaAssetProcessedEvent를 발행한다.
+    // 이벤트만 직접 발행하면 안 된다: 변환 결과는 media_assets에만 있으므로(#193) 자산이 PENDING으로 남아
+    // 게시글이 READY로 넘어가지 않는다.
     private void publishProcessed(MediaOwnerType ownerType, String postingId, String imageKey,
             String originalAvifKey, MediaProcessingStatus status) {
         String thumbKey = originalAvifKey != null ? "thumb/" + UUID.randomUUID() + ".avif" : null;
-        new TransactionTemplate(transactionManager).executeWithoutResult(tx ->
-                eventPublisher.publishEvent(new MediaAssetProcessedEvent(
-                        ownerType, postingId, imageKey, thumbKey, null, originalAvifKey, status)));
+        mediaCallbackService.process(ownerType, postingId, imageKey, thumbKey, null, originalAvifKey, status);
     }
 
     /** 두 이벤트를 같은 순간에 발행해 두 리스너 트랜잭션이 실제로 겹치게 만든다 (§7 리스크 3). */
