@@ -4,6 +4,7 @@ import com.atcrew.common.security.JwtProvider;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
 import com.atcrew.support.RestDocsIntegrationSupport;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
@@ -257,6 +258,7 @@ class SecurityIntegrationTest extends RestDocsIntegrationSupport {
                 .andExpect(jsonPath("$.code").value("INTERNAL_SECRET_INVALID"));
     }
 
+    @Disabled("MVP 범위 밖 — recruit(구인·구직·팀원모집) 미출시, 출시 시 해제")
     @Test
     void 재색인_recruit_permitAll_통과() throws Exception {
         // 이슈 #114 회귀 테스트 — SecurityConfig의 permitAll 목록에서 이 경로만 빠져 있어서

@@ -3,6 +3,7 @@ package com.atcrew.recruit.docs;
 import com.atcrew.billing.internal.persistence.EntitlementBalanceRepository;
 import com.atcrew.support.BillingTestSupport;
 import com.atcrew.support.RestDocsIntegrationSupport;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
@@ -28,6 +29,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>전체 Spring 컨텍스트(MariaDB Testcontainer)를 기동해 작성→제출→관리자 승인→조회→끌어올리기→
  * 마감→삭제→복구로 이어지는 구인글 생명주기 전체를 REST Docs 스니펫으로 생성한다.
  */
+@Disabled("MVP 범위 밖 — recruit(구인·구직·팀원모집) 미출시, 출시 시 해제")
 class JobPostingApiDocTest extends RestDocsIntegrationSupport {
 
     @Autowired

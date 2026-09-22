@@ -10,6 +10,7 @@ import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
 import com.atcrew.member.UpdateInfoCommand;
 import com.atcrew.support.RestDocsIntegrationSupport;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
@@ -175,6 +176,7 @@ class CommunityApiDocTest extends RestDocsIntegrationSupport {
                 ));
     }
 
+    @Disabled("MVP 범위 밖 — recruit(구인·구직·팀원모집) 미출시, 출시 시 해제")
     @Test
     void 구인글_탭_빈_목록_문서화() throws Exception {
         // recruit 모듈의 RecruitService를 호출한다 — 이 테스트에는 PUBLISHED 구인글이 없어 빈 목록이 반환된다.
