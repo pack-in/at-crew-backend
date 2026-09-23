@@ -25,6 +25,7 @@ public enum ArtworkErrorCode {
     IMAGE_TOO_LARGE(HttpStatus.BAD_REQUEST, "이미지 한 장의 용량은 100MB를 넘을 수 없습니다"),
     INVALID_REPRESENTATIVE_INDEX(HttpStatus.BAD_REQUEST, "대표 이미지 인덱스가 유효하지 않습니다"),
     UNOWNED_IMAGE_KEY(HttpStatus.BAD_REQUEST, "본인이 발급받은 업로드 키가 아닙니다"),
+    DUPLICATE_IMAGE_KEY(HttpStatus.BAD_REQUEST, "같은 이미지 키를 두 번 보낼 수 없습니다"),
     PRESIGN_RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "업로드 URL 발급 한도를 넘었습니다. 잠시 후 다시 시도해 주세요"),
     // 같은 업로드 key를 본문과 썸네일로 함께 쓰면 Worker가 한 원본을 두 번 변환하고, 먼저 끝난 쪽이 원본을 지워
     // 다른 쪽이 실패한다. FE는 썸네일을 항상 따로 잘라 올리므로 API를 직접 부를 때만 걸린다.

@@ -61,6 +61,26 @@ class PresignRateLimiterTest {
         assertThat(limiter.tryIssue("member-1", 1)).isTrue();
     }
 
+    // 발급이 실패하면 쓰지도 않은 한도가 사라지지 않아야 한다.
+    @Test
+    void 예약을_되돌리면_한도가_돌아온다() {
+        PresignRateLimiter limiter = new PresignRateLimiter(3, Duration.ofHours(1));
+
+        assertThat(limiter.tryIssue("member-1", 3)).isTrue();
+        limiter.release("member-1", 3);
+
+        assertThat(limiter.tryIssue("member-1", 3)).isTrue();
+    }
+
+    @Test
+    void 기록이_없는_회원을_되돌려도_아무_일도_없다() {
+        PresignRateLimiter limiter = new PresignRateLimiter(1, Duration.ofHours(1));
+
+        limiter.release("없는회원", 5);
+
+        assertThat(limiter.tryIssue("없는회원", 1)).isTrue();
+    }
+
     @Test
     void 설정값이_유효하지_않으면_기동하지_않는다() {
         assertThatIllegalStateException().isThrownBy(() -> new PresignRateLimiter(0, Duration.ofHours(1)));

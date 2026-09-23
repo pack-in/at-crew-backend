@@ -138,12 +138,18 @@ class ArtworkServiceImpl implements ArtworkService {
             }
         }
         // 발급 한도(#216) — 넘으면 429. 등록되지 않은 원본이 무한히 쌓이는 것을 막는다.
+        // 입력 검증을 모두 통과한 뒤에 차감한다 — 잘못된 요청이 한도를 까먹으면 안 된다.
         if (!mediaService.tryReservePresign(memberId, count)) {
             throw new ArtworkException(ArtworkErrorCode.PRESIGN_RATE_LIMITED);
         }
-        return mediaService.generatePresignedUrls(memberId, count, contentTypes, fileSizes).stream()
-                .map(info -> new PresignedUrlInfo(info.key(), info.uploadUrl()))
-                .toList();
+        try {
+            return mediaService.generatePresignedUrls(memberId, count, contentTypes, fileSizes).stream()
+                    .map(info -> new PresignedUrlInfo(info.key(), info.uploadUrl()))
+                    .toList();
+        } catch (RuntimeException e) {
+            mediaService.releasePresign(memberId, count);   // 발급되지 않은 몫까지 한도를 먹지 않는다
+            throw e;
+        }
     }
 
     @Override
@@ -151,6 +157,7 @@ class ArtworkServiceImpl implements ArtworkService {
     public ArtworkInfo uploadArtwork(String memberId, UploadArtworkCommand command) {
         assertArtworkQuota(memberId, 1);
         assertLanguagesAllowed(memberId, command.languages());
+        assertNoDuplicateImageKeys(command.imageKeys());
         // 새 작품이라 물려받을 key가 없다 — 모든 key가 본인에게 발급된 것이어야 한다(#190).
         assertKeysOwned(memberId,
                 submittedKeys(command.imageKeys(), command.thumbnailKey(), command.materials()), Set.of());
@@ -274,6 +281,7 @@ class ArtworkServiceImpl implements ArtworkService {
             assertLanguagesAllowed(memberId, command.languages());
         }
         // media 자산은 여기서 한 번만 읽어 검증·기본값에 함께 쓴다.
+        assertNoDuplicateImageKeys(command.imageKeys());
         List<MediaAssetInfo> currentImages = mediaService.getAssets(MediaOwnerType.ARTWORK, artwork.getId());
         MediaAssetInfo currentThumbnail = mediaService.getAssets(MediaOwnerType.ARTWORK_THUMBNAIL, artwork.getId())
                 .stream().findFirst().orElse(null);
@@ -809,6 +817,17 @@ class ArtworkServiceImpl implements ArtworkService {
         artwork.getMaterials().stream().map(Material::getAttachmentKeys).filter(Objects::nonNull)
                 .forEach(stored::addAll);
         return stored;
+    }
+
+    /**
+     * 본문 이미지 목록에 같은 key가 두 번 들어오면 거부한다. 콜백이 행을 특정하지 못해 그 작품의 처리가 멈추기
+     * 때문이다 — media도 거부하지만 그 예외는 500이 되므로 여기서 400으로 돌려준다(이 클래스가 presign 검증을
+     * 남겨 둔 것과 같은 이유). 썸네일이 본문 key와 같은 경우는 따로 THUMBNAIL_KEY_IN_IMAGES로 거부한다.
+     */
+    private static void assertNoDuplicateImageKeys(List<String> imageKeys) {
+        if (imageKeys != null && imageKeys.stream().distinct().count() != imageKeys.size()) {
+            throw new ArtworkException(ArtworkErrorCode.DUPLICATE_IMAGE_KEY);
+        }
     }
 
     /** 요청이 담은 모든 R2 key — 이미지, 사용자 지정 썸네일, 자료 첨부. */

@@ -1,5 +1,8 @@
 package com.atcrew.recruit.internal.persistence;
 
+import org.springframework.data.repository.query.Param;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Modifying;
 import com.atcrew.recruit.internal.domain.TeamApplication;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -18,4 +21,10 @@ public interface TeamApplicationRepository extends JpaRepository<TeamApplication
 
     // 단건 조회 — 다른 팀원모집글의 지원 ID를 지정한 요청을 막기 위해 팀원모집글 ID를 조건에 포함한다
     Optional<TeamApplication> findByIdAndTeamPostingId(String id, String teamPostingId);
+
+    /** 게시글 영구 삭제 시 함께 지운다(#200) — 자식 행이라 게시글 행보다 먼저 지워야 외래키에 걸리지 않는다. */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("delete from TeamApplication a where a.teamPostingId = :postingId")
+    void deleteByTeamPostingId(@Param("postingId") String postingId);
+
 }

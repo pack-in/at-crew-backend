@@ -40,6 +40,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -136,7 +137,7 @@ class RecruitServiceImpl implements RecruitService {
         // 이미지는 presign으로 발급받은 key로 들어온다 — media 모듈에 등록해 Worker 변환을 트리거한다(설계 §10.3).
         RecruitImageService.apply(
                 recruitImageService.sync(memberId, MediaOwnerType.JOB_POSTING, saved.getId(),
-                        command.thumbnailImage(), command.referenceImages()),
+                        command.thumbnailImage(), command.referenceImages(), List.of()),
                 saved::markImageProcessingPending, saved::markImageProcessingReady);
         publishJobPostingChanged(saved.getId());
         return toInfo(saved);
@@ -148,12 +149,14 @@ class RecruitServiceImpl implements RecruitService {
         if (jobPosting.getStatus() == JobPostingStatus.DELETED) {
             throw new RecruitException(RecruitErrorCode.JOB_POSTING_NOT_FOUND, jobPostingId);
         }
+        // 수정 전 값을 먼저 잡아 둔다 — media 자산이 없는 옛 게시글도 자기 key를 다시 보낼 수 있어야 한다(#190).
+        List<String> previousKeys = previousKeysOf(jobPosting.getThumbnailImage(), jobPosting.getReferenceImages());
         jobPosting.updateContent(command);
         // 부분 업데이트라 이미지 필드를 실제로 보낸 요청만 media 재등록 대상이다(설계 §10.3).
         if (command.thumbnailImage() != null || command.referenceImages() != null) {
             RecruitImageService.apply(
                     recruitImageService.sync(memberId, MediaOwnerType.JOB_POSTING, jobPostingId,
-                            jobPosting.getThumbnailImage(), jobPosting.getReferenceImages()),
+                            jobPosting.getThumbnailImage(), jobPosting.getReferenceImages(), previousKeys),
                     jobPosting::markImageProcessingPending, jobPosting::markImageProcessingReady);
         }
         publishJobPostingChanged(jobPostingId);
@@ -290,7 +293,7 @@ class RecruitServiceImpl implements RecruitService {
         // 이미지는 presign으로 발급받은 key로 들어온다 — media 모듈에 등록해 Worker 변환을 트리거한다(설계 §10.3).
         RecruitImageService.apply(
                 recruitImageService.sync(memberId, MediaOwnerType.TEAM_POSTING, saved.getId(),
-                        command.thumbnailImage(), command.referenceImages()),
+                        command.thumbnailImage(), command.referenceImages(), List.of()),
                 saved::markImageProcessingPending, saved::markImageProcessingReady);
         publishTeamPostingChanged(saved.getId());
         return toTeamInfo(saved);
@@ -302,12 +305,13 @@ class RecruitServiceImpl implements RecruitService {
         if (teamPosting.getStatus() == TeamPostingStatus.DELETED) {
             throw new RecruitException(RecruitErrorCode.TEAM_POSTING_NOT_FOUND, teamPostingId);
         }
+        List<String> previousKeys = previousKeysOf(teamPosting.getThumbnailImage(), teamPosting.getReferenceImages());
         teamPosting.updateContent(command);
         // 부분 업데이트라 이미지 필드를 실제로 보낸 요청만 media 재등록 대상이다(설계 §10.3).
         if (command.thumbnailImage() != null || command.referenceImages() != null) {
             RecruitImageService.apply(
                     recruitImageService.sync(memberId, MediaOwnerType.TEAM_POSTING, teamPostingId,
-                            teamPosting.getThumbnailImage(), teamPosting.getReferenceImages()),
+                            teamPosting.getThumbnailImage(), teamPosting.getReferenceImages(), previousKeys),
                     teamPosting::markImageProcessingPending, teamPosting::markImageProcessingReady);
         }
         publishTeamPostingChanged(teamPostingId);
@@ -664,6 +668,14 @@ class RecruitServiceImpl implements RecruitService {
     private TeamPostingInfo toTeamInfo(TeamPosting teamPosting) {
         return TeamPostingMapper.toInfo(teamPosting, authorNameResolver.resolve(teamPosting.getAuthorMemberId()),
                 recruitImageService.load(MediaOwnerType.TEAM_POSTING, teamPosting.getId()));
+    }
+
+    /** 수정 전에 게시글이 들고 있던 이미지 key — 소유 검증에서 이 값들은 통과시킨다(#190). */
+    private static List<String> previousKeysOf(String thumbnail, List<String> references) {
+        List<String> keys = new ArrayList<>();
+        if (thumbnail != null && !thumbnail.isBlank()) keys.add(thumbnail);
+        if (references != null) keys.addAll(references);
+        return keys;
     }
 
     private void publishJobPostingChanged(String jobPostingId) {

@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -63,10 +64,15 @@ class RecruitImageService {
      * 게시글의 이미지 목록을 요청과 같게 맞춘다. 남는 이미지는 media가 변환 결과를 그대로 두고, 빠진 것만
      * 고아 큐로 보낸다(#193) — 예전에는 목록이 조금이라도 달라지면 전량 교체라 남긴 이미지가 깨졌다.
      */
+    /**
+     * @param previouslyStored 수정 전에 이 게시글에 저장돼 있던 key. media 자산이 없는 옛 게시글(레거시 컬럼만
+     *                         있는 데이터)도 그 key를 다시 보낼 수 있어야 하므로 호출자가 넘긴다 — 넘기지 않으면
+     *                         옛 게시글은 소유 검증에 걸려 영영 수정할 수 없다.
+     */
     ImageSyncResult sync(String memberId, MediaOwnerType ownerType, String postingId, String thumbnail,
-            List<String> references) {
+            List<String> references, Collection<String> previouslyStored) {
         assertRecruitOwner(ownerType);
-        assertKeysOwned(memberId, ownerType, postingId, thumbnail, references);
+        assertKeysOwned(memberId, ownerType, postingId, thumbnail, references, previouslyStored);
         List<MediaAssetInfo> assets = mediaService.syncAssets(ownerType, postingId,
                 specs(thumbnail, references), MediaVariantProfile.ORIGINAL, MediaQualityTier.WEB);
         return resultOf(assets);
@@ -80,12 +86,17 @@ class RecruitImageService {
      * 시절의 key도 계속 수정할 수 있어야 한다.
      */
     private void assertKeysOwned(String memberId, MediaOwnerType ownerType, String postingId, String thumbnail,
-            List<String> references) {
-        Set<String> stored = mediaService.getAssets(ownerType, postingId).stream()
-                .map(MediaAssetInfo::originalKey).collect(Collectors.toSet());
-        List<String> candidates = specs(thumbnail, references).stream().map(MediaAssetSpec::key)
-                .filter(key -> !stored.contains(key)).toList();
-        Set<String> unowned = mediaService.unownedKeys(memberId, candidates);
+            List<String> references, Collection<String> previouslyStored) {
+        List<String> keys = specs(thumbnail, references).stream().map(MediaAssetSpec::key).toList();
+        // 같은 key를 두 번 보내면 콜백이 행을 특정하지 못해 처리가 멈춘다. media가 거부하지만 그 예외는 500이 되므로
+        // 여기서 400으로 돌려준다.
+        if (keys.stream().distinct().count() != keys.size()) {
+            throw new RecruitException(RecruitErrorCode.DUPLICATE_IMAGE_KEY);
+        }
+        Set<String> stored = new HashSet<>(previouslyStored);
+        mediaService.getAssets(ownerType, postingId).stream().map(MediaAssetInfo::originalKey).forEach(stored::add);
+        Set<String> unowned = mediaService.unownedKeys(memberId,
+                keys.stream().filter(key -> !stored.contains(key)).toList());
         if (!unowned.isEmpty()) {
             throw new RecruitException(RecruitErrorCode.UNOWNED_IMAGE_KEY, String.join(", ", unowned));
         }

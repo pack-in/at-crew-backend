@@ -16,6 +16,7 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.*;
 import java.net.URI;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -66,6 +67,22 @@ class R2StorageAdapter implements ArtworkStoragePort {
                 .signatureDuration(Duration.ofMinutes(SOURCE_URL_EXPIRATION_MINUTES))
                 .getObjectRequest(get).build()).url().toString();
     }
+    @Override public List<String> listKeys(String prefix, Instant modifiedBefore, int limit) {
+        try {
+            // 한 페이지(최대 1000건)만 본다 — 배치가 주기적으로 돌며 조금씩 회수한다.
+            var response = s3Client.listObjectsV2(ListObjectsV2Request.builder()
+                    .bucket(props.bucket()).prefix(prefix).maxKeys(Math.min(limit, 1000)).build());
+            return response.contents().stream()
+                    .filter(object -> object.lastModified().isBefore(modifiedBefore))
+                    .map(S3Object::key)
+                    .limit(limit)
+                    .toList();
+        } catch (Exception e) {
+            log.error("R2 객체 목록 조회 실패: prefix={}", prefix, e);
+            throw new IllegalStateException("R2 객체 목록 조회 실패", e);
+        }
+    }
+
     @Override public void deleteFiles(List<String> keys) {
         if (keys == null || keys.isEmpty()) return;
         try {

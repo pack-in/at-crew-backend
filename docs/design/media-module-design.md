@@ -259,9 +259,16 @@ public record MediaAssetProcessedEvent(MediaOwnerType ownerType, String ownerId,
 기록은 인스턴스 메모리에만 둔다. 앱을 2대로 늘리면 인스턴스마다 따로 세므로 실효 한도가 대수만큼 커진다
 (`ha-expansion-path.md`) — 그때는 공유 저장소로 옮긴다.
 
-**아직 남은 것**: 이미 올라갔지만 등록되지 않은 raw 원본을 회수하는 경로는 없다. R2 목록을 훑어 지우는
-방식이 후보인데, 사용자 지정 썸네일과 자료 첨부는 media 행이 없는 raw key라 잘못 지우면 사용자 데이터가
-사라진다. 삭제가 걸린 작업이라 별도로 다룬다(#216).
+**등록되지 않은 원본 회수**: `UnregisteredRawCleanupScheduler`가 6시간마다 `raw/` 아래에서 일정 시간(기본
+2일) 이상 지난 객체를 훑어, media 자산에도 없고 어떤 참조처도 쓰지 않는 것을 정리한다.
+
+참조 판정은 `RetainedMediaKeyProvider` 구현들이 맡는다 — portfolio(고정형 스냅샷)와 artwork(사용자 지정
+썸네일·자료 첨부). 이 둘은 media 자산 행이 없는 raw key라 "media_assets에 없으면 고아"라는 판정으로 지우면
+사용자 데이터가 사라진다.
+
+기본값은 **기록만 하고 지우지 않는다**(`media.raw-cleanup.delete-enabled=false`). 운영 로그로 대상을 확인한
+뒤 켠다. 최소 경과 시간은 1시간 미만으로 설정할 수 없다 — 업로드 직후 저장 요청이 도착하기 전의 파일을
+지우지 않기 위해서다.
 
 ### key 형식과 소유자 서명 (#190)
 
