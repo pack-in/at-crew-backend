@@ -97,6 +97,8 @@ class PortfolioController {
 
     @Operation(summary = "공유 포트폴리오 생성", description = "프로 플랜 전용입니다. 응답의 shareSlug로 공유 URL을 구성합니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "생성 성공")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409",
+            description = "고정형(SNAPSHOT)에 이미지 처리가 끝나지 않은 작품이 포함됨(ARTWORK_IMAGE_PROCESSING)")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<PortfolioInfo> createPortfolio(@RequestBody @Valid CreatePortfolioRequest request) {

@@ -252,8 +252,8 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
     @Test
     void 고정형_포트폴리오_생성과_수정_거부_문서화() throws Exception {
         RegisteredMember member = registerProMember("고정형생성유저");
-        String artworkId = uploadArtwork(member.memberId(), "고정형 작품");
-        String secondArtworkId = uploadArtwork(member.memberId(), "고정형 작품 2");
+        String artworkId = uploadReadyArtwork(member.memberId(), "고정형 작품");
+        String secondArtworkId = uploadReadyArtwork(member.memberId(), "고정형 작품 2");
 
         Map<String, Object> createBody = new LinkedHashMap<>();
         createBody.put("title", "2026 상반기 아카이브");
@@ -359,7 +359,7 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
     void 내_포트폴리오_목록_문서화() throws Exception {
         RegisteredMember member = registerProMember("포트폴리오목록유저");
         List<String> fillerArtworkIds = List.of(
-                uploadArtwork(member.memberId(), "채움 작품 1"), uploadArtwork(member.memberId(), "채움 작품 2"));
+                uploadReadyArtwork(member.memberId(), "채움 작품 1"), uploadReadyArtwork(member.memberId(), "채움 작품 2"));
         createSharedPortfolio(member.accessToken(), "최신 반영형 포트폴리오", "LIVE", fillerArtworkIds);
         createSharedPortfolio(member.accessToken(), "고정형 포트폴리오", "SNAPSHOT", fillerArtworkIds);
 
@@ -424,7 +424,7 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
     void 선택_가능한_포트폴리오_목록_문서화() throws Exception {
         RegisteredMember member = registerProMember("선택목록유저");
         List<String> fillerArtworkIds = List.of(
-                uploadArtwork(member.memberId(), "채움 작품 1"), uploadArtwork(member.memberId(), "채움 작품 2"));
+                uploadReadyArtwork(member.memberId(), "채움 작품 1"), uploadReadyArtwork(member.memberId(), "채움 작품 2"));
         createSharedPortfolio(member.accessToken(), "최신 반영형 포트폴리오", "LIVE", fillerArtworkIds);
         createSharedPortfolio(member.accessToken(), "고정형 포트폴리오", "SNAPSHOT", fillerArtworkIds);
 

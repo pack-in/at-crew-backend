@@ -22,6 +22,9 @@ public enum PortfolioErrorCode {
     PORTFOLIO_ARTWORK_MINIMUM(HttpStatus.BAD_REQUEST, "포트폴리오에는 최소 2개의 작품이 필요해요"),
     // 운영 차단된 작품은 본인 소유라도 선택 대상이 아니다(마이페이지_작가-R38·R46).
     ARTWORK_BLOCKED(HttpStatus.BAD_REQUEST, "운영 정책에 따라 포트폴리오에 담을 수 없는 작품입니다"),
+    // 고정형은 생성 시점의 이미지 key를 얼린다. 처리 중인 이미지의 raw key는 변환이 끝나면 Worker가 지우므로 그대로
+    // 얼리면 스냅샷 이미지가 깨진다 — 처리가 끝난 뒤(보통 수 초) 다시 시도하게 한다.
+    ARTWORK_IMAGE_PROCESSING(HttpStatus.CONFLICT, "이미지 처리가 끝나지 않은 작품이 있어요. 잠시 후 다시 시도해주세요"),
     // 같은 포트폴리오를 다른 요청이 먼저 바꿨다 — 구성 교체는 낙관적 락 검사를 거치므로 재시도해야 한다(§8.9).
     PORTFOLIO_CONCURRENTLY_MODIFIED(HttpStatus.CONFLICT, "다른 요청이 포트폴리오를 먼저 변경했습니다. 다시 시도해주세요");
 

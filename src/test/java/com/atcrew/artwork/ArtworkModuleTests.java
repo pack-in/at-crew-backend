@@ -616,6 +616,55 @@ class ArtworkModuleTests {
                 .isEqualTo("THUMBNAIL_KEY_IN_IMAGES");
     }
 
+    // 본문 이미지를 썸네일로 고를 수 있던 시절의 작품 — 썸네일을 바꾸지 않는 수정까지 막으면 안 된다.
+    @Test
+    void 옛_썸네일이_본문_key와_같아도_썸네일을_바꾸지_않는_수정은_된다() {
+        String memberId = registerAuthor();
+        String shared = signedKey(memberId, "o-body");
+        ArtworkInfo uploaded = uploadMinimal(memberId, shared);
+        jdbcTemplate.update("UPDATE artworks SET thumbnail_key = ? WHERE id = ?", shared, uploaded.id());
+
+        ArtworkInfo updated = artworkService.updateArtwork(memberId, uploaded.id(), new UpdateArtworkCommand(
+                List.of(shared), 0, shared, null, "새 제목",
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null));
+
+        assertThat(updated.title()).isEqualTo("새 제목");
+        assertThat(thumbnailAssetCount(uploaded.id())).isZero();
+
+        // 썸네일을 새로 바꿔도 본문이 쓰는 옛 raw는 고아 큐로 보내지 않는다.
+        artworkService.updateArtwork(memberId, uploaded.id(), updateThumbnail(signedKey(memberId, "o-new")));
+        assertThat(orphanedKeys()).doesNotContain(shared);
+    }
+
+    // 이번 요청에서 뺀 본문 key를 썸네일로 돌리면 그 raw는 이미 지워졌거나 고아 큐로 가는 중이다.
+    @Test
+    void 본문에서_뺀_이미지_key를_새_썸네일로_지정할_수_없다() {
+        String memberId = registerAuthor();
+        ArtworkInfo uploaded = uploadWithThumbnail(memberId, signedKey(memberId, "x-a"), signedKey(memberId, "x-thumb"));
+        artworkService.updateArtwork(memberId, uploaded.id(), new UpdateArtworkCommand(
+                List.of(signedKey(memberId, "x-a"), signedKey(memberId, "x-b")), 0, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null));
+
+        assertThatThrownBy(() -> artworkService.updateArtwork(memberId, uploaded.id(), new UpdateArtworkCommand(
+                List.of(signedKey(memberId, "x-a")), 0, signedKey(memberId, "x-b"), null, null,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null)))
+                .isInstanceOf(DomainException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("THUMBNAIL_KEY_IN_IMAGES");
+    }
+
+    @Test
+    void 빈_썸네일_key로_수정하면_썸네일을_바꾸지_않는다() {
+        String memberId = registerAuthor();
+        String thumb = signedKey(memberId, "b-thumb");
+        ArtworkInfo uploaded = uploadWithThumbnail(memberId, signedKey(memberId, "b-body"), thumb);
+
+        ArtworkInfo updated = artworkService.updateArtwork(memberId, uploaded.id(), updateThumbnail(" "));
+
+        assertThat(updated.thumbnailKey()).isEqualTo(thumb);
+        assertThat(updated.thumbnailImage().originalKey()).isEqualTo(thumb);
+    }
+
     @Test
     void 영구삭제하면_썸네일_변형본까지_지우고_썸네일_자산_행을_정리한다(PublishedEvents events) {
         String memberId = registerAuthor();
