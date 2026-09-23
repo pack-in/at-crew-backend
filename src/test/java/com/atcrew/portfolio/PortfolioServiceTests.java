@@ -55,6 +55,7 @@ import java.util.UUID;
 import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
@@ -1924,6 +1925,60 @@ class PortfolioServiceTests {
                 memberId, List.of(SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE)));
     }
 
+    // 처리 중 이미지는 raw key만 있고 변환에 성공하면 Worker가 raw를 지운다 — 고정형이 그 key를 얼리면 스냅샷이 깨진다.
+    @Test
+    void 이미지_처리가_끝나지_않은_작품은_고정형에_담을_수_없다() {
+        String memberId = registerProMember();
+        String readyArtworkId = uploadArtwork(memberId);
+        String imageKey = signedKey(memberId, UUID.randomUUID().toString());
+        String pendingArtworkId = uploadPendingArtwork(memberId, imageKey);
+
+        assertThatThrownBy(() -> portfolioService.createShared(
+                memberId, "고정형", ReflectionType.SNAPSHOT, List.of(readyArtworkId, pendingArtworkId)))
+                .isInstanceOf(PortfolioException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("ARTWORK_IMAGE_PROCESSING");
+        // 최신 반영형은 원본을 따라가므로 처리 중이어도 담을 수 있다.
+        assertThatNoException().isThrownBy(() -> portfolioService.createShared(
+                memberId, "최신 반영형", ReflectionType.LIVE, List.of(readyArtworkId, pendingArtworkId)));
+
+        mediaCallbackService.process(MediaOwnerType.ARTWORK, pendingArtworkId, imageKey,
+                null, null, "original/pending.avif", MediaProcessingStatus.DONE);
+
+        assertThat(portfolioService.createShared(memberId, "고정형", ReflectionType.SNAPSHOT,
+                List.of(readyArtworkId, pendingArtworkId)).reflectionType()).isEqualTo(ReflectionType.SNAPSHOT);
+    }
+
+    // 지정 썸네일도 같은 이유로 막는다 — 카드 썸네일이 곧 지워질 raw를 가리키게 된다.
+    @Test
+    void 썸네일_변환이_끝나지_않은_작품은_고정형에_담을_수_없다() {
+        String memberId = registerProMember();
+        String readyArtworkId = uploadArtwork(memberId);
+        String imageKey = signedKey(memberId, UUID.randomUUID().toString());
+        String thumbnailKey = signedKey(memberId, UUID.randomUUID().toString());
+        String artworkId = artworkService.uploadArtwork(memberId, new UploadArtworkCommand(
+                List.of(imageKey), 0, thumbnailKey, ImageLayoutType.VERTICAL_SCROLL,
+                "작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
+                List.of(ArtworkRole.LINEART), List.of(Genre.FANTASY), null, List.of("태그"),
+                AgeRating.R18, List.of(Language.KO), true, List.of(), List.of(), null, null, List.of(), List.of())).id();
+        mediaCallbackService.process(MediaOwnerType.ARTWORK, artworkId, imageKey,
+                null, null, "original/body.avif", MediaProcessingStatus.DONE);
+
+        assertThatThrownBy(() -> portfolioService.createShared(
+                memberId, "고정형", ReflectionType.SNAPSHOT, List.of(readyArtworkId, artworkId)))
+                .isInstanceOf(PortfolioException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("ARTWORK_IMAGE_PROCESSING");
+
+        mediaCallbackService.process(MediaOwnerType.ARTWORK_THUMBNAIL, artworkId, thumbnailKey,
+                "thumb/card.avif", "thumb-adult/card.avif", null, MediaProcessingStatus.DONE);
+
+        PortfolioInfo created = portfolioService.createShared(memberId, "고정형", ReflectionType.SNAPSHOT,
+                List.of(readyArtworkId, artworkId));
+        assertThat(created.artworks()).extracting(PortfolioArtworkCardInfo::thumbKey).contains("thumb/card.avif");
+        assertThat(created.artworks()).extracting(PortfolioArtworkCardInfo::thumbAdultKey).contains("thumb-adult/card.avif");
+    }
+
     private String uploadArtwork(String memberId) {
         return uploadArtwork(memberId, signedKey(memberId, UUID.randomUUID().toString()));
     }
@@ -1953,7 +2008,19 @@ class PortfolioServiceTests {
                 new WorkDuration(1, 1, 1, 1), 1, List.of(), List.of())).id();
     }
 
+    /**
+     * 이미지 변환이 끝난 작품 — 고정형은 처리 중 이미지가 있는 작품을 거부하므로(ARTWORK_IMAGE_PROCESSING) media 자산만
+     * DONE으로 바꾼다. 콜백 경로를 쓰지 않는 이유: 비동기 artwork 리스너가 작품 행을 갱신해 뒤이은 포트폴리오 트랜잭션과
+     * 낙관적 락이 충돌한다. 작품 상태(READY)까지 필요한 테스트는 uploadReadyArtwork를 쓴다.
+     */
     private String uploadArtwork(String memberId, String imageKey) {
+        String artworkId = uploadPendingArtwork(memberId, imageKey);
+        jdbcTemplate.update("UPDATE media_assets SET processing_status = 'DONE', original_avif_key = ? "
+                + "WHERE owner_type = 'ARTWORK' AND owner_id = ?", "original/" + artworkId + ".avif", artworkId);
+        return artworkId;
+    }
+
+    private String uploadPendingArtwork(String memberId, String imageKey) {
         return artworkService.uploadArtwork(memberId, new UploadArtworkCommand(
                 List.of(imageKey), 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 "작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,

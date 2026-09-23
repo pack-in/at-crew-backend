@@ -82,6 +82,7 @@ class ArtworkEventListener {
         // R2 삭제 성공 여부와 무관하게 media_assets 행은 정리한다 — 영구 삭제된 작품은 더 이상
         // Worker 콜백을 받을 일이 없으므로 메타데이터를 남겨둘 이유가 없다.
         mediaService.deleteAssetsForOwner(MediaOwnerType.ARTWORK, event.artworkId(), handledKeys);
+        mediaService.deleteAssetsForOwner(MediaOwnerType.ARTWORK_THUMBNAIL, event.artworkId(), handledKeys);
     }
 
     /**

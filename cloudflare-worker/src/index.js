@@ -1,8 +1,10 @@
 // 서버(media 모듈 R2StorageAdapter.triggerWorker)가 이 Worker를 호출하는 트리거 payload와
 // 서버(MediaInternalController)가 기대하는 콜백 payload는 docs/design/media-module-design.md §6~7 참고.
 
-const THUMB_WIDTH = 294;
-const THUMB_HEIGHT = 392; // 3:4 비율 (294 * 4 / 3)
+// 카드 썸네일 규격 — FE가 3:4로 잘라 올리는 크기(588×784, 카드 294px의 2배율)와 같다. 1배율로 줄이면
+// 고해상도 화면에서 카드가 흐려진다. FE가 이미 3:4로 잘라 보내지만 API를 직접 부르는 경우를 위해 cover를 유지한다.
+const THUMB_WIDTH = 588;
+const THUMB_HEIGHT = 784;
 const ADULT_BLUR = 20;
 const AVIF_QUALITY = 80; // 썸네일 품질 — 카드 화질은 플랜 차등 대상이 아니라 등급과 무관하게 고정이다
 
@@ -41,6 +43,20 @@ const DEFAULT_TIER = "ORIGINAL";
 // 최종 방어선이라, 서버 검증이 있어도 남겨둔다.
 const MAX_ORIGINAL_BYTES = 100 * 1024 * 1024;
 
+// 프로필별로 만들 변형본 — 서버의 MediaVariantProfile과 값이 일치해야 한다.
+// 본문 이미지는 original만, 사용자가 잘라 올린 카드 썸네일만 thumb(+블러)를 만든다. 예전에는 모든 이미지에 셋을
+// 다 만들어, 쓰이지 않는 썸네일이 쌓이고 FE가 본문에 3:4 썸네일을 띄우는 결함의 빌미가 됐다.
+//
+// STANDARD·STANDARD_WITH_ADULT_BLUR는 이 구분 이전 이름이다. 서버보다 Worker를 먼저 배포하는 동안 옛 서버가
+// 보내는 요청을 예전과 똑같이 처리하려고 남겨 둔다 — 서버 배포가 끝나면 더는 오지 않는다.
+const VARIANT_SETS = {
+  ORIGINAL: { original: true, thumb: false, thumbAdult: false },
+  THUMBNAIL: { original: false, thumb: true, thumbAdult: false },
+  THUMBNAIL_WITH_ADULT_BLUR: { original: false, thumb: true, thumbAdult: true },
+  STANDARD: { original: true, thumb: true, thumbAdult: false },
+  STANDARD_WITH_ADULT_BLUR: { original: true, thumb: true, thumbAdult: true },
+};
+
 // 실패 사유 문자열 상한. 서버가 로그 한 줄로 남기므로 스택까지 실어 보낼 이유가 없다.
 const FAILURE_REASON_MAX = 300;
 
@@ -70,6 +86,10 @@ export default {
     if (!Array.isArray(sourceUrls) || sourceUrls.length !== imageKeys.length) {
       return new Response("sourceUrls must match imageKeys", { status: 400 });
     }
+    // 모르는 프로필을 기본값으로 처리하면 서버가 기대하지 않은 변형본이 생기거나 필요한 것이 빠진다.
+    if (!VARIANT_SETS[variantProfile]) {
+      return new Response("Unknown variantProfile", { status: 400 });
+    }
 
     // 서버는 이 응답을 기다리지 않는다(@Async 트리거) — 실제 변환은 백그라운드에서 진행하고 즉시 202를 반환한다.
     ctx.waitUntil(processAll(env, ownerType, ownerId, imageKeys, sourceUrls, variantProfile, qualityTier));
@@ -84,9 +104,11 @@ async function processAll(env, ownerType, ownerId, imageKeys, sourceUrls, varian
 
 async function processOne(env, ownerType, ownerId, imageKey, sourceUrl, variantProfile, qualityTier) {
   const baseName = imageKey.split("/").pop().replace(/\.[^/.]+$/, "");
-  const originalAvifKey = `original/${baseName}.avif`;
-  const thumbKey = `thumb/${baseName}.avif`;
-  const thumbAdultKey = variantProfile === "STANDARD_WITH_ADULT_BLUR" ? `thumb-adult/${baseName}.avif` : null;
+  const variants = VARIANT_SETS[variantProfile];
+  // 만들지 않는 변형본은 콜백에 null로 보낸다 — 서버는 null을 "해당 변형본 없음"으로 저장한다.
+  const originalAvifKey = variants.original ? `original/${baseName}.avif` : null;
+  const thumbKey = variants.thumb ? `thumb/${baseName}.avif` : null;
+  const thumbAdultKey = variants.thumbAdult ? `thumb-adult/${baseName}.avif` : null;
 
   try {
     // 크기 검사는 여전히 R2 메타데이터로 한다 — head 한 번이면 되고 바이트를 읽지 않는다.
@@ -99,8 +121,8 @@ async function processOne(env, ownerType, ownerId, imageKey, sourceUrl, variantP
     // 변환 셋을 병렬로 돌린다. 각 fetch가 원본을 따로 가져가지만 Cloudflare 내부 경로라 저렴하고,
     // 무엇보다 원본 바이트가 Worker 메모리를 거치지 않아 100MB짜리도 다룰 수 있다.
     const [originalRes, thumbRes, thumbAdultRes] = await Promise.all([
-      transform(sourceUrl, originalOptions(qualityTier)),
-      transform(sourceUrl, thumbOptions({ blur: false })),
+      originalAvifKey ? transform(sourceUrl, originalOptions(qualityTier)) : Promise.resolve(null),
+      thumbKey ? transform(sourceUrl, thumbOptions({ blur: false })) : Promise.resolve(null),
       thumbAdultKey ? transform(sourceUrl, thumbOptions({ blur: true })) : Promise.resolve(null),
     ]);
 
@@ -109,8 +131,8 @@ async function processOne(env, ownerType, ownerId, imageKey, sourceUrl, variantP
     // (2026-09-10 실측: 2480x3508 원본을 축소 없이 요청하면 WebP, 1280px로 줄이면 AVIF).
     // 여기서 image/avif로 못 박으면 실제 WebP 바이트에 avif 헤더가 붙어 브라우저가 디코드에 실패한다.
     await Promise.all([
-      putVariant(env, originalAvifKey, originalRes),
-      putVariant(env, thumbKey, thumbRes),
+      originalRes ? putVariant(env, originalAvifKey, originalRes) : Promise.resolve(),
+      thumbRes ? putVariant(env, thumbKey, thumbRes) : Promise.resolve(),
       thumbAdultRes ? putVariant(env, thumbAdultKey, thumbAdultRes) : Promise.resolve(),
     ]);
 

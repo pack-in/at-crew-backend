@@ -162,7 +162,7 @@ public class RecruitTrashImageCleanupScheduler {
             case JOB_POSTING -> jobPostings.findIdsByStatusAndDeletedAtBefore(JobPostingStatus.DELETED, threshold, page);
             case TEAM_POSTING -> teamPostings.findIdsByStatusAndDeletedAtBefore(TeamPostingStatus.DELETED, threshold, page);
             case JOB_SEEKING_POST -> jobSeekingPosts.findIdsByStatusAndDeletedAtBefore(JobSeekingPostStatus.DELETED, threshold, page);
-            case ARTWORK -> List.of();
+            case ARTWORK, ARTWORK_THUMBNAIL -> List.of();
         };
     }
 

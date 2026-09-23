@@ -48,7 +48,7 @@ class RecruitMediaEventListener {
 
     @ApplicationModuleListener
     void onMediaAssetProcessed(MediaAssetProcessedEvent event) {
-        if (event.ownerType() == MediaOwnerType.ARTWORK) {
+        if (event.ownerType() == MediaOwnerType.ARTWORK || event.ownerType() == MediaOwnerType.ARTWORK_THUMBNAIL) {
             return;
         }
         // 같은 게시글의 이미지 이벤트가 동시에 들어오면 각 트랜잭션이 서로의 갱신을 못 본 채 readyFor를
@@ -71,7 +71,7 @@ class RecruitMediaEventListener {
         }
     }
 
-    // ARTWORK는 onMediaAssetProcessed 진입 시점에 이미 걸러지므로 두 switch 문 모두 다루지 않는다
+    // ARTWORK·ARTWORK_THUMBNAIL은 onMediaAssetProcessed 진입 시점에 이미 걸러지므로 두 switch 문 모두 다루지 않는다
     // (값을 반환하지 않는 switch 문이라 exhaustive할 필요가 없다 — RecruitImageService의 switch 식과
     // 다른 지점: 표준 예외를 던지는 대신 case 자체를 생략해 도달 불가 분기를 만들지 않는다).
     private void lockPosting(MediaOwnerType ownerType, String postingId) {
@@ -79,7 +79,7 @@ class RecruitMediaEventListener {
             case JOB_POSTING -> jobPostingRepository.findByIdForUpdate(postingId);
             case TEAM_POSTING -> teamPostingRepository.findByIdForUpdate(postingId);
             case JOB_SEEKING_POST -> jobSeekingPostRepository.findByIdForUpdate(postingId);
-            case ARTWORK -> { }
+            case ARTWORK, ARTWORK_THUMBNAIL -> { }
         }
     }
 
@@ -91,7 +91,7 @@ class RecruitMediaEventListener {
                     .ifPresent(TeamPosting::markImageProcessingReady);
             case JOB_SEEKING_POST -> jobSeekingPostRepository.findById(postingId)
                     .ifPresent(JobSeekingPost::markImageProcessingReady);
-            case ARTWORK -> { }
+            case ARTWORK, ARTWORK_THUMBNAIL -> { }
         }
     }
 }

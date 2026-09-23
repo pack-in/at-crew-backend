@@ -25,7 +25,7 @@ class MediaInternalControllerTest {
         MediaAssetRepository assets = mock(MediaAssetRepository.class);
         events = mock(ApplicationEventPublisher.class);
         when(assets.findByOwnerAndOriginalKeyForUpdate(eq(MediaOwnerType.ARTWORK), eq("artwork-1"), eq("raw/a.jpg")))
-                .thenReturn(Optional.of(MediaAsset.pending(MediaOwnerType.ARTWORK, "artwork-1", 0, "raw/a.jpg", MediaVariantProfile.STANDARD, MediaQualityTier.ORIGINAL)));
+                .thenReturn(Optional.of(MediaAsset.pending(MediaOwnerType.ARTWORK, "artwork-1", 0, "raw/a.jpg", MediaVariantProfile.ORIGINAL, MediaQualityTier.ORIGINAL)));
         mockMvc = MockMvcBuilders.standaloneSetup(new MediaInternalController(new MediaCallbackService(assets, events, mock(MediaService.class)), "secret")).build();
     }
 

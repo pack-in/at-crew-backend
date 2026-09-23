@@ -32,7 +32,7 @@ class MediaServiceImplTest {
         stubOwner(a, b, c);
 
         var result = service.syncAssets(MediaOwnerType.ARTWORK, OWNER,
-                specs("raw/a.jpg", "raw/b.jpg", "raw/d.jpg"), MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.ORIGINAL);
+                specs("raw/a.jpg", "raw/b.jpg", "raw/d.jpg"), MediaVariantProfile.ORIGINAL, MediaQualityTier.ORIGINAL);
 
         // 빠진 c만 지우고 고아 큐로 보낸다.
         verify(assets).deleteAll(List.of(c));
@@ -41,7 +41,7 @@ class MediaServiceImplTest {
         assertThat(orphaned.getValue().getKeys()).containsExactly("raw/c.jpg", "thumb/c.avif");
         // 새로 들어온 d만 트리거한다 — a·b는 DONE이라 raw가 이미 지워졌다.
         verify(worker).triggerAsync(MediaOwnerType.ARTWORK, OWNER, List.of("raw/d.jpg"),
-                MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.ORIGINAL);
+                MediaVariantProfile.ORIGINAL, MediaQualityTier.ORIGINAL);
         assertThat(result).extracting(MediaAssetInfo::originalKey).containsExactly("raw/a.jpg", "raw/b.jpg", "raw/d.jpg");
         assertThat(result).extracting(MediaAssetInfo::ordinal).containsExactly(0, 1, 2);
         assertThat(result.get(0).thumbKey()).isEqualTo("thumb/a.avif");
@@ -56,10 +56,10 @@ class MediaServiceImplTest {
         stubOwner(failed);
 
         service.syncAssets(MediaOwnerType.ARTWORK, OWNER, specs("raw/f.jpg", "raw/g.jpg"),
-                MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.ORIGINAL);
+                MediaVariantProfile.ORIGINAL, MediaQualityTier.ORIGINAL);
 
         verify(worker).triggerAsync(MediaOwnerType.ARTWORK, OWNER, List.of("raw/f.jpg", "raw/g.jpg"),
-                MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.ORIGINAL);
+                MediaVariantProfile.ORIGINAL, MediaQualityTier.ORIGINAL);
         verify(orphans, never()).save(any());
     }
 
@@ -69,7 +69,7 @@ class MediaServiceImplTest {
         stubOwner(a, b);
 
         var result = service.syncAssets(MediaOwnerType.ARTWORK, OWNER, specs("raw/b.jpg", "raw/a.jpg"),
-                MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.ORIGINAL);
+                MediaVariantProfile.ORIGINAL, MediaQualityTier.ORIGINAL);
 
         verifyNoInteractions(worker);
         verify(orphans, never()).save(any());
@@ -83,7 +83,7 @@ class MediaServiceImplTest {
         stubOwner(a);
 
         var result = service.syncAssets(MediaOwnerType.ARTWORK, OWNER, List.of(),
-                MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.ORIGINAL);
+                MediaVariantProfile.ORIGINAL, MediaQualityTier.ORIGINAL);
 
         assertThat(result).isEmpty();
         verify(assets).deleteAll(List.of(a));
@@ -93,7 +93,7 @@ class MediaServiceImplTest {
     // 같은 key가 두 번 들어오면 콜백이 행을 특정하지 못해 그 소유자의 처리가 영구히 막힌다.
     @Test void 중복된_키는_거부한다() {
         assertThatIllegalArgumentException().isThrownBy(() -> service.syncAssets(MediaOwnerType.ARTWORK, OWNER,
-                specs("raw/a.jpg", "raw/a.jpg"), MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.ORIGINAL));
+                specs("raw/a.jpg", "raw/a.jpg"), MediaVariantProfile.ORIGINAL, MediaQualityTier.ORIGINAL));
     }
 
     // recruit은 썸네일과 참고 이미지를 슬롯 이름으로 가른다 — media는 값을 해석하지 않고 그대로 돌려준다.
@@ -102,7 +102,7 @@ class MediaServiceImplTest {
 
         var result = service.syncAssets(MediaOwnerType.JOB_POSTING, OWNER,
                 List.of(new MediaAssetSpec("raw/t.jpg", "THUMBNAIL"), new MediaAssetSpec("raw/r.jpg", "REFERENCE")),
-                MediaVariantProfile.STANDARD, MediaQualityTier.WEB);
+                MediaVariantProfile.ORIGINAL, MediaQualityTier.WEB);
 
         assertThat(result).extracting(MediaAssetInfo::slotRole).containsExactly("THUMBNAIL", "REFERENCE");
     }
@@ -120,7 +120,7 @@ class MediaServiceImplTest {
 
     private static MediaAsset pending(String key, int ordinal) {
         return MediaAsset.pending(MediaOwnerType.ARTWORK, OWNER, ordinal, key,
-                MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.ORIGINAL);
+                MediaVariantProfile.ORIGINAL, MediaQualityTier.ORIGINAL);
     }
 
     private static MediaAsset done(String key, int ordinal, String thumbKey) {
@@ -130,7 +130,7 @@ class MediaServiceImplTest {
     }
 
     @Test void deleteAssetsForOwnerRemovesAllMatchingRows() {
-        var existing = List.of(MediaAsset.pending(MediaOwnerType.ARTWORK, "artwork-1", 0, "raw/1.jpg", MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.ORIGINAL));
+        var existing = List.of(MediaAsset.pending(MediaOwnerType.ARTWORK, "artwork-1", 0, "raw/1.jpg", MediaVariantProfile.ORIGINAL, MediaQualityTier.ORIGINAL));
         when(assets.findByOwnerForUpdate(MediaOwnerType.ARTWORK, "artwork-1")).thenReturn(existing);
 
         service.deleteAssetsForOwner(MediaOwnerType.ARTWORK, "artwork-1", List.of());
@@ -143,8 +143,8 @@ class MediaServiceImplTest {
     }
 
     @Test void 호출자가_처리한_키는_고아_큐에_다시_넣지_않는다() {
-        var processed = MediaAsset.pending(MediaOwnerType.ARTWORK, "artwork-1", 0, "raw/1.jpg", MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.ORIGINAL);
-        var late = MediaAsset.pending(MediaOwnerType.ARTWORK, "artwork-1", 1, "raw/2.jpg", MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.ORIGINAL);
+        var processed = MediaAsset.pending(MediaOwnerType.ARTWORK, "artwork-1", 0, "raw/1.jpg", MediaVariantProfile.ORIGINAL, MediaQualityTier.ORIGINAL);
+        var late = MediaAsset.pending(MediaOwnerType.ARTWORK, "artwork-1", 1, "raw/2.jpg", MediaVariantProfile.ORIGINAL, MediaQualityTier.ORIGINAL);
         when(assets.findByOwnerForUpdate(MediaOwnerType.ARTWORK, "artwork-1")).thenReturn(List.of(processed, late));
 
         service.deleteAssetsForOwner(MediaOwnerType.ARTWORK, "artwork-1", Set.of("raw/1.jpg"));
@@ -155,7 +155,7 @@ class MediaServiceImplTest {
     }
 
     @Test void 남은_키를_호출자가_모두_처리했으면_고아_행을_만들지_않는다() {
-        var processed = MediaAsset.pending(MediaOwnerType.ARTWORK, "artwork-1", 0, "raw/1.jpg", MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.ORIGINAL);
+        var processed = MediaAsset.pending(MediaOwnerType.ARTWORK, "artwork-1", 0, "raw/1.jpg", MediaVariantProfile.ORIGINAL, MediaQualityTier.ORIGINAL);
         when(assets.findByOwnerForUpdate(MediaOwnerType.ARTWORK, "artwork-1")).thenReturn(List.of(processed));
 
         service.deleteAssetsForOwner(MediaOwnerType.ARTWORK, "artwork-1", Set.of("raw/1.jpg"));
@@ -174,19 +174,19 @@ class MediaServiceImplTest {
 
     @Test void 화질_등급은_저장과_worker_트리거에_모두_전달된다() {
         service.registerAndTriggerProcessing(MediaOwnerType.ARTWORK, "artwork-1", List.of("raw/1.jpg"),
-                MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.WEB);
+                MediaVariantProfile.ORIGINAL, MediaQualityTier.WEB);
 
         var saved = org.mockito.ArgumentCaptor.forClass(MediaAsset.class);
         verify(assets).save(saved.capture());
         assertThat(saved.getValue().getQualityTier()).isEqualTo(MediaQualityTier.WEB);
         verify(worker).triggerAsync(MediaOwnerType.ARTWORK, "artwork-1", List.of("raw/1.jpg"),
-                MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.WEB);
+                MediaVariantProfile.ORIGINAL, MediaQualityTier.WEB);
     }
 
     @Test void 화질_등급이_없으면_거부한다() {
         assertThatIllegalArgumentException().isThrownBy(() ->
                 service.registerAndTriggerProcessing(MediaOwnerType.ARTWORK, "artwork-1", List.of("raw/1.jpg"),
-                        MediaVariantProfile.STANDARD, null));
+                        MediaVariantProfile.ORIGINAL, null));
     }
 
     @Test void presignRejectsCountsOutsideOneToThirtyAndUnsupportedContentTypes() {
@@ -207,19 +207,19 @@ class MediaServiceImplTest {
     @Test void 트랜잭션_안에서는_커밋된_뒤에만_worker를_트리거한다() {
         inTransaction(() -> {
             service.registerAndTriggerProcessing(MediaOwnerType.ARTWORK, "artwork-1", List.of("raw/1.jpg"),
-                    MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.WEB);
+                    MediaVariantProfile.ORIGINAL, MediaQualityTier.WEB);
             verifyNoInteractions(worker);
 
             TransactionSynchronizationManager.getSynchronizations().forEach(TransactionSynchronization::afterCommit);
         });
         verify(worker).triggerAsync(MediaOwnerType.ARTWORK, "artwork-1", List.of("raw/1.jpg"),
-                MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.WEB);
+                MediaVariantProfile.ORIGINAL, MediaQualityTier.WEB);
     }
 
     @Test void 트랜잭션이_롤백되면_worker를_트리거하지_않는다() {
         inTransaction(() -> {
             service.registerAndTriggerProcessing(MediaOwnerType.ARTWORK, "artwork-1", List.of("raw/1.jpg"),
-                    MediaVariantProfile.STANDARD, MediaQualityTier.WEB);
+                    MediaVariantProfile.ORIGINAL, MediaQualityTier.WEB);
             TransactionSynchronizationManager.getSynchronizations()
                     .forEach(sync -> sync.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK));
         });
@@ -230,12 +230,12 @@ class MediaServiceImplTest {
         stubOwner();
         inTransaction(() -> {
             service.syncAssets(MediaOwnerType.JOB_POSTING, "posting-1", specs("raw/2.jpg"),
-                    MediaVariantProfile.STANDARD, MediaQualityTier.WEB);
+                    MediaVariantProfile.ORIGINAL, MediaQualityTier.WEB);
             verifyNoInteractions(worker);
             TransactionSynchronizationManager.getSynchronizations().forEach(TransactionSynchronization::afterCommit);
         });
         verify(worker, times(1)).triggerAsync(MediaOwnerType.JOB_POSTING, "posting-1", List.of("raw/2.jpg"),
-                MediaVariantProfile.STANDARD, MediaQualityTier.WEB);
+                MediaVariantProfile.ORIGINAL, MediaQualityTier.WEB);
     }
 
     // afterCommit에서 던진 예외는 이미 커밋된 요청의 호출자에게 전파된다 — 데이터는 저장됐는데 500이 나가
@@ -245,13 +245,13 @@ class MediaServiceImplTest {
                 .when(worker).triggerAsync(any(), any(), any(), any(), any());
         inTransaction(() -> {
             service.registerAndTriggerProcessing(MediaOwnerType.ARTWORK, "artwork-1", List.of("raw/1.jpg"),
-                    MediaVariantProfile.STANDARD, MediaQualityTier.WEB);
+                    MediaVariantProfile.ORIGINAL, MediaQualityTier.WEB);
             assertThatNoException().isThrownBy(() ->
                     TransactionSynchronizationManager.getSynchronizations().forEach(TransactionSynchronization::afterCommit));
         });
         // 예외가 난 경로를 실제로 지났는지 — 동기화가 등록되지 않도록 퇴행하면 여기서 걸린다.
         verify(worker).triggerAsync(MediaOwnerType.ARTWORK, "artwork-1", List.of("raw/1.jpg"),
-                MediaVariantProfile.STANDARD, MediaQualityTier.WEB);
+                MediaVariantProfile.ORIGINAL, MediaQualityTier.WEB);
     }
 
     /** 실제 트랜잭션 매니저 없이 동기화만 켜서 afterCommit·afterCompletion을 직접 부른다. */
