@@ -94,4 +94,10 @@ public interface TeamPostingRepository extends JpaRepository<TeamPosting, String
     List<TeamPosting> findByCreatedAtAfterOrderByCreatedAtAsc(Instant cursor, Pageable pageable);
 
     List<TeamPosting> findAllByOrderByCreatedAtAsc(Pageable pageable);
+
+    /** 휴지통 보관 기간이 지난 게시글 id, 오래된 것부터 — 이미지 정리 배치가 게시글마다 따로 처리한다(#200). */
+    @Query("select p.id from TeamPosting p where p.status = :status and p.deletedAt < :threshold order by p.deletedAt asc")
+    List<String> findIdsByStatusAndDeletedAtBefore(@Param("status") TeamPostingStatus status,
+                                                   @Param("threshold") Instant threshold, Pageable pageable);
+
 }

@@ -125,6 +125,12 @@ media:
     # 비밀값을 교체할 때 이전 값을 남긴다. 지우면 그 전에 발급된 key가 전부 검증에 실패해 수정 요청이 막힌다.
     previous-secrets: ${MEDIA_KEY_SIGNATURE_PREVIOUS_SECRETS:}
 
+recruit:
+  trash:
+    # 휴지통 게시글의 이미지 파일을 정리하기까지의 보관 기간(#200). 작품 휴지통과 같은 규칙이다.
+    # Period라 달력 기준이고, 단위 없이 숫자만 적으면 일로 읽힌다. 30일 미만이면 기동하지 않는다.
+    retention: ${RECRUIT_TRASH_RETENTION:P1Y}
+
 artwork:
   internal:
     secret: ${ARTWORK_INTERNAL_SECRET}
