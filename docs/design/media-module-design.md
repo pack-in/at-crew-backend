@@ -82,10 +82,9 @@ presign 발급·Worker 트리거·webhook 수신·재시도·고아파일 정리
 
 인덱스: `idx_ma_owner (owner_type, owner_id, ordinal)`, `idx_ma_retry (processing_status, updated_at)`.
 
-기존 `artwork_images`의 `uk_ai_order (artwork_id, ordinal)` 유니크 제약과 동일하게
-`uk_ma_owner_order (owner_type, owner_id, ordinal)`을 둔다 — artwork의 이미지 교체 시 2단계 detach/attach
-패턴(`docs/design/mariadb-migration-design.md` §3.3.2 계열 함정, `ArtworkServiceImpl.replaceImages` 주석
-참고)도 media로 그대로 옮겨온다.
+`uk_ma_owner_order (owner_type, owner_id, ordinal)`을 둔다(없어진 `artwork_images.uk_ai_order`와 같은 규칙).
+순서를 바꿀 때 이 제약에 걸리지 않도록 `syncAssets`는 유지되는 행의 ordinal을 임시 오프셋으로 밀어 두고
+확정한다.
 
 ### 2.2 OrphanedMediaKey (테이블: `orphaned_media_keys`)
 
@@ -263,8 +262,8 @@ public record MediaAssetProcessedEvent(MediaOwnerType ownerType, String ownerId,
 `search.internal.application.ArtworkSearchIndexer`, `recruit.internal.application.ArtistProfileViewListener`
 참고).
 
-- **artwork 소비**: 자신의 `artwork_images` 행 중 `originalKey`가 일치하는 것을 찾아
-  `thumbKey`/`thumbAdultKey`/`originalAvifKey`/`processingStatus`를 갱신한다. `Artwork.status`를
+- **artwork 소비**: media 자산의 현황(상태 목록)을 읽어 `Artwork.status`를 다시 계산한다. 변환 결과는
+  media가 이미 저장했으므로 작품 쪽에 옮겨 적지 않는다(#193). `Artwork.status`를
   `PROCESSING → READY`로 전환하는 조건은 **"모든 이미지 DONE"이 아니라** `Artwork.applyImageStatuses`의
   기존 규칙 그대로 **"PENDING이 하나도 없고(재시도 여지 없음) DONE이 하나 이상"** — 부분 실패를 허용한다
   (QA에서 발견: 최초 초안이 "모든 이미지 DONE"으로 잘못 적어, 그대로 구현했다면 이미지 하나라도 FAILED면
