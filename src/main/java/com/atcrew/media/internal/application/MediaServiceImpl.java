@@ -28,8 +28,13 @@ class MediaServiceImpl implements MediaService {
     private final MediaAssetRepository assets; private final OrphanedMediaKeyRepository orphans;
     private final ArtworkStoragePort storagePort; private final ImageProcessingWorker worker;
     private final MediaKeySigner signer;
+    private final PresignRateLimiter rateLimiter;
     MediaServiceImpl(MediaAssetRepository assets, OrphanedMediaKeyRepository orphans, ArtworkStoragePort storagePort,
-                     ImageProcessingWorker worker, MediaKeySigner signer) { this.assets = assets; this.orphans = orphans; this.storagePort = storagePort; this.worker = worker; this.signer = signer; }
+                     ImageProcessingWorker worker, MediaKeySigner signer, PresignRateLimiter rateLimiter) { this.assets = assets; this.orphans = orphans; this.storagePort = storagePort; this.worker = worker; this.signer = signer; this.rateLimiter = rateLimiter; }
+
+    @Override public boolean tryReservePresign(String memberId, int count) {
+        return rateLimiter.tryIssue(memberId, count);
+    }
 
     @Override public Set<String> unownedKeys(String memberId, Collection<String> keys) {
         if (keys == null || keys.isEmpty()) return Set.of();

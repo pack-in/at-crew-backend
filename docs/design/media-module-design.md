@@ -232,6 +232,23 @@ public record MediaAssetProcessedEvent(MediaOwnerType ownerType, String ownerId,
                                         MediaProcessingStatus status);
 ```
 
+### 발급 한도 (#216)
+
+`POST /api/artwork/images/presign`과 `POST /api/recruit/images/presign`은 인증만 통과하면 무제한이었다.
+발급받은 URL로 올린 파일은 작품·게시글에 등록되기 전까지 어디에도 기록되지 않고, 등록하지 않으면 고아 큐에도
+들어가지 않아(고아 큐는 "등록됐다가 빠진 key"만 받는다) 아무도 모르는 원본이 쌓인다.
+
+회원당 창(기본 1시간) 안에서 발급한 **key 수**를 세어 한도(기본 300장)를 넘으면 429로 거부한다. 요청 수가
+아니라 장수를 세므로 한 번에 30장과 한 장씩 30번이 같은 무게다. 거부된 요청은 기록에 남기지 않는다 — 남기면
+한도를 넘긴 시도만으로 다음 요청까지 막힌다.
+
+기록은 인스턴스 메모리에만 둔다. 앱을 2대로 늘리면 인스턴스마다 따로 세므로 실효 한도가 대수만큼 커진다
+(`ha-expansion-path.md`) — 그때는 공유 저장소로 옮긴다.
+
+**아직 남은 것**: 이미 올라갔지만 등록되지 않은 raw 원본을 회수하는 경로는 없다. R2 목록을 훑어 지우는
+방식이 후보인데, 사용자 지정 썸네일과 자료 첨부는 media 행이 없는 raw key라 잘못 지우면 사용자 데이터가
+사라진다. 삭제가 걸린 작업이라 별도로 다룬다(#216).
+
 ### key 형식과 소유자 서명 (#190)
 
 발급 key는 `raw/{서명}/{UUIDv7}.{확장자}`다. 서명은 `HMAC(secret, memberId + ":" + uuid)`의 앞 12자이며,

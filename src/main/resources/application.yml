@@ -119,6 +119,11 @@ cloudflare:
     callback-secret: ${WORKER_CALLBACK_SECRET}
 
 media:
+  presign:
+    # 회원당 발급 한도(#216) — 창 안에서 발급한 key 수를 센다. 작품 한 번에 30장이 상한이라 열 번치를 허용한다.
+    # 기록은 인스턴스 메모리에만 둬서 앱을 2대로 늘리면 실효 한도가 2배가 된다(ha-expansion-path.md).
+    limit-per-window: ${MEDIA_PRESIGN_LIMIT:300}
+    window: ${MEDIA_PRESIGN_WINDOW:PT1H}
   key-signature:
     # 업로드 key에 소유자 서명을 넣는 비밀값(#190). 기본값 없음 — 없으면 기동하지 않는다(callback-secret과 같은 이유).
     secret: ${MEDIA_KEY_SIGNATURE_SECRET}
