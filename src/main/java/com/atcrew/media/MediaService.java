@@ -22,6 +22,9 @@ public interface MediaService {
      */
     boolean tryReservePresign(String memberId, int count);
 
+    /** 예약해 둔 발급분을 되돌린다 — 발급이 실패하면 쓰지도 않은 한도가 사라지지 않게 한다(#216). */
+    void releasePresign(String memberId, int count);
+
     /**
      * {@code keys} 중 이 회원에게 발급되지 않은 key — 비어 있지 않으면 호출자가 요청을 거부한다(#190).
      *

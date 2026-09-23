@@ -58,6 +58,8 @@ class ArtworkController {
             description = "이미지 개수 오류 또는 count와 목록 수 불일치(INVALID_IMAGE_COUNT), "
                     + "허용되지 않는 형식(INVALID_CONTENT_TYPE), "
                     + "이미지 한 장이 100MB 초과(IMAGE_TOO_LARGE)")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "429",
+            description = "회원당 발급 한도 초과(PRESIGN_RATE_LIMITED) — 기본 1시간에 300장")
     @PostMapping("/artwork/images/presign")
     public ApiResponse<List<PresignedUrlInfo>> generatePresignedUrls(
             @RequestBody @Valid PresignRequest request) {
@@ -74,7 +76,9 @@ class ArtworkController {
             description = "게시물 언어 개수 오류(INVALID_LANGUAGE_COUNT), "
                     + "직접입력 값이 10자 초과 또는 항목당 10개 초과(INVALID_CUSTOM_TAG), "
                     + "썸네일(thumbnailKey) 누락(COMMON_INVALID_INPUT), "
-                    + "썸네일 key가 작품 이미지 key와 같음(THUMBNAIL_KEY_IN_IMAGES)")
+                    + "썸네일 key가 작품 이미지 key와 같음(THUMBNAIL_KEY_IN_IMAGES), "
+                    + "본인이 발급받지 않은 업로드 key(UNOWNED_IMAGE_KEY), "
+                    + "같은 이미지 key 중복(DUPLICATE_IMAGE_KEY)")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403",
             description = "스타터 작품 개수 초과(STARTER_ARTWORK_LIMIT_EXCEEDED), "
                     + "스타터의 다중 언어 선택(MULTI_LANGUAGE_REQUIRES_PRO), "
@@ -125,7 +129,9 @@ class ArtworkController {
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400",
             description = "게시물 언어 개수 오류(INVALID_LANGUAGE_COUNT), "
                     + "직접입력 값이 10자 초과 또는 항목당 10개 초과(INVALID_CUSTOM_TAG), "
-                    + "썸네일 key가 작품 이미지 key와 같음(THUMBNAIL_KEY_IN_IMAGES)")
+                    + "썸네일 key가 작품 이미지 key와 같음(THUMBNAIL_KEY_IN_IMAGES), "
+                    + "본인이 발급받지 않은 업로드 key(UNOWNED_IMAGE_KEY), "
+                    + "같은 이미지 key 중복(DUPLICATE_IMAGE_KEY)")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403",
             description = "스타터의 다중 언어 선택(MULTI_LANGUAGE_REQUIRES_PRO), "
                     + "주 사용 언어 미포함(LANGUAGE_NOT_ALLOWED)")

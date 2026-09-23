@@ -36,6 +36,10 @@ class MediaServiceImpl implements MediaService {
         return rateLimiter.tryIssue(memberId, count);
     }
 
+    @Override public void releasePresign(String memberId, int count) {
+        rateLimiter.release(memberId, count);
+    }
+
     @Override public Set<String> unownedKeys(String memberId, Collection<String> keys) {
         if (keys == null || keys.isEmpty()) return Set.of();
         return keys.stream().filter(k -> k != null && !k.isBlank())
