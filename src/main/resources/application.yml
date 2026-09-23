@@ -124,6 +124,13 @@ media:
     # 기록은 인스턴스 메모리에만 둬서 앱을 2대로 늘리면 실효 한도가 2배가 된다(ha-expansion-path.md).
     limit-per-window: ${MEDIA_PRESIGN_LIMIT:300}
     window: ${MEDIA_PRESIGN_WINDOW:PT1H}
+  raw-cleanup:
+    # 업로드됐지만 어디에도 등록되지 않은 raw 원본 회수(#216). 기본은 기록만 하고 지우지 않는다 —
+    # 운영 로그로 대상을 확인한 뒤 켠다. 잘못 지우면 사용자 이미지가 사라지고 되돌릴 수 없다.
+    delete-enabled: ${MEDIA_RAW_CLEANUP_DELETE:false}
+    # 업로드 직후 저장 요청이 도착하기 전의 파일을 건드리지 않도록 최소 경과 시간을 둔다(하한 1시간).
+    minimum-age: ${MEDIA_RAW_CLEANUP_MIN_AGE:P2D}
+    batch-size: 200
   key-signature:
     # 업로드 key에 소유자 서명을 넣는 비밀값(#190). 기본값 없음 — 없으면 기동하지 않는다(callback-secret과 같은 이유).
     secret: ${MEDIA_KEY_SIGNATURE_SECRET}
