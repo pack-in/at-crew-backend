@@ -52,7 +52,7 @@ public class ArtworkSearchQueryRepository {
         boolean hasNext = hitList.size() > query.size();
         List<SearchHit<ArtworkSearchDocument>> page = hasNext ? hitList.subList(0, query.size()) : hitList;
 
-        String nextCursor = hasNext
+        String nextCursor = (hasNext && !page.isEmpty())
                 ? SearchCursor.encode(new ArrayList<>(page.get(page.size() - 1).getSortValues()))
                 : null;
 

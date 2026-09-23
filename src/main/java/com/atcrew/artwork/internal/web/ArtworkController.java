@@ -7,6 +7,8 @@ import com.atcrew.artwork.MaterialData;
 import com.atcrew.artwork.PresignedUrlInfo;
 import com.atcrew.artwork.UpdateArtworkCommand;
 import com.atcrew.artwork.UploadArtworkCommand;
+import com.atcrew.artwork.internal.exception.ArtworkErrorCode;
+import com.atcrew.artwork.internal.exception.ArtworkException;
 import com.atcrew.artwork.internal.web.dto.MaterialRequest;
 import com.atcrew.artwork.internal.web.dto.PresignRequest;
 import com.atcrew.artwork.internal.web.dto.UpdateArtworkRequest;
@@ -169,8 +171,17 @@ class ArtworkController {
             @Parameter(description = "커서 (마지막 작품 createdAt millis)") String cursor,
             @Parameter(description = "페이지 크기 (기본 20)") Integer size) {
         String memberId = securityUtils.getCurrentMemberId();
-        int pageSize = size != null ? Math.min(size, 50) : 20;
-        return ApiResponse.success(artworkService.getMyArtworks(memberId, cursor, pageSize));
+        return ApiResponse.success(artworkService.getMyArtworks(memberId, cursor, resolveSize(size)));
+    }
+
+    private int resolveSize(Integer size) {
+        if (size == null) {
+            return 20;
+        }
+        if (size < 0) {
+            throw new ArtworkException(ArtworkErrorCode.INVALID_SIZE);
+        }
+        return Math.min(size, 50);
     }
 
     private String getOptionalMemberId() {

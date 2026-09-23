@@ -579,7 +579,7 @@ class RecruitServiceImpl implements RecruitService {
         List<JobPostingInfo> items = page.stream()
                 .map(p -> JobPostingMapper.toInfo(p, authorNames.get(p.getAuthorMemberId()), images.get(p.getId())))
                 .toList();
-        String nextCursor = hasNext ? cursorExtractor.apply(page.get(page.size() - 1)) : null;
+        String nextCursor = (hasNext && !page.isEmpty()) ? cursorExtractor.apply(page.get(page.size() - 1)) : null;
         return CursorPage.of(items, nextCursor);
     }
 
@@ -648,7 +648,7 @@ class RecruitServiceImpl implements RecruitService {
         List<TeamPostingInfo> items = page.stream()
                 .map(p -> TeamPostingMapper.toInfo(p, authorNames.get(p.getAuthorMemberId()), images.get(p.getId())))
                 .toList();
-        String nextCursor = hasNext ? cursorExtractor.apply(page.get(page.size() - 1)) : null;
+        String nextCursor = (hasNext && !page.isEmpty()) ? cursorExtractor.apply(page.get(page.size() - 1)) : null;
         return CursorPage.of(items, nextCursor);
     }
 
@@ -735,7 +735,9 @@ class RecruitServiceImpl implements RecruitService {
         boolean hasNext = postings.size() > size;
         List<JobPosting> page = hasNext ? postings.subList(0, size) : postings;
         List<RecruitIndexInfo> items = page.stream().map(this::toIndexInfo).toList();
-        String nextCursor = hasNext ? String.valueOf(page.get(page.size() - 1).getCreatedAt().toEpochMilli()) : null;
+        String nextCursor = (hasNext && !page.isEmpty())
+                ? String.valueOf(page.get(page.size() - 1).getCreatedAt().toEpochMilli())
+                : null;
         return CursorPage.of(items, nextCursor);
     }
 
@@ -750,7 +752,9 @@ class RecruitServiceImpl implements RecruitService {
         boolean hasNext = postings.size() > size;
         List<TeamPosting> page = hasNext ? postings.subList(0, size) : postings;
         List<RecruitIndexInfo> items = page.stream().map(this::toIndexInfo).toList();
-        String nextCursor = hasNext ? String.valueOf(page.get(page.size() - 1).getCreatedAt().toEpochMilli()) : null;
+        String nextCursor = (hasNext && !page.isEmpty())
+                ? String.valueOf(page.get(page.size() - 1).getCreatedAt().toEpochMilli())
+                : null;
         return CursorPage.of(items, nextCursor);
     }
 

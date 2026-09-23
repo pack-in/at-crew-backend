@@ -134,6 +134,20 @@ class PortfolioServiceTests {
                 .containsExactly(first.getFirst().id());
     }
 
+    // 이슈 #195 — size=0인데 조건에 맞는 데이터가 있으면 nextCursor 계산이 빈 page.get(-1)을
+    // 호출해 500이 나던 결함의 회귀 방지.
+    @Test
+    void 내_포트폴리오_목록_size가_0이고_데이터가_있어도_500이_나지_않는다() {
+        String memberId = registerMember();
+        portfolioService.getSelectablePortfolios(memberId);
+
+        CursorPage<PortfolioSummaryInfo> page = portfolioService.getMyPortfolios(
+                memberId, null, null, null, null, 0);
+
+        assertThat(page.items()).isEmpty();
+        assertThat(page.nextCursor()).isNull();
+    }
+
     @Test
     void 스타터_계정은_공유_포트폴리오를_만들_수_없다() {
         String memberId = registerMember();

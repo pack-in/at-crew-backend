@@ -2,6 +2,8 @@ package com.atcrew.artwork.internal.web;
 
 import com.atcrew.artwork.ArtworkService;
 import com.atcrew.artwork.ArtworkSummaryInfo;
+import com.atcrew.artwork.internal.exception.ArtworkErrorCode;
+import com.atcrew.artwork.internal.exception.ArtworkException;
 import com.atcrew.artwork.internal.web.dto.DeleteArtworkRequest;
 import com.atcrew.artwork.internal.web.dto.RestoreArtworkRequest;
 import com.atcrew.common.response.ApiResponse;
@@ -42,8 +44,7 @@ class TrashController {
             @Parameter(description = "커서") @RequestParam(required = false) String cursor,
             @Parameter(description = "페이지 크기 (기본 20)") @RequestParam(required = false) Integer size) {
         String memberId = securityUtils.getCurrentMemberId();
-        int pageSize = size != null ? Math.min(size, 50) : 20;
-        return ApiResponse.success(artworkService.getTrashArtworks(memberId, cursor, pageSize));
+        return ApiResponse.success(artworkService.getTrashArtworks(memberId, cursor, resolveSize(size)));
     }
 
     @Operation(summary = "작품 복구", description = "선택한 작품을 휴지통에서 복구합니다. 삭제 전 공개 상태가 복원됩니다.")
@@ -62,5 +63,15 @@ class TrashController {
     public void permanentlyDeleteArtworks(@RequestBody @Valid DeleteArtworkRequest request) {
         String memberId = securityUtils.getCurrentMemberId();
         artworkService.permanentlyDeleteArtworks(memberId, request.artworkIds());
+    }
+
+    private int resolveSize(Integer size) {
+        if (size == null) {
+            return 20;
+        }
+        if (size < 0) {
+            throw new ArtworkException(ArtworkErrorCode.INVALID_SIZE);
+        }
+        return Math.min(size, 50);
     }
 }

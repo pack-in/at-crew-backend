@@ -660,7 +660,7 @@ class ArtworkServiceImpl implements ArtworkService {
                 .map(a -> ArtworkMapper.toInfo(a, authorMap.get(a.getAuthorId()), mediaByArtwork.get(a.getId())))
                 .toList();
 
-        String nextCursor = hasNext
+        String nextCursor = (hasNext && !page.isEmpty())
                 ? String.valueOf(page.get(page.size() - 1).getCreatedAt().toEpochMilli())
                 : null;
         return CursorPage.of(items, nextCursor);
@@ -677,7 +677,7 @@ class ArtworkServiceImpl implements ArtworkService {
 
         boolean hasNext = artworks.size() > size;
         List<Artwork> page = hasNext ? artworks.subList(0, size) : artworks;
-        String nextCursor = hasNext ? nextCursorOf.apply(page.get(page.size() - 1)) : null;
+        String nextCursor = (hasNext && !page.isEmpty()) ? nextCursorOf.apply(page.get(page.size() - 1)) : null;
         return CursorPage.of(toSummaryInfos(page), nextCursor);
     }
 

@@ -6,6 +6,8 @@ import com.atcrew.common.security.SecurityUtils;
 import com.atcrew.recruit.ApplicationInfo;
 import com.atcrew.recruit.CreateApplicationCommand;
 import com.atcrew.recruit.RecruitService;
+import com.atcrew.recruit.internal.exception.RecruitErrorCode;
+import com.atcrew.recruit.internal.exception.RecruitException;
 import com.atcrew.recruit.internal.web.dto.CreateApplicationRequest;
 import com.atcrew.recruit.internal.web.dto.UpdateApplicationReviewStatusRequest;
 import io.swagger.v3.oas.annotations.Operation;
@@ -146,7 +148,13 @@ class ApplicationController {
     }
 
     private int resolveSize(Integer size) {
-        return size != null ? Math.min(size, MAX_SIZE) : DEFAULT_SIZE;
+        if (size == null) {
+            return DEFAULT_SIZE;
+        }
+        if (size < 0) {
+            throw new RecruitException(RecruitErrorCode.INVALID_SIZE);
+        }
+        return Math.min(size, MAX_SIZE);
     }
 
     private CreateApplicationCommand toCommand(CreateApplicationRequest r) {

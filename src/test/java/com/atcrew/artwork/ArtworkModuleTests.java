@@ -6,6 +6,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import com.atcrew.billing.internal.persistence.SubscriptionRepository;
 import com.atcrew.common.exception.DomainException;
+import com.atcrew.common.response.CursorPage;
 import com.atcrew.common.response.OffsetPage;
 import com.atcrew.media.MediaConstraints;
 import com.atcrew.media.MediaOwnerType;
@@ -938,6 +939,19 @@ class ArtworkModuleTests {
                 .isInstanceOf(DomainException.class)
                 .extracting(e -> ((DomainException) e).getCode())
                 .isEqualTo("STARTER_ARTWORK_LIMIT_EXCEEDED");
+    }
+
+    // 이슈 #195 — size=0인데 조건에 맞는 데이터가 있으면 nextCursor 계산이 빈 page.get(-1)을
+    // 호출해 500이 나던 결함의 회귀 방지.
+    @Test
+    void 내_작품_목록_size가_0이고_데이터가_있어도_500이_나지_않는다() {
+        String memberId = registerAuthor();
+        uploadMinimal(memberId, signedKey(memberId, "size-zero"));
+
+        CursorPage<ArtworkSummaryInfo> result = artworkService.getMyArtworks(memberId, null, 0);
+
+        assertThat(result.items()).isEmpty();
+        assertThat(result.nextCursor()).isNull();
     }
 
     @Test

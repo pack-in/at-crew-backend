@@ -133,7 +133,7 @@ public class PortfolioServiceImpl {
         }
         boolean hasNext = portfolios.size() > size;
         List<Portfolio> page = hasNext ? portfolios.subList(0, size) : portfolios;
-        String nextCursor = hasNext ? formatCursor(page.get(page.size() - 1), appliedSort) : null;
+        String nextCursor = (hasNext && !page.isEmpty()) ? formatCursor(page.get(page.size() - 1), appliedSort) : null;
         return CursorPage.of(
                 page.stream()
                         .map(p -> PortfolioMapper.toSummaryInfo(p, itemCountOf(p), loadCoverThumbnails(p)))
