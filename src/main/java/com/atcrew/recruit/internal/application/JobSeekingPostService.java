@@ -54,7 +54,7 @@ class JobSeekingPostService {
         // 구직글은 썸네일 없이 참고 이미지만 쓴다 — presign으로 발급받은 key를 media 모듈에 등록한다(설계 §10.3).
         RecruitImageService.apply(
                 recruitImageService.sync(memberId, MediaOwnerType.JOB_SEEKING_POST, saved.getId(),
-                        null, command.referenceImages()),
+                        null, command.referenceImages(), List.of()),
                 saved::markImageProcessingPending, saved::markImageProcessingReady);
         publishChanged(saved.getId());
         return toInfo(saved);
@@ -65,12 +65,13 @@ class JobSeekingPostService {
         if (post.getStatus() == JobSeekingPostStatus.DELETED) {
             throw new RecruitException(RecruitErrorCode.JOB_SEEKING_POST_NOT_FOUND, postId);
         }
+        List<String> previousKeys = List.copyOf(post.getReferenceImages());
         post.updateContent(command);
         // 부분 업데이트라 이미지 필드를 실제로 보낸 요청만 media 재등록 대상이다(설계 §10.3).
         if (command.referenceImages() != null) {
             RecruitImageService.apply(
                     recruitImageService.sync(memberId, MediaOwnerType.JOB_SEEKING_POST, postId,
-                            null, post.getReferenceImages()),
+                            null, post.getReferenceImages(), previousKeys),
                     post::markImageProcessingPending, post::markImageProcessingReady);
         }
         publishChanged(postId);

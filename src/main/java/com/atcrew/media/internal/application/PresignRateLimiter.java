@@ -64,6 +64,20 @@ public class PresignRateLimiter {
         return allowed;
     }
 
+    /** 예약을 되돌린다 — 발급이 실패하면 쓰지도 않은 한도가 사라진다. */
+    public synchronized void release(String memberId, int count) {
+        Deque<Instant> times = issued.get(memberId);
+        if (times == null) {
+            return;
+        }
+        for (int i = 0; i < count && !times.isEmpty(); i++) {
+            times.pollLast();
+        }
+        if (times.isEmpty()) {
+            issued.remove(memberId);
+        }
+    }
+
     /**
      * 창이 지난 회원을 맵에서 지운다. 발급이 뜸한 회원이 계속 쌓이면 맵이 회원 수만큼 커진다 — 요청마다 전부
      * 훑지 않도록 맵이 일정 크기를 넘을 때만 돈다.

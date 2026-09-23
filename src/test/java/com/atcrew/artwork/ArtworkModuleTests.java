@@ -307,6 +307,19 @@ class ArtworkModuleTests {
                 .extracting(e -> ((DomainException) e).getCode()).isEqualTo("UNOWNED_IMAGE_KEY");
     }
 
+    // 같은 key가 두 번 들어오면 콜백이 행을 특정하지 못해 그 작품의 처리가 멈춘다. media도 거부하지만 그
+    // 예외는 500이 되므로 400으로 돌려줘야 한다.
+    @Test
+    void 같은_이미지_키를_두_번_보내면_400이다() {
+        String me = registerAuthor();
+        String key = signedKey(me, "dup");
+
+        assertThatThrownBy(() -> artworkService.uploadArtwork(me, baseUploadCommand(List.of(key, key), List.of())))
+                .isInstanceOf(DomainException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("DUPLICATE_IMAGE_KEY");
+    }
+
     // 변환 결과 key(thumb/…)에는 서명이 없다 — 공개 응답에서 가장 쉽게 얻을 수 있는 값이라 함께 막힌다.
     @Test
     void 변환_결과_키나_옛_형식_키는_제출할_수_없다() {

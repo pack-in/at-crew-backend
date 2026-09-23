@@ -44,6 +44,8 @@ class RecruitImageController {
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "발급 성공")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400",
             description = "이미지 한 장이 100MB 초과(IMAGE_TOO_LARGE)")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "429",
+            description = "회원당 발급 한도 초과(PRESIGN_RATE_LIMITED) — 기본 1시간에 300장")
     @PostMapping("/images/presign")
     public ApiResponse<List<PresignedUrlInfo>> generatePresignedUrls(@RequestBody @Valid PresignRequest request) {
         // media는 IllegalArgumentException을 던지므로 그대로 흘리면 400이 500으로 바뀐다 — artwork와 같은
@@ -57,11 +59,17 @@ class RecruitImageController {
         }
         String memberId = securityUtils.getCurrentMemberId();
         // 발급 한도(#216) — 넘으면 429. 등록되지 않은 원본이 무한히 쌓이는 것을 막는다.
+        // 크기 검증 뒤에 차감하고, 발급이 실패하면 되돌린다 — 잘못된 요청이 쓰지도 않은 한도를 먹으면 안 된다.
         if (!mediaService.tryReservePresign(memberId, request.count())) {
             throw new RecruitException(RecruitErrorCode.PRESIGN_RATE_LIMITED);
         }
-        return ApiResponse.success(
-                mediaService.generatePresignedUrls(memberId, request.count(),
-                        request.contentTypes(), request.fileSizes()));
+        try {
+            return ApiResponse.success(
+                    mediaService.generatePresignedUrls(memberId, request.count(),
+                            request.contentTypes(), request.fileSizes()));
+        } catch (RuntimeException e) {
+            mediaService.releasePresign(memberId, request.count());
+            throw e;
+        }
     }
 }

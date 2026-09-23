@@ -60,6 +60,8 @@ class JobSeekingPostController {
 
     @Operation(summary = "구직글 작성", description = "DRAFT로 저장하거나, publish=true면 저장 직후 PUBLISHED로 게시합니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "작성 성공")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400",
+            description = "본인이 발급받지 않은 업로드 key(UNOWNED_IMAGE_KEY), 같은 이미지 key 중복(DUPLICATE_IMAGE_KEY)")
     @PostMapping("/job-seeking-posts")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<JobSeekingPostInfo> createJobSeekingPost(
@@ -70,6 +72,8 @@ class JobSeekingPostController {
 
     @Operation(summary = "구직글 수정", description = "작성자 본인만 가능합니다. 휴지통에 있는 구직글은 수정할 수 없습니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "수정 성공")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400",
+            description = "본인이 발급받지 않은 업로드 key(UNOWNED_IMAGE_KEY), 같은 이미지 key 중복(DUPLICATE_IMAGE_KEY)")
     @PutMapping("/job-seeking-posts/{jobSeekingPostId}")
     public ApiResponse<JobSeekingPostInfo> updateJobSeekingPost(
             @Parameter(description = "구직글 ID") @PathVariable @Pattern(regexp = UUID_PATTERN, message = "구직글 ID 형식이 올바르지 않습니다") String jobSeekingPostId,
