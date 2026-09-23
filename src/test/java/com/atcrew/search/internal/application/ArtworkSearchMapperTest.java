@@ -69,6 +69,18 @@ class ArtworkSearchMapperTest {
     }
 
     @Test
+    void 변환된_지정_썸네일이_있으면_썸네일과_블러본을_색인한다() {
+        ArtworkImageInfo thumbnail = new ArtworkImageInfo("raw/thumb.png", "thumb/t.avif", "thumb-adult/t.avif",
+                null, ImageProcessingStatus.DONE);
+        ArtworkInfo info = artworkInfo("raw/thumb.png", thumbnail, 0, List.of());
+
+        ArtworkSearchDocument doc = ArtworkSearchMapper.toDocument(info);
+
+        assertThat(doc.getThumbnailKey()).isEqualTo("thumb/t.avif");
+        assertThat(doc.getThumbnailAdultKey()).isEqualTo("thumb-adult/t.avif");
+    }
+
+    @Test
     void 사용자_지정_썸네일이_없으면_대표_이미지의_처리된_썸네일을_사용한다() {
         ArtworkInfo info = artworkInfo(null, 1, List.of()); // 대표 이미지 인덱스 1
 
@@ -79,13 +91,19 @@ class ArtworkSearchMapperTest {
     }
 
     private ArtworkInfo artworkInfo(String thumbnailKey, int representativeImageIndex, List<MaterialInfo> materials) {
+        return artworkInfo(thumbnailKey, null, representativeImageIndex, materials);
+    }
+
+    private ArtworkInfo artworkInfo(String thumbnailKey, ArtworkImageInfo thumbnailImage, int representativeImageIndex,
+                                    List<MaterialInfo> materials) {
         List<ArtworkImageInfo> images = List.of(
                 new ArtworkImageInfo("orig-0", "rep-thumb-0", "rep-thumb-adult-0", "orig-0.avif", ImageProcessingStatus.DONE),
                 new ArtworkImageInfo("orig-1", "rep-thumb-1", "rep-thumb-adult-1", "orig-1.avif", ImageProcessingStatus.DONE)
         );
         return new ArtworkInfo(
                 "artwork-1", "author-1", "작가이름", "handle1",
-                "제목", "설명", images, representativeImageIndex, thumbnailKey, ImageLayoutType.VERTICAL_SCROLL,
+                "제목", "설명", images, representativeImageIndex, thumbnailKey, thumbnailImage,
+                ImageLayoutType.VERTICAL_SCROLL,
                 ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL, List.of(ArtworkRole.LINEART),
                 List.of(Genre.BL), List.of(), List.of("태그1", "태그2"), List.of(), null, null, List.of(),
                 AgeRating.ALL, List.of(Language.KO), Visibility.PUBLIC, false, false, materials, ArtworkStatus.READY,

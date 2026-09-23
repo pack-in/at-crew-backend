@@ -154,6 +154,7 @@ class ArtworkServiceImpl implements ArtworkService {
         // 새 작품이라 물려받을 key가 없다 — 모든 key가 본인에게 발급된 것이어야 한다(#190).
         assertKeysOwned(memberId,
                 submittedKeys(command.imageKeys(), command.thumbnailKey(), command.materials()), Set.of());
+        assertThumbnailSeparate(command.thumbnailKey(), command.imageKeys());
         List<Material> materials = toMaterials(command.materials());
         Artwork artwork = Artwork.create(
                 memberId,
@@ -183,8 +184,13 @@ class ArtworkServiceImpl implements ArtworkService {
         // 이미지 처리 트리거는 커밋 뒤에만 나가므로(#174) 이 순서가 롤백 가능성에 영향을 주지는 않는다.
         eventPublisher.publishEvent(new ArtworkPortfolioSelectionRequested(
                 memberId, saved.getId(), command.portfolioIds()));
+        MediaQualityTier qualityTier = qualityTierOf(memberId);
         mediaService.registerAndTriggerProcessing(MediaOwnerType.ARTWORK, saved.getId(),
-                command.imageKeys(), MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, qualityTierOf(memberId));
+                command.imageKeys(), MediaVariantProfile.ORIGINAL, qualityTier);
+        if (command.thumbnailKey() != null) {
+            mediaService.registerAndTriggerProcessing(MediaOwnerType.ARTWORK_THUMBNAIL, saved.getId(),
+                    List.of(command.thumbnailKey()), MediaVariantProfile.THUMBNAIL_WITH_ADULT_BLUR, qualityTier);
+        }
         eventPublisher.publishEvent(new ArtworkChangedEvent(saved.getId()));
         MemberInfo author = memberService.findById(memberId);
         log.info("작품 업로드 완료: artworkId={} memberId={}", saved.getId(), memberId);
@@ -270,6 +276,11 @@ class ArtworkServiceImpl implements ArtworkService {
         assertKeysOwned(memberId,
                 submittedKeys(command.imageKeys(), command.thumbnailKey(), command.materials()),
                 storedKeysOf(artwork));
+        String previousThumbnailKey = artwork.getThumbnailKey();
+        assertThumbnailSeparate(command.thumbnailKey() != null ? command.thumbnailKey() : previousThumbnailKey,
+                command.imageKeys() != null ? command.imageKeys()
+                        : mediaService.getAssets(MediaOwnerType.ARTWORK, artwork.getId()).stream()
+                                .map(MediaAssetInfo::originalKey).toList());
 
         if (command.materials() != null) {
             replaceMaterials(artwork, toMaterials(command.materials()));
@@ -300,8 +311,10 @@ class ArtworkServiceImpl implements ArtworkService {
         List<MediaAssetInfo> images = command.imageKeys() != null
                 ? mediaService.syncAssets(MediaOwnerType.ARTWORK, artwork.getId(),
                         command.imageKeys().stream().map(MediaAssetSpec::of).toList(),
-                        MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, qualityTierOf(memberId))
+                        MediaVariantProfile.ORIGINAL, qualityTierOf(memberId))
                 : mediaService.getAssets(MediaOwnerType.ARTWORK, artwork.getId());
+        MediaAssetInfo thumbnail = syncThumbnail(memberId, artwork.getId(), previousThumbnailKey,
+                command.thumbnailKey());
         if (command.representativeImageIndex() != null) {
             artwork.repositionRepresentative(command.representativeImageIndex(), images.size());
         }
@@ -311,7 +324,40 @@ class ArtworkServiceImpl implements ArtworkService {
         Artwork saved = artworkRepository.save(artwork);
         eventPublisher.publishEvent(new ArtworkChangedEvent(saved.getId()));
         MemberInfo author = memberService.findById(memberId);
-        return ArtworkMapper.toInfo(saved, author, images);
+        return ArtworkMapper.toInfo(saved, author, new ArtworkMedia(images, thumbnail));
+    }
+
+    /**
+     * 사용자 지정 썸네일을 요청에 맞춘다 — 바뀐 경우에만 손댄다.
+     *
+     * <p>같은 key로 다시 동기화하지 않는 이유: 썸네일 변환 이전에 올라온 작품은 자산 행이 없어서, 동기화하면 새로
+     * 등록돼 변환되고 Worker가 raw를 지운다. 고정형 스냅샷이 그 raw key를 카드 썸네일로 참조하고 있으면 깨진다.
+     *
+     * <p>이전 썸네일이 자산이었으면 {@code syncAssets}가 원본·변형본을 고아 큐로 보낸다. 자산이 없던 옛 raw는 여기서
+     * 직접 고아 큐에 넣는다 — 예전에는 교체된 썸네일이 어디서도 정리되지 않았다. 스냅샷이 참조 중이면 정리 스케줄러의
+     * 보존 판정이 유예한다.
+     *
+     * @return 요청 반영 뒤의 썸네일 자산. 없으면 null
+     */
+    private MediaAssetInfo syncThumbnail(String memberId, String artworkId, String previousKey, String requestedKey) {
+        List<MediaAssetInfo> current = mediaService.getAssets(MediaOwnerType.ARTWORK_THUMBNAIL, artworkId);
+        if (requestedKey == null || requestedKey.equals(previousKey)) {
+            return current.isEmpty() ? null : current.get(0);
+        }
+        if (current.isEmpty() && previousKey != null) {
+            mediaService.markOrphaned(List.of(previousKey));
+        }
+        List<MediaAssetInfo> synced = mediaService.syncAssets(MediaOwnerType.ARTWORK_THUMBNAIL, artworkId,
+                List.of(MediaAssetSpec.of(requestedKey)), MediaVariantProfile.THUMBNAIL_WITH_ADULT_BLUR,
+                qualityTierOf(memberId));
+        return synced.get(0);
+    }
+
+    /** 썸네일과 본문이 같은 업로드 key를 쓰면 거부한다({@link ArtworkErrorCode#THUMBNAIL_KEY_IN_IMAGES}). */
+    private static void assertThumbnailSeparate(String thumbnailKey, List<String> imageKeys) {
+        if (thumbnailKey != null && imageKeys != null && imageKeys.contains(thumbnailKey)) {
+            throw new ArtworkException(ArtworkErrorCode.THUMBNAIL_KEY_IN_IMAGES, thumbnailKey);
+        }
     }
 
     // 자재 교체 — replaceImages와 동일한 이유로 uk_am_order(artwork_id, ordinal) 충돌을 막기 위해 2단계로 처리한다.
@@ -565,11 +611,10 @@ class ArtworkServiceImpl implements ArtworkService {
         // 500으로 만들었다(이슈 #112). 없는 작가는 맵에 담기지 않고 조회 결과가 null이 된다.
         java.util.Map<String, MemberInfo> authorMap = memberService.findAllByIds(authorIds);
 
-        Map<String, List<MediaAssetInfo>> imagesByArtwork = mediaService.getAssets(
-                MediaOwnerType.ARTWORK, page.stream().map(Artwork::getId).toList());
+        Map<String, ArtworkMedia> mediaByArtwork = ArtworkMedia.loadAll(mediaService,
+                page.stream().map(Artwork::getId).toList());
         List<ArtworkInfo> items = page.stream()
-                .map(a -> ArtworkMapper.toInfo(a, authorMap.get(a.getAuthorId()),
-                        imagesByArtwork.getOrDefault(a.getId(), List.of())))
+                .map(a -> ArtworkMapper.toInfo(a, authorMap.get(a.getAuthorId()), mediaByArtwork.get(a.getId())))
                 .toList();
 
         String nextCursor = hasNext
@@ -604,18 +649,17 @@ class ArtworkServiceImpl implements ArtworkService {
         java.util.Map<String, MemberInfo> authorMap = memberService.findAllByIds(authorIds);
 
         // 이미지는 media가 갖는다(#193) — 목록은 소유자 ID를 모아 한 번에 읽는다.
-        Map<String, List<MediaAssetInfo>> imagesByArtwork = mediaService.getAssets(
-                MediaOwnerType.ARTWORK, artworks.stream().map(Artwork::getId).toList());
+        Map<String, ArtworkMedia> mediaByArtwork = ArtworkMedia.loadAll(mediaService,
+                artworks.stream().map(Artwork::getId).toList());
 
         return artworks.stream()
-                .map(a -> ArtworkMapper.toSummaryInfo(a, authorMap.get(a.getAuthorId()),
-                        imagesByArtwork.getOrDefault(a.getId(), List.of())))
+                .map(a -> ArtworkMapper.toSummaryInfo(a, authorMap.get(a.getAuthorId()), mediaByArtwork.get(a.getId())))
                 .toList();
     }
 
     /** 이미지는 media가 갖는다(#193) — 응답을 만들 때마다 읽어 넘긴다. */
     private ArtworkInfo toInfo(Artwork artwork, MemberInfo author) {
-        return ArtworkMapper.toInfo(artwork, author, mediaService.getAssets(MediaOwnerType.ARTWORK, artwork.getId()));
+        return ArtworkMapper.toInfo(artwork, author, ArtworkMedia.load(mediaService, artwork.getId()));
     }
 
     private List<ImageProcessingStatus> imageStatusesOf(String artworkId) {

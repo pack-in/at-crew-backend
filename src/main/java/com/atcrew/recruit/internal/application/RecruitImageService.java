@@ -26,7 +26,8 @@ import java.util.stream.Collectors;
  * <p>이미지의 상태와 변형본 key는 {@code media_assets} 한 곳에만 있다(#193). 예전에는 게시글마다 자식
  * 테이블을 두고 같은 값을 이중으로 갖다가, 교체할 때 두 축이 어긋나 남긴 이미지가 깨졌다.
  *
- * <p>recruit은 성인 게이팅 대상이 아니라 항상 {@link MediaVariantProfile#STANDARD}로 요청한다(§3).
+ * <p>recruit은 항상 {@link MediaVariantProfile#ORIGINAL}로 요청한다 — 썸네일 슬롯도 카드·OG 모두 원본 변환본을
+ * 그대로 쓰고(PostingImages), 성인 게이팅 대상도 아니라 thumb·블러본이 필요 없다(§3).
  * 썸네일과 참고 이미지는 media의 슬롯 이름({@link RecruitImageRole})으로 가른다 — 썸네일이 없으면 참고
  * 이미지가 0번을 차지하므로 ordinal만으로는 구분할 수 없다.
  */
@@ -67,7 +68,7 @@ class RecruitImageService {
         assertRecruitOwner(ownerType);
         assertKeysOwned(memberId, ownerType, postingId, thumbnail, references);
         List<MediaAssetInfo> assets = mediaService.syncAssets(ownerType, postingId,
-                specs(thumbnail, references), MediaVariantProfile.STANDARD, MediaQualityTier.WEB);
+                specs(thumbnail, references), MediaVariantProfile.ORIGINAL, MediaQualityTier.WEB);
         return resultOf(assets);
     }
 
@@ -139,7 +140,7 @@ class RecruitImageService {
     }
 
     private static void assertRecruitOwner(MediaOwnerType ownerType) {
-        if (ownerType == MediaOwnerType.ARTWORK) {
+        if (ownerType == MediaOwnerType.ARTWORK || ownerType == MediaOwnerType.ARTWORK_THUMBNAIL) {
             throw new IllegalArgumentException("recruit이 다루는 ownerType이 아닙니다: " + ownerType);
         }
     }

@@ -14,8 +14,6 @@ import com.atcrew.artwork.internal.persistence.ArtworkRepository;
 import com.atcrew.artwork.internal.persistence.BookmarkEntryRepository;
 import com.atcrew.artwork.internal.persistence.BookmarkFolderRepository;
 import com.atcrew.common.response.CursorPage;
-import com.atcrew.media.MediaAssetInfo;
-import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaService;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
@@ -153,15 +151,14 @@ class BookmarkServiceImpl implements BookmarkService {
         Map<String, MemberInfo> authorMap = memberService.findAllByIds(authorIds);
 
         // 이미지는 media가 갖는다(#193) — 목록은 한 번에 읽는다.
-        Map<String, List<MediaAssetInfo>> imagesByArtwork = mediaService.getAssets(
-                MediaOwnerType.ARTWORK, artworkMap.keySet());
+        Map<String, ArtworkMedia> mediaByArtwork = ArtworkMedia.loadAll(mediaService, artworkMap.keySet());
         List<BookmarkEntryInfo> items = page.stream()
                 .filter(e -> artworkMap.containsKey(e.getArtworkId()))
                 .map(e -> {
                     Artwork artwork = artworkMap.get(e.getArtworkId());
                     return ArtworkMapper.toEntryInfo(e, ArtworkMapper.toSummaryInfo(artwork,
                             authorMap.get(artwork.getAuthorId()),
-                            imagesByArtwork.getOrDefault(artwork.getId(), List.of())));
+                            mediaByArtwork.get(artwork.getId())));
                 })
                 .toList();
 
@@ -196,7 +193,7 @@ class BookmarkServiceImpl implements BookmarkService {
         artworkRepository.incrementBookmarkCount(artworkId);
         MemberInfo author = memberService.findById(artwork.getAuthorId());
         return ArtworkMapper.toEntryInfo(saved, ArtworkMapper.toSummaryInfo(artwork, author,
-                mediaService.getAssets(MediaOwnerType.ARTWORK, artwork.getId())));
+                ArtworkMedia.load(mediaService, artwork.getId())));
     }
 
     @Override

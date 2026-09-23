@@ -53,16 +53,17 @@ class ArtworkPurger {
     }
 
     /**
-     * 영구 삭제 대상 R2 key 전체 — 이미지 4종, 사용자 지정 썸네일, 자료 첨부.
+     * 영구 삭제 대상 R2 key 전체 — 본문 이미지·지정 썸네일 자산의 원본과 변형본, 옛 지정 썸네일, 자료 첨부.
      *
-     * <p>지정 썸네일과 자료 첨부는 이미지 처리 대상이 아니라 media_assets에 행이 없다. 여기서 빠지면 어디서도
-     * 지워지지 않고 R2에 남으므로 후보에 넣는다. 한동안 첨부를 뺐던 것은 소유 검증이 없어 남의 key가 섞일 수
+     * <p>썸네일 변환 이전에 올라온 지정 썸네일({@code artwork.thumbnailKey})과 자료 첨부는 media_assets에 행이 없다.
+     * 여기서 빠지면 어디서도 지워지지 않고 R2에 남으므로 후보에 넣는다. 한동안 첨부를 뺐던 것은 소유 검증이 없어 남의 key가 섞일 수
      * 있었기 때문인데(#188), 업로드 key에 소유자 서명이 들어가면서(#190) 그 전제가 사라졌다.
      *
      * <p>보존 판정은 V41 색인으로 key마다 조회하므로 후보 구성과 무관하다(docs/design/portfolio-module-design.md §5.6).
      */
     private List<String> allImageKeys(Artwork artwork) {
-        Stream<String> imageKeys = mediaService.getAssets(MediaOwnerType.ARTWORK, artwork.getId()).stream()
+        Stream<String> imageKeys = Stream.of(MediaOwnerType.ARTWORK, MediaOwnerType.ARTWORK_THUMBNAIL)
+                .flatMap(ownerType -> mediaService.getAssets(ownerType, artwork.getId()).stream())
                 .flatMap(img -> Stream.of(
                         img.originalKey(),
                         img.thumbKey(),

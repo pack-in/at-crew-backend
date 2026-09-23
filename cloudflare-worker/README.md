@@ -3,8 +3,19 @@
 `media` 모듈(서버)이 트리거하는 이미지 후처리(원본 avif 변환, 3:4 썸네일 크롭, 성인물 블러)를 수행하는
 Cloudflare Worker. 계약은 `docs/design/media-module-design.md` §6~7 참고.
 
-- 트리거: 서버 → `POST <이 Worker URL>` (헤더 `X-Callback-Secret`, 바디 `{ownerType, ownerId, imageKeys, variantProfile}`)
+- 트리거: 서버 → `POST <이 Worker URL>` (헤더 `X-Callback-Secret`, 바디 `{ownerType, ownerId, imageKeys, sourceUrls, variantProfile, qualityTier}`)
 - 콜백: Worker → `POST {SERVER_CALLBACK_URL}` (헤더 `X-Internal-Secret`, 바디 `{ownerType, ownerId, imageKey, thumbKey, thumbAdultKey, originalAvifKey, status}`)
+
+`variantProfile`이 만들 변형본을 정한다. 만들지 않은 변형본은 콜백에서 `null`이다.
+
+| variantProfile | 용도 | 만드는 변형본 |
+|---|---|---|
+| `ORIGINAL` | 본문 이미지(작품·구인글 등) | `original/` |
+| `THUMBNAIL` | 카드 썸네일 | `thumb/` (588×784) |
+| `THUMBNAIL_WITH_ADULT_BLUR` | 작품 카드 썸네일 | `thumb/`, `thumb-adult/` |
+
+`STANDARD`·`STANDARD_WITH_ADULT_BLUR`는 이 구분 이전 이름이다. 서버보다 Worker를 먼저 배포하는 동안에만
+오며, 예전처럼 original과 thumb(+블러)를 모두 만든다.
 
 ## 최초 1회 설정
 

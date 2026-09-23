@@ -40,6 +40,12 @@ class ArtworkMediaEventListener {
 
     @ApplicationModuleListener
     void onMediaAssetProcessed(MediaAssetProcessedEvent event) {
+        if (event.ownerType() == MediaOwnerType.ARTWORK_THUMBNAIL) {
+            // 썸네일은 작품 상태(READY)를 정하지 않는다 — 처리 전에도 raw로 카드를 띄울 수 있다. 카드 썸네일이
+            // 바뀌었으니 검색 색인만 다시 쓰게 한다.
+            eventPublisher.publishEvent(new ArtworkChangedEvent(event.ownerId()));
+            return;
+        }
         if (event.ownerType() != MediaOwnerType.ARTWORK) {
             return;
         }

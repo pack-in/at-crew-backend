@@ -37,11 +37,11 @@ class MediaSyncAssetsTests {
     void 순서를_뒤집어도_유니크_제약에_걸리지_않고_행을_유지한다() {
         String ownerId = ownerId();
         mediaService.syncAssets(MediaOwnerType.ARTWORK, ownerId, specs("raw/a.png", "raw/b.png", "raw/c.png"),
-                MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.ORIGINAL);
+                MediaVariantProfile.ORIGINAL, MediaQualityTier.ORIGINAL);
 
         var result = mediaService.syncAssets(MediaOwnerType.ARTWORK, ownerId,
                 specs("raw/c.png", "raw/b.png", "raw/a.png"),
-                MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.ORIGINAL);
+                MediaVariantProfile.ORIGINAL, MediaQualityTier.ORIGINAL);
 
         assertThat(result).extracting(MediaAssetInfo::originalKey)
                 .containsExactly("raw/c.png", "raw/b.png", "raw/a.png");
@@ -55,10 +55,10 @@ class MediaSyncAssetsTests {
     void 앞의_이미지를_빼면_뒤의_이미지가_자리를_넘겨받는다() {
         String ownerId = ownerId();
         mediaService.syncAssets(MediaOwnerType.ARTWORK, ownerId, specs("raw/a.png", "raw/b.png"),
-                MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.ORIGINAL);
+                MediaVariantProfile.ORIGINAL, MediaQualityTier.ORIGINAL);
 
         var result = mediaService.syncAssets(MediaOwnerType.ARTWORK, ownerId, specs("raw/b.png"),
-                MediaVariantProfile.STANDARD_WITH_ADULT_BLUR, MediaQualityTier.ORIGINAL);
+                MediaVariantProfile.ORIGINAL, MediaQualityTier.ORIGINAL);
 
         assertThat(result).extracting(MediaAssetInfo::originalKey).containsExactly("raw/b.png");
         assertThat(result).extracting(MediaAssetInfo::ordinal).containsExactly(0);
@@ -70,9 +70,9 @@ class MediaSyncAssetsTests {
         String second = ownerId();
         mediaService.syncAssets(MediaOwnerType.JOB_POSTING, first,
                 List.of(new MediaAssetSpec("raw/t.png", "THUMBNAIL"), new MediaAssetSpec("raw/r.png", "REFERENCE")),
-                MediaVariantProfile.STANDARD, MediaQualityTier.WEB);
+                MediaVariantProfile.ORIGINAL, MediaQualityTier.WEB);
         mediaService.syncAssets(MediaOwnerType.JOB_POSTING, second, specs("raw/s.png"),
-                MediaVariantProfile.STANDARD, MediaQualityTier.WEB);
+                MediaVariantProfile.ORIGINAL, MediaQualityTier.WEB);
 
         var byOwner = mediaService.getAssets(MediaOwnerType.JOB_POSTING, List.of(first, second, ownerId()));
 

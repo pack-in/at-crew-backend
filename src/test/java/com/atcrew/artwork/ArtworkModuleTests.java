@@ -247,11 +247,11 @@ class ArtworkModuleTests {
                 null, null, null, null, null, null, null, null, null, null, null, null, null, null));
 
         assertThat(updated.title()).isEqualTo("새 제목");
-        assertThat(updated.images()).extracting(ArtworkImageInfo::thumbKey).containsExactly("thumb/u1.avif");
+        assertThat(updated.images()).extracting(ArtworkImageInfo::originalAvifKey).containsExactly("original/u1.avif");
         assertThat(updated.images()).extracting(ArtworkImageInfo::processingStatus)
                 .containsExactly(ImageProcessingStatus.DONE);
         assertThat(artworkService.getArtworkStatus(memberId, uploaded.id())).isEqualTo(ArtworkStatus.READY);
-        assertThat(orphanedKeys()).doesNotContain(signedKey(memberId, "u1"), "thumb/u1.avif");
+        assertThat(orphanedKeys()).doesNotContain(signedKey(memberId, "u1"), "original/u1.avif");
     }
 
     // #193 — 이미지를 더해도 이미 처리된 이미지는 그대로 둔다. 예전에는 목록이 달라지기만 하면 전량 교체라
@@ -268,10 +268,10 @@ class ArtworkModuleTests {
 
         assertThat(updated.images()).extracting(ArtworkImageInfo::originalKey)
                 .containsExactly(signedKey(memberId, "u2"), signedKey(memberId, "u3"));
-        assertThat(updated.images().get(0).thumbKey()).isEqualTo("thumb/u2.avif");
+        assertThat(updated.images().get(0).originalAvifKey()).isEqualTo("original/u2.avif");
         assertThat(updated.images().get(0).processingStatus()).isEqualTo(ImageProcessingStatus.DONE);
         assertThat(updated.images().get(1).processingStatus()).isEqualTo(ImageProcessingStatus.PENDING);
-        assertThat(orphanedKeys()).doesNotContain(signedKey(memberId, "u2"), "thumb/u2.avif");
+        assertThat(orphanedKeys()).doesNotContain(signedKey(memberId, "u2"), "original/u2.avif");
     }
 
     // #190 — key는 공개 응답에 그대로 실린다. 검증하지 않으면 남의 key를 지정 썸네일·첨부로 넣고 내 작품을
@@ -333,10 +333,10 @@ class ArtworkModuleTests {
                 null, null, null, null, null, null, null, null, null, null, null, null, null, null));
 
         assertThat(updated.images()).extracting(ArtworkImageInfo::originalKey).containsExactly(signedKey(memberId, "u4"));
-        assertThat(updated.images().get(0).thumbKey()).isEqualTo("thumb/u4.avif");
+        assertThat(updated.images().get(0).originalAvifKey()).isEqualTo("original/u4.avif");
         // 빠진 u5만 고아 큐로 간다 — 남긴 u4는 그대로다.
-        assertThat(orphanedKeys()).contains(signedKey(memberId, "u5"), "thumb/u5.avif")
-                .doesNotContain(signedKey(memberId, "u4"), "thumb/u4.avif");
+        assertThat(orphanedKeys()).contains(signedKey(memberId, "u5"), "original/u5.avif")
+                .doesNotContain(signedKey(memberId, "u4"), "original/u4.avif");
     }
 
     @Test
@@ -379,8 +379,9 @@ class ArtworkModuleTests {
         awaitReady(memberId, uploaded.id());
         ArtworkInfo found = artworkService.getArtwork(uploaded.id(), memberId);
         assertThat(found.images()).hasSize(1);
-        assertThat(found.images().get(0).thumbKey()).isEqualTo("thumb/c1.avif");
         assertThat(found.images().get(0).originalAvifKey()).isEqualTo("original/c1.avif");
+        // 본문 이미지는 카드 썸네일을 만들지 않는다 — 카드는 사용자 지정 썸네일로만 만든다.
+        assertThat(found.images().get(0).thumbKey()).isNull();
         assertThat(found.images().get(0).processingStatus()).isEqualTo(ImageProcessingStatus.DONE);
     }
 
@@ -509,6 +510,148 @@ class ArtworkModuleTests {
                 .contains(signedKey(memberId, "ct"), signedKey(memberId, "custom-thumb"));
     }
 
+    // 본문 이미지와 사용자 지정 썸네일은 Worker에 다른 변형본을 요청한다 — 본문에 3:4 썸네일을 만들지 않는다.
+    @Test
+    void 등록하면_본문은_원본만_썸네일은_썸네일과_블러본을_요청한다() {
+        String memberId = registerAuthor();
+        ArtworkInfo uploaded = uploadWithThumbnail(memberId, signedKey(memberId, "p1"), signedKey(memberId, "p1-thumb"));
+
+        assertThat(jdbcTemplate.queryForList(
+                "SELECT CONCAT(owner_type, ':', variant_profile) FROM media_assets WHERE owner_id = ? ORDER BY owner_type",
+                String.class, uploaded.id()))
+                .containsExactly("ARTWORK:ORIGINAL", "ARTWORK_THUMBNAIL:THUMBNAIL_WITH_ADULT_BLUR");
+        assertThat(uploaded.images()).extracting(ArtworkImageInfo::originalKey).containsExactly(signedKey(memberId, "p1"));
+        assertThat(uploaded.thumbnailImage().originalKey()).isEqualTo(signedKey(memberId, "p1-thumb"));
+        assertThat(uploaded.thumbnailImage().processingStatus()).isEqualTo(ImageProcessingStatus.PENDING);
+    }
+
+    // 홈-R06 — 성인물 카드는 블러본이 있어야 한다. 예전에는 지정 썸네일이 변환되지 않아 블러본이 항상 없었다.
+    @Test
+    void 썸네일_변환_전에는_원본을_변환_후에는_썸네일과_블러본을_카드에_쓴다() {
+        String memberId = registerAuthor();
+        String thumbnailKey = signedKey(memberId, "c-thumb");
+        ArtworkInfo uploaded = uploadWithThumbnail(memberId, signedKey(memberId, "c-body"), thumbnailKey);
+
+        ArtworkSummaryInfo pending = artworkService.getMyArtworks(memberId, null, 20).items().get(0);
+        assertThat(pending.thumbKey()).isEqualTo(thumbnailKey);
+        assertThat(pending.thumbAdultKey()).isNull();
+
+        processThumbnail(uploaded.id(), thumbnailKey);
+
+        ArtworkSummaryInfo card = artworkService.getMyArtworks(memberId, null, 20).items().get(0);
+        assertThat(card.thumbKey()).isEqualTo("thumb/c-thumb.avif");
+        assertThat(card.thumbAdultKey()).isEqualTo("thumb-adult/c-thumb.avif");
+        ArtworkInfo detail = artworkService.getArtwork(uploaded.id(), memberId);
+        assertThat(detail.thumbnailKey()).isEqualTo(thumbnailKey);
+        assertThat(detail.thumbnailImage().thumbKey()).isEqualTo("thumb/c-thumb.avif");
+        // 썸네일 처리는 작품 상태를 정하지 않는다 — 본문이 끝나야 READY다.
+        assertThat(artworkService.getArtworkStatus(memberId, uploaded.id())).isEqualTo(ArtworkStatus.PROCESSING);
+    }
+
+    @Test
+    void 썸네일을_바꾸면_이전_썸네일의_원본과_변형본을_고아_처리한다() {
+        String memberId = registerAuthor();
+        String oldThumb = signedKey(memberId, "r-old");
+        ArtworkInfo uploaded = uploadWithThumbnail(memberId, signedKey(memberId, "r-body"), oldThumb);
+        processThumbnail(uploaded.id(), oldThumb);
+
+        String newThumb = signedKey(memberId, "r-new");
+        ArtworkInfo updated = artworkService.updateArtwork(memberId, uploaded.id(), updateThumbnail(newThumb));
+
+        assertThat(updated.thumbnailKey()).isEqualTo(newThumb);
+        assertThat(updated.thumbnailImage().originalKey()).isEqualTo(newThumb);
+        assertThat(updated.thumbnailImage().processingStatus()).isEqualTo(ImageProcessingStatus.PENDING);
+        assertThat(orphanedKeys()).contains(oldThumb, "thumb/r-old.avif", "thumb-adult/r-old.avif");
+    }
+
+    @Test
+    void 같은_썸네일로_수정하면_다시_변환하지_않는다() {
+        String memberId = registerAuthor();
+        String thumb = signedKey(memberId, "s-thumb");
+        ArtworkInfo uploaded = uploadWithThumbnail(memberId, signedKey(memberId, "s-body"), thumb);
+        processThumbnail(uploaded.id(), thumb);
+
+        ArtworkInfo updated = artworkService.updateArtwork(memberId, uploaded.id(), updateThumbnail(thumb));
+
+        assertThat(updated.thumbnailImage().thumbKey()).isEqualTo("thumb/s-thumb.avif");
+        assertThat(orphanedKeys()).doesNotContain(thumb, "thumb/s-thumb.avif");
+    }
+
+    // 썸네일 변환 이전에 올라온 작품 — 지정 썸네일이 raw로만 있고 media 자산 행이 없다. 예전에는 교체된 raw가
+    // 어디서도 정리되지 않았다. 같은 key로 수정할 때는 새로 변환하지 않는다(변환하면 Worker가 raw를 지워
+    // 그 key를 참조하는 고정형 스냅샷이 깨진다).
+    @Test
+    void 자산_없는_옛_썸네일은_그대로_쓰고_바꿀_때만_raw를_고아_처리한다() {
+        String memberId = registerAuthor();
+        ArtworkInfo uploaded = uploadMinimal(memberId, signedKey(memberId, "l-body"));
+        String legacyThumb = signedKey(memberId, "l-old");
+        jdbcTemplate.update("UPDATE artworks SET thumbnail_key = ? WHERE id = ?", legacyThumb, uploaded.id());
+
+        ArtworkInfo same = artworkService.updateArtwork(memberId, uploaded.id(), updateThumbnail(legacyThumb));
+        assertThat(same.thumbnailImage()).isNull();
+        assertThat(artworkService.getMyArtworks(memberId, null, 20).items().get(0).thumbKey()).isEqualTo(legacyThumb);
+        assertThat(thumbnailAssetCount(uploaded.id())).isZero();
+
+        artworkService.updateArtwork(memberId, uploaded.id(), updateThumbnail(signedKey(memberId, "l-new")));
+
+        assertThat(orphanedKeys()).contains(legacyThumb);
+        assertThat(thumbnailAssetCount(uploaded.id())).isEqualTo(1);
+    }
+
+    // 한 raw를 본문과 썸네일로 동시에 변환하면 먼저 끝난 쪽이 raw를 지워 다른 쪽이 FAILED가 된다.
+    @Test
+    void 썸네일_key가_본문_이미지와_같으면_등록과_수정을_거부한다() {
+        String memberId = registerAuthor();
+        String shared = signedKey(memberId, "dup");
+
+        assertThatThrownBy(() -> uploadWithThumbnail(memberId, shared, shared))
+                .isInstanceOf(DomainException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("THUMBNAIL_KEY_IN_IMAGES");
+
+        ArtworkInfo uploaded = uploadWithThumbnail(memberId, shared, signedKey(memberId, "dup-thumb"));
+        assertThatThrownBy(() -> artworkService.updateArtwork(memberId, uploaded.id(), updateThumbnail(shared)))
+                .isInstanceOf(DomainException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("THUMBNAIL_KEY_IN_IMAGES");
+    }
+
+    @Test
+    void 영구삭제하면_썸네일_변형본까지_지우고_썸네일_자산_행을_정리한다(PublishedEvents events) {
+        String memberId = registerAuthor();
+        String thumb = signedKey(memberId, "d-thumb");
+        ArtworkInfo uploaded = uploadWithThumbnail(memberId, signedKey(memberId, "d-body"), thumb);
+        processImage(uploaded.id(), signedKey(memberId, "d-body"), MediaProcessingStatus.DONE);
+        processThumbnail(uploaded.id(), thumb);
+        awaitReady(memberId, uploaded.id());
+        artworkService.deleteArtwork(memberId, uploaded.id());
+
+        artworkService.permanentlyDeleteArtworks(memberId, List.of(uploaded.id()));
+
+        assertThat(deletedImageKeysOf(events, uploaded.id()))
+                .contains(thumb, "thumb/d-thumb.avif", "thumb-adult/d-thumb.avif", "original/d-body.avif");
+        awaitCondition(() -> thumbnailAssetCount(uploaded.id()) == 0);
+    }
+
+    private ArtworkInfo uploadWithThumbnail(String memberId, String imageKey, String thumbnailKey) {
+        return artworkService.uploadArtwork(memberId, new UploadArtworkCommand(
+                List.of(imageKey), 0, thumbnailKey, ImageLayoutType.VERTICAL_SCROLL,
+                "썸네일 작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
+                List.of(), List.of(), null, List.of(),
+                AgeRating.R18, List.of(Language.KO), true, List.of(), List.of(), null, null, List.of(), List.of()));
+    }
+
+    private static UpdateArtworkCommand updateThumbnail(String thumbnailKey) {
+        return new UpdateArtworkCommand(null, null, thumbnailKey, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null);
+    }
+
+    private int thumbnailAssetCount(String artworkId) {
+        return jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM media_assets WHERE owner_type = 'ARTWORK_THUMBNAIL' AND owner_id = ?",
+                Integer.class, artworkId);
+    }
+
     // 영구 삭제 이벤트는 작품의 R2 key 전체를 싣고 이벤트 레지스트리(EVENT_PUBLICATION.SERIALIZED_EVENT)에 저장된다.
     // V13의 VARCHAR(4000)이면 처리된 이미지가 많은 작품에서 'Data too long'으로 영구 삭제 전체가 롤백됐다(V40).
     @Test
@@ -619,17 +762,27 @@ class ArtworkModuleTests {
                 .map(String::trim).filter(key -> !key.isEmpty()).toList();
     }
 
-    /** Worker webhook 1건을 재현한다 — media가 자산 상태를 갱신하고 MediaAssetProcessedEvent를 발행한다. */
+    /**
+     * 본문 이미지의 Worker webhook 1건을 재현한다 — media가 자산 상태를 갱신하고 MediaAssetProcessedEvent를 발행한다.
+     * 본문은 ORIGINAL 프로필이라 Worker가 original만 만든다.
+     */
     private void processImage(String artworkId, String imageKey, MediaProcessingStatus status) {
         boolean done = status == MediaProcessingStatus.DONE;
-        // Worker와 같은 규칙으로 변환 결과 이름을 만든다 — 마지막 경로 조각에서 확장자를 뗀다
-        // (cloudflare-worker/src/index.js:86). key에 소유자 서명 조각이 생겼어도 결과 이름은 그대로다(#190).
-        String name = imageKey.substring(imageKey.lastIndexOf('/') + 1, imageKey.lastIndexOf('.'));
         mediaCallbackService.process(MediaOwnerType.ARTWORK, artworkId, imageKey,
-                done ? "thumb/" + name + ".avif" : null,
-                done ? "thumb-adult/" + name + ".avif" : null,
-                done ? "original/" + name + ".avif" : null,
-                status);
+                null, null, done ? "original/" + variantName(imageKey) + ".avif" : null, status);
+    }
+
+    /** 사용자 지정 썸네일의 Worker webhook — THUMBNAIL_WITH_ADULT_BLUR라 thumb와 블러본만 만든다. */
+    private void processThumbnail(String artworkId, String thumbnailKey) {
+        String name = variantName(thumbnailKey);
+        mediaCallbackService.process(MediaOwnerType.ARTWORK_THUMBNAIL, artworkId, thumbnailKey,
+                "thumb/" + name + ".avif", "thumb-adult/" + name + ".avif", null, MediaProcessingStatus.DONE);
+    }
+
+    // Worker와 같은 규칙으로 변환 결과 이름을 만든다 — 마지막 경로 조각에서 확장자를 뗀다
+    // (cloudflare-worker/src/index.js processOne). key에 소유자 서명 조각이 생겼어도 결과 이름은 그대로다(#190).
+    private static String variantName(String key) {
+        return key.substring(key.lastIndexOf('/') + 1, key.lastIndexOf('.'));
     }
 
     /** artwork 리스너는 @ApplicationModuleListener(비동기)라 상태 반영까지 폴링한다. */

@@ -72,7 +72,9 @@ class ArtworkController {
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "업로드 성공")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400",
             description = "게시물 언어 개수 오류(INVALID_LANGUAGE_COUNT), "
-                    + "직접입력 값이 10자 초과 또는 항목당 10개 초과(INVALID_CUSTOM_TAG)")
+                    + "직접입력 값이 10자 초과 또는 항목당 10개 초과(INVALID_CUSTOM_TAG), "
+                    + "썸네일(thumbnailKey) 누락(COMMON_INVALID_INPUT), "
+                    + "썸네일 key가 작품 이미지 key와 같음(THUMBNAIL_KEY_IN_IMAGES)")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403",
             description = "스타터 작품 개수 초과(STARTER_ARTWORK_LIMIT_EXCEEDED), "
                     + "스타터의 다중 언어 선택(MULTI_LANGUAGE_REQUIRES_PRO), "
@@ -117,11 +119,13 @@ class ArtworkController {
         return ApiResponse.success(artworkService.getArtworkStatus(memberId, artworkId));
     }
 
-    @Operation(summary = "작품 수정")
+    @Operation(summary = "작품 수정", description = "thumbnailKey는 썸네일을 새로 잘라 올린 경우에만 새 key를 보냅니다. "
+            + "기존 값을 그대로 보내면 썸네일을 다시 변환하지 않습니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "수정 성공")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400",
             description = "게시물 언어 개수 오류(INVALID_LANGUAGE_COUNT), "
-                    + "직접입력 값이 10자 초과 또는 항목당 10개 초과(INVALID_CUSTOM_TAG)")
+                    + "직접입력 값이 10자 초과 또는 항목당 10개 초과(INVALID_CUSTOM_TAG), "
+                    + "썸네일 key가 작품 이미지 key와 같음(THUMBNAIL_KEY_IN_IMAGES)")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403",
             description = "스타터의 다중 언어 선택(MULTI_LANGUAGE_REQUIRES_PRO), "
                     + "주 사용 언어 미포함(LANGUAGE_NOT_ALLOWED)")

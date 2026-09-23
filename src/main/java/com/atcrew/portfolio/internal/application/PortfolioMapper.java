@@ -1,6 +1,6 @@
 package com.atcrew.portfolio.internal.application;
 
-import com.atcrew.artwork.ArtworkImageInfo;
+import com.atcrew.artwork.ArtworkCardThumbnail;
 import com.atcrew.artwork.ArtworkInfo;
 import com.atcrew.artwork.ArtworkRole;
 import com.atcrew.artwork.Visibility;
@@ -62,25 +62,15 @@ class PortfolioMapper {
         );
     }
 
-    // 카드 썸네일 규칙은 ArtworkMapper.toSummaryInfo와 동일하게 맞춘다 —
-    // 사용자 지정 썸네일 우선, 없으면 대표 이미지의 Worker 생성 썸네일을 쓴다.
+    // 카드 썸네일 규칙은 artwork 목록 카드와 같은 ArtworkCardThumbnail을 쓴다.
     static PortfolioArtworkCardInfo toCardInfo(ArtworkInfo artwork) {
-        String thumbKey;
-        String thumbAdultKey;
-        if (artwork.thumbnailKey() != null) {
-            thumbKey = artwork.thumbnailKey();
-            thumbAdultKey = null;
-        } else {
-            ArtworkImageInfo representative = representativeImage(artwork);
-            thumbKey = representative != null ? representative.thumbKey() : null;
-            thumbAdultKey = representative != null ? representative.thumbAdultKey() : null;
-        }
+        ArtworkCardThumbnail thumbnail = ArtworkCardThumbnail.of(artwork);
         return new PortfolioArtworkCardInfo(
                 artwork.id(),
                 null,                       // 최신 반영형 카드는 스냅샷이 없다
                 artwork.title(),
-                thumbKey,
-                thumbAdultKey,
+                thumbnail.thumbKey(),
+                thumbnail.thumbAdultKey(),
                 artwork.ageRating(),
                 artwork.artworkField(),
                 artwork.roles(),
@@ -156,14 +146,5 @@ class PortfolioMapper {
     /** 고정형 커버도 스냅샷 컬럼만으로 채운다(§5.1) — 원본을 다시 조회하지 않는다. */
     static PortfolioCoverThumbnailInfo toCoverThumbnailInfo(PortfolioItemSnapshot snapshot) {
         return new PortfolioCoverThumbnailInfo(snapshot.getThumbKey(), snapshot.getThumbAdultKey());
-    }
-
-    private static ArtworkImageInfo representativeImage(ArtworkInfo artwork) {
-        List<ArtworkImageInfo> images = artwork.images();
-        int index = artwork.representativeImageIndex();
-        if (images == null || index < 0 || index >= images.size()) {
-            return null;
-        }
-        return images.get(index);
     }
 }

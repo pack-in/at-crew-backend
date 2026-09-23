@@ -68,7 +68,7 @@ com.atcrew.artwork.internal/               ← 모듈 외부에서 직접 접근
 | `description` | String | 설명 (최대 500자) |
 | (이미지) | — | `media_assets`에만 있다(#193). 작품 행에는 없고 `MediaService.getAssets`로 읽는다 |
 | `representativeImageIndex` | int | 대표 이미지 인덱스 |
-| `thumbnailKey` | String | 사용자 지정 썸네일 R2 키 (별도 업로드). null이면 대표 이미지의 Worker 생성 썸네일 사용 |
+| `thumbnailKey` | String | 사용자 지정 썸네일의 업로드 키(식별용). 변환 결과는 `media_assets`의 `ARTWORK_THUMBNAIL` 자산에 있다 |
 | `imageLayoutType` | enum | VERTICAL_SCROLL / HORIZONTAL_SWIPE |
 | `artworkField` | enum | ILLUSTRATION / WEBTOON / PRINT_COMIC / ANIMATION / ETC |
 | `creativeType` | enum | ORIGINAL / SECONDARY / FAN_ART / OC / COMMISSION |
@@ -178,12 +178,18 @@ PENDING → (Worker DONE 콜백) → DONE
 | 필드 | 설명 |
 |------|------|
 | `originalKey` | R2에 업로드된 원본 파일 키 (`raw/UUID.ext`). **처리 완료 후 실제 객체는 삭제된다** — 변환 결과가 원본을 대체하므로 식별·정리용 값일 뿐, 이미지 로드에 쓰지 않는다 |
-| `thumbKey` | Worker 생성 썸네일 키 |
-| `thumbAdultKey` | Worker 생성 성인물 블러 썸네일 키 |
-| `originalAvifKey` | Worker 생성 AVIF 변환본 키 |
+| `thumbKey` | 카드 썸네일(588×784 AVIF). 지정 썸네일 자산에만 있다. 본문 이미지는 null(역할 분리 이전 업로드분에는 남아 있음) |
+| `thumbAdultKey` | 성인물 블러 썸네일. 지정 썸네일 자산에만 있다 |
+| `originalAvifKey` | 본문 표시용 AVIF 변환본. 본문 이미지에만 있다 |
 | `processingStatus` | PENDING / DONE / FAILED |
 
-**썸네일 우선순위**: `Artwork.thumbnailKey`(사용자 업로드) → 대표 이미지의 `thumbKey`(Worker 생성) 순으로 사용. `ArtworkSummaryInfo`의 `thumbKey` 필드에 최종 값이 담김.
+본문 이미지는 `ARTWORK`(프로필 `ORIGINAL`), 지정 썸네일은 `ARTWORK_THUMBNAIL`(프로필 `THUMBNAIL_WITH_ADULT_BLUR`)
+owner로 따로 둔다(media-module-design.md §3). 응답에서는 `images[]`와 `thumbnailImage`로 나뉜다.
+
+**카드 썸네일 판정**(`ArtworkCardThumbnail`, 작품 목록·검색·포트폴리오 공통):
+1. 지정 썸네일 자산의 `thumbKey`/`thumbAdultKey`. 변환 전·실패면 그 raw(`originalKey`)
+2. 자산이 없는 옛 지정 썸네일은 `thumbnailKey`(raw) 그대로, 블러 없음
+3. 지정 썸네일이 없으면 대표 이미지의 옛 `thumbKey`, 그것도 없으면 대표 이미지의 표시 key
 
 ### Material (Artwork에 내장)
 
@@ -275,9 +281,10 @@ PENDING → (Worker DONE 콜백) → DONE
 
 피그마 업로드 플로우 7페이지 기준: 작품 이미지 목록에서 썸네일로 사용할 이미지를 선택하거나, 새로운 이미지를 별도로 업로드하고 3:4 비율로 자를 수 있다.
 
-- 사용자 지정 썸네일도 일반 작품 이미지와 동일한 Presigned URL 방식으로 R2에 업로드
-- `thumbnailKey`는 `UploadArtworkCommand`에 포함되어 `Artwork`에 별도 필드로 저장
-- `thumbnailKey`가 null이면 대표 이미지의 Worker 생성 `thumbKey`가 대신 사용됨
+- 사용자 지정 썸네일도 일반 작품 이미지와 동일한 Presigned URL 방식으로 R2에 업로드. 기존 이미지를 골라도 FE가 잘라 새 파일로 올린다
+- `thumbnailKey`는 등록 시 필수이며 `Artwork`에 식별용으로 저장되고, 같은 key를 `ARTWORK_THUMBNAIL` 자산으로 등록해 Worker가 `thumb/`·`thumb-adult/`를 만든다
+- 본문 이미지와 같은 key는 거부한다(`THUMBNAIL_KEY_IN_IMAGES`) — 한 raw를 두 번 변환하면 먼저 끝난 쪽이 raw를 지워 다른 쪽이 실패한다
+- 변환이 끝나면 raw는 지워지므로 표시에는 `thumbnailImage.thumbKey`(변환 전이면 `thumbnailImage.originalKey`)를 쓴다
 
 ### Presigned URL 제약
 
@@ -356,7 +363,7 @@ R2 업로드 완료 후 작품 메타데이터를 저장. 바로 `PROCESSING` �
 ```
 
 **필드 설명**:
-- `thumbnailKey`: 선택. Presigned URL로 미리 업로드한 사용자 지정 썸네일의 R2 키
+- `thumbnailKey`: 필수. Presigned URL로 미리 업로드한 사용자 지정 썸네일(3:4)의 R2 키. `imageKeys`와 겹치면 400 `THUMBNAIL_KEY_IN_IMAGES`
 - `workDuration`: 선택. 작업 기간 (months/days/hours/minutes 중 null 허용)
 - `cutCount`: 선택. 웹툰·출판만화 분야에서 사용하는 작품 컷 수
 - `videoLinks`: 선택. YouTube 등 영상 링크 (최대 5개)
@@ -388,7 +395,7 @@ R2 업로드 완료 후 작품 메타데이터를 저장. 바로 `PROCESSING` �
 
 - `imageKeys`가 **현재 목록과 다르면** 기존 이미지는 `OrphanedImageKey`로 등록 후 새 이미지로 교체, 상태는 다시 `PROCESSING`으로 전환.
 - `imageKeys`가 현재 목록과 순서까지 같으면 교체하지 않는다(recruit의 `ImageSyncResult.UNCHANGED`와 같은 규칙). 프론트가 수정 요청마다 폼 전체를 보내므로, 교체하면 이미지를 건드리지 않은 수정도 변환 결과를 버리고 파일을 고아 큐로 넘겨 이미지가 깨진다(#193). 일부만 바꾸는 경우는 여전히 전체 교체이며 #193에서 재설계한다. `representativeImageIndex`는 이 경우에도 반영된다.
-- `thumbnailKey`는 이미지 교체와 무관하게 독립적으로 수정 가능.
+- `thumbnailKey`는 이미지 교체와 무관하게 독립적으로 수정 가능. 기존 값과 같으면 아무 일도 하지 않고, 바뀌면 새 썸네일을 변환하고 이전 썸네일(원본·변형본)을 고아 큐로 보낸다.
 - `DELETED` 상태 작품은 수정 불가 (404).
 - `imageLayoutType`은 이미지 교체 여부와 무관하게 항상 반영.
 
