@@ -211,6 +211,14 @@ public class JobSeekingPost {
     public WorkStyle getWorkStyle() { return workStyle; }
     public String getDesiredRate() { return desiredRate; }
     public String getPortfolioDescription() { return portfolioDescription; }
+    /**
+     * 휴지통 보관 기간이 지나 이미지 파일을 정리한 뒤 호출한다(#200) — 지운 파일을 가리키는 key를 남겨두면
+     * 정리 배치가 매번 같은 파일을 다시 지우려 한다. 구직글은 썸네일 없이 참고 이미지만 쓴다.
+     */
+    public void clearImagesAfterPurge() {
+        this.referenceImages = new ArrayList<>();
+    }
+
     public List<String> getReferenceImages() { return List.copyOf(referenceImages); }
     public JobSeekingPostStatus getStatus() { return status; }
     public RecruitImageProcessingStatus getImageProcessingStatus() { return imageProcessingStatus; }
