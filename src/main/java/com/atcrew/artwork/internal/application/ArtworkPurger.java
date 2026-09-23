@@ -3,11 +3,13 @@ package com.atcrew.artwork.internal.application;
 import com.atcrew.artwork.ArtworkChangedEvent;
 import com.atcrew.artwork.ArtworkPermanentlyDeletedEvent;
 import com.atcrew.artwork.internal.domain.artwork.Artwork;
+import com.atcrew.artwork.internal.domain.artwork.Material;
 import com.atcrew.artwork.internal.persistence.ArtworkRepository;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaService;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.springframework.context.ApplicationEventPublisher;
@@ -51,15 +53,13 @@ class ArtworkPurger {
     }
 
     /**
-     * 영구 삭제 대상 R2 key 전체 — 이미지 4종에 <b>사용자 지정 썸네일 key</b>까지 포함한다.
+     * 영구 삭제 대상 R2 key 전체 — 이미지 4종, 사용자 지정 썸네일, 자료 첨부.
      *
-     * <p>자료 첨부 key({@code Material.attachmentKeys})는 <b>일부러 넣지 않는다.</b> 클라이언트가 보낸 값을 소유 검증 없이
-     * 저장하므로, 다른 사용자의 key(공개 API에 노출된다)를 첨부로 넣고 영구 삭제하면 남의 파일이 지워진다. 첨부 파일은
-     * 소유 검증이 생길 때까지 R2에 남는다(누수를 감수한다). 사용자 지정 썸네일 key에도 같은 검증 공백이 있다(#190).
+     * <p>지정 썸네일과 자료 첨부는 이미지 처리 대상이 아니라 media_assets에 행이 없다. 여기서 빠지면 어디서도
+     * 지워지지 않고 R2에 남으므로 후보에 넣는다. 한동안 첨부를 뺐던 것은 소유 검증이 없어 남의 key가 섞일 수
+     * 있었기 때문인데(#188), 업로드 key에 소유자 서명이 들어가면서(#190) 그 전제가 사라졌다.
      *
-     * <p>지정 썸네일은 이미지 처리 대상이 아니라 media_assets에 행이 없어, 여기서 빠지면 어디서도
-     * 지워지지 않고 R2에 남는다 — 후보에 넣는 이유는 이 파일 정리뿐이다. 보존 판정은 V41 색인으로 key마다
-     * 조회하므로 후보 구성과 무관하다(docs/design/portfolio-module-design.md §5.6).
+     * <p>보존 판정은 V41 색인으로 key마다 조회하므로 후보 구성과 무관하다(docs/design/portfolio-module-design.md §5.6).
      */
     private List<String> allImageKeys(Artwork artwork) {
         Stream<String> imageKeys = mediaService.getAssets(MediaOwnerType.ARTWORK, artwork.getId()).stream()
@@ -69,7 +69,9 @@ class ArtworkPurger {
                         img.thumbAdultKey(),
                         img.originalAvifKey()
                 ));
-        return Stream.concat(imageKeys, Stream.of(artwork.getThumbnailKey()))
+        Stream<String> attachmentKeys = artwork.getMaterials().stream()
+                .map(Material::getAttachmentKeys).filter(Objects::nonNull).flatMap(List::stream);
+        return Stream.concat(Stream.concat(imageKeys, attachmentKeys), Stream.of(artwork.getThumbnailKey()))
                 .filter(k -> k != null && !k.isBlank())
                 .distinct()
                 .toList();

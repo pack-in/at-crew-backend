@@ -135,7 +135,7 @@ class RecruitServiceImpl implements RecruitService {
         }
         // 이미지는 presign으로 발급받은 key로 들어온다 — media 모듈에 등록해 Worker 변환을 트리거한다(설계 §10.3).
         RecruitImageService.apply(
-                recruitImageService.sync(MediaOwnerType.JOB_POSTING, saved.getId(),
+                recruitImageService.sync(memberId, MediaOwnerType.JOB_POSTING, saved.getId(),
                         command.thumbnailImage(), command.referenceImages()),
                 saved::markImageProcessingPending, saved::markImageProcessingReady);
         publishJobPostingChanged(saved.getId());
@@ -152,7 +152,7 @@ class RecruitServiceImpl implements RecruitService {
         // 부분 업데이트라 이미지 필드를 실제로 보낸 요청만 media 재등록 대상이다(설계 §10.3).
         if (command.thumbnailImage() != null || command.referenceImages() != null) {
             RecruitImageService.apply(
-                    recruitImageService.sync(MediaOwnerType.JOB_POSTING, jobPostingId,
+                    recruitImageService.sync(memberId, MediaOwnerType.JOB_POSTING, jobPostingId,
                             jobPosting.getThumbnailImage(), jobPosting.getReferenceImages()),
                     jobPosting::markImageProcessingPending, jobPosting::markImageProcessingReady);
         }
@@ -289,7 +289,7 @@ class RecruitServiceImpl implements RecruitService {
         billingService.consume(memberId, BillingProduct.TEAM_POSTING, saved.getId());
         // 이미지는 presign으로 발급받은 key로 들어온다 — media 모듈에 등록해 Worker 변환을 트리거한다(설계 §10.3).
         RecruitImageService.apply(
-                recruitImageService.sync(MediaOwnerType.TEAM_POSTING, saved.getId(),
+                recruitImageService.sync(memberId, MediaOwnerType.TEAM_POSTING, saved.getId(),
                         command.thumbnailImage(), command.referenceImages()),
                 saved::markImageProcessingPending, saved::markImageProcessingReady);
         publishTeamPostingChanged(saved.getId());
@@ -306,7 +306,7 @@ class RecruitServiceImpl implements RecruitService {
         // 부분 업데이트라 이미지 필드를 실제로 보낸 요청만 media 재등록 대상이다(설계 §10.3).
         if (command.thumbnailImage() != null || command.referenceImages() != null) {
             RecruitImageService.apply(
-                    recruitImageService.sync(MediaOwnerType.TEAM_POSTING, teamPostingId,
+                    recruitImageService.sync(memberId, MediaOwnerType.TEAM_POSTING, teamPostingId,
                             teamPosting.getThumbnailImage(), teamPosting.getReferenceImages()),
                     teamPosting::markImageProcessingPending, teamPosting::markImageProcessingReady);
         }

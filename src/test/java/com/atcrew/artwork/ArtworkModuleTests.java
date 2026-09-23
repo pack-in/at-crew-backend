@@ -11,6 +11,7 @@ import com.atcrew.media.MediaConstraints;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaProcessingStatus;
 import com.atcrew.media.internal.application.MediaCallbackService;
+import com.atcrew.media.internal.application.MediaKeySigner;
 import com.atcrew.member.AuthProvider;
 import com.atcrew.member.Language;
 import com.atcrew.member.MemberService;
@@ -71,6 +72,10 @@ class ArtworkModuleTests {
     @Autowired
     MediaCallbackService mediaCallbackService;
 
+    // 업로드 key의 소유자 서명(#190) — 테스트도 같은 규칙으로 key를 만든다.
+    @Autowired
+    MediaKeySigner keySigner;
+
     // 운영 차단은 관리자 API 없이 DB 직접 UPDATE로 이뤄지므로 테스트도 같은 경로를 쓴다.
     @Autowired
     JdbcTemplate jdbcTemplate;
@@ -83,12 +88,12 @@ class ArtworkModuleTests {
         String memberId = registerAuthor();
 
         ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, new UploadArtworkCommand(
-                List.of("raw/1.png", "raw/2.png"), 1, "raw/thumb.png", ImageLayoutType.VERTICAL_SCROLL,
+                List.of(signedKey(memberId, "1"), signedKey(memberId, "2")), 1, signedKey(memberId, "thumb"), ImageLayoutType.VERTICAL_SCROLL,
                 "제목", "설명", ArtworkField.WEBTOON, CreativeType.ORIGINAL,
                 List.of(ArtworkRole.LINEART, ArtworkRole.COLORING), List.of(Genre.FANTASY, Genre.ACTION), null, List.of("태그1", "태그2"),
                 AgeRating.ALL, List.of(Language.KO), true, List.of(), List.of("clip studio"),
                 new WorkDuration(1, 2, 3, 4), 12, List.of("https://youtube.com/watch?v=1"),
-                List.of(new MaterialData("배경소스", List.of(MaterialTarget.BACKGROUND), null, List.of("raw/mat.png"), List.of("https://acon3d.com/x")))
+                List.of(new MaterialData("배경소스", List.of(MaterialTarget.BACKGROUND), null, List.of(signedKey(memberId, "mat")), List.of("https://acon3d.com/x")))
         ));
 
         ArtworkInfo found = artworkService.getArtwork(uploaded.id(), memberId);
@@ -107,7 +112,7 @@ class ArtworkModuleTests {
         assertThat(found.materials().get(0).name()).isEqualTo("배경소스");
         // 소재 대상은 JSON 컬럼에 enum 이름 배열로 저장된다 — 왕복 매핑까지 검증한다.
         assertThat(found.materials().get(0).targets()).containsExactly(MaterialTarget.BACKGROUND);
-        assertThat(found.materials().get(0).attachmentKeys()).containsExactly("raw/mat.png");
+        assertThat(found.materials().get(0).attachmentKeys()).containsExactly(signedKey(memberId, "mat"));
         assertThat(found.status()).isEqualTo(ArtworkStatus.PROCESSING);
     }
 
@@ -117,7 +122,7 @@ class ArtworkModuleTests {
         String memberId = registerAuthor();
 
         ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, new UploadArtworkCommand(
-                List.of("raw/1.png"), 0, null, ImageLayoutType.VERTICAL_SCROLL,
+                List.of(signedKey(memberId, "1")), 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 "제목", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
                 List.of(ArtworkRole.LINEART), List.of(Genre.FANTASY), null, List.of("캐릭터", "SF", "캐릭터", "배경"),
                 AgeRating.ALL, List.of(Language.KO), true, List.of(), List.of(),
@@ -146,7 +151,7 @@ class ArtworkModuleTests {
         String memberId = registerAuthor();
 
         ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, new UploadArtworkCommand(
-                List.of("raw/1.png"), 0, null, ImageLayoutType.VERTICAL_SCROLL,
+                List.of(signedKey(memberId, "1")), 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 "제목", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
                 List.of(ArtworkRole.ETC), List.of(),
                 List.of(new ArtworkCustomTagInfo(ArtworkCustomTagType.ROLE, "특수효과"),
@@ -170,7 +175,7 @@ class ArtworkModuleTests {
     void 담당업무_직접입력_값이_10자를_초과하면_예외() {
         String memberId = registerAuthor();
 
-        assertThatThrownBy(() -> artworkService.uploadArtwork(memberId, baseUploadCommandWithCustomTags(
+        assertThatThrownBy(() -> artworkService.uploadArtwork(memberId, baseUploadCommandWithCustomTags(memberId,
                 List.of(new ArtworkCustomTagInfo(ArtworkCustomTagType.ROLE, "12345678901")))))
                 .isInstanceOf(DomainException.class)
                 .extracting(e -> ((DomainException) e).getCode())
@@ -181,7 +186,7 @@ class ArtworkModuleTests {
     void 같은_항목_안에서_중복된_직접입력_값은_조용히_무시된다() {
         String memberId = registerAuthor();
 
-        ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, baseUploadCommandWithCustomTags(
+        ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, baseUploadCommandWithCustomTags(memberId,
                 List.of(new ArtworkCustomTagInfo(ArtworkCustomTagType.ROLE, "특수효과"),
                         new ArtworkCustomTagInfo(ArtworkCustomTagType.ROLE, "특수효과"))));
 
@@ -192,7 +197,7 @@ class ArtworkModuleTests {
     @Test
     void 수정_시_customTags가_null이면_유지되고_빈_목록이면_전체_삭제된다() {
         String memberId = registerAuthor();
-        ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, baseUploadCommandWithCustomTags(
+        ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, baseUploadCommandWithCustomTags(memberId,
                 List.of(new ArtworkCustomTagInfo(ArtworkCustomTagType.ROLE, "특수효과"))));
 
         ArtworkInfo unchanged = artworkService.updateArtwork(memberId, uploaded.id(), new UpdateArtworkCommand(
@@ -206,9 +211,9 @@ class ArtworkModuleTests {
         assertThat(cleared.customTags()).isEmpty();
     }
 
-    private UploadArtworkCommand baseUploadCommandWithCustomTags(List<ArtworkCustomTagInfo> customTags) {
+    private UploadArtworkCommand baseUploadCommandWithCustomTags(String memberId, List<ArtworkCustomTagInfo> customTags) {
         return new UploadArtworkCommand(
-                List.of("raw/1.png"), 0, null, ImageLayoutType.VERTICAL_SCROLL,
+                List.of(signedKey(memberId, "1")), 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 "테스트 작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
                 List.of(), List.of(), customTags, List.of(),
                 AgeRating.ALL, List.of(Language.KO), true, List.of(), List.of(), null, null, List.of(), List.of());
@@ -217,14 +222,14 @@ class ArtworkModuleTests {
     @Test
     void 이미지_교체_후_기존_이미지_행이_삭제되고_새_이미지로_대체된다() {
         String memberId = registerAuthor();
-        ArtworkInfo uploaded = uploadMinimal(memberId, "raw/old1.png", "raw/old2.png");
+        ArtworkInfo uploaded = uploadMinimal(memberId, signedKey(memberId, "old1"), signedKey(memberId, "old2"));
 
         ArtworkInfo updated = artworkService.updateArtwork(memberId, uploaded.id(), new UpdateArtworkCommand(
-                List.of("raw/new1.png", "raw/new2.png", "raw/new3.png"), 2, null, null,
+                List.of(signedKey(memberId, "new1"), signedKey(memberId, "new2"), signedKey(memberId, "new3")), 2, null, null,
                 null, null, null, null, null, null, null, null, null, null, null, null, null, null, null));
 
         assertThat(updated.images()).extracting(ArtworkImageInfo::originalKey)
-                .containsExactly("raw/new1.png", "raw/new2.png", "raw/new3.png");
+                .containsExactly(signedKey(memberId, "new1"), signedKey(memberId, "new2"), signedKey(memberId, "new3"));
         assertThat(updated.representativeImageIndex()).isEqualTo(2);
     }
 
@@ -233,13 +238,12 @@ class ArtworkModuleTests {
     @Test
     void 같은_이미지_목록으로_수정하면_변환_결과를_유지하고_고아_처리하지_않는다() {
         String memberId = registerAuthor();
-        ArtworkInfo uploaded = uploadMinimal(memberId, "raw/u1.png");
-        processImage(uploaded.id(), "raw/u1.png", MediaProcessingStatus.DONE);
+        ArtworkInfo uploaded = uploadMinimal(memberId, signedKey(memberId, "u1"));
+        processImage(uploaded.id(), signedKey(memberId, "u1"), MediaProcessingStatus.DONE);
         awaitReady(memberId, uploaded.id());
-        int orphansBefore = countOrphanRows();
 
         ArtworkInfo updated = artworkService.updateArtwork(memberId, uploaded.id(), new UpdateArtworkCommand(
-                List.of("raw/u1.png"), 0, null, null, "새 제목",
+                List.of(signedKey(memberId, "u1")), 0, null, null, "새 제목",
                 null, null, null, null, null, null, null, null, null, null, null, null, null, null));
 
         assertThat(updated.title()).isEqualTo("새 제목");
@@ -247,7 +251,7 @@ class ArtworkModuleTests {
         assertThat(updated.images()).extracting(ArtworkImageInfo::processingStatus)
                 .containsExactly(ImageProcessingStatus.DONE);
         assertThat(artworkService.getArtworkStatus(memberId, uploaded.id())).isEqualTo(ArtworkStatus.READY);
-        assertThat(countOrphanRows()).isEqualTo(orphansBefore);
+        assertThat(orphanedKeys()).doesNotContain(signedKey(memberId, "u1"), "thumb/u1.avif");
     }
 
     // #193 — 이미지를 더해도 이미 처리된 이미지는 그대로 둔다. 예전에는 목록이 달라지기만 하면 전량 교체라
@@ -255,46 +259,91 @@ class ArtworkModuleTests {
     @Test
     void 이미지를_추가하면_기존_이미지는_변환_결과를_유지하고_고아_처리하지_않는다() {
         String memberId = registerAuthor();
-        ArtworkInfo uploaded = uploadMinimal(memberId, "raw/u2.png");
-        processImage(uploaded.id(), "raw/u2.png", MediaProcessingStatus.DONE);
+        ArtworkInfo uploaded = uploadMinimal(memberId, signedKey(memberId, "u2"));
+        processImage(uploaded.id(), signedKey(memberId, "u2"), MediaProcessingStatus.DONE);
         awaitReady(memberId, uploaded.id());
-        int orphansBefore = countOrphanRows();
-
         ArtworkInfo updated = artworkService.updateArtwork(memberId, uploaded.id(), new UpdateArtworkCommand(
-                List.of("raw/u2.png", "raw/u3.png"), 0, null, null, null,
+                List.of(signedKey(memberId, "u2"), signedKey(memberId, "u3")), 0, null, null, null,
                 null, null, null, null, null, null, null, null, null, null, null, null, null, null));
 
         assertThat(updated.images()).extracting(ArtworkImageInfo::originalKey)
-                .containsExactly("raw/u2.png", "raw/u3.png");
+                .containsExactly(signedKey(memberId, "u2"), signedKey(memberId, "u3"));
         assertThat(updated.images().get(0).thumbKey()).isEqualTo("thumb/u2.avif");
         assertThat(updated.images().get(0).processingStatus()).isEqualTo(ImageProcessingStatus.DONE);
         assertThat(updated.images().get(1).processingStatus()).isEqualTo(ImageProcessingStatus.PENDING);
-        assertThat(countOrphanRows()).isEqualTo(orphansBefore);
+        assertThat(orphanedKeys()).doesNotContain(signedKey(memberId, "u2"), "thumb/u2.avif");
+    }
+
+    // #190 — key는 공개 응답에 그대로 실린다. 검증하지 않으면 남의 key를 지정 썸네일·첨부로 넣고 내 작품을
+    // 영구 삭제해 남의 R2 파일을 지울 수 있다.
+    @Test
+    void 남의_업로드_키로는_작품을_만들_수_없다() {
+        String me = registerAuthor();
+        String other = registerAuthor();
+
+        assertThatThrownBy(() -> artworkService.uploadArtwork(me, baseUploadCommand(
+                List.of(signedKey(other, "stolen")), List.of())))
+                .isInstanceOf(DomainException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("UNOWNED_IMAGE_KEY");
+    }
+
+    @Test
+    void 남의_키를_지정_썸네일이나_자료_첨부로도_넣을_수_없다() {
+        String me = registerAuthor();
+        String other = registerAuthor();
+
+        assertThatThrownBy(() -> artworkService.uploadArtwork(me, new UploadArtworkCommand(
+                List.of(signedKey(me, "mine")), 0, signedKey(other, "stolen-thumb"), ImageLayoutType.VERTICAL_SCROLL,
+                "제목", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
+                List.of(), List.of(), null, List.of(), AgeRating.ALL, List.of(Language.KO), true, List.of(),
+                List.of(), null, null, List.of(), List.of())))
+                .extracting(e -> ((DomainException) e).getCode()).isEqualTo("UNOWNED_IMAGE_KEY");
+
+        assertThatThrownBy(() -> artworkService.uploadArtwork(me, baseUploadCommand(
+                List.of(signedKey(me, "mine2")),
+                List.of(new MaterialData("소재", List.of(MaterialTarget.BACKGROUND), null,
+                        List.of(signedKey(other, "stolen-attachment")), List.of())))))
+                .extracting(e -> ((DomainException) e).getCode()).isEqualTo("UNOWNED_IMAGE_KEY");
+    }
+
+    // 변환 결과 key(thumb/…)에는 서명이 없다 — 공개 응답에서 가장 쉽게 얻을 수 있는 값이라 함께 막힌다.
+    @Test
+    void 변환_결과_키나_옛_형식_키는_제출할_수_없다() {
+        String me = registerAuthor();
+
+        assertThatThrownBy(() -> artworkService.uploadArtwork(me, baseUploadCommand(
+                List.of("thumb/someone.avif"), List.of())))
+                .extracting(e -> ((DomainException) e).getCode()).isEqualTo("UNOWNED_IMAGE_KEY");
+        assertThatThrownBy(() -> artworkService.uploadArtwork(me, baseUploadCommand(
+                List.of("raw/legacy-no-signature.png"), List.of())))
+                .extracting(e -> ((DomainException) e).getCode()).isEqualTo("UNOWNED_IMAGE_KEY");
     }
 
     @Test
     void 이미지를_빼면_빠진_이미지만_고아_처리한다() {
         String memberId = registerAuthor();
-        ArtworkInfo uploaded = uploadMinimal(memberId, "raw/u4.png", "raw/u5.png");
-        processImage(uploaded.id(), "raw/u4.png", MediaProcessingStatus.DONE);
-        processImage(uploaded.id(), "raw/u5.png", MediaProcessingStatus.DONE);
+        ArtworkInfo uploaded = uploadMinimal(memberId, signedKey(memberId, "u4"), signedKey(memberId, "u5"));
+        processImage(uploaded.id(), signedKey(memberId, "u4"), MediaProcessingStatus.DONE);
+        processImage(uploaded.id(), signedKey(memberId, "u5"), MediaProcessingStatus.DONE);
         awaitReady(memberId, uploaded.id());
-        int orphansBefore = countOrphanRows();
 
         ArtworkInfo updated = artworkService.updateArtwork(memberId, uploaded.id(), new UpdateArtworkCommand(
-                List.of("raw/u4.png"), 0, null, null, null,
+                List.of(signedKey(memberId, "u4")), 0, null, null, null,
                 null, null, null, null, null, null, null, null, null, null, null, null, null, null));
 
-        assertThat(updated.images()).extracting(ArtworkImageInfo::originalKey).containsExactly("raw/u4.png");
+        assertThat(updated.images()).extracting(ArtworkImageInfo::originalKey).containsExactly(signedKey(memberId, "u4"));
         assertThat(updated.images().get(0).thumbKey()).isEqualTo("thumb/u4.avif");
-        assertThat(countOrphanRows()).isGreaterThan(orphansBefore);
+        // 빠진 u5만 고아 큐로 간다 — 남긴 u4는 그대로다.
+        assertThat(orphanedKeys()).contains(signedKey(memberId, "u5"), "thumb/u5.avif")
+                .doesNotContain(signedKey(memberId, "u4"), "thumb/u4.avif");
     }
 
     @Test
     void 자재_교체_후_기존_자재_행이_삭제되고_새_자재로_대체된다() {
         String memberId = registerAuthor();
         ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, baseUploadCommand(
-                List.of("raw/1.png"),
+                List.of(signedKey(memberId, "1")),
                 List.of(new MaterialData("옛소재", List.of(MaterialTarget.BACKGROUND), null, List.of(), List.of()))));
 
         ArtworkInfo updated = artworkService.updateArtwork(memberId, uploaded.id(), new UpdateArtworkCommand(
@@ -309,11 +358,11 @@ class ArtworkModuleTests {
     @Test
     void 반복적인_이미지_교체도_유니크_제약_충돌_없이_동작한다() {
         String memberId = registerAuthor();
-        ArtworkInfo uploaded = uploadMinimal(memberId, "raw/a.png");
+        ArtworkInfo uploaded = uploadMinimal(memberId, signedKey(memberId, "a"));
 
         for (int i = 0; i < 3; i++) {
             uploaded = artworkService.updateArtwork(memberId, uploaded.id(), new UpdateArtworkCommand(
-                    List.of("raw/round" + i + "-1.png", "raw/round" + i + "-2.png"), 0, null, null,
+                    List.of(signedKey(memberId, "round" + i + "-1"), signedKey(memberId, "round" + i + "-2")), 0, null, null,
                     null, null, null, null, null, null, null, null, null, null, null, null, null, null, null));
         }
 
@@ -323,9 +372,9 @@ class ArtworkModuleTests {
     @Test
     void 이미지_처리_콜백이_media를_거쳐_작품_상태와_변환결과에_반영된다() {
         String memberId = registerAuthor();
-        ArtworkInfo uploaded = uploadMinimal(memberId, "raw/c1.png");
+        ArtworkInfo uploaded = uploadMinimal(memberId, signedKey(memberId, "c1"));
 
-        processImage(uploaded.id(), "raw/c1.png", MediaProcessingStatus.DONE);
+        processImage(uploaded.id(), signedKey(memberId, "c1"), MediaProcessingStatus.DONE);
 
         awaitReady(memberId, uploaded.id());
         ArtworkInfo found = artworkService.getArtwork(uploaded.id(), memberId);
@@ -338,10 +387,10 @@ class ArtworkModuleTests {
     @Test
     void 이미지_일부가_실패해도_나머지가_성공하면_READY로_전환된다() {
         String memberId = registerAuthor();
-        ArtworkInfo uploaded = uploadMinimal(memberId, "raw/p1.png", "raw/p2.png");
+        ArtworkInfo uploaded = uploadMinimal(memberId, signedKey(memberId, "p1"), signedKey(memberId, "p2"));
 
-        processImage(uploaded.id(), "raw/p1.png", MediaProcessingStatus.DONE);
-        processImage(uploaded.id(), "raw/p2.png", MediaProcessingStatus.FAILED);
+        processImage(uploaded.id(), signedKey(memberId, "p1"), MediaProcessingStatus.DONE);
+        processImage(uploaded.id(), signedKey(memberId, "p2"), MediaProcessingStatus.FAILED);
 
         awaitReady(memberId, uploaded.id());
         ArtworkInfo found = artworkService.getArtwork(uploaded.id(), memberId);
@@ -354,10 +403,10 @@ class ArtworkModuleTests {
     @Test
     void 이미지가_전부_실패하면_FAILED로_전환된다() {
         String memberId = registerAuthor();
-        ArtworkInfo uploaded = uploadMinimal(memberId, "raw/f1.png", "raw/f2.png");
+        ArtworkInfo uploaded = uploadMinimal(memberId, signedKey(memberId, "f1"), signedKey(memberId, "f2"));
 
-        processImage(uploaded.id(), "raw/f1.png", MediaProcessingStatus.FAILED);
-        processImage(uploaded.id(), "raw/f2.png", MediaProcessingStatus.FAILED);
+        processImage(uploaded.id(), signedKey(memberId, "f1"), MediaProcessingStatus.FAILED);
+        processImage(uploaded.id(), signedKey(memberId, "f2"), MediaProcessingStatus.FAILED);
 
         awaitCondition(() -> artworkService.getArtworkStatus(memberId, uploaded.id()) == ArtworkStatus.FAILED);
         // 실패해도 작성자 본인은 계속 열람할 수 있어야 한다 — 프론트가 재업로드를 안내하려면 상세가 필요하다.
@@ -368,21 +417,21 @@ class ArtworkModuleTests {
 
     @Test
     void presign은_상한을_넘는_파일_크기를_거부한다() {
-        assertThatThrownBy(() -> artworkService.generatePresignedUrls(1, List.of("image/png"),
+        assertThatThrownBy(() -> artworkService.generatePresignedUrls(presignMemberId(), 1, List.of("image/png"),
                 List.of(MediaConstraints.MAX_ORIGINAL_BYTES + 1)))
                 .isInstanceOf(DomainException.class)
                 .extracting(e -> ((DomainException) e).getCode())
                 .isEqualTo("IMAGE_TOO_LARGE");
 
         // 상한 이하는 그대로 발급되고, fileSizes를 생략한 클라이언트도 계속 받아준다.
-        assertThat(artworkService.generatePresignedUrls(1, List.of("image/png"),
+        assertThat(artworkService.generatePresignedUrls(presignMemberId(), 1, List.of("image/png"),
                 List.of(MediaConstraints.MAX_ORIGINAL_BYTES))).hasSize(1);
-        assertThat(artworkService.generatePresignedUrls(1, List.of("image/png"), null)).hasSize(1);
+        assertThat(artworkService.generatePresignedUrls(presignMemberId(), 1, List.of("image/png"), null)).hasSize(1);
     }
 
     @Test
     void presign은_count와_fileSizes_수가_다르면_거부한다() {
-        assertThatThrownBy(() -> artworkService.generatePresignedUrls(2, List.of("image/png", "image/png"),
+        assertThatThrownBy(() -> artworkService.generatePresignedUrls(presignMemberId(), 2, List.of("image/png", "image/png"),
                 List.of(1024L)))
                 .isInstanceOf(DomainException.class)
                 .extracting(e -> ((DomainException) e).getCode())
@@ -396,11 +445,11 @@ class ArtworkModuleTests {
     @Test
     void 같은_작품의_이미지_이벤트가_동시에_도착해도_READY로_전환된다() throws Exception {
         String memberId = registerAuthor();
-        ArtworkInfo uploaded = uploadMinimal(memberId, "raw/r1.png", "raw/r2.png");
+        ArtworkInfo uploaded = uploadMinimal(memberId, signedKey(memberId, "r1"), signedKey(memberId, "r2"));
 
         processConcurrently(
-                () -> processImage(uploaded.id(), "raw/r1.png", MediaProcessingStatus.DONE),
-                () -> processImage(uploaded.id(), "raw/r2.png", MediaProcessingStatus.DONE));
+                () -> processImage(uploaded.id(), signedKey(memberId, "r1"), MediaProcessingStatus.DONE),
+                () -> processImage(uploaded.id(), signedKey(memberId, "r2"), MediaProcessingStatus.DONE));
 
         awaitReady(memberId, uploaded.id());
         ArtworkInfo found = artworkService.getArtwork(uploaded.id(), memberId);
@@ -411,8 +460,8 @@ class ArtworkModuleTests {
     @Test
     void 삭제_후_복원하면_이전_공개범위로_돌아온다() {
         String memberId = registerAuthor();
-        ArtworkInfo uploaded = uploadMinimal(memberId, "raw/x.png");
-        processImage(uploaded.id(), "raw/x.png", MediaProcessingStatus.DONE);
+        ArtworkInfo uploaded = uploadMinimal(memberId, signedKey(memberId, "x"));
+        processImage(uploaded.id(), signedKey(memberId, "x"), MediaProcessingStatus.DONE);
         awaitReady(memberId, uploaded.id());
 
         artworkService.deleteArtwork(memberId, uploaded.id());
@@ -426,10 +475,10 @@ class ArtworkModuleTests {
     @Test
     void 영구삭제하면_다시_조회되지_않는다() {
         String memberId = registerAuthor();
-        ArtworkInfo uploaded = uploadMinimal(memberId, "raw/y.png");
+        ArtworkInfo uploaded = uploadMinimal(memberId, signedKey(memberId, "y"));
         // 이미지 처리 완료 상태로 만들어 둔다 — 영구 삭제는 처리된 키까지 함께 지우는 경로를 확인해야 한다
         // (처리 전 null 키가 섞여도 NPE가 나던 사전 존재 결함은 PA-20의 allImageKeys 정리로 해소됐다).
-        processImage(uploaded.id(), "raw/y.png", MediaProcessingStatus.DONE);
+        processImage(uploaded.id(), signedKey(memberId, "y"), MediaProcessingStatus.DONE);
         awaitReady(memberId, uploaded.id());
         artworkService.deleteArtwork(memberId, uploaded.id());
 
@@ -446,18 +495,18 @@ class ArtworkModuleTests {
     void 영구삭제_이벤트는_사용자_지정_썸네일_키까지_담는다(PublishedEvents events) {
         String memberId = registerAuthor();
         ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, new UploadArtworkCommand(
-                List.of("raw/ct.png"), 0, "raw/custom-thumb.png", ImageLayoutType.VERTICAL_SCROLL,
+                List.of(signedKey(memberId, "ct")), 0, signedKey(memberId, "custom-thumb"), ImageLayoutType.VERTICAL_SCROLL,
                 "테스트 작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
                 List.of(), List.of(), null, List.of(),
                 AgeRating.ALL, List.of(Language.KO), true, List.of(), List.of(), null, null, List.of(), List.of()));
-        processImage(uploaded.id(), "raw/ct.png", MediaProcessingStatus.DONE);
+        processImage(uploaded.id(), signedKey(memberId, "ct"), MediaProcessingStatus.DONE);
         awaitReady(memberId, uploaded.id());
         artworkService.deleteArtwork(memberId, uploaded.id());
 
         artworkService.permanentlyDeleteArtworks(memberId, List.of(uploaded.id()));
 
         assertThat(deletedImageKeysOf(events, uploaded.id()))
-                .contains("raw/ct.png", "raw/custom-thumb.png");
+                .contains(signedKey(memberId, "ct"), signedKey(memberId, "custom-thumb"));
     }
 
     // 영구 삭제 이벤트는 작품의 R2 key 전체를 싣고 이벤트 레지스트리(EVENT_PUBLICATION.SERIALIZED_EVENT)에 저장된다.
@@ -466,7 +515,7 @@ class ArtworkModuleTests {
     void 이미지가_많은_작품도_영구삭제된다() {
         String memberId = registerAuthor();
         List<String> keys = IntStream.range(0, 15)
-                .mapToObj(i -> "raw/" + "long-image-name-to-grow-the-serialized-event-".repeat(2) + i + ".png")
+                .mapToObj(i -> signedKey(memberId, "long-image-name-to-grow-the-serialized-event-".repeat(2) + i))
                 .toList();
         ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, baseUploadCommand(keys, List.of()));
         keys.forEach(key -> processImage(uploaded.id(), key, MediaProcessingStatus.DONE));
@@ -483,8 +532,8 @@ class ArtworkModuleTests {
     @Test
     void 휴지통_보관_기간이_지난_작품은_자동으로_영구삭제된다(PublishedEvents events) {
         String memberId = registerAuthor();
-        ArtworkInfo uploaded = uploadMinimal(memberId, "raw/purge.png");
-        processImage(uploaded.id(), "raw/purge.png", MediaProcessingStatus.DONE);
+        ArtworkInfo uploaded = uploadMinimal(memberId, signedKey(memberId, "purge"));
+        processImage(uploaded.id(), signedKey(memberId, "purge"), MediaProcessingStatus.DONE);
         awaitReady(memberId, uploaded.id());
         artworkService.deleteArtwork(memberId, uploaded.id());
         setDeletedAt(uploaded.id(), Instant.now().minus(Duration.ofDays(366)));
@@ -494,16 +543,16 @@ class ArtworkModuleTests {
         assertThat(purged).isEqualTo(1);
         assertThatThrownBy(() -> artworkService.getArtwork(uploaded.id(), memberId))
                 .isInstanceOf(RuntimeException.class);
-        assertThat(deletedImageKeysOf(events, uploaded.id())).contains("raw/purge.png");
+        assertThat(deletedImageKeysOf(events, uploaded.id())).contains(signedKey(memberId, "purge"));
     }
 
     @Test
     void 보관_기간이_남은_휴지통_작품과_휴지통_밖_작품은_자동삭제하지_않는다() {
         String memberId = registerAuthor();
-        ArtworkInfo recentlyTrashed = uploadMinimal(memberId, "raw/recent.png");
+        ArtworkInfo recentlyTrashed = uploadMinimal(memberId, signedKey(memberId, "recent"));
         artworkService.deleteArtwork(memberId, recentlyTrashed.id());
         setDeletedAt(recentlyTrashed.id(), Instant.now().minus(Duration.ofDays(364)));
-        ArtworkInfo active = uploadMinimal(memberId, "raw/active.png");
+        ArtworkInfo active = uploadMinimal(memberId, signedKey(memberId, "active"));
         // 휴지통 밖 작품에도 오래된 deleted_at을 넣는다 — 그래야 쿼리에서 status 조건이 빠졌을 때 걸린다.
         setDeletedAt(active.id(), Instant.now().minus(Duration.ofDays(366)));
 
@@ -538,8 +587,8 @@ class ArtworkModuleTests {
     void 운영_차단된_작품은_제3자에게_410이고_본인은_열람한다() {
         String memberId = registerAuthor();
         String viewerId = registerAuthor();
-        ArtworkInfo uploaded = uploadMinimal(memberId, "raw/b1.png");
-        processImage(uploaded.id(), "raw/b1.png", MediaProcessingStatus.DONE);
+        ArtworkInfo uploaded = uploadMinimal(memberId, signedKey(memberId, "b1"));
+        processImage(uploaded.id(), signedKey(memberId, "b1"), MediaProcessingStatus.DONE);
         awaitReady(memberId, uploaded.id());
 
         blockArtwork(uploaded.id());
@@ -560,14 +609,22 @@ class ArtworkModuleTests {
         jdbcTemplate.update("UPDATE artworks SET blocked_at = UTC_TIMESTAMP(6) WHERE id = ?", artworkId);
     }
 
-    private int countOrphanRows() {
-        return jdbcTemplate.queryForObject("select count(*) from orphaned_media_keys", Integer.class);
+    /**
+     * 고아 큐에 적재된 key 전부. 전체 행 수로 비교하면 앞선 테스트의 비동기 리스너가 남긴 행에 흔들린다 —
+     * 이 테스트가 만든 key가 들어갔는지로 판정한다.
+     */
+    private List<String> orphanedKeys() {
+        return jdbcTemplate.queryForList("select keys_json from orphaned_media_keys", String.class).stream()
+                .flatMap(json -> java.util.Arrays.stream(json.replaceAll("[\\[\\]\"]", "").split(",")))
+                .map(String::trim).filter(key -> !key.isEmpty()).toList();
     }
 
     /** Worker webhook 1건을 재현한다 — media가 자산 상태를 갱신하고 MediaAssetProcessedEvent를 발행한다. */
     private void processImage(String artworkId, String imageKey, MediaProcessingStatus status) {
         boolean done = status == MediaProcessingStatus.DONE;
-        String name = imageKey.substring(imageKey.indexOf('/') + 1, imageKey.lastIndexOf('.'));
+        // Worker와 같은 규칙으로 변환 결과 이름을 만든다 — 마지막 경로 조각에서 확장자를 뗀다
+        // (cloudflare-worker/src/index.js:86). key에 소유자 서명 조각이 생겼어도 결과 이름은 그대로다(#190).
+        String name = imageKey.substring(imageKey.lastIndexOf('/') + 1, imageKey.lastIndexOf('.'));
         mediaCallbackService.process(MediaOwnerType.ARTWORK, artworkId, imageKey,
                 done ? "thumb/" + name + ".avif" : null,
                 done ? "thumb-adult/" + name + ".avif" : null,
@@ -619,10 +676,10 @@ class ArtworkModuleTests {
     void 스타터_플랜은_작품을_4개까지만_등록할_수_있다() {
         String memberId = registerAuthor();
         for (int i = 0; i < 4; i++) {
-            uploadMinimal(memberId, "raw/starter-" + i + ".png");
+            uploadMinimal(memberId, signedKey(memberId, "starter-" + i));
         }
 
-        assertThatThrownBy(() -> uploadMinimal(memberId, "raw/starter-5.png"))
+        assertThatThrownBy(() -> uploadMinimal(memberId, signedKey(memberId, "starter-5")))
                 .isInstanceOf(DomainException.class)
                 .extracting(e -> ((DomainException) e).getCode())
                 .isEqualTo("STARTER_ARTWORK_LIMIT_EXCEEDED");
@@ -634,17 +691,17 @@ class ArtworkModuleTests {
     void 이미지가_전부_실패한_작품은_스타터_한도에_포함되지_않는다() {
         String memberId = registerAuthor();
         for (int i = 0; i < 3; i++) {
-            uploadMinimal(memberId, "raw/quota-ok-" + i + ".png");
+            uploadMinimal(memberId, signedKey(memberId, "quota-ok-" + i));
         }
-        ArtworkInfo failed = uploadMinimal(memberId, "raw/quota-failed.png");
-        processImage(failed.id(), "raw/quota-failed.png", MediaProcessingStatus.FAILED);
+        ArtworkInfo failed = uploadMinimal(memberId, signedKey(memberId, "quota-failed"));
+        processImage(failed.id(), signedKey(memberId, "quota-failed"), MediaProcessingStatus.FAILED);
         awaitCondition(() -> artworkService.getArtworkStatus(memberId, failed.id()) == ArtworkStatus.FAILED);
 
         // 정상 3건 + 실패 1건이지만 한도(4)에 걸리지 않고 네 번째 정상 업로드가 통과한다.
-        ArtworkInfo fourth = uploadMinimal(memberId, "raw/quota-ok-3.png");
+        ArtworkInfo fourth = uploadMinimal(memberId, signedKey(memberId, "quota-ok-3"));
         assertThat(fourth.id()).isNotNull();
 
-        assertThatThrownBy(() -> uploadMinimal(memberId, "raw/quota-over.png"))
+        assertThatThrownBy(() -> uploadMinimal(memberId, signedKey(memberId, "quota-over")))
                 .isInstanceOf(DomainException.class)
                 .extracting(e -> ((DomainException) e).getCode())
                 .isEqualTo("STARTER_ARTWORK_LIMIT_EXCEEDED");
@@ -655,14 +712,14 @@ class ArtworkModuleTests {
         String memberId = registerAuthor();
         String subscriptionId = BillingTestSupport.grantProPlan(subscriptionRepository, memberId);
         for (int i = 0; i < 6; i++) {
-            uploadMinimal(memberId, "raw/pro-" + i + ".png");
+            uploadMinimal(memberId, signedKey(memberId, "pro-" + i));
         }
 
         BillingTestSupport.cancelPlan(subscriptionRepository, subscriptionId);
 
         // 기존 산출물은 유지되고 신규 생성만 막힌다(요금제-R01)
         assertThat(artworkService.getMyArtworks(memberId, null, 20).items()).hasSize(6);
-        assertThatThrownBy(() -> uploadMinimal(memberId, "raw/pro-after-downgrade.png"))
+        assertThatThrownBy(() -> uploadMinimal(memberId, signedKey(memberId, "pro-after-downgrade")))
                 .isInstanceOf(DomainException.class)
                 .extracting(e -> ((DomainException) e).getCode())
                 .isEqualTo("STARTER_ARTWORK_LIMIT_EXCEEDED");
@@ -673,7 +730,7 @@ class ArtworkModuleTests {
         String memberId = registerAuthor();
 
         assertThatThrownBy(() -> artworkService.uploadArtwork(memberId,
-                uploadCommandWithLanguages(List.of(Language.KO, Language.JA))))
+                uploadCommandWithLanguages(memberId, List.of(Language.KO, Language.JA))))
                 .isInstanceOf(DomainException.class)
                 .extracting(e -> ((DomainException) e).getCode())
                 .isEqualTo("MULTI_LANGUAGE_REQUIRES_PRO");
@@ -685,7 +742,7 @@ class ArtworkModuleTests {
         BillingTestSupport.grantProPlan(subscriptionRepository, memberId);
 
         ArtworkInfo uploaded = artworkService.uploadArtwork(memberId,
-                uploadCommandWithLanguages(List.of(Language.KO, Language.JA, Language.EN)));
+                uploadCommandWithLanguages(memberId, List.of(Language.KO, Language.JA, Language.EN)));
 
         assertThat(uploaded.languages())
                 .containsExactlyInAnyOrder(Language.KO, Language.JA, Language.EN);
@@ -697,7 +754,7 @@ class ArtworkModuleTests {
         BillingTestSupport.grantProPlan(subscriptionRepository, memberId);
 
         assertThatThrownBy(() -> artworkService.uploadArtwork(memberId,
-                uploadCommandWithLanguages(List.of(Language.JA, Language.EN))))
+                uploadCommandWithLanguages(memberId, List.of(Language.JA, Language.EN))))
                 .isInstanceOf(DomainException.class)
                 .extracting(e -> ((DomainException) e).getCode())
                 .isEqualTo("LANGUAGE_NOT_ALLOWED");
@@ -708,7 +765,7 @@ class ArtworkModuleTests {
         String memberId = registerAuthorWithPrimaryLanguage(Language.KO);
 
         assertThatThrownBy(() -> artworkService.uploadArtwork(memberId,
-                uploadCommandWithLanguages(List.of(Language.KO, Language.JA))))
+                uploadCommandWithLanguages(memberId, List.of(Language.KO, Language.JA))))
                 .isInstanceOf(DomainException.class)
                 .extracting(e -> ((DomainException) e).getCode())
                 .isEqualTo("MULTI_LANGUAGE_REQUIRES_PRO");
@@ -719,7 +776,7 @@ class ArtworkModuleTests {
         String memberId = registerAuthorWithPrimaryLanguage(Language.KO);
 
         assertThatThrownBy(() -> artworkService.uploadArtwork(memberId,
-                uploadCommandWithLanguages(List.of(Language.JA))))
+                uploadCommandWithLanguages(memberId, List.of(Language.JA))))
                 .isInstanceOf(DomainException.class)
                 .extracting(e -> ((DomainException) e).getCode())
                 .isEqualTo("LANGUAGE_NOT_ALLOWED");
@@ -728,11 +785,11 @@ class ArtworkModuleTests {
     @Test
     void 작품_이미지_변환_화질은_업로드_시점_플랜으로_갈린다() {
         String starter = registerAuthor();
-        ArtworkInfo starterArtwork = uploadMinimal(starter, "raw/tier-starter.png");
+        ArtworkInfo starterArtwork = uploadMinimal(starter, signedKey(starter, "tier-starter"));
 
         String pro = registerAuthor();
         BillingTestSupport.grantProPlan(subscriptionRepository, pro);
-        ArtworkInfo proArtwork = uploadMinimal(pro, "raw/tier-pro.png");
+        ArtworkInfo proArtwork = uploadMinimal(pro, signedKey(pro, "tier-pro"));
 
         assertThat(qualityTierOf(starterArtwork.id())).isEqualTo("WEB");
         assertThat(qualityTierOf(proArtwork.id())).isEqualTo("ORIGINAL");
@@ -748,7 +805,7 @@ class ArtworkModuleTests {
     void 이미지는_30장까지_업로드할_수_있고_31장이면_거부된다() {
         String memberId = registerAuthor();
         List<String> thirtyImages = java.util.stream.IntStream.range(0, 30)
-                .mapToObj(i -> "raw/bulk-" + i + ".png")
+                .mapToObj(i -> signedKey(memberId, "bulk-" + i))
                 .toList();
 
         ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, baseUploadCommand(thirtyImages, List.of()));
@@ -756,7 +813,7 @@ class ArtworkModuleTests {
         assertThat(uploaded.images()).hasSize(30);
 
         List<String> thirtyOneImages = new ArrayList<>(thirtyImages);
-        thirtyOneImages.add("raw/bulk-30.png");
+        thirtyOneImages.add(signedKey(memberId, "bulk-30"));
         assertThatThrownBy(() -> artworkService.uploadArtwork(memberId, baseUploadCommand(thirtyOneImages, List.of())))
                 .isInstanceOf(DomainException.class)
                 .extracting(e -> ((DomainException) e).getCode())
@@ -769,13 +826,13 @@ class ArtworkModuleTests {
                 .mapToObj(i -> "image/png")
                 .toList();
 
-        List<PresignedUrlInfo> urls = artworkService.generatePresignedUrls(30, contentTypes30, null);
+        List<PresignedUrlInfo> urls = artworkService.generatePresignedUrls(presignMemberId(), 30, contentTypes30, null);
 
         assertThat(urls).hasSize(30);
 
         List<String> contentTypes31 = new ArrayList<>(contentTypes30);
         contentTypes31.add("image/png");
-        assertThatThrownBy(() -> artworkService.generatePresignedUrls(31, contentTypes31, null))
+        assertThatThrownBy(() -> artworkService.generatePresignedUrls(presignMemberId(), 31, contentTypes31, null))
                 .isInstanceOf(DomainException.class)
                 .extracting(e -> ((DomainException) e).getCode())
                 .isEqualTo("INVALID_IMAGE_COUNT");
@@ -786,10 +843,10 @@ class ArtworkModuleTests {
         String koAuthor = registerAuthor();
         String jaAuthor = registerAuthor();
 
-        String koArtworkId = publishReady(koAuthor, "raw/feed-ko.png", List.of(Language.KO));
-        String jaArtworkId = publishReady(jaAuthor, "raw/feed-ja.png", List.of(Language.JA));
+        String koArtworkId = publishReady(koAuthor, signedKey(koAuthor, "feed-ko"), List.of(Language.KO));
+        String jaArtworkId = publishReady(jaAuthor, signedKey(jaAuthor, "feed-ja"), List.of(Language.JA));
         // 마이그레이션 이전 작품 재현 — 언어 행이 없는 상태로 만든다
-        String legacyArtworkId = publishReady(koAuthor, "raw/feed-legacy.png", List.of(Language.KO));
+        String legacyArtworkId = publishReady(koAuthor, signedKey(koAuthor, "feed-legacy"), List.of(Language.KO));
         jdbcTemplate.update("DELETE FROM artwork_languages WHERE artwork_id = ?", legacyArtworkId);
 
         List<String> koViewerFeed = artworkService
@@ -810,10 +867,10 @@ class ArtworkModuleTests {
         String viewer = registerAuthor();
         memberService.updateAdultContentVisible(viewer, false);
 
-        String allArtworkId = publishReady(author, "raw/adult-all.png", AgeRating.ALL);
-        String r18ArtworkId = publishReady(author, "raw/adult-r18.png", AgeRating.R18);
-        String g18ArtworkId = publishReady(author, "raw/adult-g18.png", AgeRating.G18);
-        String ownR18ArtworkId = publishReady(viewer, "raw/adult-own-r18.png", AgeRating.R18);
+        String allArtworkId = publishReady(author, signedKey(author, "adult-all"), AgeRating.ALL);
+        String r18ArtworkId = publishReady(author, signedKey(author, "adult-r18"), AgeRating.R18);
+        String g18ArtworkId = publishReady(author, signedKey(author, "adult-g18"), AgeRating.G18);
+        String ownR18ArtworkId = publishReady(viewer, signedKey(viewer, "adult-own-r18"), AgeRating.R18);
 
         List<String> hiddenFeed = artworkService
                 .getCommunityArtworks(null, null, List.of(), null, 1, 50, viewer, false).items().stream().map(ArtworkSummaryInfo::id).toList();
@@ -835,9 +892,9 @@ class ArtworkModuleTests {
         long hiddenBefore = artworkService
                 .getCommunityArtworks(null, null, List.of(), null, 1, 1, viewer, false).totalCount();
 
-        publishReady(author, "raw/count-ko.png", AgeRating.ALL, List.of(Language.KO));
-        publishReady(author, "raw/count-ja.png", AgeRating.ALL, List.of(Language.JA));
-        publishReady(author, "raw/count-ko-r18.png", AgeRating.R18, List.of(Language.KO));
+        publishReady(author, signedKey(author, "count-ko"), AgeRating.ALL, List.of(Language.KO));
+        publishReady(author, signedKey(author, "count-ja"), AgeRating.ALL, List.of(Language.JA));
+        publishReady(author, signedKey(author, "count-ko-r18"), AgeRating.R18, List.of(Language.KO));
 
         // KO 뷰어에게는 KO 작품 2건만 늘어난다(JA 작품 제외)
         assertThat(artworkService.getCommunityArtworks(null, null, List.of(Language.KO), null, 1, 1, null, true)
@@ -872,9 +929,9 @@ class ArtworkModuleTests {
         return uploaded.id();
     }
 
-    private UploadArtworkCommand uploadCommandWithLanguages(List<Language> languages) {
+    private UploadArtworkCommand uploadCommandWithLanguages(String memberId, List<Language> languages) {
         return new UploadArtworkCommand(
-                List.of("raw/lang.png"), 0, null, ImageLayoutType.VERTICAL_SCROLL,
+                List.of(signedKey(memberId, "lang")), 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 "테스트 작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
                 List.of(), List.of(), null, List.of(),
                 AgeRating.ALL, languages, true, List.of(), List.of(), null, null, List.of(), List.of());
@@ -897,6 +954,19 @@ class ArtworkModuleTests {
                 "테스트 작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
                 List.of(), List.of(), null, List.of(),
                 AgeRating.ALL, List.of(Language.KO), true, List.of(), List.of(), null, null, List.of(), materials);
+    }
+
+    /** presign은 이제 회원마다 다른 서명을 key에 넣는다(#190) — 발급 대상이 필요하다. */
+    private String presignMemberId() {
+        return registerAuthor();
+    }
+
+    /**
+     * 그 회원에게 발급된 것과 같은 형태의 업로드 key(#190). 이름을 고정해야 변환 결과 key(thumb/…)를 테스트가
+     * 예측할 수 있어 presign을 부르지 않고 같은 규칙으로 만든다.
+     */
+    private String signedKey(String memberId, String name) {
+        return "raw/" + keySigner.sign(memberId, name) + "/" + name + ".png";
     }
 
     private String registerAuthor() {
