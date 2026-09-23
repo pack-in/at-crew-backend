@@ -1,5 +1,10 @@
 package com.atcrew.recruit.internal.application;
 
+import org.mockito.InOrder;
+import org.springframework.context.ApplicationEventPublisher;
+import com.atcrew.recruit.internal.persistence.TeamApplicationRepository;
+import com.atcrew.recruit.internal.persistence.JobApplicationRepository;
+import com.atcrew.recruit.RecruitPostChangedEvent;
 import com.atcrew.media.MediaAssetInfo;
 import com.atcrew.media.MediaOwnerType;
 import com.atcrew.media.MediaProcessingStatus;
@@ -24,6 +29,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -38,6 +45,9 @@ class RecruitTrashImageCleanupSchedulerTest {
     private final TeamPostingRepository teamPostings = mock(TeamPostingRepository.class);
     private final JobSeekingPostRepository jobSeekingPosts = mock(JobSeekingPostRepository.class);
     private final MediaService mediaService = mock(MediaService.class);
+    private final JobApplicationRepository jobApplications = mock(JobApplicationRepository.class);
+    private final TeamApplicationRepository teamApplications = mock(TeamApplicationRepository.class);
+    private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
     private final PlatformTransactionManager txManager = mock(PlatformTransactionManager.class);
 
     @Test
@@ -96,6 +106,32 @@ class RecruitTrashImageCleanupSchedulerTest {
         verify(mediaService).markOrphaned(List.of("raw/legacy-thumb.png"));
     }
 
+    // 게시글 행과 지원 내역 파기는 개인정보 보관 정책이 정해질 때까지 꺼 둔다.
+    @Test
+    void 파기가_꺼져_있으면_게시글_행은_남긴다() {
+        givenExpired("posting-1", trashedPosting("raw/legacy-thumb.png", List.of()));
+        when(mediaService.getAssets(MediaOwnerType.JOB_POSTING, "posting-1")).thenReturn(List.of());
+
+        scheduler(Period.ofYears(1)).cleanUpExpiredTrashImages();
+
+        verify(jobPostings, never()).deleteById(anyString());
+        verify(jobApplications, never()).deleteByJobPostingId(anyString());
+    }
+
+    // 지원 내역은 게시글을 삭제 연쇄 없이 참조한다 — 먼저 지우지 않으면 외래키에 걸린다.
+    @Test
+    void 파기를_켜면_지원_내역을_먼저_지우고_게시글을_지운다() {
+        givenExpired("posting-1", trashedPosting("raw/legacy-thumb.png", List.of()));
+        when(mediaService.getAssets(MediaOwnerType.JOB_POSTING, "posting-1")).thenReturn(List.of());
+
+        scheduler(Period.ofYears(1), true).cleanUpExpiredTrashImages();
+
+        InOrder order = inOrder(jobApplications, jobPostings);
+        order.verify(jobApplications).deleteByJobPostingId("posting-1");
+        order.verify(jobPostings).deleteById("posting-1");
+        verify(eventPublisher).publishEvent(any(RecruitPostChangedEvent.class));
+    }
+
     @Test
     void 보관_기간이_30일보다_짧으면_기동하지_않는다() {
         assertThatIllegalStateException().isThrownBy(() -> scheduler(Period.ofDays(29)));
@@ -112,9 +148,13 @@ class RecruitTrashImageCleanupSchedulerTest {
     }
 
     private RecruitTrashImageCleanupScheduler scheduler(Period retention) {
+        return scheduler(retention, false);
+    }
+
+    private RecruitTrashImageCleanupScheduler scheduler(Period retention, boolean purgeEnabled) {
         when(txManager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
         return new RecruitTrashImageCleanupScheduler(jobPostings, teamPostings, jobSeekingPosts,
-                mediaService, txManager, retention);
+                mediaService, jobApplications, teamApplications, eventPublisher, txManager, retention, purgeEnabled);
     }
 
     private void givenExpired(String postingId, JobPosting posting) {
