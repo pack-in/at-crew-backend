@@ -14,7 +14,7 @@ import org.springframework.modulith.events.ApplicationModuleListener;
 import org.springframework.stereotype.Component;
 
 /**
- * media의 이미지 처리 결과를 artwork 로컬 읽기 모델(artwork_images)에 반영한다
+ * media의 이미지 처리 결과를 받아 작품 상태를 다시 계산한다
  * (docs/design/media-module-design.md §5).
  *
  * <p>READY 전환 판단 자체는 도메인 규칙이라 {@link Artwork#markImageProcessed}에 그대로 남기고

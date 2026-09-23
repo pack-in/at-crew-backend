@@ -148,7 +148,7 @@ public class Artwork {
 - 상태: 처리 현황(상태 목록)을 `Artwork.applyImageStatuses`에 넘긴다. "PENDING 없음 + DONE 하나 이상이면
   READY, 전량 실패면 FAILED"라는 판정은 도메인 규칙이라 작품에 남는다.
 
-`artwork_images` 테이블은 전환 직후 배포에서는 남아 있고, 다음 배포에서 DROP한다(#193 4단계).
+`artwork_images` 테이블은 전환이 운영에서 한 번 돌아간 뒤 V47에서 DROP했다(2026-09-23).
 
 **이미지 상태 전이:**
 ```
