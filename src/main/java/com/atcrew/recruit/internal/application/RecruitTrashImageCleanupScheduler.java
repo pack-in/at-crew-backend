@@ -6,6 +6,11 @@ import com.atcrew.media.MediaService;
 import com.atcrew.recruit.JobPostingStatus;
 import com.atcrew.recruit.JobSeekingPostStatus;
 import com.atcrew.recruit.TeamPostingStatus;
+import com.atcrew.recruit.RecruitPostChangedEvent;
+import com.atcrew.recruit.RecruitPostType;
+import com.atcrew.recruit.internal.persistence.JobApplicationRepository;
+import com.atcrew.recruit.internal.persistence.TeamApplicationRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import com.atcrew.recruit.internal.persistence.JobPostingRepository;
 import com.atcrew.recruit.internal.persistence.JobSeekingPostRepository;
 import com.atcrew.recruit.internal.persistence.TeamPostingRepository;
@@ -30,10 +35,12 @@ import java.util.function.Function;
 /**
  * 휴지통으로 옮긴 지 보관 기간(기본 1년)이 지난 게시글의 <b>이미지 파일</b>을 정리한다(#200).
  *
- * <p>recruit에는 게시글 영구 삭제 경로가 없어 휴지통에 들어간 게시글의 R2 파일이 무기한 남았다. 게시글 행과
- * 지원 내역은 개인정보 보관 정책이 정해진 뒤에 다루기로 하고(이슈 #200), 여기서는 저장소 누수만 막는다 —
- * 지원 내역은 지원자의 개인정보라 "혹시 몰라 계속 보관"이 오히려 위험하고, 보관 기간은 개인정보처리방침에
- * 적어 동의를 받아야 하는 값이다.
+ * <p>recruit에는 게시글 영구 삭제 경로가 없어 휴지통에 들어간 게시글의 R2 파일이 무기한 남았다.
+ *
+ * <p><b>게시글 행과 지원 내역 파기는 기본으로 꺼져 있다</b>({@code recruit.trash.purge-enabled=false}).
+ * 지원 내역은 지원자의 개인정보이고 보관 기간은 개인정보처리방침에 적어 동의를 받아야 하는 값이라, 방침이
+ * 확정되기 전에는 이미지 파일만 회수한다. 방침이 정해지면 기간을 맞추고 이 설정을 켠다 — 법·업계 관행도
+ * "혹시 몰라 계속 보관"이 아니라 "정해진 기간 뒤 파기"다.
  *
  * <p>정리 대상은 media 자산(원본·변형본)과, 자식 행이 없던 시절의 레거시 컬럼(`thumbnail_image`,
  * `reference_images`)이 가리키는 key다. 정리한 뒤에는 그 컬럼을 비운다 — 지운 파일의 key를 남겨두면 배치가
@@ -54,13 +61,21 @@ public class RecruitTrashImageCleanupScheduler {
     private final TeamPostingRepository teamPostings;
     private final JobSeekingPostRepository jobSeekingPosts;
     private final MediaService mediaService;
+    private final JobApplicationRepository jobApplications;
+    private final TeamApplicationRepository teamApplications;
+    private final ApplicationEventPublisher eventPublisher;
+    private final boolean purgeEnabled;
     private final Period retention;
     private final TransactionTemplate perPosting;
 
     RecruitTrashImageCleanupScheduler(JobPostingRepository jobPostings, TeamPostingRepository teamPostings,
                                       JobSeekingPostRepository jobSeekingPosts, MediaService mediaService,
+                                      JobApplicationRepository jobApplications,
+                                      TeamApplicationRepository teamApplications,
+                                      ApplicationEventPublisher eventPublisher,
                                       PlatformTransactionManager transactionManager,
-                                      @Value("${recruit.trash.retention:P1Y}") Period retention) {
+                                      @Value("${recruit.trash.retention:P1Y}") Period retention,
+                                      @Value("${recruit.trash.purge-enabled:false}") boolean purgeEnabled) {
         if (shortestDays(retention) < MIN_RETENTION_DAYS) {
             throw new IllegalStateException("recruit.trash.retention이 너무 짧다: " + retention
                     + " (어느 달에 적용해도 최소 " + MIN_RETENTION_DAYS + "일이어야 한다).");
@@ -69,6 +84,10 @@ public class RecruitTrashImageCleanupScheduler {
         this.teamPostings = teamPostings;
         this.jobSeekingPosts = jobSeekingPosts;
         this.mediaService = mediaService;
+        this.jobApplications = jobApplications;
+        this.teamApplications = teamApplications;
+        this.eventPublisher = eventPublisher;
+        this.purgeEnabled = purgeEnabled;
         this.retention = retention;
         this.perPosting = new TransactionTemplate(transactionManager);
         this.perPosting.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -153,7 +172,35 @@ public class RecruitTrashImageCleanupScheduler {
             mediaService.markOrphaned(keys);
         }
         mediaService.deleteAssetsForOwner(ownerType, postingId, Set.copyOf(keys));
+        purgeRow(ownerType, postingId);
         return true;
+    }
+
+    /**
+     * 게시글 행과 지원 내역을 지운다. 지원 내역은 게시글을 삭제 연쇄 없이 참조하므로 먼저 지워야 외래키에
+     * 걸리지 않는다. 검색 색인은 변경 이벤트를 받아 사라진 게시글을 걷어낸다.
+     */
+    private void purgeRow(MediaOwnerType ownerType, String postingId) {
+        if (!purgeEnabled) {
+            return;
+        }
+        switch (ownerType) {
+            case JOB_POSTING -> {
+                jobApplications.deleteByJobPostingId(postingId);
+                jobPostings.deleteById(postingId);
+                eventPublisher.publishEvent(new RecruitPostChangedEvent(postingId, RecruitPostType.JOB_POSTING));
+            }
+            case TEAM_POSTING -> {
+                teamApplications.deleteByTeamPostingId(postingId);
+                teamPostings.deleteById(postingId);
+                eventPublisher.publishEvent(new RecruitPostChangedEvent(postingId, RecruitPostType.TEAM_RECRUIT));
+            }
+            case JOB_SEEKING_POST -> {
+                jobSeekingPosts.deleteById(postingId);   // 구직글에는 지원 내역이 없다
+                eventPublisher.publishEvent(new RecruitPostChangedEvent(postingId, RecruitPostType.JOB_SEEKING));
+            }
+            case ARTWORK -> { }
+        }
     }
 
     private List<String> expiredIds(MediaOwnerType ownerType, Instant threshold) {
