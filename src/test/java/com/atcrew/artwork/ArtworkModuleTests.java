@@ -892,9 +892,9 @@ class ArtworkModuleTests {
         long hiddenBefore = artworkService
                 .getCommunityArtworks(null, null, List.of(), null, 1, 1, viewer, false).totalCount();
 
-        publishReady(author, "raw/count-ko.png", AgeRating.ALL, List.of(Language.KO));
-        publishReady(author, "raw/count-ja.png", AgeRating.ALL, List.of(Language.JA));
-        publishReady(author, "raw/count-ko-r18.png", AgeRating.R18, List.of(Language.KO));
+        publishReady(author, signedKey(author, "count-ko"), AgeRating.ALL, List.of(Language.KO));
+        publishReady(author, signedKey(author, "count-ja"), AgeRating.ALL, List.of(Language.JA));
+        publishReady(author, signedKey(author, "count-ko-r18"), AgeRating.R18, List.of(Language.KO));
 
         // KO 뷰어에게는 KO 작품 2건만 늘어난다(JA 작품 제외)
         assertThat(artworkService.getCommunityArtworks(null, null, List.of(Language.KO), null, 1, 1, null, true)
