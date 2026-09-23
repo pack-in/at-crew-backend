@@ -27,6 +27,10 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, Long> {
     @Query("select a from MediaAsset a where a.ownerType = :ownerType and a.ownerId = :ownerId and a.originalKey = :originalKey")
     Optional<MediaAsset> findByOwnerAndOriginalKeyForUpdate(@Param("ownerType") MediaOwnerType ownerType,
             @Param("ownerId") String ownerId, @Param("originalKey") String originalKey);
+    /** 후보 중 자산으로 등록돼 있는 original key — 등록되지 않은 raw 원본을 가릴 때 쓴다(#216). */
+    @Query("select a.originalKey from MediaAsset a where a.originalKey in :keys")
+    List<String> findExistingOriginalKeys(@Param("keys") Collection<String> keys);
+
     List<MediaAsset> findByProcessingStatusAndUpdatedAtBefore(MediaProcessingStatus status, Instant threshold);
     // 관측(docs/design/observability-design.md §6) — 업로드된 지 오래됐는데 아직 처리되지 않은 자산 수.
     long countByProcessingStatusAndCreatedAtBefore(MediaProcessingStatus status, Instant threshold);

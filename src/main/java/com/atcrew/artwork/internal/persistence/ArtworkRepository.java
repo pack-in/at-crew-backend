@@ -89,4 +89,20 @@ public interface ArtworkRepository extends JpaRepository<Artwork, String>, JpaSp
     @Query("select a.id from Artwork a where a.status = :status and a.deletedAt < :threshold order by a.deletedAt asc")
     List<String> findIdsByStatusAndDeletedAtBefore(@Param("status") ArtworkStatus status,
                                                    @Param("threshold") Instant threshold, Pageable pageable);
+
+    /** 후보 중 어떤 작품이 사용자 지정 썸네일로 쓰고 있는 key — 보존 판정(#216·#229)에 쓴다. */
+    @Query("select a.thumbnailKey from Artwork a where a.thumbnailKey in :keys")
+    List<String> findUsedThumbnailKeys(@Param("keys") Collection<String> keys);
+
+    /**
+     * 후보 중 어떤 작품이 자료 첨부로 쓰고 있는 key. 첨부는 JSON 배열 컬럼이라 JSON_TABLE로 펼쳐 비교한다
+     * (V41 백필과 같은 방식).
+     */
+    @Query(value = """
+            SELECT DISTINCT jt.k FROM artwork_materials am,
+                JSON_TABLE(am.attachment_keys, '$[*]' COLUMNS (k VARCHAR(500) PATH '$')) jt
+            WHERE jt.k IN (:keys)
+            """, nativeQuery = true)
+    List<String> findUsedAttachmentKeys(@Param("keys") Collection<String> keys);
+
 }
