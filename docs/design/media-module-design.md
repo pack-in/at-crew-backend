@@ -68,24 +68,23 @@ presign 발급·Worker 트리거·webhook 수신·재시도·고아파일 정리
 | 필드 | 타입 | 설명 |
 |---|---|---|
 | id | BIGINT AUTO_INCREMENT | 순수 내부 행, 외부 미노출 |
-| ownerType | VARCHAR(30) | `MediaOwnerType` — ARTWORK, JOB_POSTING, TEAM_POSTING, JOB_SEEKING_POST |
+| ownerType | VARCHAR(30) | `MediaOwnerType` — ARTWORK, ARTWORK_THUMBNAIL, JOB_POSTING, TEAM_POSTING, JOB_SEEKING_POST |
 | ownerId | VARCHAR(36) | 소유자 도메인의 ID (FK 아님, 문자열 참조) |
 | ordinal | INT | 소유자 내 이미지 순서 |
 | originalKey | VARCHAR(500) | R2에 업로드된 원본 key |
-| thumbKey | VARCHAR(500) NULL | Worker 처리 후 채워짐 |
-| thumbAdultKey | VARCHAR(500) NULL | `variantProfile=STANDARD_WITH_ADULT_BLUR`일 때만 채워짐 |
-| originalAvifKey | VARCHAR(500) NULL | Worker 처리 후 채워짐 |
-| variantProfile | VARCHAR(30) | `MediaVariantProfile` — STANDARD, STANDARD_WITH_ADULT_BLUR |
+| thumbKey | VARCHAR(500) NULL | `variantProfile=THUMBNAIL*`일 때 Worker 처리 후 채워짐 |
+| thumbAdultKey | VARCHAR(500) NULL | `variantProfile=THUMBNAIL_WITH_ADULT_BLUR`일 때만 채워짐 |
+| originalAvifKey | VARCHAR(500) NULL | `variantProfile=ORIGINAL`일 때 Worker 처리 후 채워짐 |
+| variantProfile | VARCHAR(30) | `MediaVariantProfile` — ORIGINAL, THUMBNAIL, THUMBNAIL_WITH_ADULT_BLUR (§3) |
 | qualityTier | VARCHAR(20) | `MediaQualityTier` — WEB, ORIGINAL. 컬럼 추가 이전 행은 ORIGINAL(V33 기본값) |
 | processingStatus | VARCHAR(30) | PENDING / DONE / FAILED |
 | createdAt / updatedAt | DATETIME(6) | 재시도 스케줄러가 `updatedAt` 기준으로 스캔(§7) |
 
 인덱스: `idx_ma_owner (owner_type, owner_id, ordinal)`, `idx_ma_retry (processing_status, updated_at)`.
 
-기존 `artwork_images`의 `uk_ai_order (artwork_id, ordinal)` 유니크 제약과 동일하게
-`uk_ma_owner_order (owner_type, owner_id, ordinal)`을 둔다 — artwork의 이미지 교체 시 2단계 detach/attach
-패턴(`docs/design/mariadb-migration-design.md` §3.3.2 계열 함정, `ArtworkServiceImpl.replaceImages` 주석
-참고)도 media로 그대로 옮겨온다.
+`uk_ma_owner_order (owner_type, owner_id, ordinal)`을 둔다(없어진 `artwork_images.uk_ai_order`와 같은 규칙).
+순서를 바꿀 때 이 제약에 걸리지 않도록 `syncAssets`는 유지되는 행의 ordinal을 임시 오프셋으로 밀어 두고
+확정한다.
 
 ### 2.2 OrphanedMediaKey (테이블: `orphaned_media_keys`)
 
@@ -97,18 +96,33 @@ presign 발급·Worker 트리거·webhook 수신·재시도·고아파일 정리
 ## 3. Enum 정의
 
 ```java
-public enum MediaOwnerType { ARTWORK, JOB_POSTING, TEAM_POSTING, JOB_SEEKING_POST }
+public enum MediaOwnerType { ARTWORK, ARTWORK_THUMBNAIL, JOB_POSTING, TEAM_POSTING, JOB_SEEKING_POST }
 
-public enum MediaVariantProfile { STANDARD, STANDARD_WITH_ADULT_BLUR }
+public enum MediaVariantProfile { ORIGINAL, THUMBNAIL, THUMBNAIL_WITH_ADULT_BLUR }
 
 public enum MediaQualityTier { WEB, ORIGINAL }
 
 public enum MediaProcessingStatus { PENDING, DONE, FAILED }
 ```
 
-`MediaVariantProfile`은 Worker에게 "성인물 blur 썸네일까지 만들지"를 알려주는 파라미터다. 현재는
-`ARTWORK`만 `STANDARD_WITH_ADULT_BLUR`를 쓴다 — recruit 콘텐츠는 성인 게이팅 대상이 아니라는 기존 결정
-(`recruit-module-design.md` §7)을 그대로 따라 `STANDARD`만 쓴다.
+`MediaVariantProfile`은 Worker에게 "어떤 변형본을 만들지"를 알려주는 파라미터다(2026-09-23 이미지 역할 기준으로
+재정의, V48). 이전에는 `STANDARD`(원본+썸네일)·`STANDARD_WITH_ADULT_BLUR`(+블러)로 모든 이미지에 3:4 썸네일을
+만들었는데, 본문 이미지에는 쓰이지 않는 파일이 쌓였고 FE가 본문에 3:4 썸네일을 띄우는 결함의 빌미가 됐다.
+
+| 값 | 쓰는 곳 | 변형본 |
+|---|---|---|
+| `ORIGINAL` | 작품 본문(`ARTWORK`), recruit 전체(썸네일 슬롯 포함) | `original/`만. 화질은 `MediaQualityTier` |
+| `THUMBNAIL` | 현재 없음(블러가 필요 없는 카드 썸네일용) | `thumb/` 588×784 |
+| `THUMBNAIL_WITH_ADULT_BLUR` | 작품 지정 썸네일(`ARTWORK_THUMBNAIL`) | `thumb/`, `thumb-adult/` |
+
+작품의 사용자 지정 썸네일(업로드-R05, FE가 3:4로 잘라 올림)은 본문과 **owner type을 나눠** `ARTWORK_THUMBNAIL`
+(ownerId = 작품 ID) 자산 1장으로 둔다. 같은 owner의 slotRole로 두면 본문 목록을 읽는 곳(대표 이미지 인덱스·처리
+상태·스냅샷·검색)을 전부 걸러야 해서다. 썸네일은 연령 등급과 무관하게 블러본까지 만든다 — 등급은 업로드 뒤에도
+바뀐다. 썸네일 처리 완료는 작품 상태(READY)를 정하지 않는다. recruit은 썸네일 슬롯도 카드·OG 모두 원본 변환본을
+쓰고(`PostingImages`) 성인 게이팅 대상도 아니라(`recruit-module-design.md` §7) `ORIGINAL`만 쓴다.
+
+썸네일 변환 이전에 올라온 작품의 지정 썸네일은 raw로만 있고 자산 행이 없다. 백필하지 않는다 — 변환하면 Worker가
+raw를 지워 그 key를 참조하는 고정형 스냅샷이 깨진다. 카드 판정 규칙은 `ArtworkCardThumbnail`에 있다.
 
 `MediaQualityTier`(2026-08-27 추가)는 요금제-R03("웹 감상에 적합한 화질")·R04("선명한 원본 화질")의
 플랜 차등을 담는다. 성인 blur 여부와는 직교하는 축이라 `MediaVariantProfile`에 값을 늘리지 않고 별도
@@ -232,6 +246,23 @@ public record MediaAssetProcessedEvent(MediaOwnerType ownerType, String ownerId,
                                         MediaProcessingStatus status);
 ```
 
+### 발급 한도 (#216)
+
+`POST /api/artwork/images/presign`과 `POST /api/recruit/images/presign`은 인증만 통과하면 무제한이었다.
+발급받은 URL로 올린 파일은 작품·게시글에 등록되기 전까지 어디에도 기록되지 않고, 등록하지 않으면 고아 큐에도
+들어가지 않아(고아 큐는 "등록됐다가 빠진 key"만 받는다) 아무도 모르는 원본이 쌓인다.
+
+회원당 창(기본 1시간) 안에서 발급한 **key 수**를 세어 한도(기본 300장)를 넘으면 429로 거부한다. 요청 수가
+아니라 장수를 세므로 한 번에 30장과 한 장씩 30번이 같은 무게다. 거부된 요청은 기록에 남기지 않는다 — 남기면
+한도를 넘긴 시도만으로 다음 요청까지 막힌다.
+
+기록은 인스턴스 메모리에만 둔다. 앱을 2대로 늘리면 인스턴스마다 따로 세므로 실효 한도가 대수만큼 커진다
+(`ha-expansion-path.md`) — 그때는 공유 저장소로 옮긴다.
+
+**아직 남은 것**: 이미 올라갔지만 등록되지 않은 raw 원본을 회수하는 경로는 없다. R2 목록을 훑어 지우는
+방식이 후보인데, 사용자 지정 썸네일과 자료 첨부는 media 행이 없는 raw key라 잘못 지우면 사용자 데이터가
+사라진다. 삭제가 걸린 작업이라 별도로 다룬다(#216).
+
 ### key 형식과 소유자 서명 (#190)
 
 발급 key는 `raw/{서명}/{UUIDv7}.{확장자}`다. 서명은 `HMAC(secret, memberId + ":" + uuid)`의 앞 12자이며,
@@ -263,8 +294,8 @@ public record MediaAssetProcessedEvent(MediaOwnerType ownerType, String ownerId,
 `search.internal.application.ArtworkSearchIndexer`, `recruit.internal.application.ArtistProfileViewListener`
 참고).
 
-- **artwork 소비**: 자신의 `artwork_images` 행 중 `originalKey`가 일치하는 것을 찾아
-  `thumbKey`/`thumbAdultKey`/`originalAvifKey`/`processingStatus`를 갱신한다. `Artwork.status`를
+- **artwork 소비**: media 자산의 현황(상태 목록)을 읽어 `Artwork.status`를 다시 계산한다. 변환 결과는
+  media가 이미 저장했으므로 작품 쪽에 옮겨 적지 않는다(#193). `Artwork.status`를
   `PROCESSING → READY`로 전환하는 조건은 **"모든 이미지 DONE"이 아니라** `Artwork.applyImageStatuses`의
   기존 규칙 그대로 **"PENDING이 하나도 없고(재시도 여지 없음) DONE이 하나 이상"** — 부분 실패를 허용한다
   (QA에서 발견: 최초 초안이 "모든 이미지 DONE"으로 잘못 적어, 그대로 구현했다면 이미지 하나라도 FAILED면
@@ -286,12 +317,12 @@ public record MediaAssetProcessedEvent(MediaOwnerType ownerType, String ownerId,
 POST /internal/media/images/processed
 Header: X-Internal-Secret
 Body: {
-  "ownerType": "ARTWORK" | "JOB_POSTING" | "TEAM_POSTING" | "JOB_SEEKING_POST",
+  "ownerType": "ARTWORK" | "ARTWORK_THUMBNAIL" | "JOB_POSTING" | "TEAM_POSTING" | "JOB_SEEKING_POST",
   "ownerId": "...",
   "imageKey": "raw/....jpg",
-  "thumbKey": "thumb/....avif",
-  "thumbAdultKey": "thumb-adult/....avif",   // variantProfile=STANDARD_WITH_ADULT_BLUR일 때만
-  "originalAvifKey": "original/....avif",
+  "thumbKey": "thumb/....avif",              // variantProfile=THUMBNAIL*일 때만
+  "thumbAdultKey": "thumb-adult/....avif",   // variantProfile=THUMBNAIL_WITH_ADULT_BLUR일 때만
+  "originalAvifKey": "original/....avif",    // variantProfile=ORIGINAL일 때만
   "status": "DONE" | "FAILED",
   "failureReason": "변환 실패: status=409 ..."   // FAILED일 때만. 선택 필드
 }
@@ -485,7 +516,7 @@ recruit도 이미지를 `media_assets`에만 둔다(#193). 처음에는 아래 �
 
 - `POST /api/recruit/images/presign` — `MediaService.generatePresignedUrls` 위임.
 - `JobPosting`/`TeamPosting`/`JobSeekingPost` 생성·수정 시 `RecruitImageService.sync(...)` →
-  `MediaService.syncAssets(ownerType, postingId, specs, STANDARD, WEB)` 호출. 썸네일은 `slotRole=THUMBNAIL`,
+  `MediaService.syncAssets(ownerType, postingId, specs, ORIGINAL, WEB)` 호출. 썸네일은 `slotRole=THUMBNAIL`,
   참고 이미지는 `REFERENCE`로 넘긴다.
 - `RecruitMediaEventListener` — `MediaAssetProcessedEvent` 구독, media 자산 현황을 읽어 posting의
   `imageProcessingStatus = READY` 전환을 판정한다. 조건은 §5와 동일하게 "PENDING 없음 + DONE 1개

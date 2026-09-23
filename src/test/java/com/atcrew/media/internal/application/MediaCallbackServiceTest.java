@@ -45,7 +45,7 @@ class MediaCallbackServiceTest {
     void 대상_자산이_있으면_고아_큐를_건드리지_않고_이벤트를_발행한다() {
         when(assets.findByOwnerAndOriginalKeyForUpdate(MediaOwnerType.ARTWORK, "artwork-1", "raw/1.png"))
                 .thenReturn(Optional.of(MediaAsset.pending(MediaOwnerType.ARTWORK, "artwork-1", 0, "raw/1.png",
-                        MediaVariantProfile.STANDARD, MediaQualityTier.WEB)));
+                        MediaVariantProfile.ORIGINAL, MediaQualityTier.WEB)));
 
         service.process(MediaOwnerType.ARTWORK, "artwork-1", "raw/1.png", "thumb/1.avif", null,
                 "original/1.avif", MediaProcessingStatus.DONE);

@@ -8,6 +8,6 @@ package com.atcrew.portfolio;
  */
 public record PortfolioCoverThumbnailInfo(
         String thumbKey,      // 커버 썸네일 R2 키 — 이미지 처리 전이면 null
-        String thumbAdultKey  // 성인 블러 썸네일 R2 키 — 사용자 지정 썸네일을 쓰는 경우 null
+        String thumbAdultKey  // 성인 블러 썸네일 R2 키 — 썸네일 변환 전이거나 변환 이전에 올라온 작품이면 null
 ) {
 }

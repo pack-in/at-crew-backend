@@ -25,6 +25,10 @@ public enum ArtworkErrorCode {
     IMAGE_TOO_LARGE(HttpStatus.BAD_REQUEST, "이미지 한 장의 용량은 100MB를 넘을 수 없습니다"),
     INVALID_REPRESENTATIVE_INDEX(HttpStatus.BAD_REQUEST, "대표 이미지 인덱스가 유효하지 않습니다"),
     UNOWNED_IMAGE_KEY(HttpStatus.BAD_REQUEST, "본인이 발급받은 업로드 키가 아닙니다"),
+    PRESIGN_RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "업로드 URL 발급 한도를 넘었습니다. 잠시 후 다시 시도해 주세요"),
+    // 같은 업로드 key를 본문과 썸네일로 함께 쓰면 Worker가 한 원본을 두 번 변환하고, 먼저 끝난 쪽이 원본을 지워
+    // 다른 쪽이 실패한다. FE는 썸네일을 항상 따로 잘라 올리므로 API를 직접 부를 때만 걸린다.
+    THUMBNAIL_KEY_IN_IMAGES(HttpStatus.BAD_REQUEST, "썸네일은 작품 이미지와 별도로 업로드해야 합니다"),
     INVALID_CUSTOM_TAG(HttpStatus.BAD_REQUEST, "직접입력 값은 최대 10자까지 입력할 수 있습니다"),
     BOOKMARK_FOLDER_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 북마크 폴더입니다"),
     BOOKMARK_FOLDER_DUPLICATE_NAME(HttpStatus.CONFLICT, "이미 존재하는 폴더명입니다"),

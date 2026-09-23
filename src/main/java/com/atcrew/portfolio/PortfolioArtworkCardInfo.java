@@ -20,8 +20,8 @@ public record PortfolioArtworkCardInfo(
         String artworkId,          // 원본 작품 ID — 고정형 카드는 null
         String snapshotId,         // 고정형 스냅샷 ID — 최신 반영형·작가 페이지 카드는 null
         String title,              // 작품 제목
-        String thumbKey,           // 카드 썸네일 R2 키 — 사용자 지정 썸네일 우선, 없으면 대표 이미지 썸네일
-        String thumbAdultKey,      // 성인 블러 썸네일 R2 키 — 사용자 지정 썸네일을 쓰는 경우 null
+        String thumbKey,           // 카드 썸네일 R2 키 — 판정 규칙은 ArtworkCardThumbnail
+        String thumbAdultKey,      // 성인 블러 썸네일 R2 키 — 썸네일 변환 전이거나 변환 이전에 올라온 작품이면 null
         AgeRating ageRating,       // 연령 등급
         ArtworkField artworkField, // 작품 분야
         List<ArtworkRole> roles,   // 담당 업무(역할) — ArtworkSummaryInfo와 동일. 고정형은 생성 시점에 얼린 값

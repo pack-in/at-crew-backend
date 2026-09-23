@@ -14,7 +14,7 @@ import org.springframework.modulith.events.ApplicationModuleListener;
 import org.springframework.stereotype.Component;
 
 /**
- * media의 이미지 처리 결과를 artwork 로컬 읽기 모델(artwork_images)에 반영한다
+ * media의 이미지 처리 결과를 받아 작품 상태를 다시 계산한다
  * (docs/design/media-module-design.md §5).
  *
  * <p>READY 전환 판단 자체는 도메인 규칙이라 {@link Artwork#markImageProcessed}에 그대로 남기고
@@ -40,6 +40,12 @@ class ArtworkMediaEventListener {
 
     @ApplicationModuleListener
     void onMediaAssetProcessed(MediaAssetProcessedEvent event) {
+        if (event.ownerType() == MediaOwnerType.ARTWORK_THUMBNAIL) {
+            // 썸네일은 작품 상태(READY)를 정하지 않는다 — 처리 전에도 raw로 카드를 띄울 수 있다. 카드 썸네일이
+            // 바뀌었으니 검색 색인만 다시 쓰게 한다.
+            eventPublisher.publishEvent(new ArtworkChangedEvent(event.ownerId()));
+            return;
+        }
         if (event.ownerType() != MediaOwnerType.ARTWORK) {
             return;
         }

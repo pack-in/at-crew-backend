@@ -2,6 +2,7 @@ package com.atcrew.portfolio.internal.application;
 
 import com.atcrew.artwork.AgeRating;
 import com.atcrew.artwork.ArtworkInfo;
+import com.atcrew.artwork.ImageProcessingStatus;
 import com.atcrew.artwork.ArtworkRole;
 import com.atcrew.artwork.ArtworkService;
 import com.atcrew.artwork.ArtworkStatus;
@@ -537,6 +538,7 @@ public class PortfolioServiceImpl {
      * 경로가 이 키의 보존 여부를 먼저 판정한다(§5.6, {@link PortfolioItemSnapshot} 참조).
      */
     private PortfolioInfo createSnapshot(String memberId, String title, List<ArtworkInfo> artworks) {
+        assertImagesSettled(artworks);
         MemberInfo owner = memberService.findById(memberId);
         Portfolio portfolio = Portfolio.createShared(
                 memberId, ReflectionType.SNAPSHOT, title, shareSlugGenerator.generate());
@@ -557,6 +559,25 @@ public class PortfolioServiceImpl {
             cards.add(PortfolioMapper.toCardInfo(snapshots.get(ordinal), artworks.get(ordinal).roles()));
         }
         return PortfolioMapper.toInfo(portfolio, snapshots.size(), cards);
+    }
+
+    /**
+     * 고정형에 얼릴 작품에 처리 중(PENDING)인 이미지가 없어야 한다 — 본문과 지정 썸네일 모두.
+     *
+     * <p>처리 중인 이미지는 raw key만 있고, 변환에 성공하면 Worker가 보존 색인과 무관하게 raw를 지운다. 스냅샷은
+     * write-once라(§2.3) 변환 결과로 고쳐 쓸 수 없으니 얼리기 전에 막는다. 실패(FAILED)한 이미지는 Worker가 raw를
+     * 지우지 않으므로 허용한다.
+     */
+    private static void assertImagesSettled(List<ArtworkInfo> artworks) {
+        for (ArtworkInfo artwork : artworks) {
+            boolean imagePending = artwork.images().stream()
+                    .anyMatch(image -> image.processingStatus() == ImageProcessingStatus.PENDING);
+            boolean thumbnailPending = artwork.thumbnailImage() != null
+                    && artwork.thumbnailImage().processingStatus() == ImageProcessingStatus.PENDING;
+            if (imagePending || thumbnailPending) {
+                throw new PortfolioException(PortfolioErrorCode.ARTWORK_IMAGE_PROCESSING, "artworkId=" + artwork.id());
+            }
+        }
     }
 
     // 카드용 컬럼과 상세 본문 JSON을 함께 채운다(§2.3 하이브리드 저장). 카드 roles는 컬럼이 없어 JSON에서 읽는다.

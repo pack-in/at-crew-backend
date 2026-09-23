@@ -475,6 +475,15 @@ public class JobPosting {
     public boolean isHasBuyout() { return hasBuyout; }
     public String getBenefitDescription() { return benefitDescription; }
     public List<String> getBenefitKeywords() { return List.copyOf(benefitKeywords); }
+    /**
+     * 휴지통 보관 기간이 지나 이미지 파일을 정리한 뒤 호출한다(#200) — 지운 파일을 가리키는 key를 남겨두면
+     * 정리 배치가 매번 같은 파일을 다시 지우려 한다.
+     */
+    public void clearImagesAfterPurge() {
+        this.thumbnailImage = null;
+        this.referenceImages = new ArrayList<>();
+    }
+
     public String getThumbnailImage() { return thumbnailImage; }
     public List<String> getReferenceImages() { return List.copyOf(referenceImages); }
     public long getBookmarkCount() { return bookmarkCount; }

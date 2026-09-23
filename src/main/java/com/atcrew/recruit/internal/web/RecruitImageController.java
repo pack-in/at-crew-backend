@@ -55,8 +55,13 @@ class RecruitImageController {
                 }
             }
         }
+        String memberId = securityUtils.getCurrentMemberId();
+        // 발급 한도(#216) — 넘으면 429. 등록되지 않은 원본이 무한히 쌓이는 것을 막는다.
+        if (!mediaService.tryReservePresign(memberId, request.count())) {
+            throw new RecruitException(RecruitErrorCode.PRESIGN_RATE_LIMITED);
+        }
         return ApiResponse.success(
-                mediaService.generatePresignedUrls(securityUtils.getCurrentMemberId(), request.count(),
+                mediaService.generatePresignedUrls(memberId, request.count(),
                         request.contentTypes(), request.fileSizes()));
     }
 }

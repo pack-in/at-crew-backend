@@ -28,6 +28,43 @@ jobs:
             perf
           requireScope: false
 
+  # 이미 적용된 마이그레이션은 주석 한 줄도 고치면 안 된다 — Flyway가 적용 시점의 체크섬을 검사하므로
+  # 운영 DB에서 기동이 거부된다. 테스트·CI는 매번 빈 DB에서 전체를 새로 적용해 이 불일치가 드러나지 않는다.
+  # 2026-09-23에 V41의 주석 한 줄을 고쳐 운영이 6분간 중단됐다.
+  guard-applied-migrations:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # 기준 브랜치와 비교해야 하므로 전체 이력을 받는다.
+          fetch-depth: 0
+
+      - name: 적용된 마이그레이션 변경 검사
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          # main에 이미 있는 마이그레이션 파일이 이 PR에서 수정·삭제·이름변경됐는지 본다.
+          # 새 파일 추가(A)는 정상이므로 제외한다.
+          git fetch --no-tags --depth=1 origin main
+          changed=$(git diff --name-status --diff-filter=MDR "$BASE_SHA" HEAD -- src/main/resources/db/migration/ || true)
+          applied=""
+          while read -r status path rest; do
+            [ -z "${path:-}" ] && continue
+            if git cat-file -e "origin/main:$path" 2>/dev/null; then
+              applied="$applied$status $path\n"
+            fi
+          done <<< "$changed"
+          if [ -n "$applied" ]; then
+            echo "::error::이미 배포된 마이그레이션 파일을 고쳤다. Flyway 체크섬이 어긋나 운영 기동이 거부된다."
+            printf "%b" "$applied"
+            echo "고칠 내용이 있으면 새 마이그레이션 파일을 추가한다."
+            exit 1
+          fi
+          echo "적용된 마이그레이션 변경 없음"
+
   build-and-test:
     runs-on: ubuntu-latest
     # 공개 레포에서는 fork가 연 PR도 이 잡을 돌린다 — PR 브랜치의 build.gradle이 곧 러너에서 실행되는

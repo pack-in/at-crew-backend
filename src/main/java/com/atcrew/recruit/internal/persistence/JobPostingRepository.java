@@ -102,4 +102,10 @@ public interface JobPostingRepository extends JpaRepository<JobPosting, String>,
     List<JobPosting> findByCreatedAtAfterOrderByCreatedAtAsc(Instant cursor, Pageable pageable);
 
     List<JobPosting> findAllByOrderByCreatedAtAsc(Pageable pageable);
+
+    /** 휴지통 보관 기간이 지난 게시글 id, 오래된 것부터 — 이미지 정리 배치가 게시글마다 따로 처리한다(#200). */
+    @Query("select p.id from JobPosting p where p.status = :status and p.deletedAt < :threshold order by p.deletedAt asc")
+    List<String> findIdsByStatusAndDeletedAtBefore(@Param("status") JobPostingStatus status,
+                                                   @Param("threshold") Instant threshold, Pageable pageable);
+
 }
