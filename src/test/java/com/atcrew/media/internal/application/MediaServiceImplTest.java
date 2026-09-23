@@ -22,7 +22,7 @@ class MediaServiceImplTest {
     private final ImageProcessingWorker worker = mock(ImageProcessingWorker.class);
     private final OrphanedMediaKeyRepository orphans = mock(OrphanedMediaKeyRepository.class);
     private final MediaKeySigner signer = new MediaKeySigner("test-secret", List.of());
-    private final MediaService service = new MediaServiceImpl(assets, orphans, storage, worker, signer);
+    private final MediaService service = new MediaServiceImpl(assets, orphans, storage, worker, signer, new PresignRateLimiter(1000, java.time.Duration.ofHours(1)));
 
     // #193 — 이미지 일부만 바꾸면 남는 이미지는 그대로 두고, 빠진 것만 고아 큐로 보낸다.
     @Test void 부분_교체는_남는_이미지를_그대로_두고_빠진_것만_고아로_보낸다() {

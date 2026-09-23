@@ -137,6 +137,10 @@ class ArtworkServiceImpl implements ArtworkService {
                 }
             }
         }
+        // 발급 한도(#216) — 넘으면 429. 등록되지 않은 원본이 무한히 쌓이는 것을 막는다.
+        if (!mediaService.tryReservePresign(memberId, count)) {
+            throw new ArtworkException(ArtworkErrorCode.PRESIGN_RATE_LIMITED);
+        }
         return mediaService.generatePresignedUrls(memberId, count, contentTypes, fileSizes).stream()
                 .map(info -> new PresignedUrlInfo(info.key(), info.uploadUrl()))
                 .toList();

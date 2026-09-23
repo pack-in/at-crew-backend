@@ -14,6 +14,15 @@ public interface MediaService {
                                                  List<Long> fileSizes);
 
     /**
+     * 이번 발급({@code count}장)이 회원당 한도 안인지 확인하고 기록한다(#216). 한도를 넘으면 false이며 아무것도
+     * 기록하지 않는다 — 호출자가 자기 에러코드로 429를 낸다.
+     *
+     * <p>발급받은 URL로 올린 파일은 작품·게시글에 등록되기 전까지 어디에도 기록되지 않는다. 등록하지 않으면
+     * 고아 큐에도 들어가지 않아 아무도 모르는 원본이 쌓인다.
+     */
+    boolean tryReservePresign(String memberId, int count);
+
+    /**
      * {@code keys} 중 이 회원에게 발급되지 않은 key — 비어 있지 않으면 호출자가 요청을 거부한다(#190).
      *
      * <p>업로드 key에는 발급 시점에 소유자 서명이 들어간다. 조회 없이 서명만 다시 계산해 판정하므로 호출 비용이
