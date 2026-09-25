@@ -36,6 +36,9 @@ echo "2/3 원격에서 새 이미지 받고 재기동"
 set -e
 cd $REMOTE_DEPLOY_DIR
 export APP_IMAGE=$APP_IMAGE
+# .env에도 남긴다 — 셸 변수로만 넘기면 서버에서 compose로 재생성할 때 .env의 옛 이미지로 되돌아간다.
+{ grep -v '^APP_IMAGE=' .env; printf 'APP_IMAGE=%s\n' "\$APP_IMAGE"; } > .env.next
+chmod 600 .env.next && mv .env.next .env
 docker-compose -f docker-compose.app.yml pull app
 docker-compose -f docker-compose.app.yml up -d
 EOF
