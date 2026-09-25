@@ -147,20 +147,6 @@ class MemberControllerValidationTest {
     }
 
     @Test
-    void 경력_시작일_미래날짜_거부() throws Exception {
-        mockMvc.perform(post("/api/members/me/careers")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "workTitle", "작품명",
-                                "startDate", "2099.01.01",
-                                "ongoing", false
-                        ))))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
-                .andDo(document("member/validation/add-career-future-start-date"));
-    }
-
-    @Test
     void 경력_제목_없으면_거부() throws Exception {
         mockMvc.perform(post("/api/members/me/careers")
                         .contentType(MediaType.APPLICATION_JSON)

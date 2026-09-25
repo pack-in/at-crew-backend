@@ -237,7 +237,12 @@ public class JobPosting {
     protected JobPosting() {
     }
 
-    public static JobPosting create(String authorMemberId, CreateJobPostingCommand command) {
+    /**
+     * @param today 작성자 시간대 기준 오늘 — 마감일이 오늘 이전이면 거부한다. 서버 기본 시간대(UTC)로
+     *              계산하면 한국은 자정 이후 몇 시간 동안 어제 날짜가 통과한다.
+     */
+    public static JobPosting create(String authorMemberId, CreateJobPostingCommand command, LocalDate today) {
+        validateDeadline(command.deadline(), today);
         JobPosting jobPosting = new JobPosting();
         jobPosting.id = UuidV7Generator.generate();
         jobPosting.authorMemberId = authorMemberId;
@@ -293,7 +298,9 @@ public class JobPosting {
     }
 
     // 부분 업데이트 — null 필드는 기존 값 유지. 휴지통(DELETED) 여부 검증은 서비스 레이어에서 수행한다.
-    public void updateContent(UpdateJobPostingCommand command) {
+    // today는 작성자 시간대 기준 오늘이다 — 요청에 마감일이 있을 때만 과거 여부를 검증한다.
+    public void updateContent(UpdateJobPostingCommand command, LocalDate today) {
+        validateDeadline(command.deadline(), today);
         if (command.title() != null) this.title = command.title();
         if (command.companyName() != null) this.companyName = command.companyName();
         if (command.ceoName() != null) this.ceoName = command.ceoName();
@@ -494,4 +501,10 @@ public class JobPosting {
     public Instant getDeletedAt() { return deletedAt; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
+
+    private static void validateDeadline(LocalDate deadline, LocalDate today) {
+        if (deadline != null && deadline.isBefore(today)) {
+            throw new RecruitException(RecruitErrorCode.DEADLINE_IN_PAST, "deadline=" + deadline + ", today=" + today);
+        }
+    }
 }

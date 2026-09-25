@@ -5,7 +5,6 @@ import com.atcrew.artwork.Genre;
 import com.atcrew.recruit.TeamActivityDuration;
 import com.atcrew.recruit.TeamWeeklyActivityTime;
 import com.atcrew.recruit.TeamWorkLocationType;
-import jakarta.validation.constraints.FutureOrPresent;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -32,7 +31,8 @@ public record UpdateTeamPostingRequest(
         Boolean hasParticipationFee,
         Boolean hasProfitSharing,
         @Size(max = 500) String extraCost,
-        @FutureOrPresent LocalDate deadline,
+        // 과거 여부는 작성자 시간대 기준으로 도메인에서 검증한다 — @FutureOrPresent는 서버 시간대(UTC)의 오늘을 쓴다
+        LocalDate deadline,
         @Min(1) @Max(9999) Integer recruitCount,
         @Size(max = 5000) String selectionProcess,
         TeamActivityDuration activityDuration,

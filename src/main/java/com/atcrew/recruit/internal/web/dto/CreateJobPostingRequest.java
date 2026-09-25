@@ -9,7 +9,6 @@ import com.atcrew.recruit.JobWorkLocationType;
 import com.atcrew.recruit.JobWorkScheduleType;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
-import jakarta.validation.constraints.FutureOrPresent;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -36,7 +35,8 @@ public record CreateJobPostingRequest(
         @Size(max = 20) List<@NotNull ArtworkRole> roles,
         @Size(max = 20) List<@NotNull Genre> genres,
         @Size(max = 500) String workScope,
-        @FutureOrPresent LocalDate deadline,
+        // 과거 여부는 작성자 시간대 기준으로 도메인에서 검증한다 — @FutureOrPresent는 서버 시간대(UTC)의 오늘을 쓴다
+        LocalDate deadline,
         @Min(1) @Max(9999) Integer recruitCount,
         @Size(max = 5000) String hiringProcess,
         @Size(max = 200) String education,

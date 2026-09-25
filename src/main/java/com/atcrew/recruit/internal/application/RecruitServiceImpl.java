@@ -5,6 +5,7 @@ import com.atcrew.billing.BillingService;
 import com.atcrew.common.response.CursorPage;
 import com.atcrew.common.response.OffsetPage;
 import com.atcrew.media.MediaOwnerType;
+import com.atcrew.member.MemberService;
 import com.atcrew.recruit.ApplicationInfo;
 import com.atcrew.recruit.ApplicationReviewStatus;
 import com.atcrew.recruit.CommunityJobPostingCardInfo;
@@ -58,13 +59,14 @@ class RecruitServiceImpl implements RecruitService {
     private final AuthorNameResolver authorNameResolver;
     private final RecruitImageService recruitImageService;
     private final BillingService billingService;
+    private final MemberService memberService;
     private final ApplicationEventPublisher eventPublisher;
 
     RecruitServiceImpl(JobPostingRepository jobPostingRepository, TeamPostingRepository teamPostingRepository,
             JobSeekingPostService jobSeekingPostService, ApplicationService applicationService,
             LikedArtistService likedArtistService,
             AuthorNameResolver authorNameResolver, RecruitImageService recruitImageService,
-            BillingService billingService, ApplicationEventPublisher eventPublisher) {
+            BillingService billingService, MemberService memberService, ApplicationEventPublisher eventPublisher) {
         this.jobPostingRepository = jobPostingRepository;
         this.teamPostingRepository = teamPostingRepository;
         this.jobSeekingPostService = jobSeekingPostService;
@@ -73,6 +75,7 @@ class RecruitServiceImpl implements RecruitService {
         this.authorNameResolver = authorNameResolver;
         this.recruitImageService = recruitImageService;
         this.billingService = billingService;
+        this.memberService = memberService;
         this.eventPublisher = eventPublisher;
     }
 
@@ -124,7 +127,7 @@ class RecruitServiceImpl implements RecruitService {
 
     @Override
     public JobPostingInfo createJobPosting(String memberId, CreateJobPostingCommand command) {
-        JobPosting jobPosting = JobPosting.create(memberId, command);
+        JobPosting jobPosting = JobPosting.create(memberId, command, memberService.todayOf(memberId));
         if (command.submit()) {
             jobPosting.submitForApproval();
         }
@@ -151,7 +154,7 @@ class RecruitServiceImpl implements RecruitService {
         }
         // 수정 전 값을 먼저 잡아 둔다 — media 자산이 없는 옛 게시글도 자기 key를 다시 보낼 수 있어야 한다(#190).
         List<String> previousKeys = previousKeysOf(jobPosting.getThumbnailImage(), jobPosting.getReferenceImages());
-        jobPosting.updateContent(command);
+        jobPosting.updateContent(command, memberService.todayOf(memberId));
         // 부분 업데이트라 이미지 필드를 실제로 보낸 요청만 media 재등록 대상이다(설계 §10.3).
         if (command.thumbnailImage() != null || command.referenceImages() != null) {
             RecruitImageService.apply(
@@ -286,7 +289,7 @@ class RecruitServiceImpl implements RecruitService {
 
     @Override
     public TeamPostingInfo createTeamPosting(String memberId, CreateTeamPostingCommand command) {
-        TeamPosting teamPosting = TeamPosting.create(memberId, command);
+        TeamPosting teamPosting = TeamPosting.create(memberId, command, memberService.todayOf(memberId));
         TeamPosting saved = teamPostingRepository.save(teamPosting);
         // 팀원 모집글은 유료 단건 게시 상품이다(구인구직-R02) — 임시저장 단계가 없으므로 생성 성공 시 차감한다.
         billingService.consume(memberId, BillingProduct.TEAM_POSTING, saved.getId());
@@ -306,7 +309,7 @@ class RecruitServiceImpl implements RecruitService {
             throw new RecruitException(RecruitErrorCode.TEAM_POSTING_NOT_FOUND, teamPostingId);
         }
         List<String> previousKeys = previousKeysOf(teamPosting.getThumbnailImage(), teamPosting.getReferenceImages());
-        teamPosting.updateContent(command);
+        teamPosting.updateContent(command, memberService.todayOf(memberId));
         // 부분 업데이트라 이미지 필드를 실제로 보낸 요청만 media 재등록 대상이다(설계 §10.3).
         if (command.thumbnailImage() != null || command.referenceImages() != null) {
             RecruitImageService.apply(

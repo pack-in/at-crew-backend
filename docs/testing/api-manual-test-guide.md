@@ -429,8 +429,9 @@
 **필드 제약**:
 - `workTitle`: `@NotBlank @Size(max=100)`
 - `role`: `@Size(max=100)`
-- `startDate`: `@NotNull @PastOrPresent`, 포맷 `yyyy.MM.dd`
-- `endDate`: `@PastOrPresent`, 포맷 `yyyy.MM.dd` (연재중이면 null)
+- `startDate`: `@NotNull`, 포맷 `yyyy.MM.dd`
+- `endDate`: 포맷 `yyyy.MM.dd` (연재중이면 null)
+- 시작일·종료일은 **회원 시간대(`timezone`, 미설정 시 Asia/Seoul) 기준 오늘**까지 허용한다 — 서버 시간대(UTC) 기준이 아니다
 - `ongoing`: boolean
 - `description`: `@Size(max=200)`
 
@@ -442,7 +443,8 @@
 |--------|---------|--------------|------|
 | 작품명 누락 | workTitle: "" | COMMON_INVALID_INPUT | 400 |
 | 시작일 누락 | startDate 생략 | COMMON_INVALID_INPUT | 400 |
-| 시작일 미래 날짜 | startDate: "2099.01.01" | COMMON_INVALID_INPUT | 400 |
+| 시작일 미래 날짜 | startDate: "2099.01.01" | CAREER_DATE_IN_FUTURE | 400 |
+| 종료일 미래 날짜 | endDate: "2099.01.01", ongoing: false | CAREER_DATE_IN_FUTURE | 400 |
 | 날짜 포맷 오류 | startDate: "2023-01-01" | COMMON_INVALID_INPUT | 400 |
 | 종료일이 시작일보다 앞섬 | end < start | INVALID_CAREER_PERIOD | 400 |
 | 경력 50개 초과 | 51번째 추가 | CAREER_LIMIT_EXCEEDED | 400 |

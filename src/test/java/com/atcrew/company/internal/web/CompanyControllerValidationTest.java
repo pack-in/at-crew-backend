@@ -157,17 +157,6 @@ class CompanyControllerValidationTest {
     }
 
     @Test
-    void 경력_추가_시작일_미래날짜_거부() throws Exception {
-        mockMvc.perform(post("/api/companies/me/careers")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "workTitle", "작품명", "startDate", "2099.01.01", "ongoing", true))))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
-                .andDo(document("company/validation/add-career-future-start-date"));
-    }
-
-    @Test
     void 경력_추가_시작일_누락_거부() throws Exception {
         mockMvc.perform(post("/api/companies/me/careers")
                         .contentType(MediaType.APPLICATION_JSON)

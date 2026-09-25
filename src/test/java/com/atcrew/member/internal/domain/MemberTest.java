@@ -12,6 +12,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Set;
 
@@ -19,6 +20,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class MemberTest {
+
+    // 회원 시간대 기준 오늘 — 기존 경력 테스트의 날짜는 모두 이보다 과거다
+    static final LocalDate TODAY = LocalDate.of(2026, 9, 25);
 
     Member member;
 
@@ -32,7 +36,7 @@ class MemberTest {
     @Test
     void 경력_정상_추가() {
         CareerEntryInfo entry = member.addCareer("홍길동전", "작화",
-                LocalDate.of(2023, 1, 1), LocalDate.of(2024, 6, 30), false, "작화 전공정");
+                LocalDate.of(2023, 1, 1), LocalDate.of(2024, 6, 30), false, "작화 전공정", TODAY);
 
         assertThat(entry.workTitle()).isEqualTo("홍길동전");
         assertThat(entry.ongoing()).isFalse();
@@ -44,7 +48,7 @@ class MemberTest {
     void 연재중_경력에_종료일_있으면_예외() {
         assertThatThrownBy(() ->
                 member.addCareer("홍길동전", "작화",
-                        LocalDate.of(2023, 1, 1), LocalDate.of(2024, 6, 30), true, null)
+                        LocalDate.of(2023, 1, 1), LocalDate.of(2024, 6, 30), true, null, TODAY)
         ).isInstanceOf(MemberException.class)
                 .extracting(e -> ((MemberException) e).getCode())
                 .isEqualTo(MemberErrorCode.INVALID_CAREER_PERIOD.name());
@@ -54,7 +58,7 @@ class MemberTest {
     void 종료_경력에_종료일_없으면_예외() {
         assertThatThrownBy(() ->
                 member.addCareer("홍길동전", "작화",
-                        LocalDate.of(2023, 1, 1), null, false, null)
+                        LocalDate.of(2023, 1, 1), null, false, null, TODAY)
         ).isInstanceOf(MemberException.class)
                 .extracting(e -> ((MemberException) e).getCode())
                 .isEqualTo(MemberErrorCode.INVALID_CAREER_PERIOD.name());
@@ -64,7 +68,7 @@ class MemberTest {
     void 종료일이_시작일보다_이전이면_예외() {
         assertThatThrownBy(() ->
                 member.addCareer("홍길동전", "작화",
-                        LocalDate.of(2024, 6, 1), LocalDate.of(2024, 1, 1), false, null)
+                        LocalDate.of(2024, 6, 1), LocalDate.of(2024, 1, 1), false, null, TODAY)
         ).isInstanceOf(MemberException.class)
                 .extracting(e -> ((MemberException) e).getCode())
                 .isEqualTo(MemberErrorCode.INVALID_CAREER_PERIOD.name());
@@ -74,15 +78,46 @@ class MemberTest {
     void 경력_50개_초과_시_예외() {
         for (int i = 0; i < 50; i++) {
             member.addCareer("작품" + i, null,
-                    LocalDate.of(2020, 1, 1), LocalDate.of(2021, 1, 1), false, null);
+                    LocalDate.of(2020, 1, 1), LocalDate.of(2021, 1, 1), false, null, TODAY);
         }
 
         assertThatThrownBy(() ->
                 member.addCareer("초과작품", null,
-                        LocalDate.of(2020, 1, 1), LocalDate.of(2021, 1, 1), false, null)
+                        LocalDate.of(2020, 1, 1), LocalDate.of(2021, 1, 1), false, null, TODAY)
         ).isInstanceOf(MemberException.class)
                 .extracting(e -> ((MemberException) e).getCode())
                 .isEqualTo(MemberErrorCode.CAREER_LIMIT_EXCEEDED.name());
+    }
+
+    @Test
+    void 회원_시간대_기준_오늘은_시작일로_허용() {
+        CareerEntryInfo entry = member.addCareer("작품", null, TODAY, null, true, null, TODAY);
+
+        assertThat(entry.startDate()).isEqualTo(TODAY);
+    }
+
+    @Test
+    void 시작일이_회원_시간대_기준_미래면_예외() {
+        assertThatThrownBy(() ->
+                member.addCareer("작품", null, TODAY.plusDays(1), null, true, null, TODAY)
+        ).isInstanceOf(MemberException.class)
+                .extracting(e -> ((MemberException) e).getCode())
+                .isEqualTo(MemberErrorCode.CAREER_DATE_IN_FUTURE.name());
+    }
+
+    @Test
+    void 종료일이_회원_시간대_기준_미래면_예외() {
+        assertThatThrownBy(() ->
+                member.addCareer("작품", null, TODAY, TODAY.plusDays(1), false, null, TODAY)
+        ).isInstanceOf(MemberException.class)
+                .extracting(e -> ((MemberException) e).getCode())
+                .isEqualTo(MemberErrorCode.CAREER_DATE_IN_FUTURE.name());
+    }
+
+    @Test
+    void 시간대_미설정_회원은_서울_기준() {
+        assertThat(member.getTimezone()).isNull();
+        assertThat(member.zoneId()).isEqualTo(ZoneId.of("Asia/Seoul"));
     }
 
     // ─── deleteCareer ─────────────────────────────────────────────────
@@ -90,7 +125,7 @@ class MemberTest {
     @Test
     void 경력_정상_삭제() {
         CareerEntryInfo entry = member.addCareer("홍길동전", "작화",
-                LocalDate.of(2023, 1, 1), LocalDate.of(2024, 1, 1), false, null);
+                LocalDate.of(2023, 1, 1), LocalDate.of(2024, 1, 1), false, null, TODAY);
 
         member.deleteCareer(entry.id());
 
@@ -204,7 +239,7 @@ class MemberTest {
 
         assertThatThrownBy(() ->
                 member.addCareer("작품", null,
-                        LocalDate.of(2023, 1, 1), LocalDate.of(2024, 1, 1), false, null)
+                        LocalDate.of(2023, 1, 1), LocalDate.of(2024, 1, 1), false, null, TODAY)
         ).isInstanceOf(MemberException.class)
                 .extracting(e -> ((MemberException) e).getCode())
                 .isEqualTo(MemberErrorCode.MEMBER_DEACTIVATED.name());
@@ -225,7 +260,7 @@ class MemberTest {
     @Test
     void 기간표시_연재중() {
         CareerEntryInfo entry = member.addCareer("작품", null,
-                LocalDate.of(2023, 1, 15), null, true, null);
+                LocalDate.of(2023, 1, 15), null, true, null, TODAY);
 
         assertThat(entry.periodDisplay()).isEqualTo("2023.01.15 ~ 연재중");
     }
@@ -233,7 +268,7 @@ class MemberTest {
     @Test
     void 기간표시_하루() {
         CareerEntryInfo entry = member.addCareer("작품", null,
-                LocalDate.of(2024, 3, 1), LocalDate.of(2024, 3, 2), false, null);
+                LocalDate.of(2024, 3, 1), LocalDate.of(2024, 3, 2), false, null, TODAY);
 
         assertThat(entry.periodDisplay()).contains("하루");
     }
@@ -241,7 +276,7 @@ class MemberTest {
     @Test
     void 기간표시_1개월_미만_일수() {
         CareerEntryInfo entry = member.addCareer("작품", null,
-                LocalDate.of(2024, 3, 1), LocalDate.of(2024, 3, 15), false, null);
+                LocalDate.of(2024, 3, 1), LocalDate.of(2024, 3, 15), false, null, TODAY);
 
         assertThat(entry.periodDisplay()).contains("14일");
     }
@@ -249,7 +284,7 @@ class MemberTest {
     @Test
     void 기간표시_개월() {
         CareerEntryInfo entry = member.addCareer("작품", null,
-                LocalDate.of(2023, 1, 1), LocalDate.of(2023, 6, 1), false, null);
+                LocalDate.of(2023, 1, 1), LocalDate.of(2023, 6, 1), false, null, TODAY);
 
         assertThat(entry.periodDisplay()).contains("약 5개월");
     }
@@ -257,7 +292,7 @@ class MemberTest {
     @Test
     void 기간표시_정확히_1년() {
         CareerEntryInfo entry = member.addCareer("작품", null,
-                LocalDate.of(2022, 1, 1), LocalDate.of(2023, 1, 1), false, null);
+                LocalDate.of(2022, 1, 1), LocalDate.of(2023, 1, 1), false, null, TODAY);
 
         assertThat(entry.periodDisplay()).contains("약 1년");
         assertThat(entry.periodDisplay()).doesNotContain("개월");
@@ -266,7 +301,7 @@ class MemberTest {
     @Test
     void 기간표시_1년_이상_나머지_개월() {
         CareerEntryInfo entry = member.addCareer("작품", null,
-                LocalDate.of(2022, 1, 1), LocalDate.of(2023, 6, 1), false, null);
+                LocalDate.of(2022, 1, 1), LocalDate.of(2023, 6, 1), false, null, TODAY);
 
         assertThat(entry.periodDisplay()).contains("약 1년 5개월");
     }

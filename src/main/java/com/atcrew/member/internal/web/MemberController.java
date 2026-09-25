@@ -156,6 +156,9 @@ class MemberController {
     @Operation(summary = "경력 추가", description = "참여작 정보를 경력으로 추가합니다.")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "경력 추가 성공"),
+            @ApiResponse(responseCode = "400", description = "입력값 오류(COMMON_INVALID_INPUT), "
+                    + "종료일 누락·시작일보다 앞선 종료일(INVALID_CAREER_PERIOD), "
+                    + "회원 시간대 기준 미래의 시작일·종료일(CAREER_DATE_IN_FUTURE), 경력 50개 초과(CAREER_LIMIT_EXCEEDED)"),
             @ApiResponse(responseCode = "401", description = "인증 필요")
     })
     @PostMapping("/me/careers")
