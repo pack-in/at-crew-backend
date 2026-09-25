@@ -39,6 +39,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -348,6 +349,11 @@ class MemberServiceImpl implements MemberService {
     }
 
     @Override
+    public LocalDate todayOf(String memberId) {
+        return LocalDate.now(findMemberById(memberId).zoneId());
+    }
+
+    @Override
     public boolean isAdultContentVisible(String memberId) {
         if (memberId == null) {
             return true;
@@ -378,7 +384,8 @@ class MemberServiceImpl implements MemberService {
     public CareerEntryInfo addCareer(String memberId, AddCareerCommand command) {
         Member member = findMemberById(memberId);
         CareerEntryInfo entry = member.addCareer(command.workTitle(), command.role(),
-                command.startDate(), command.endDate(), command.ongoing(), command.description());
+                command.startDate(), command.endDate(), command.ongoing(), command.description(),
+                LocalDate.now(member.zoneId()));
         memberRepository.save(member);
         return entry;
     }

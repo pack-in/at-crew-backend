@@ -117,6 +117,9 @@ class CompanyController {
     @Operation(summary = "기업 경력 추가", description = "본인 기업의 참여작 경력을 추가합니다. (최대 50개)")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "추가 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "입력값 오류(COMMON_INVALID_INPUT), "
+                    + "종료일 누락·시작일보다 앞선 종료일(INVALID_CAREER_PERIOD), "
+                    + "회원 시간대 기준 미래의 시작일·종료일(CAREER_DATE_IN_FUTURE), 경력 50개 초과(CAREER_LIMIT_EXCEEDED)"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 필요")
     })
     @PostMapping("/me/careers")

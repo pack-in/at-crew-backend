@@ -19,6 +19,7 @@ public enum RecruitErrorCode {
     PRESIGN_RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "업로드 URL 발급 한도를 넘었습니다. 잠시 후 다시 시도해 주세요"),
     INVALID_CURSOR(HttpStatus.BAD_REQUEST, "커서 형식이 올바르지 않습니다"),
     INVALID_AMOUNT_RANGE(HttpStatus.BAD_REQUEST, "최소 금액은 최대 금액보다 클 수 없습니다"),
+    DEADLINE_IN_PAST(HttpStatus.BAD_REQUEST, "마감일은 오늘 이전 날짜일 수 없습니다"),
     INVALID_ACTIVITY_REGION(HttpStatus.BAD_REQUEST, "온라인 활동인 경우 활동 지역을 입력할 수 없습니다"),
     // 상한값은 media 모듈이 Worker와 공유한다(MediaConstraints.MAX_ORIGINAL_BYTES) — 문구의 100MB는 그 값이다
     IMAGE_TOO_LARGE(HttpStatus.BAD_REQUEST, "이미지 한 장의 용량은 100MB를 넘을 수 없습니다");

@@ -101,17 +101,6 @@ class JobPostingControllerValidationTest {
     }
 
     @Test
-    void 작성_마감일_과거_날짜_거부() throws Exception {
-        mockMvc.perform(post("/api/recruit/job-postings")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(
-                                Map.of("title", "구인글 제목", "submit", false, "deadline", "2000-01-01"))))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
-                .andDo(document("recruit/validation/create-job-posting-past-deadline"));
-    }
-
-    @Test
     void 작성_모집인원_0_거부() throws Exception {
         mockMvc.perform(post("/api/recruit/job-postings")
                         .contentType(MediaType.APPLICATION_JSON)

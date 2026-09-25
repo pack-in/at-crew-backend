@@ -14,6 +14,7 @@ import org.springframework.modulith.test.ApplicationModuleTest;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -176,6 +177,45 @@ class MemberModuleTests {
         memberService.deleteCareer(member.id(), entry.id());
 
         assertThat(memberService.findById(member.id()).careers()).isEmpty();
+    }
+
+    // UTC+14와 UTC−11은 25시간 차이라 두 시간대의 날짜는 항상 다르다 — 둘 중 하나는 반드시 UTC 날짜와 달라서,
+    // 서비스가 회원 시간대 대신 서버 기본 시간대(UTC)로 오늘을 계산하면 어느 시각에 돌려도 실패한다.
+    static final ZoneId EARLIEST = ZoneId.of("Pacific/Kiritimati");
+    static final ZoneId LATEST = ZoneId.of("Pacific/Pago_Pago");
+
+    @Test
+    void 오늘은_회원_시간대_기준으로_계산한다() {
+        MemberInfo early = registerWithTimezone("tz-early", EARLIEST);
+        MemberInfo late = registerWithTimezone("tz-late", LATEST);
+
+        assertThat(memberService.todayOf(early.id())).isEqualTo(LocalDate.now(EARLIEST));
+        assertThat(memberService.todayOf(late.id())).isEqualTo(LocalDate.now(LATEST));
+    }
+
+    @Test
+    void 경력_미래_여부는_회원_시간대의_오늘로_판정한다() {
+        MemberInfo early = registerWithTimezone("career-tz-early", EARLIEST);
+        MemberInfo late = registerWithTimezone("career-tz-late", LATEST);
+        LocalDate earliestToday = LocalDate.now(EARLIEST);
+
+        // UTC+14의 오늘은 그 회원에게 오늘이라 허용되고, UTC−11 회원에게는 아직 미래다
+        CareerEntryInfo entry = memberService.addCareer(early.id(),
+                new AddCareerCommand("작품", null, earliestToday, null, true, null));
+        assertThat(entry.startDate()).isEqualTo(earliestToday);
+
+        assertThatThrownBy(() -> memberService.addCareer(late.id(),
+                new AddCareerCommand("작품", null, earliestToday, null, true, null)))
+                .isInstanceOf(MemberException.class)
+                .extracting(e -> ((MemberException) e).getCode())
+                .isEqualTo(MemberErrorCode.CAREER_DATE_IN_FUTURE.name());
+    }
+
+    private MemberInfo registerWithTimezone(String handle, ZoneId zone) {
+        MemberInfo member = memberService.register(handle + "@atcrew.com", handle.replace("-", ""), "시간대회원");
+        memberService.updateInfo(member.id(), new UpdateInfoCommand(null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, zone.getId(), null));
+        return member;
     }
 
     // ─── deactivate ───────────────────────────────────────────────────

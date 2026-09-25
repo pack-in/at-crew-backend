@@ -39,9 +39,17 @@ public class CompanyCareer implements Persistable<String> {
     protected CompanyCareer() {
     }
 
+    /**
+     * @param today 작성 회원의 시간대 기준 오늘 — 서버 기본 시간대(UTC)로 계산하면 UTC보다 앞선
+     *              지역(한국 등)은 자정 이후 몇 시간 동안 오늘 날짜가 미래로 판정된다.
+     */
     public static CompanyCareer create(String companyId, String workTitle, LocalDate startDate,
-                                       LocalDate endDate, boolean ongoing, String description) {
+                                       LocalDate endDate, boolean ongoing, String description, LocalDate today) {
         validatePeriod(startDate, endDate, ongoing);
+        if (startDate.isAfter(today) || (endDate != null && endDate.isAfter(today))) {
+            throw new CompanyException(CompanyErrorCode.CAREER_DATE_IN_FUTURE,
+                    startDate + " ~ " + endDate + ", today=" + today);
+        }
         CompanyCareer career = new CompanyCareer();
         career.id = UuidV7Generator.generate();
         career.companyId = companyId;

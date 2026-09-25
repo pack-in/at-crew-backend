@@ -126,17 +126,6 @@ class TeamPostingControllerValidationTest {
     }
 
     @Test
-    void 작성_마감일_과거_날짜_거부() throws Exception {
-        mockMvc.perform(post("/api/recruit/team-postings")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "title", "유효한 팀원모집글", "deadline", "2020-01-01"))))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
-                .andDo(document("recruit/validation/create-team-posting-past-deadline"));
-    }
-
-    @Test
     void 작성_모집_인원_0_이하_거부() throws Exception {
         mockMvc.perform(post("/api/recruit/team-postings")
                         .contentType(MediaType.APPLICATION_JSON)

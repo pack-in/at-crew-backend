@@ -91,7 +91,8 @@ class CompanyServiceImpl implements CompanyService {
             throw new CompanyException(CompanyErrorCode.CAREER_LIMIT_EXCEEDED, "companyId=" + company.getId());
         }
         CompanyCareer career = CompanyCareer.create(company.getId(), command.workTitle(),
-                command.startDate(), command.endDate(), command.ongoing(), command.description());
+                command.startDate(), command.endDate(), command.ongoing(), command.description(),
+                memberService.todayOf(memberId));
         return CompanyMapper.toCareerInfo(companyCareerRepository.save(career));
     }
 
