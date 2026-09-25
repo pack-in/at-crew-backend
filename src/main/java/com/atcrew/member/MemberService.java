@@ -2,6 +2,7 @@ package com.atcrew.member;
 
 import com.atcrew.common.response.OffsetPage;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -106,6 +107,13 @@ public interface MemberService {
      * @param memberId 비로그인이면 null — 이때는 기본값 ON(true, 필터 미적용)을 반환한다
      */
     boolean isAdultContentVisible(String memberId);
+
+    /**
+     * 회원 시간대 기준 오늘 날짜. 날짜만 있는 입력값(경력 기간·마감일)의 미래/과거 판정에 쓴다.
+     * 서버 기본 시간대(UTC)의 오늘과 다르다 — 한국은 KST 00:00~08:59 동안 하루 앞선다.
+     * 시간대가 설정되지 않은 회원은 Asia/Seoul 기준이다.
+     */
+    LocalDate todayOf(String memberId);
 
     void updateName(String memberId, String name);
 

@@ -457,13 +457,32 @@ public class Member implements Persistable<String> {
 
     private static final int MAX_CAREER_COUNT = 50;
 
+    // timezone 컬럼은 NULL을 허용한다(V1) — 값이 없는 회원은 주 사용자층인 한국 기준으로 하루를 판단한다.
+    private static final ZoneId DEFAULT_ZONE = ZoneId.of("Asia/Seoul");
+
+    /**
+     * 이 회원 기준의 시간대. 날짜만 있는 입력값의 "오늘"을 판단할 때 쓴다
+     * (docs/design/global-timezone-strategy.md 원칙 3 — "누구의 하루인가"를 명시).
+     */
+    public ZoneId zoneId() {
+        return timezone == null ? DEFAULT_ZONE : ZoneId.of(timezone);
+    }
+
+    /**
+     * @param today 회원 시간대 기준 오늘({@link #zoneId()}) — 서버 기본 시간대(UTC)로 계산하면
+     *              UTC보다 앞선 지역(한국 등)은 자정 이후 몇 시간 동안 오늘 날짜가 미래로 판정된다.
+     */
     public CareerEntryInfo addCareer(String workTitle, String role, LocalDate startDate,
-                                     LocalDate endDate, boolean ongoing, String description) {
+                                     LocalDate endDate, boolean ongoing, String description, LocalDate today) {
         assertActive();
         if (careers.size() >= MAX_CAREER_COUNT) {
             throw new MemberException(MemberErrorCode.CAREER_LIMIT_EXCEEDED);
         }
         validateCareerPeriod(startDate, endDate, ongoing);
+        if (startDate.isAfter(today) || (endDate != null && endDate.isAfter(today))) {
+            throw new MemberException(MemberErrorCode.CAREER_DATE_IN_FUTURE,
+                    startDate + " ~ " + endDate + ", today=" + today);
+        }
         CareerEntry entry = new CareerEntry(UuidV7Generator.generate(), this, workTitle, role,
                 startDate, endDate, ongoing, description);
         this.careers.add(entry);

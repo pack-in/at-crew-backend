@@ -9,7 +9,8 @@ public enum CompanyErrorCode {
     COMPANY_ACCESS_DENIED(HttpStatus.FORBIDDEN, "해당 기업 프로필에 접근 권한이 없습니다"),
     CAREER_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 경력입니다"),
     CAREER_LIMIT_EXCEEDED(HttpStatus.BAD_REQUEST, "경력은 최대 50개까지 등록할 수 있습니다"),
-    INVALID_CAREER_PERIOD(HttpStatus.BAD_REQUEST, "경력 종료일이 시작일보다 앞서거나 누락되었습니다");
+    INVALID_CAREER_PERIOD(HttpStatus.BAD_REQUEST, "경력 종료일이 시작일보다 앞서거나 누락되었습니다"),
+    CAREER_DATE_IN_FUTURE(HttpStatus.BAD_REQUEST, "작업 시작일·종료일은 미래 날짜일 수 없습니다");
 
     private final HttpStatus status;
     private final String message;

@@ -209,7 +209,10 @@ jobs:
           set -e
           cd /home/ec2-user/at-crew-backend/deploy
           export APP_IMAGE=$IMAGE_BASE:${{ github.sha }}
+          . ./write-app-image.sh
           docker-compose -f docker-compose.app.yml pull app
+          # 받아온 뒤에 .env를 갱신한다 — pull이 실패하면 .env가 받을 수 없는 이미지를 가리킨 채 남는다.
+          write_app_image .env "\$APP_IMAGE"
           docker-compose -f docker-compose.app.yml up -d
           EOF
 
@@ -279,7 +282,11 @@ jobs:
           set -e
           cd /home/ec2-user/at-crew-backend/deploy
           export APP_IMAGE=$PREV
+          . ./write-app-image.sh
           docker-compose -f docker-compose.app.yml pull app
+          # 롤백한 이미지도 .env에 남긴다 — 그러지 않으면 .env가 방금 실패한 이미지를 계속 가리킨다.
+          # 받아오기 전에 쓰면 pull 실패 시 아무것도 띄울 수 없는 상태로 사람에게 넘어간다.
+          write_app_image .env "\$APP_IMAGE"
           docker-compose -f docker-compose.app.yml up -d
           EOF
           # 롤백 대상은 관리 포트(8081) 분리 이전 이미지일 수 있다 — 그 경우 8081만 보면 컨테이너가
