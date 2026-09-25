@@ -36,10 +36,11 @@ echo "2/3 원격에서 새 이미지 받고 재기동"
 set -e
 cd $REMOTE_DEPLOY_DIR
 export APP_IMAGE=$APP_IMAGE
-# .env에도 남긴다 — 셸 변수로만 넘기면 서버에서 compose로 재생성할 때 .env의 옛 이미지로 되돌아간다.
-{ grep -v '^APP_IMAGE=' .env; printf 'APP_IMAGE=%s\n' "\$APP_IMAGE"; } > .env.next
-chmod 600 .env.next && mv .env.next .env
+. ./write-app-image.sh
 docker-compose -f docker-compose.app.yml pull app
+# 받아온 뒤에 .env를 갱신한다 — 셸 변수로만 넘기면 서버에서 compose로 재생성할 때 옛 이미지로 되돌아가고,
+# 받아오기 전에 쓰면 pull 실패 시 .env가 받을 수 없는 이미지를 가리킨 채 남는다.
+write_app_image .env "\$APP_IMAGE"
 docker-compose -f docker-compose.app.yml up -d
 EOF
 
