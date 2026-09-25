@@ -164,7 +164,9 @@ class JobSeekingPostService {
         boolean hasNext = posts.size() > size;
         List<JobSeekingPost> page = hasNext ? posts.subList(0, size) : posts;
         List<RecruitIndexInfo> items = page.stream().map(this::toIndexInfo).toList();
-        String nextCursor = hasNext ? String.valueOf(page.get(page.size() - 1).getCreatedAt().toEpochMilli()) : null;
+        String nextCursor = (hasNext && !page.isEmpty())
+                ? String.valueOf(page.get(page.size() - 1).getCreatedAt().toEpochMilli())
+                : null;
         return CursorPage.of(items, nextCursor);
     }
 
@@ -226,7 +228,7 @@ class JobSeekingPostService {
         List<JobSeekingPostInfo> items = page.stream()
                 .map(p -> JobSeekingPostMapper.toInfo(p, authorNames.get(p.getAuthorMemberId()), images.get(p.getId())))
                 .toList();
-        String nextCursor = hasNext ? page.get(page.size() - 1).getId() : null;
+        String nextCursor = (hasNext && !page.isEmpty()) ? page.get(page.size() - 1).getId() : null;
         return CursorPage.of(items, nextCursor);
     }
 }

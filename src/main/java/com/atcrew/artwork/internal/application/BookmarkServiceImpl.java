@@ -162,7 +162,7 @@ class BookmarkServiceImpl implements BookmarkService {
                 })
                 .toList();
 
-        String nextCursor = hasNext
+        String nextCursor = (hasNext && !page.isEmpty())
                 ? String.valueOf(page.get(page.size() - 1).getSavedAt().toEpochMilli())
                 : null;
         return CursorPage.of(items, nextCursor);

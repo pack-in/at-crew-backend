@@ -18,6 +18,7 @@ public enum RecruitErrorCode {
     DUPLICATE_IMAGE_KEY(HttpStatus.BAD_REQUEST, "같은 이미지 키를 두 번 보낼 수 없습니다"),
     PRESIGN_RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "업로드 URL 발급 한도를 넘었습니다. 잠시 후 다시 시도해 주세요"),
     INVALID_CURSOR(HttpStatus.BAD_REQUEST, "커서 형식이 올바르지 않습니다"),
+    INVALID_SIZE(HttpStatus.BAD_REQUEST, "size는 0 이상이어야 합니다"),
     INVALID_AMOUNT_RANGE(HttpStatus.BAD_REQUEST, "최소 금액은 최대 금액보다 클 수 없습니다"),
     DEADLINE_IN_PAST(HttpStatus.BAD_REQUEST, "마감일은 오늘 이전 날짜일 수 없습니다"),
     INVALID_ACTIVITY_REGION(HttpStatus.BAD_REQUEST, "온라인 활동인 경우 활동 지역을 입력할 수 없습니다"),
