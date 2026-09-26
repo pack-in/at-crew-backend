@@ -11,6 +11,7 @@ import com.atcrew.billing.BillingProduct;
 import com.atcrew.billing.BillingService;
 import com.atcrew.billing.internal.persistence.EntitlementBalanceRepository;
 import com.atcrew.common.exception.DomainException;
+import com.atcrew.common.response.CursorPage;
 import com.atcrew.media.MediaAssetProcessedEvent;
 import com.atcrew.media.MediaAssetInfo;
 import com.atcrew.media.internal.application.MediaCallbackService;
@@ -295,6 +296,94 @@ class RecruitModuleTests {
         assertThat(recruitService.getLikedArtists(companyId, null, null, 20).items())
                 .extracting(LikedArtistInfo::artistMemberId)
                 .containsExactlyInAnyOrder(matchedArtistId, otherArtistId);
+    }
+
+    // 이슈 #195 — 커서 목록에서 size=0인데 조건에 맞는 데이터가 있으면 nextCursor 계산이
+    // 빈 page.get(-1)을 호출해 500이 나던 결함의 회귀 방지. 공개 피드(getJobPostingFeed·
+    // getTeamRecruitFeed)는 오프셋 페이지네이션으로 바뀌어(PR #207) 이 결함 대상에서 빠졌다.
+    @Test
+    void 내_구인글_목록_size가_0이고_데이터가_있어도_500이_나지_않는다() {
+        String authorId = registerMember("my-postings-size-zero-author");
+        publishedJobPosting(authorId, "사이즈0 내 공고");
+
+        CursorPage<JobPostingInfo> page = recruitService.getMyJobPostings(authorId, null, 0);
+
+        assertThat(page.items()).isEmpty();
+        assertThat(page.nextCursor()).isNull();
+    }
+
+    @Test
+    void 내_팀원모집글_목록_size가_0이고_데이터가_있어도_500이_나지_않는다() {
+        String authorId = registerMember("my-team-postings-size-zero-author");
+        recruitService.createTeamPosting(authorId, teamPostingCommand());
+
+        CursorPage<TeamPostingInfo> page = recruitService.getMyTeamPostings(authorId, null, 0);
+
+        assertThat(page.items()).isEmpty();
+        assertThat(page.nextCursor()).isNull();
+    }
+
+    @Test
+    void 내_구직글_목록_size가_0이고_데이터가_있어도_500이_나지_않는다() {
+        String authorId = registerMember("my-seeking-size-zero-author");
+        recruitService.createJobSeekingPost(authorId, jobSeekingPostCommand("사이즈0 구직글"));
+
+        CursorPage<JobSeekingPostInfo> page = recruitService.getMyJobSeekingPosts(authorId, null, 0);
+
+        assertThat(page.items()).isEmpty();
+        assertThat(page.nextCursor()).isNull();
+    }
+
+    @Test
+    void 구인글_지원자_목록_size가_0이고_데이터가_있어도_500이_나지_않는다() {
+        String authorId = registerMember("applicants-size-zero-author");
+        String applicantId = registerMember("applicants-size-zero-applicant");
+        String jobPostingId = publishedJobPosting(authorId, "사이즈0 지원자 공고");
+        recruitService.applyToJobPosting(applicantId, jobPostingId,
+                new CreateApplicationCommand(SerialExperience.NEWCOMER, false, null));
+
+        CursorPage<ApplicationInfo> page = recruitService.getJobPostingApplications(authorId, jobPostingId, null, 0);
+
+        assertThat(page.items()).isEmpty();
+        assertThat(page.nextCursor()).isNull();
+    }
+
+    @Test
+    void 팀원모집_지원자_목록_size가_0이고_데이터가_있어도_500이_나지_않는다() {
+        String authorId = registerMember("team-applicants-size-zero-author");
+        String applicantId = registerMember("team-applicants-size-zero-applicant");
+        String teamPostingId = recruitService.createTeamPosting(authorId, teamPostingCommand()).id();
+        recruitService.applyToTeamPosting(applicantId, teamPostingId,
+                new CreateApplicationCommand(SerialExperience.ONE_TO_TWO, true, null));
+
+        CursorPage<ApplicationInfo> page = recruitService.getTeamPostingApplications(authorId, teamPostingId, null, 0);
+
+        assertThat(page.items()).isEmpty();
+        assertThat(page.nextCursor()).isNull();
+    }
+
+    @Test
+    void 관심_작가_목록_size가_0이고_데이터가_있어도_500이_나지_않는다() {
+        String companyId = registerMember("liked-size-zero-company");
+        String artistId = registerMember("liked-size-zero-artist");
+        recruitService.likeArtist(companyId, artistId);
+
+        CursorPage<LikedArtistInfo> page = recruitService.getLikedArtists(companyId, null, null, 0);
+
+        assertThat(page.items()).isEmpty();
+        assertThat(page.nextCursor()).isNull();
+    }
+
+    @Test
+    void 최근_본_작가_목록_size가_0이고_데이터가_있어도_500이_나지_않는다() {
+        String companyId = registerMember("viewed-size-zero-company");
+        String artistId = registerMember("viewed-size-zero-artist");
+        recruitService.recordArtistView(companyId, artistId);
+
+        CursorPage<RecentlyViewedArtistInfo> page = recruitService.getRecentlyViewedArtists(companyId, null, 0);
+
+        assertThat(page.items()).isEmpty();
+        assertThat(page.nextCursor()).isNull();
     }
 
     @Test

@@ -38,6 +38,7 @@ public enum ArtworkErrorCode {
     BOOKMARK_NOT_FOUND(HttpStatus.NOT_FOUND, "북마크를 찾을 수 없습니다"),
     PRESIGN_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "업로드 URL 생성에 실패했습니다"),
     INVALID_CURSOR(HttpStatus.BAD_REQUEST, "유효하지 않은 커서 값입니다"),
+    INVALID_SIZE(HttpStatus.BAD_REQUEST, "size는 0 이상이어야 합니다"),
     // 작품 열람 기록의 X-Anonymous-Id 헤더(홈-R14) — FE가 발급한 익명 UUID가 아니면 dedup 키로 쓸 수 없다
     INVALID_ANONYMOUS_ID(HttpStatus.BAD_REQUEST, "익명 식별자 형식이 올바르지 않습니다");
 

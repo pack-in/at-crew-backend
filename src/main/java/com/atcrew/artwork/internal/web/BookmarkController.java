@@ -3,6 +3,8 @@ package com.atcrew.artwork.internal.web;
 import com.atcrew.artwork.BookmarkEntryInfo;
 import com.atcrew.artwork.BookmarkFolderInfo;
 import com.atcrew.artwork.BookmarkService;
+import com.atcrew.artwork.internal.exception.ArtworkErrorCode;
+import com.atcrew.artwork.internal.exception.ArtworkException;
 import com.atcrew.artwork.internal.web.dto.CreateBookmarkFolderRequest;
 import com.atcrew.artwork.internal.web.dto.MoveBookmarkRequest;
 import com.atcrew.artwork.internal.web.dto.RenameBookmarkFolderRequest;
@@ -84,8 +86,7 @@ class BookmarkController {
             @Parameter(description = "커서") @RequestParam(required = false) String cursor,
             @Parameter(description = "페이지 크기 (기본 20)") @RequestParam(required = false) Integer size) {
         String memberId = securityUtils.getCurrentMemberId();
-        int pageSize = size != null ? Math.min(size, 50) : 20;
-        return ApiResponse.success(bookmarkService.getBookmarks(memberId, folderId, cursor, pageSize));
+        return ApiResponse.success(bookmarkService.getBookmarks(memberId, folderId, cursor, resolveSize(size)));
     }
 
     @Operation(summary = "북마크 저장")
@@ -113,5 +114,15 @@ class BookmarkController {
     public void moveBookmarks(@RequestBody @Valid MoveBookmarkRequest request) {
         String memberId = securityUtils.getCurrentMemberId();
         bookmarkService.moveBookmarks(memberId, request.artworkIds(), request.targetFolderId());
+    }
+
+    private int resolveSize(Integer size) {
+        if (size == null) {
+            return 20;
+        }
+        if (size < 0) {
+            throw new ArtworkException(ArtworkErrorCode.INVALID_SIZE);
+        }
+        return Math.min(size, 50);
     }
 }

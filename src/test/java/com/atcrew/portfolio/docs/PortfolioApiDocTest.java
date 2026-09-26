@@ -109,7 +109,7 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
                                 fieldWithPath("reflectionType")
                                         .description("반영 유형 — LIVE(최신 반영형) / SNAPSHOT(고정형). 생성 후 전환 불가"),
                                 fieldWithPath("artworkIds")
-                                        .description("담을 작품 ID 목록 (최소 2개, 상한 없음). 본인 소유 작품만 담을 수 있다")
+                                        .description("담을 작품 ID 목록 (0개부터, 상한 없음). 본인 소유 작품만 담을 수 있다")
                         ),
                         relaxedResponseFields(
                                 fieldWithPath("code").description("응답 코드 (SUCCESS)"),
@@ -195,8 +195,7 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
                                 fieldWithPath("title")
                                         .description("변경할 제목 (최대 100자). null이면 유지, 작가 페이지에 값을 보내면 400").optional(),
                                 fieldWithPath("artworkIds")
-                                        .description("구성 작품 ID 목록 (상한 없음). null이면 유지, 빈 배열이면 전부 비운다(작가 페이지만). "
-                                                + "공유 포트폴리오는 2개 미만으로 줄이면 400").optional()
+                                        .description("구성 작품 ID 목록 (개수 제약 없음). null이면 유지, 빈 배열이면 전부 비운다").optional()
                         ),
                         relaxedResponseFields(
                                 fieldWithPath("code").description("응답 코드 (SUCCESS)"),
@@ -274,7 +273,7 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
                                 fieldWithPath("title").description("공유 포트폴리오 제목 (필수, 최대 100자)"),
                                 fieldWithPath("reflectionType")
                                         .description("SNAPSHOT — 생성 시점 작품 표시 정보와 작성자 이름을 함께 얼린다"),
-                                fieldWithPath("artworkIds").description("담을 작품 ID 목록 (최소 2개, 상한 없음)")
+                                fieldWithPath("artworkIds").description("담을 작품 ID 목록 (0개부터, 상한 없음)")
                         ),
                         relaxedResponseFields(
                                 fieldWithPath("code").description("응답 코드 (SUCCESS)"),

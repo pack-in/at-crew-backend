@@ -144,6 +144,41 @@ class SearchModuleTests {
                 .contains(allArtwork.id(), r18Artwork.id(), ownR18Artwork.id());
     }
 
+    // 이슈 #195 — 소스별 커서 계산(ArtworkSearchQueryRepository·RecruitSearchQueryRepository)이
+    // size=0 + 데이터 있음 조합에서 빈 page.get(-1)을 호출해 500이 나던 결함의 회귀 방지.
+    @Test
+    void 포트폴리오_검색_size가_0이고_데이터가_있어도_500이_나지_않는다() {
+        String token = uniqueToken();
+        uploadReadyArtwork(ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
+                List.of(ArtworkRole.LINEART), List.of(Genre.FANTASY), AgeRating.ALL, token);
+        // postTypes를 PORTFOLIO 단일로 좁혀 병합 경로(searchMerged) 대신 단일 소스 경로(searchPortfolio)를
+        // 타게 한다 — 병합 경로는 소스별 hasNext가 true면 items가 비어도 이전 서브커서를 그대로 인코딩해
+        // 돌려주는 별개의 설계라 "size=0이면 nextCursor는 null"이 성립하지 않는다.
+        awaitSearchResult(() -> searchService.search(new SearchQuery(
+                token, List.of(PostType.PORTFOLIO), null, null, null, null, null, null, null, null, true, null, null, 20)));
+
+        SearchPage<SearchResultItem> page = searchService.search(new SearchQuery(
+                token, List.of(PostType.PORTFOLIO), null, null, null, null, null, null, null, null, true, null, null, 0));
+
+        assertThat(page.items()).isEmpty();
+        assertThat(page.nextCursor()).isNull();
+    }
+
+    @Disabled("MVP 범위 밖 — recruit(구인·구직·팀원모집) 미출시, 출시 시 해제")
+    @Test
+    void 구인글_검색_size가_0이고_데이터가_있어도_500이_나지_않는다() {
+        String token = uniqueToken();
+        publishedJobPosting(registerMember(), token);
+        awaitSearchResult(() -> searchService.search(new SearchQuery(
+                token, List.of(PostType.JOB_POSTING), null, null, null, null, null, null, null, null, true, null, null, 20)));
+
+        SearchPage<SearchResultItem> page = searchService.search(new SearchQuery(
+                token, List.of(PostType.JOB_POSTING), null, null, null, null, null, null, null, null, true, null, null, 0));
+
+        assertThat(page.items()).isEmpty();
+        assertThat(page.nextCursor()).isNull();
+    }
+
     private SearchQuery adultQuery(String q, String viewerMemberId, boolean viewerAdultContentVisible) {
         return new SearchQuery(q, null, null, null, null, null, null, null, null,
                 viewerMemberId, viewerAdultContentVisible, null, null, 20);

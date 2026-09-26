@@ -134,6 +134,20 @@ class PortfolioServiceTests {
                 .containsExactly(first.getFirst().id());
     }
 
+    // 이슈 #195 — size=0인데 조건에 맞는 데이터가 있으면 nextCursor 계산이 빈 page.get(-1)을
+    // 호출해 500이 나던 결함의 회귀 방지.
+    @Test
+    void 내_포트폴리오_목록_size가_0이고_데이터가_있어도_500이_나지_않는다() {
+        String memberId = registerMember();
+        portfolioService.getSelectablePortfolios(memberId);
+
+        CursorPage<PortfolioSummaryInfo> page = portfolioService.getMyPortfolios(
+                memberId, null, null, null, null, 0);
+
+        assertThat(page.items()).isEmpty();
+        assertThat(page.nextCursor()).isNull();
+    }
+
     @Test
     void 스타터_계정은_공유_포트폴리오를_만들_수_없다() {
         String memberId = registerMember();
@@ -163,41 +177,28 @@ class PortfolioServiceTests {
         assertThat(artworkRepository.findById(artworkId).orElseThrow().isPortfolioIncluded()).isTrue();
     }
 
-    // 공유 포트폴리오는 최소 2개의 작품이 있어야 한다(제품 결정, 2026-08-28) — 작가 페이지는 대상이 아니다.
+    // 공유 포트폴리오는 작품 수 제약이 없다(제품 결정, 2026-09-25) — 0개로도 생성할 수 있다.
     @Test
-    void 공유_포트폴리오는_작품이_0개면_생성이_거부된다() {
+    void 공유_포트폴리오는_작품이_0개여도_생성된다() {
         String memberId = registerProMember();
 
-        assertThatThrownBy(() -> portfolioService.createShared(
-                memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of()))
-                .isInstanceOf(PortfolioException.class)
-                .extracting(e -> ((DomainException) e).getCode())
-                .isEqualTo("PORTFOLIO_ARTWORK_MINIMUM");
+        PortfolioInfo created = portfolioService.createShared(
+                memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of());
+
+        assertThat(created.itemCount()).isEqualTo(0);
+        assertThat(created.artworks()).isEmpty();
     }
 
+    // 고정형도 공유 포트폴리오이므로 동일하게 개수 제약이 없다.
     @Test
-    void 공유_포트폴리오는_작품이_1개면_생성이_거부된다() {
+    void 고정형_포트폴리오도_작품이_0개여도_생성된다() {
         String memberId = registerProMember();
-        String artworkId = uploadArtwork(memberId);
 
-        assertThatThrownBy(() -> portfolioService.createShared(
-                memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of(artworkId)))
-                .isInstanceOf(PortfolioException.class)
-                .extracting(e -> ((DomainException) e).getStatus())
-                .isEqualTo(HttpStatus.BAD_REQUEST);
-    }
+        PortfolioInfo created = portfolioService.createShared(
+                memberId, "고정형", ReflectionType.SNAPSHOT, List.of());
 
-    // 고정형도 공유 포트폴리오이므로 동일한 최소 개수 규칙이 적용된다.
-    @Test
-    void 고정형_포트폴리오도_작품이_1개면_생성이_거부된다() {
-        String memberId = registerProMember();
-        String artworkId = uploadArtwork(memberId);
-
-        assertThatThrownBy(() -> portfolioService.createShared(
-                memberId, "고정형", ReflectionType.SNAPSHOT, List.of(artworkId)))
-                .isInstanceOf(PortfolioException.class)
-                .extracting(e -> ((DomainException) e).getCode())
-                .isEqualTo("PORTFOLIO_ARTWORK_MINIMUM");
+        assertThat(created.itemCount()).isEqualTo(0);
+        assertThat(created.artworks()).isEmpty();
     }
 
     @Test
@@ -346,43 +347,20 @@ class PortfolioServiceTests {
                 .containsExactly(keptArtworkId);
     }
 
-    // 공유 포트폴리오를 수정으로 2개 미만으로 줄이는 것도 생성 시와 동일하게 막아야 한다 —
-    // 그렇지 않으면 생성만 막고 수정으로 우회하는 구멍이 생긴다.
+    // 공유 포트폴리오도 작가 페이지와 마찬가지로 수정으로 0개까지 비울 수 있다(제품 결정, 2026-09-25).
     @Test
-    void 공유_포트폴리오는_수정으로_1개로_줄이는_것이_거부된다() {
+    void 공유_포트폴리오는_수정으로_0개로_비워도_허용된다() {
         String memberId = registerProMember();
         String keptArtworkId = uploadArtwork(memberId);
         String droppedArtworkId = uploadArtwork(memberId);
         PortfolioInfo created = portfolioService.createShared(
                 memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of(keptArtworkId, droppedArtworkId));
 
-        assertThatThrownBy(() -> portfolioService.updatePortfolio(
-                memberId, created.id(), null, List.of(keptArtworkId)))
-                .isInstanceOf(PortfolioException.class)
-                .extracting(e -> ((DomainException) e).getCode())
-                .isEqualTo("PORTFOLIO_ARTWORK_MINIMUM");
-        // 거부된 수정은 기존 구성을 그대로 남긴다.
-        assertThat(portfolioService.getPortfolio(memberId, created.id()).artworks())
-                .extracting(PortfolioArtworkCardInfo::artworkId)
-                .containsExactly(keptArtworkId, droppedArtworkId);
+        portfolioService.updatePortfolio(memberId, created.id(), null, List.of());
+
+        assertThat(portfolioService.getPortfolio(memberId, created.id()).artworks()).isEmpty();
     }
 
-    // 공유 포트폴리오를 수정으로 0개로 비우는 것도 같은 이유로 거부된다.
-    @Test
-    void 공유_포트폴리오는_수정으로_0개로_비우는_것이_거부된다() {
-        String memberId = registerProMember();
-        String keptArtworkId = uploadArtwork(memberId);
-        String droppedArtworkId = uploadArtwork(memberId);
-        PortfolioInfo created = portfolioService.createShared(
-                memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of(keptArtworkId, droppedArtworkId));
-
-        assertThatThrownBy(() -> portfolioService.updatePortfolio(memberId, created.id(), null, List.of()))
-                .isInstanceOf(PortfolioException.class)
-                .extracting(e -> ((DomainException) e).getCode())
-                .isEqualTo("PORTFOLIO_ARTWORK_MINIMUM");
-    }
-
-    // 작가 페이지는 이 규칙과 무관하다 — 1개로 줄이는 것도, 0개로 비우는 것도 허용된다.
     @Test
     void 작가_페이지는_수정으로_1개로_줄여도_허용된다() {
         String memberId = registerMember();

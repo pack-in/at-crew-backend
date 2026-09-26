@@ -71,8 +71,11 @@ class LikedArtistService {
                 .map(l -> new LikedArtistInfo(
                         l.getArtistMemberId(), artistNames.get(l.getArtistMemberId()), l.getLikedAt()))
                 .toList();
-        LikedArtist last = page.get(page.size() - 1);
-        String nextCursor = hasNext ? CompositeCursor.encode(last.getLikedAt(), last.getArtistMemberId()) : null;
+        String nextCursor = null;
+        if (hasNext && !page.isEmpty()) {
+            LikedArtist last = page.get(page.size() - 1);
+            nextCursor = CompositeCursor.encode(last.getLikedAt(), last.getArtistMemberId());
+        }
         return CursorPage.of(items, nextCursor);
     }
 
@@ -133,8 +136,11 @@ class LikedArtistService {
                 .map(v -> new RecentlyViewedArtistInfo(
                         v.getArtistMemberId(), artistNames.get(v.getArtistMemberId()), v.getViewedAt()))
                 .toList();
-        RecentlyViewedArtist last = page.get(page.size() - 1);
-        String nextCursor = hasNext ? CompositeCursor.encode(last.getViewedAt(), last.getArtistMemberId()) : null;
+        String nextCursor = null;
+        if (hasNext && !page.isEmpty()) {
+            RecentlyViewedArtist last = page.get(page.size() - 1);
+            nextCursor = CompositeCursor.encode(last.getViewedAt(), last.getArtistMemberId());
+        }
         return CursorPage.of(items, nextCursor);
     }
 }

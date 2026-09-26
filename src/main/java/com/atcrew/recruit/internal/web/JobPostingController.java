@@ -204,7 +204,13 @@ class JobPostingController {
     }
 
     private int resolveSize(Integer size) {
-        return size != null ? Math.min(size, MAX_SIZE) : DEFAULT_SIZE;
+        if (size == null) {
+            return DEFAULT_SIZE;
+        }
+        if (size < 0) {
+            throw new RecruitException(RecruitErrorCode.INVALID_SIZE);
+        }
+        return Math.min(size, MAX_SIZE);
     }
 
     private String getOptionalMemberId() {

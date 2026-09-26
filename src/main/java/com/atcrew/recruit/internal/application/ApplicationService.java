@@ -90,7 +90,7 @@ class ApplicationService {
         List<ApplicationInfo> items = page.stream()
                 .map(a -> ApplicationMapper.toInfo(a, applicantNames.get(a.getApplicantMemberId())))
                 .toList();
-        String nextCursor = hasNext ? page.get(page.size() - 1).getId() : null;
+        String nextCursor = (hasNext && !page.isEmpty()) ? page.get(page.size() - 1).getId() : null;
         return CursorPage.of(items, nextCursor);
     }
 
@@ -147,7 +147,7 @@ class ApplicationService {
         List<ApplicationInfo> items = page.stream()
                 .map(a -> ApplicationMapper.toInfo(a, applicantNames.get(a.getApplicantMemberId())))
                 .toList();
-        String nextCursor = hasNext ? page.get(page.size() - 1).getId() : null;
+        String nextCursor = (hasNext && !page.isEmpty()) ? page.get(page.size() - 1).getId() : null;
         return CursorPage.of(items, nextCursor);
     }
 
