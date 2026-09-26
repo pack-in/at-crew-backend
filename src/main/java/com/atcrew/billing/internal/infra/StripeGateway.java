@@ -68,6 +68,10 @@ public class StripeGateway {
                 .setClientReferenceId(memberId)
                 .putMetadata("memberId", memberId)
                 .putMetadata("product", product.name())
+                // 대시보드에서 발급한 쿠폰을 결제창에서 입력할 수 있게 한다.
+                .setAllowPromotionCodes(true)
+                // Stripe가 판매 주체(MoR)로 세금을 처리한다. SDK 고정 API 버전(2025-03-31.basil 이상)에서만 받는다.
+                .setManagedPayments(SessionCreateParams.ManagedPayments.builder().setEnabled(true).build())
                 .build();
 
         try {
