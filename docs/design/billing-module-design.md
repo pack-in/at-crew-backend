@@ -33,6 +33,16 @@
 Customer Portal의 "요금제 변경"이 Product 단위로 전환 가능한 Price를 지정하는 구조라 이렇게 묶어야
 월↔연 변경이 Portal에서 동작한다.
 
+**무료 체험(2026-09-27, FE 요청)**: 구독 Checkout에 `subscription_data.trial_period_days`(`billing.trial-days`,
+월·연 공통 30일)를 붙인다. 체험 중 취소 → 재구독으로 체험을 반복하지 못하게 `billing_subscriptions`에 취소
+이력 포함 행이 하나라도 있는 회원에게는 붙이지 않는다(`existsByMemberId`). 카탈로그는 같은 판정으로 상품별
+`trialDays`를 내려 프론트가 체험 문구를 고르게 한다. 자격은 세션 생성 시점에 판정되고 세션은 24시간 유효하므로,
+세션을 여러 개 열어 두고 하나씩 결제해 체험을 반복하지 못하게 구독 Checkout 직전에 그 고객의 열린 세션을 전부
+만료시킨다(`StripeGateway.expireOpenCheckoutSessions`). 결제 직후 웹훅 도착 전 수 초 사이에 새 세션을 여는 틈은 남는다. 체험 중(`trialing`)은 `ACTIVE`로 매핑돼 프로 혜택이
+열리고, 체험 시작 시 생기는 $0 인보이스의 `invoice.payment_succeeded`는 `PAST_DUE`가 아니라서 아무것도
+바꾸지 않는다. 알려진 우회: 탈퇴 후 재가입하면 memberId가 바뀌어 다시 체험할 수 있다(재가입 허용 정책) —
+카드 fingerprint 대조는 현재 규모에서 도입하지 않는다.
+
 ## 3. 모듈 경계
 
 ```

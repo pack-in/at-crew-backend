@@ -49,7 +49,11 @@ class BillingApiDocTest extends RestDocsIntegrationSupport {
                                 fieldWithPath("data[].listAmount").description("취소선 정가 (센트). 할인이 없으면 null").optional(),
                                 fieldWithPath("data[].currency").description("통화 (USD 단일)"),
                                 fieldWithPath("data[].cta")
-                                        .description("버튼 상태 (AVAILABLE·CURRENT·CHANGE·UNAVAILABLE)")
+                                        .description("버튼 상태 (AVAILABLE·CURRENT·CHANGE·UNAVAILABLE)"),
+                                fieldWithPath("data[].trialDays")
+                                        .description("결제 시 붙는 무료 체험 일수. cta가 AVAILABLE이고 구독 이력이 없는 회원"
+                                                + "(비로그인 포함)의 구독 상품이면 30, 그 외(체험·구독 이력 있음, 기업 계정, "
+                                                + "이용 중인 플랜)는 0")
                         )));
     }
 

@@ -18,4 +18,7 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, Stri
      */
     List<Subscription> findByMemberIdAndStatusInOrderByStripeUpdatedAtDesc(
             String memberId, Collection<SubscriptionStatus> statuses);
+
+    /** 취소된 이력을 포함해 구독을 한 번이라도 가졌는지. 무료 체험은 첫 구독에만 준다. */
+    boolean existsByMemberId(String memberId);
 }

@@ -9,6 +9,9 @@ import com.stripe.exception.StripeException;
 import com.stripe.model.Customer;
 import com.stripe.param.CustomerCreateParams;
 import com.stripe.param.checkout.SessionCreateParams;
+import com.stripe.param.checkout.SessionListParams;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
@@ -17,6 +20,8 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class StripeGateway {
+
+    private static final Logger log = LoggerFactory.getLogger(StripeGateway.class);
 
     private final StripeClient client;
     private final BillingProperties properties;
@@ -45,15 +50,28 @@ public class StripeGateway {
      *
      * <p>단건 결제는 PaymentIntent ID를 원장의 refId로 남겨 환불 시 회수 대상을 역추적하므로,
      * 메타데이터에 의존하지 않고도 환불 처리가 가능하다.
+     *
+     * @param trialDays 구독 무료 체험 일수. 0이면 체험 없이 즉시 청구한다
      */
-    public String createCheckoutSession(String memberId, BillingProduct product, String customerId) {
+    public String createCheckoutSession(String memberId, BillingProduct product, String customerId,
+            int trialDays) {
+        try {
+            return client.checkout().sessions()
+                    .create(checkoutParams(memberId, product, customerId, trialDays)).getUrl();
+        } catch (StripeException e) {
+            throw new BillingException(BillingErrorCode.STRIPE_REQUEST_FAILED, e);
+        }
+    }
+
+    SessionCreateParams checkoutParams(String memberId, BillingProduct product, String customerId,
+            int trialDays) {
         BillingProperties.Product config = properties.product(product);
         if (config.priceId() == null || config.priceId().isBlank()) {
             throw new BillingException(BillingErrorCode.PRICE_NOT_CONFIGURED, "product=" + product);
         }
 
         String base = properties.frontendBaseUrl();
-        SessionCreateParams params = SessionCreateParams.builder()
+        SessionCreateParams.Builder params = SessionCreateParams.builder()
                 .setMode(product.isSubscription()
                         ? SessionCreateParams.Mode.SUBSCRIPTION
                         : SessionCreateParams.Mode.PAYMENT)
@@ -71,13 +89,43 @@ public class StripeGateway {
                 // 대시보드에서 발급한 쿠폰을 결제창에서 입력할 수 있게 한다.
                 .setAllowPromotionCodes(true)
                 // Stripe가 판매 주체(MoR)로 세금을 처리한다. SDK 고정 API 버전(2025-03-31.basil 이상)에서만 받는다.
-                .setManagedPayments(SessionCreateParams.ManagedPayments.builder().setEnabled(true).build())
-                .build();
+                .setManagedPayments(SessionCreateParams.ManagedPayments.builder().setEnabled(true).build());
+        if (product.isSubscription() && trialDays > 0) {
+            // 체험 기간에도 결제수단은 받는다(Checkout 기본값) — 체험이 끝나면 첫 주기 금액이 자동 청구된다.
+            params.setSubscriptionData(SessionCreateParams.SubscriptionData.builder()
+                    .setTrialPeriodDays((long) trialDays)
+                    .build());
+        }
+        return params.build();
+    }
 
+    /**
+     * 고객의 열려 있는 Checkout 세션을 전부 만료시킨다. 세션은 24시간 유효하고 무료 체험 자격은 생성 시점에
+     * 판정되므로, 미리 열어 둔 세션으로 체험을 반복하지 못하게 새 세션을 만들기 전에 닫는다.
+     *
+     * <p>목록 조회와 만료 사이에 결제가 끝나거나 스스로 만료된 세션은 만료 요청이 실패하는데, 이미 닫힌
+     * 것이므로 건너뛴다.
+     */
+    public void expireOpenCheckoutSessions(String customerId) {
+        SessionListParams params = SessionListParams.builder()
+                .setCustomer(customerId)
+                .setStatus(SessionListParams.Status.OPEN)
+                .build();
         try {
-            return client.checkout().sessions().create(params).getUrl();
+            for (com.stripe.model.checkout.Session session :
+                    client.checkout().sessions().list(params).autoPagingIterable()) {
+                expireQuietly(session.getId());
+            }
         } catch (StripeException e) {
             throw new BillingException(BillingErrorCode.STRIPE_REQUEST_FAILED, e);
+        }
+    }
+
+    private void expireQuietly(String sessionId) {
+        try {
+            client.checkout().sessions().expire(sessionId);
+        } catch (StripeException e) {
+            log.info("Checkout 세션 만료 건너뜀 sessionId={}, reason={}", sessionId, e.getMessage());
         }
     }
 

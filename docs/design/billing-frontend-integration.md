@@ -28,8 +28,8 @@ GET /api/billing/catalog
 ```json
 {
   "data": [
-    {"product": "PRO_MONTHLY", "amount": 800, "listAmount": null, "currency": "USD", "cta": "AVAILABLE"},
-    {"product": "PRO_YEARLY", "amount": 8000, "listAmount": 9600, "currency": "USD", "cta": "AVAILABLE"}
+    {"product": "PRO_MONTHLY", "amount": 800, "listAmount": null, "currency": "USD", "cta": "AVAILABLE", "trialDays": 30},
+    {"product": "PRO_YEARLY", "amount": 8000, "listAmount": 9600, "currency": "USD", "cta": "AVAILABLE", "trialDays": 30}
   ]
 }
 ```
@@ -46,6 +46,13 @@ GET /api/billing/catalog
 | `UNAVAILABLE` | 기업 계정 — 프로 카드 구매 불가 처리 |
 
 - 혜택 문구는 프론트가 갖는다.
+- **무료 체험(2026-09-27)**: `trialDays`가 0보다 크면 결제 시 그 일수만큼 무료 체험이 붙는다 — 버튼·안내에
+  "30일 무료 체험" 문구를 쓰고, 0이면 체험 문구 없이 기존 문구를 쓴다. 체험은 **구독 이력이 없는 회원의 첫
+  구독에만** 붙는다(체험 중 취소 후 재구독으로 체험을 반복하지 못하게). 비로그인은 30으로 내려가지만, 로그인 후
+  이력이 있거나 기업 계정(`cta: UNAVAILABLE`)이면 0이 된다 — `cta`가 `AVAILABLE`이 아닌 카드는 항상 0이다.
+  구독 결제 진입 시 그 회원이 앞서 열어 둔 Checkout 세션은 만료되므로, 결제창은 가장 마지막에 연 것만 유효하다. 체험 여부 판단·`trial_period_days` 전달은 백엔드가 Checkout 세션을 만들 때 하므로
+  프론트는 `POST /api/billing/checkout-sessions`를 그대로 호출하면 된다. Checkout에서 카드는 체험 시작 시
+  등록받고, 체험이 끝나면 월간은 1개월치·연간은 1년치가 자동 청구된다.
 - 스타터 카드는 비로그인 요금제 페이지에서만 노출하고, 설정 탭에는 프로 카드만 노출한다(요금제-R03).
 - 판매 중단 상품을 API로 직접 호출해도(`POST /api/billing/checkout-sessions`) 503
   `PRICE_NOT_CONFIGURED`로 막힌다 — 카탈로그에 없는 상품 버튼을 실수로 남겨둬도 결제까지 새지 않는다.
@@ -133,6 +140,9 @@ POST /api/billing/portal-sessions
 프로 기능은 잠긴다 — 유예 기간은 없다.
 
 ## 7. 알려진 제약
+
+- 체험 중에도 `GET /api/billing/me`의 `status`는 `ACTIVE`로 내려오고(프로 혜택 적용), `currentPeriodEnd`는
+  체험 종료 = 첫 결제 시각이다. "체험 중" 여부를 따로 구분해 내려주지는 않는다.
 
 - 환불 신청 화면은 없다. 환불은 문의를 받아 운영자가 Stripe 대시보드에서 처리하고, 권한 회수는
   웹훅으로 자동 반영된다.
