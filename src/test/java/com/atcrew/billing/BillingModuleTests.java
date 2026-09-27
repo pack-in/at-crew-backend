@@ -260,6 +260,46 @@ class BillingModuleTests {
     }
 
     @Test
+    void 구독_이력이_없으면_월간_연간_모두_30일_무료체험이_붙는다() {
+        String memberId = registerMember("trial-new");
+
+        List<CatalogItemInfo> catalog = billingService.getCatalog(memberId);
+
+        assertThat(trialDaysOf(catalog, BillingProduct.PRO_MONTHLY)).isEqualTo(30);
+        assertThat(trialDaysOf(catalog, BillingProduct.PRO_YEARLY)).isEqualTo(30);
+    }
+
+    @Test
+    void 체험_중_취소해_구독이_끝난_회원은_다시_체험하지_못한다() {
+        // 체험 중 취소 → 재구독으로 체험을 반복하는 우회를 막는다.
+        String memberId = registerMemberWithCustomer("trial-used", "cus_trial_used");
+        webhookService.handle(subscriptionEvent("evt_trial_start", "customer.subscription.created",
+                "sub_trial_used", "cus_trial_used", "trialing", BASE_CREATED));
+        webhookService.handle(subscriptionEvent("evt_trial_cancel", "customer.subscription.deleted",
+                "sub_trial_used", "cus_trial_used", "canceled", BASE_CREATED + 10));
+
+        List<CatalogItemInfo> catalog = billingService.getCatalog(memberId);
+
+        assertThat(ctaOf(catalog, BillingProduct.PRO_MONTHLY)).isEqualTo(CatalogItemInfo.CtaState.AVAILABLE);
+        assertThat(trialDaysOf(catalog, BillingProduct.PRO_MONTHLY)).isZero();
+        assertThat(trialDaysOf(catalog, BillingProduct.PRO_YEARLY)).isZero();
+    }
+
+    @Test
+    void 체험_중인_구독은_프로로_취급되고_체험은_더_붙지_않는다() {
+        String memberId = registerMemberWithCustomer("trialing", "cus_trialing");
+        webhookService.handle(subscriptionEvent("evt_trialing", "customer.subscription.created",
+                "sub_trialing", "cus_trialing", "trialing", BASE_CREATED));
+
+        List<CatalogItemInfo> catalog = billingService.getCatalog(memberId);
+
+        assertThat(billingService.hasProPlan(memberId)).isTrue();
+        assertThat(ctaOf(catalog, BillingProduct.PRO_MONTHLY)).isEqualTo(CatalogItemInfo.CtaState.CURRENT);
+        assertThat(trialDaysOf(catalog, BillingProduct.PRO_MONTHLY)).isZero();
+        assertThat(trialDaysOf(catalog, BillingProduct.PRO_YEARLY)).isZero();
+    }
+
+    @Test
     void 이용중인_플랜은_CURRENT로_내려가고_다른_주기는_CHANGE로_내려간다() {
         String memberId = registerMemberWithCustomer("catalog-pro", "cus_catalog_pro");
         webhookService.handle(subscriptionEvent("evt_catalog_pro", "customer.subscription.created",
@@ -294,6 +334,14 @@ class BillingModuleTests {
         } catch (RuntimeException e) {
             // 잔량 부족 또는 낙관적 락 충돌 — 경합에서 밀린 쪽이다
         }
+    }
+
+    private int trialDaysOf(List<CatalogItemInfo> catalog, BillingProduct product) {
+        return catalog.stream()
+                .filter(item -> item.product() == product)
+                .findFirst()
+                .orElseThrow()
+                .trialDays();
     }
 
     private CatalogItemInfo.CtaState ctaOf(List<CatalogItemInfo> catalog, BillingProduct product) {

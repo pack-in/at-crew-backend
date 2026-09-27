@@ -10,8 +10,10 @@ import org.springframework.core.io.ClassPathResource;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * 상품 카탈로그 설정이 실제로 바인딩되는지 확인한다.
@@ -39,6 +41,7 @@ class BillingPropertiesBindingTest {
         assertThat(properties.product(BillingProduct.PRO_MONTHLY).enabled()).isTrue();
         assertThat(properties.product(BillingProduct.JOB_POSTING).amount()).isEqualTo(9999);
         assertThat(properties.frontendBaseUrl()).isNotBlank();
+        assertThat(properties.trialDays()).isEqualTo(30);
     }
 
     @Test
@@ -73,5 +76,18 @@ class BillingPropertiesBindingTest {
         assertThat(properties.product(BillingProduct.PRO_YEARLY).enabled()).isTrue();
         assertThat(properties.product(BillingProduct.PRO_YEARLY).amount()).isEqualTo(8000);
         assertThat(properties.product(BillingProduct.PRO_YEARLY).listAmount()).isEqualTo(9600);
+    }
+
+    @Test
+    void 체험_일수가_없거나_Stripe_허용_범위를_벗어나면_기동에_실패한다() {
+        Map<BillingProduct, BillingProperties.Product> products = Map.of();
+
+        assertThatThrownBy(() -> new BillingProperties("http://localhost:3000", null, products))
+                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> new BillingProperties("http://localhost:3000", -1, products))
+                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> new BillingProperties("http://localhost:3000", 731, products))
+                .isInstanceOf(IllegalStateException.class);
+        assertThat(new BillingProperties("http://localhost:3000", 0, products).trialDays()).isZero();
     }
 }

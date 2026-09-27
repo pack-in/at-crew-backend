@@ -10,13 +10,15 @@ package com.atcrew.billing;
  * @param listAmount  취소선으로 표기할 정가(센트). 할인이 없으면 null
  * @param currency    통화 — USD 단일
  * @param cta         버튼 상태
+ * @param trialDays   Checkout 시 붙는 무료 체험 일수. 구독 이력이 있거나 구독 대상이 아니면 0
  */
 public record CatalogItemInfo(
         BillingProduct product,
         long amount,
         Long listAmount,
         String currency,
-        CtaState cta
+        CtaState cta,
+        int trialDays
 ) {
 
     /** 상품 카드의 버튼 상태. 실제 라벨("시작하기"/"이용 중인 플랜")은 프론트가 매핑한다. */

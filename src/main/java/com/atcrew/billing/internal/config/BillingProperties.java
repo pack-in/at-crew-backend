@@ -10,9 +10,22 @@ import java.util.Map;
  *
  * <p>실제 청구액의 정본은 Stripe의 Price이고 여기 amount는 요금제 페이지 표시용이다 —
  * Dashboard에서 가격을 바꿀 때 이 설정도 함께 갱신해야 한다.
+ *
+ * @param trialDays 구독 무료 체험 일수(월·연 공통). 구독 이력이 없는 회원의 첫 구독에만 붙는다. 0이면 체험 없음
  */
 @ConfigurationProperties(prefix = "billing")
-public record BillingProperties(String frontendBaseUrl, Map<BillingProduct, Product> products) {
+public record BillingProperties(String frontendBaseUrl, Integer trialDays, Map<BillingProduct, Product> products) {
+
+    /** Stripe가 받는 체험 일수 상한. 넘기면 모든 구독 Checkout이 첫 호출에서야 실패하므로 기동 시점에 막는다. */
+    private static final int MAX_TRIAL_DAYS = 730;
+
+    public BillingProperties {
+        // 설정이 빠지면 조용히 체험이 꺼지지 않도록 누락도 기동 실패로 다룬다(0은 "체험 없음"으로 명시해야 한다).
+        if (trialDays == null || trialDays < 0 || trialDays > MAX_TRIAL_DAYS) {
+            throw new IllegalStateException(
+                    "billing.trial-days는 0~" + MAX_TRIAL_DAYS + " 사이여야 합니다: " + trialDays);
+        }
+    }
 
     /** 통화는 USD 단일. 금액은 전부 센트 단위 정수다($5.99 = 599). */
     public static final String CURRENCY = "USD";

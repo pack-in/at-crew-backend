@@ -82,6 +82,7 @@ stripe:
 
 billing:
   frontend-base-url: http://localhost:3000
+  trial-days: 30
   # MVP 단일 요금제(PH-08) + 연간 결제 재개(PH-09) — main application.yml과 동일.
   products:
     pro-monthly:

@@ -42,7 +42,9 @@ class BillingController {
 
     @Operation(summary = "요금제 카탈로그 조회",
             description = "상품별 가격(USD 센트)과 버튼 상태를 반환합니다. 비로그인도 호출할 수 있으며, "
-                    + "로그인 상태면 현재 구독을 반영해 cta가 CURRENT·CHANGE·UNAVAILABLE로 내려갑니다.")
+                    + "로그인 상태면 현재 구독을 반영해 cta가 CURRENT·CHANGE·UNAVAILABLE로 내려갑니다. "
+                    + "trialDays는 결제 시 붙는 무료 체험 일수로, 구독 이력이 없는 회원의 첫 구독에만 0보다 큽니다 "
+                    + "(기업 계정·이용 중인 플랜은 0).")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공")
     @GetMapping("/catalog")
     public ApiResponse<List<CatalogItemInfo>> getCatalog() {

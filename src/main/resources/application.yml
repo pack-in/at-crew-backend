@@ -177,6 +177,8 @@ stripe:
 billing:
   # Checkout 성공·취소 후 돌아갈 프론트 주소. prod는 https://at-crew.com
   frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:3000}
+  # 구독 무료 체험 일수(월·연 공통). 구독 이력이 없는 회원의 첫 구독에만 붙는다 — 0이면 체험 없음.
+  trial-days: 30
   # 통화는 USD 단일. amount·list-amount는 센트 단위 정수($5.99 = 599)다.
   # 실제 청구액의 정본은 Stripe의 Price이며, 여기 amount는 카탈로그 표시용이다 — Price 변경 시 함께 갱신한다.
   # MVP 단일 요금제(PH-08, 2026-08-18) — Portfolio Pro는 월 $8 단일가로 판매한다.
