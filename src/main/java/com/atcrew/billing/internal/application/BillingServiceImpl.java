@@ -100,6 +100,7 @@ class BillingServiceImpl implements BillingService {
                 ? Optional.empty()
                 : currentSubscription(memberId).filter(Subscription::grantsPro);
         boolean company = memberId != null && companyAccountPort.isCompanyAccount(memberId);
+        boolean trialEligible = isTrialEligible(memberId);
 
         List<CatalogItemInfo> items = new ArrayList<>();
         for (BillingProduct product : BillingProduct.values()) {
@@ -107,8 +108,10 @@ class BillingServiceImpl implements BillingService {
             if (!config.enabled()) {
                 continue; // 판매 중단 상품(PH-08) — 카탈로그에는 노출하지 않는다. 기존 보유자 게이팅은 별개.
             }
+            CatalogItemInfo.CtaState cta = ctaState(product, subscription, company);
+            int trialDays = cta == CatalogItemInfo.CtaState.AVAILABLE ? trialDays(product, trialEligible) : 0;
             items.add(new CatalogItemInfo(product, config.amount(), config.listAmount(),
-                    BillingProperties.CURRENCY, ctaState(product, subscription, company)));
+                    BillingProperties.CURRENCY, cta, trialDays));
         }
         return items;
     }
@@ -124,7 +127,12 @@ class BillingServiceImpl implements BillingService {
             assertSubscribable(memberId, product);
         }
         String customerId = getOrCreateCustomer(memberId);
-        return new CheckoutSessionInfo(stripeGateway.createCheckoutSession(memberId, product, customerId));
+        if (product.isSubscription()) {
+            // 체험 자격은 이 시점에 판정되므로, 앞서 열어 둔 세션이 남아 있으면 그걸로 체험을 한 번 더 받을 수 있다.
+            stripeGateway.expireOpenCheckoutSessions(customerId);
+        }
+        return new CheckoutSessionInfo(stripeGateway.createCheckoutSession(
+                memberId, product, customerId, trialDays(product, isTrialEligible(memberId))));
     }
 
     @Override
@@ -164,6 +172,18 @@ class BillingServiceImpl implements BillingService {
             }
             throw new BillingException(BillingErrorCode.SUBSCRIPTION_CHANGE_VIA_PORTAL, "memberId=" + memberId);
         });
+    }
+
+    /**
+     * 무료 체험 자격. 체험 중 취소 후 재구독으로 체험을 반복하지 못하게, 취소 이력을 포함해 구독을 한 번도
+     * 가진 적 없는 회원에게만 준다. 비로그인은 카탈로그 표시용으로 자격이 있다고 본다.
+     */
+    private boolean isTrialEligible(String memberId) {
+        return memberId == null || !subscriptionRepository.existsByMemberId(memberId);
+    }
+
+    private int trialDays(BillingProduct product, boolean trialEligible) {
+        return product.isSubscription() && trialEligible ? properties.trialDays() : 0;
     }
 
     private String getOrCreateCustomer(String memberId) {
