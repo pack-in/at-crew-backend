@@ -357,7 +357,8 @@ public class PortfolioServiceImpl {
      *
      * <p>휴지통으로 간 원본은 조회 시점에 빠지므로, 원본 행 개수로 다음 페이지 존재 여부를 판정하면
      * "items는 비었는데 hasNext=true"인 응답이 나온다. 그래서 필터를 통과한 카드가 size+1개가 될 때까지
-     * 원본 행을 이어서 읽어 판정 기준을 필터 이후로 옮긴다 — 커서도 필터를 통과한 마지막 행의 ordinal이다.
+     * 원본 행을 이어서 읽어 판정 기준을 필터 이후로 옮긴다({@link #scanViewableArtworks}) — 커서도
+     * 필터를 통과한 마지막 행의 ordinal이다.
      *
      * <p>다만 이어 읽기에는 상한을 둔다({@link #MAX_SCAN_CHUNKS}) — 휴지통·차단 작품이 대량으로 쌓인
      * 포트폴리오의 공유 링크는 비인증 요청 한 번이 구성 전체를 훑게 돼 매 요청마다 큰 비용이 든다.
@@ -369,51 +370,85 @@ public class PortfolioServiceImpl {
                                                                     boolean hideAdultContent) {
         // 한 건은 다음 페이지 존재 여부 판정에만 쓰고 응답에서는 잘라낸다.
         int target = size + 1;
-        List<PortfolioItem> viewableItems = new ArrayList<>();
-        List<PortfolioArtworkCardInfo> cards = new ArrayList<>();
         Integer scanFrom = cursor != null ? parseOrdinalCursor(cursor) : null;
+        ViewableScanResult scan = scanViewableArtworks(portfolioId, scanFrom, target,
+                a -> sharedViewable(a) && (!hideAdultContent || !isAdultRating(a.ageRating())));
+        List<PortfolioArtworkCardInfo> cards = scan.artworks().stream()
+                .map(PortfolioMapper::toCardInfo)
+                .toList();
+
+        boolean hasNext = cards.size() > size;
+        List<PortfolioArtworkCardInfo> page = hasNext ? cards.subList(0, size) : cards;
+
+        // size=0인데 걸러지지 않은 작품이 있으면 hasNext=true여도 page가 비어 scan.rows().get(-1)을
+        // 호출하게 된다(BookmarkServiceImpl#getBookmarks의 이슈 #195와 같은 모양) — 그 경우엔 커서를
+        // 안전하게 null로 둔다.
+        if (hasNext && !page.isEmpty()) {
+            return CursorPage.of(page, String.valueOf(scan.rows().get(size - 1).getOrdinal()));
+        }
+        if (hasNext || scan.exhausted()) {
+            return CursorPage.of(page, null);
+        }
+        // 스캔 상한에 걸려 중단한 경우 — 마지막으로 읽은 행까지의 커서를 줘 다음 요청이 이어받게 한다.
+        return CursorPage.of(page, String.valueOf(scan.lastScannedOrdinal()));
+    }
+
+    /** {@link #scanViewableArtworks}의 결과 — 필터를 통과한 행과 작품, 그리고 스캔 종료 상태. */
+    private record ViewableScanResult(List<PortfolioItem> rows, List<ArtworkInfo> artworks, boolean exhausted,
+                                        Integer lastScannedOrdinal) {
+    }
+
+    /**
+     * {@code portfolioId}의 구성 행을 ordinal 오름차순으로 훑어, {@code filter}를 통과하는 작품이
+     * {@code target}개가 될 때까지(또는 더 읽을 행이 없을 때까지, 또는 {@link #MAX_SCAN_CHUNKS} 상한에
+     * 걸릴 때까지) 다음 청크를 이어서 읽는다.
+     *
+     * <p>상위 N행만 보고 거르면, 걸러지는 행이 앞쪽(오래된 순)에 몰려 있을 때 실제로는 더 뒤에 열람
+     * 가능한 작품이 남아 있어도 결과가 비어버린다 — {@link #liveArtworkPage}와 {@link #loadCoverThumbnails}가
+     * 공유하는 이 메서드가 그 백필을 담당한다. 둘 다 "청크 단위로 이어 읽기"라는 같은 로직을 각자
+     * 복붙해 두면 한쪽만 고쳐지고 다른 쪽은 그대로 남는 사고가 나기 쉬워 하나로 합쳤다.
+     *
+     * <p>{@code startAfterOrdinal}이 null이면 처음부터, 아니면 그 ordinal 다음부터 읽는다. 상한에 걸려
+     * 중단했는지는 호출자가 {@code exhausted}와 {@code lastScannedOrdinal}로 구분해야 한다 — 전자는
+     * "더 읽을 행 자체가 없었다", 후자가 null이 아니면서 target 미만이면 "상한 때문에 중단했다"는 뜻이다.
+     */
+    private ViewableScanResult scanViewableArtworks(String portfolioId, Integer startAfterOrdinal, int target,
+                                                       java.util.function.Predicate<ArtworkInfo> filter) {
+        Pageable pageable = PageRequest.of(0, target);
+        List<PortfolioItem> rows = new ArrayList<>();
+        List<ArtworkInfo> artworks = new ArrayList<>();
+        Integer scanFrom = startAfterOrdinal;
         Integer lastScannedOrdinal = null;
         int scannedChunks = 0;
         boolean exhausted = false;
 
-        while (cards.size() < target && scannedChunks < MAX_SCAN_CHUNKS) {
-            Pageable pageable = PageRequest.of(0, target);
-            List<PortfolioItem> rows = scanFrom == null
+        while (artworks.size() < target && scannedChunks < MAX_SCAN_CHUNKS) {
+            List<PortfolioItem> chunk = scanFrom == null
                     ? portfolioItemRepository.findByPortfolioIdOrderByOrdinal(portfolioId, pageable)
                     : portfolioItemRepository.findByPortfolioIdAndOrdinalGreaterThanOrderByOrdinal(
                             portfolioId, scanFrom, pageable);
-            if (rows.isEmpty()) {
-                // 더 읽을 원본 행이 없다 — 여기까지 모은 카드가 마지막 페이지다.
+            if (chunk.isEmpty()) {
+                // 더 읽을 원본 행이 없다 — 여기까지 모은 결과가 전부다.
                 exhausted = true;
                 break;
             }
             scannedChunks++;
-            for (PortfolioItem row : rows) {
-                if (cards.size() == target) {
+            for (PortfolioItem row : chunk) {
+                if (artworks.size() == target) {
                     break;
                 }
                 lastScannedOrdinal = row.getOrdinal();
-                Optional<ArtworkInfo> artwork = artworkService.getArtworkForIndexing(row.getArtworkId())
-                        .filter(PortfolioServiceImpl::sharedViewable)
-                        .filter(a -> !hideAdultContent || !isAdultRating(a.ageRating()));
-                if (artwork.isPresent()) {
-                    viewableItems.add(row);
-                    cards.add(PortfolioMapper.toCardInfo(artwork.get()));
-                }
+                artworkService.getArtworkForIndexing(row.getArtworkId())
+                        .filter(filter)
+                        .ifPresent(artwork -> {
+                            rows.add(row);
+                            artworks.add(artwork);
+                        });
             }
             // 다음 청크는 이번에 읽은 마지막 행 다음부터 — ordinal이 단조 증가라 루프가 반드시 끝난다.
-            scanFrom = rows.getLast().getOrdinal();
+            scanFrom = chunk.getLast().getOrdinal();
         }
-
-        if (cards.size() > size) {
-            return CursorPage.of(cards.subList(0, size),
-                    String.valueOf(viewableItems.get(size - 1).getOrdinal()));
-        }
-        if (exhausted || lastScannedOrdinal == null) {
-            return CursorPage.of(cards, null);
-        }
-        // 스캔 상한에 걸려 중단한 경우 — 마지막으로 읽은 행까지의 커서를 줘 다음 요청이 이어받게 한다.
-        return CursorPage.of(cards, String.valueOf(lastScannedOrdinal));
+        return new ViewableScanResult(rows, artworks, exhausted, lastScannedOrdinal);
     }
 
     /**
@@ -869,25 +904,31 @@ public class PortfolioServiceImpl {
 
     /**
      * 카드 커버 썸네일 (마이페이지_작가-R39) — 업로드일이 가장 오래된 4개를 2x2로 배치한다.
-     * 포트폴리오 내 순서가 곧 업로드순(ordinal)이라 앞의 4건만 읽으면 된다.
      *
      * <p>4개 미만이면 있는 만큼만, 0개면 빈 배열로 내려간다 — 빈 칸 처리는 프론트가 배열 길이로 판단한다.
-     * 최신 반영형·작가 페이지는 원본이 사라졌거나 휴지통에 있으면 그 칸이 빠지고(공유 열람과 동일 규칙),
-     * 고정형은 원본을 조회하지 않고 스냅샷 컬럼을 그대로 쓴다(§5.1).
+     * 고정형은 원본을 조회하지 않고 스냅샷 컬럼을 그대로 쓴다(§5.1). 최신 반영형·작가 페이지는 원본이
+     * 사라졌거나 휴지통에 있으면 그 칸이 빠지는데, 앞쪽(오래된) 행일수록 걸러질 확률이 누적되므로
+     * {@link #scanViewableArtworks}로 채운다({@link #liveArtworkPage}와 동일 로직 공유) — 단순히 앞의
+     * 4행만 보고 끝내면 그 행들이 전부 걸려 있을 때 뒤에 남은 작품이 있어도 빈 배열이 내려가는
+     * 회귀가 있었다.
+     *
+     * <p>다만 스캔에도 {@link #MAX_SCAN_CHUNKS} 상한이 있다 — 앞쪽에서 걸러지는 행이 상한(작품
+     * {@code COVER_THUMBNAIL_LIMIT * MAX_SCAN_CHUNKS}건)보다 많으면 그 지점에서 멈추고 그때까지 모은
+     * 만큼만(0건일 수도 있음) 내려간다. 마이페이지 요청마다 포트폴리오 개수만큼 이 스캔이 반복되므로
+     * 비용을 무한정 키우지 않기 위한 트레이드오프다({@link #liveArtworkPage}도 같은 상한을 쓴다).
      */
     private List<PortfolioCoverThumbnailInfo> loadCoverThumbnails(Portfolio portfolio) {
-        Pageable pageable = PageRequest.of(0, COVER_THUMBNAIL_LIMIT);
         if (portfolio.getReflectionType() == ReflectionType.SNAPSHOT) {
+            Pageable pageable = PageRequest.of(0, COVER_THUMBNAIL_LIMIT);
             return portfolioItemSnapshotRepository
                     .findByPortfolioIdAndBlockedAtIsNullOrderByOrdinal(portfolio.getId(), pageable).stream()
                     .map(PortfolioMapper::toCoverThumbnailInfo)
                     .toList();
         }
+
         // artwork에 배치 조회 API가 없어 건당 조회한다(loadItemArtworks와 동일한 특성).
-        return portfolioItemRepository.findByPortfolioIdOrderByOrdinal(portfolio.getId(), pageable).stream()
-                .map(item -> artworkService.getArtworkForIndexing(item.getArtworkId()))
-                .flatMap(Optional::stream)
-                .filter(PortfolioServiceImpl::viewable)
+        return scanViewableArtworks(portfolio.getId(), null, COVER_THUMBNAIL_LIMIT, PortfolioServiceImpl::viewable)
+                .artworks().stream()
                 .map(PortfolioMapper::toCoverThumbnailInfo)
                 .toList();
     }

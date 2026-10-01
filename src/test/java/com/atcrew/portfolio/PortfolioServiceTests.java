@@ -942,6 +942,29 @@ class PortfolioServiceTests {
                 .containsExactly("thumb-1", "thumb-3");
     }
 
+    // 앞쪽(가장 오래된) 작품들이 전부 걸러지면, 상위 4건만 보고 끝내는 것이 아니라 뒤쪽 작품으로
+    // 채워야 한다 — itemCount > 0인데 coverThumbnails가 빈 배열로 내려가던 회귀 버그 재현 케이스.
+    @Test
+    void 최신_반영형_카드_커버는_앞쪽_작품이_모두_걸러지면_뒤쪽_작품으로_채운다() {
+        String memberId = registerProMember();
+        String deletedArtworkId1 = uploadArtworkWithThumb(memberId, "thumb-1");
+        String deletedArtworkId2 = uploadArtworkWithThumb(memberId, "thumb-2");
+        List<String> artworkIds = new ArrayList<>(List.of(deletedArtworkId1, deletedArtworkId2));
+        artworkIds.add(uploadArtworkWithThumb(memberId, "thumb-3"));
+        artworkIds.add(uploadArtworkWithThumb(memberId, "thumb-4"));
+        artworkIds.add(uploadArtworkWithThumb(memberId, "thumb-5"));
+        artworkIds.add(uploadArtworkWithThumb(memberId, "thumb-6"));
+        PortfolioInfo created = portfolioService.createShared(
+                memberId, "공유 포트폴리오", ReflectionType.LIVE, artworkIds);
+
+        artworkService.deleteArtwork(memberId, deletedArtworkId1);
+        artworkService.deleteArtwork(memberId, deletedArtworkId2);
+
+        assertThat(findSummary(memberId, created.id()).coverThumbnails())
+                .extracting(PortfolioCoverThumbnailInfo::thumbKey)
+                .containsExactly("thumb-3", "thumb-4", "thumb-5", "thumb-6");
+    }
+
     // 고정형 커버는 스냅샷 컬럼 기준이라 원본이 삭제돼도 그대로다(§5.1).
     @Test
     void 고정형_카드_커버는_원본이_삭제돼도_바뀌지_않는다() {
