@@ -13,8 +13,10 @@ import com.atcrew.member.Language;
 import com.atcrew.member.MemberService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.modulith.test.ApplicationModuleTest;
 
+import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -46,6 +48,9 @@ class BookmarkModuleTests {
 
     @Autowired
     MediaCallbackService mediaCallbackService;
+
+    @Autowired
+    JdbcTemplate jdbcTemplate;
 
     @Test
     void 폴더_생성_후_목록에서_조회된다() {
@@ -163,6 +168,72 @@ class BookmarkModuleTests {
         assertThat(bookmarkService.getBookmarks(memberId, null, null, 10).items())
                 .extracting(BookmarkEntryInfo::artworkId)
                 .doesNotContain(artwork.id());
+    }
+
+    // 목록은 savedAt 내림차순이라 가장 최근에 저장한 북마크가 앞쪽이다. 그 앞쪽이 전부 삭제된 작품이면
+    // 상위 size+1건만 보고 끝내는 게 아니라 뒤쪽 북마크로 채워야 한다 — hasNext가 필터 이전 개수 기준이라
+    // items는 비었는데 다음 페이지가 있다고 오판하던 회귀 버그 재현 케이스.
+    @Test
+    void 최근_저장한_북마크가_모두_삭제돼도_뒤쪽_북마크로_채운다() {
+        String memberId = registerMember();
+        // 스타터 플랜 작품 상한(마이페이지_작가-R20)이 4라 6건을 만들려면 작가를 나눈다.
+        String authorId1 = registerMember();
+        String authorId2 = registerMember();
+        List<String> artworkIds = new java.util.ArrayList<>();
+        for (int i = 0; i < 3; i++) {
+            ArtworkInfo artwork = uploadReadyArtwork(authorId1);
+            bookmarkService.saveBookmark(memberId, artwork.id(), null);
+            artworkIds.add(artwork.id());
+        }
+        for (int i = 0; i < 3; i++) {
+            ArtworkInfo artwork = uploadReadyArtwork(authorId2);
+            bookmarkService.saveBookmark(memberId, artwork.id(), null);
+            artworkIds.add(artwork.id());
+        }
+        // artworkIds는 저장 순(오래된→최신) — 가장 최근에 저장한 2개(둘 다 authorId2 소속)를 삭제한다.
+        artworkService.deleteArtwork(authorId2, artworkIds.get(5));
+        artworkService.deleteArtwork(authorId2, artworkIds.get(4));
+
+        CursorPage<BookmarkEntryInfo> page = bookmarkService.getBookmarks(memberId, null, null, 4);
+
+        assertThat(page.items()).extracting(BookmarkEntryInfo::artworkId)
+                .containsExactly(artworkIds.get(3), artworkIds.get(2), artworkIds.get(1), artworkIds.get(0));
+        assertThat(page.nextCursor()).isNull();
+    }
+
+    // 저장 시각(saved_at)이 완전히 같은 행이 둘 있어도(동시 저장·일괄 반영 등) id로 동률을 갈라 양쪽 다
+    // 조회돼야 한다 — 저장 시각만 엄격히 비교(<)하면 같은 시각의 한쪽이 커서 경계에서 영원히 빠지던
+    // 결함의 회귀 방지.
+    @Test
+    void 저장_시각이_완전히_같은_북마크도_커서_경계에서_누락되지_않는다() {
+        String memberId = registerMember();
+        String authorId = registerMember();
+        ArtworkInfo a1 = uploadReadyArtwork(authorId);
+        ArtworkInfo a2 = uploadReadyArtwork(authorId);
+        ArtworkInfo a3 = uploadReadyArtwork(authorId);
+        bookmarkService.saveBookmark(memberId, a1.id(), null);
+        bookmarkService.saveBookmark(memberId, a2.id(), null);
+        bookmarkService.saveBookmark(memberId, a3.id(), null);
+        copySavedAt(memberId, a3.id(), a2.id()); // a2를 a3과 완전히 같은 저장 시각으로 맞춘다.
+
+        CursorPage<BookmarkEntryInfo> firstPage = bookmarkService.getBookmarks(memberId, null, null, 2);
+        CursorPage<BookmarkEntryInfo> secondPage = bookmarkService.getBookmarks(
+                memberId, null, firstPage.nextCursor(), 2);
+
+        List<String> allIds = new java.util.ArrayList<>();
+        firstPage.items().forEach(i -> allIds.add(i.artworkId()));
+        secondPage.items().forEach(i -> allIds.add(i.artworkId()));
+        assertThat(allIds).containsExactlyInAnyOrder(a1.id(), a2.id(), a3.id());
+    }
+
+    // 드라이버 변환을 읽기·쓰기 양쪽에 똑같이 태워 마이크로초까지 그대로 옮긴다(ArtworkSortModuleTests의
+    // copyCreatedAt과 같은 이유).
+    private void copySavedAt(String memberId, String fromArtworkId, String toArtworkId) {
+        Timestamp savedAt = jdbcTemplate.queryForObject(
+                "SELECT saved_at FROM bookmark_entries WHERE member_id = ? AND artwork_id = ?",
+                Timestamp.class, memberId, fromArtworkId);
+        jdbcTemplate.update("UPDATE bookmark_entries SET saved_at = ? WHERE member_id = ? AND artwork_id = ?",
+                savedAt, memberId, toArtworkId);
     }
 
     private Class<?> catchThrowableClass(org.assertj.core.api.ThrowableAssert.ThrowingCallable callable) {

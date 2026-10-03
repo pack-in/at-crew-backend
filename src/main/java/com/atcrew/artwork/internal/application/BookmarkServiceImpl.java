@@ -22,6 +22,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -29,6 +31,13 @@ import java.util.stream.Collectors;
 
 @Service
 class BookmarkServiceImpl implements BookmarkService {
+
+    // 저장 시점 이후 작품이 삭제·차단되면 필터로 빠지는데, 단순히 상위 size+1건만 보고 거르면 그 행들이
+    // 앞쪽(최근 저장 순)에 몰려 있을 때 뒤에 열람 가능한 북마크가 남아 있어도 결과가 비어버린다
+    // (portfolio 모듈의 같은 버그, PortfolioServiceImpl.scanViewableArtworks 참고). 청크를 이어서 읽어
+    // 필터 통과분이 목표 개수가 될 때까지 채우되, 대량으로 삭제된 북마크가 쌓인 요청의 비용을 무한정
+    // 키우지 않도록 상한을 둔다.
+    private static final int MAX_SCAN_CHUNKS = 10;
 
     private final BookmarkFolderRepository folderRepository;
     private final BookmarkEntryRepository entryRepository;
@@ -108,52 +117,72 @@ class BookmarkServiceImpl implements BookmarkService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public CursorPage<BookmarkEntryInfo> getBookmarks(String memberId, String folderId,
                                                        String cursor, int size) {
-        int limit = size + 1;
-        Instant parsedCursor = cursor != null ? parseCursor(cursor) : null;
-
-        List<BookmarkEntry> entries;
-        if (folderId != null) {
-            entries = parsedCursor != null
-                    ? entryRepository.findByMemberIdAndFolderIdAndSavedAtBeforeOrderBySavedAtDesc(
-                            memberId, folderId, parsedCursor, PageRequest.of(0, limit))
-                    : entryRepository.findByMemberIdAndFolderIdOrderBySavedAtDesc(
-                            memberId, folderId, PageRequest.of(0, limit));
-        } else {
-            entries = parsedCursor != null
-                    ? entryRepository.findByMemberIdAndFolderIdIsNullAndSavedAtBeforeOrderBySavedAtDesc(
-                            memberId, parsedCursor, PageRequest.of(0, limit))
-                    : entryRepository.findByMemberIdAndFolderIdIsNullOrderBySavedAtDesc(
-                            memberId, PageRequest.of(0, limit));
-        }
-
-        if (entries.isEmpty()) return CursorPage.empty();
-        boolean hasNext = entries.size() > size;
-        List<BookmarkEntry> page = hasNext ? entries.subList(0, size) : entries;
+        int target = size + 1;
+        BookmarkCursor scanFrom = cursor != null ? parseCursor(cursor) : null;
 
         // 노출 기준은 저장 기준(saveBookmark)과 같아야 한다 — visibility == PUBLIC만 보여주면 포트폴리오
         // 한정 공개 작품처럼 저장은 되는데 목록에는 영원히 안 보이는 북마크가 생긴다.
         // 운영 차단 작품은 본인 작품이라도 목록에서 뺀다(마이페이지_작가-R39) — accessFor가 작성자
         // 본인에게는 차단 작품도 허용하므로 여기서 따로 제외한다.
-        List<String> artworkIds = page.stream().map(BookmarkEntry::getArtworkId).toList();
-        Map<String, Artwork> artworkMap = artworkRepository.findAllById(artworkIds)
-                .stream()
-                .filter(a -> a.getStatus() == ArtworkStatus.READY
-                        && !a.isBlocked()
-                        && a.accessFor(memberId) == ArtworkAccess.ALLOWED)
-                .collect(Collectors.toMap(Artwork::getId, a -> a));
+        //
+        // 필터 통과분이 target개가 될 때까지 저장 시각 내림차순으로 다음 청크를 이어서 읽는다 — hasNext
+        // 판정도 필터 이후 개수 기준이어야 "items는 비었는데 hasNext=true"가 나오지 않는다. 청크 경계가
+        // 여러 번 생기는 만큼(§BookmarkCursor) 동률 처리가 중요해, 전체를 한 트랜잭션으로 묶어 청크마다
+        // 다른 스냅샷을 보지 않게 한다.
+        List<BookmarkEntry> matchedEntries = new ArrayList<>();
+        Map<String, Artwork> artworkMap = new HashMap<>();
+        BookmarkEntry lastScannedEntry = null;
+        int scannedChunks = 0;
+        boolean exhausted = false;
 
-        Set<String> authorIds = artworkMap.values().stream()
-                .map(Artwork::getAuthorId)
+        while (matchedEntries.size() < target && scannedChunks < MAX_SCAN_CHUNKS) {
+            List<BookmarkEntry> chunk = fetchBookmarkChunk(memberId, folderId, scanFrom, target);
+            if (chunk.isEmpty()) {
+                exhausted = true;
+                break;
+            }
+            scannedChunks++;
+
+            Map<String, Artwork> chunkArtworks = artworkRepository
+                    .findAllById(chunk.stream().map(BookmarkEntry::getArtworkId).toList())
+                    .stream()
+                    .filter(a -> a.getStatus() == ArtworkStatus.READY
+                            && !a.isBlocked()
+                            && a.accessFor(memberId) == ArtworkAccess.ALLOWED)
+                    .collect(Collectors.toMap(Artwork::getId, a -> a));
+
+            for (BookmarkEntry entry : chunk) {
+                if (matchedEntries.size() == target) {
+                    break;
+                }
+                lastScannedEntry = entry;
+                Artwork artwork = chunkArtworks.get(entry.getArtworkId());
+                if (artwork != null) {
+                    matchedEntries.add(entry);
+                    artworkMap.put(entry.getArtworkId(), artwork);
+                }
+            }
+            // 다음 청크는 이번에 읽은 마지막 행 다음부터 — savedAt이 내림차순이라 루프가 반드시 끝난다.
+            BookmarkEntry lastInChunk = chunk.get(chunk.size() - 1);
+            scanFrom = new BookmarkCursor(lastInChunk.getSavedAt(), lastInChunk.getId());
+        }
+
+        boolean hasNext = matchedEntries.size() > size;
+        List<BookmarkEntry> page = hasNext ? matchedEntries.subList(0, size) : matchedEntries;
+
+        Set<String> authorIds = page.stream()
+                .map(e -> artworkMap.get(e.getArtworkId()).getAuthorId())
                 .collect(Collectors.toSet());
         // 배치 조회 — 자세한 배경은 ArtworkServiceImpl의 같은 지점 주석 참고(이슈 #112).
         Map<String, MemberInfo> authorMap = memberService.findAllByIds(authorIds);
 
         // 이미지는 media가 갖는다(#193) — 목록은 한 번에 읽는다.
-        Map<String, ArtworkMedia> mediaByArtwork = ArtworkMedia.loadAll(mediaService, artworkMap.keySet());
+        Set<String> pageArtworkIds = page.stream().map(BookmarkEntry::getArtworkId).collect(Collectors.toSet());
+        Map<String, ArtworkMedia> mediaByArtwork = ArtworkMedia.loadAll(mediaService, pageArtworkIds);
         List<BookmarkEntryInfo> items = page.stream()
-                .filter(e -> artworkMap.containsKey(e.getArtworkId()))
                 .map(e -> {
                     Artwork artwork = artworkMap.get(e.getArtworkId());
                     return ArtworkMapper.toEntryInfo(e, ArtworkMapper.toSummaryInfo(artwork,
@@ -162,10 +191,33 @@ class BookmarkServiceImpl implements BookmarkService {
                 })
                 .toList();
 
-        String nextCursor = (hasNext && !page.isEmpty())
-                ? String.valueOf(page.get(page.size() - 1).getSavedAt().toEpochMilli())
-                : null;
-        return CursorPage.of(items, nextCursor);
+        // size=0인데 조건에 맞는 데이터가 있으면 hasNext=true여도 page가 비어 page.get(-1)을 호출하게
+        // 된다(이슈 #195) — 그 경우엔 커서를 안전하게 null로 둔다. hasNext가 거짓일 때 lastScannedEntry가
+        // null인 경우는 exhausted가 이미 참인 경우뿐이라 따로 가를 필요가 없다.
+        if (hasNext && !page.isEmpty()) {
+            return CursorPage.of(items, formatCursor(page.get(page.size() - 1)));
+        }
+        if (hasNext || exhausted) {
+            return CursorPage.of(items, null);
+        }
+        // 스캔 상한에 걸려 중단한 경우 — 마지막으로 읽은 행까지의 커서를 줘 다음 요청이 이어받게 한다.
+        return CursorPage.of(items, formatCursor(lastScannedEntry));
+    }
+
+    private List<BookmarkEntry> fetchBookmarkChunk(String memberId, String folderId, BookmarkCursor scanFrom,
+                                                      int limit) {
+        PageRequest pageable = PageRequest.of(0, limit);
+        if (folderId != null) {
+            return scanFrom != null
+                    ? entryRepository.findByMemberIdAndFolderIdBeforeCursor(
+                            memberId, folderId, scanFrom.savedAt(), scanFrom.id(), pageable)
+                    : entryRepository.findByMemberIdAndFolderIdOrderBySavedAtDescIdDesc(
+                            memberId, folderId, pageable);
+        }
+        return scanFrom != null
+                ? entryRepository.findByMemberIdAndFolderIdIsNullBeforeCursor(
+                        memberId, scanFrom.savedAt(), scanFrom.id(), pageable)
+                : entryRepository.findByMemberIdAndFolderIdIsNullOrderBySavedAtDescIdDesc(memberId, pageable);
     }
 
     @Override
@@ -218,9 +270,33 @@ class BookmarkServiceImpl implements BookmarkService {
         entryRepository.saveAll(entries);
     }
 
-    private Instant parseCursor(String cursor) {
+    /**
+     * 목록 커서 — 저장 시각과 동률을 가르는 id 쌍이다(PortfolioServiceImpl.PortfolioCursor와 동일한 이유).
+     * {@code bookmark_entries.saved_at}은 DATETIME(6)이라 마이크로초까지 저장되는데, 커서를 밀리초로
+     * 자르면 같은 밀리초의 뒷부분 행이 통째로 건너뛰어진다. 그래서 마이크로초 해상도로 인코딩하고
+     * 동률은 id로 가른다.
+     */
+    private record BookmarkCursor(Instant savedAt, String id) {
+    }
+
+    // 커서 문자열은 "<epochMicros>_<id>"다 — id(UUID)에는 '_'가 없어 첫 구분자로 안전하게 나뉜다.
+    private String formatCursor(BookmarkEntry entry) {
+        Instant value = entry.getSavedAt();
+        long micros = value.getEpochSecond() * 1_000_000 + value.getNano() / 1_000;
+        return micros + "_" + entry.getId();
+    }
+
+    private BookmarkCursor parseCursor(String cursor) {
+        int separator = cursor.indexOf('_');
+        if (separator <= 0 || separator == cursor.length() - 1) {
+            throw new ArtworkException(ArtworkErrorCode.INVALID_CURSOR);
+        }
         try {
-            return Instant.ofEpochMilli(Long.parseLong(cursor));
+            long micros = Long.parseLong(cursor.substring(0, separator));
+            return new BookmarkCursor(
+                    Instant.ofEpochSecond(Math.floorDiv(micros, 1_000_000),
+                            Math.floorMod(micros, 1_000_000) * 1_000L),
+                    cursor.substring(separator + 1));
         } catch (NumberFormatException e) {
             throw new ArtworkException(ArtworkErrorCode.INVALID_CURSOR);
         }
