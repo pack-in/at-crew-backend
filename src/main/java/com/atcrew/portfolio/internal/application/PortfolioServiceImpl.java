@@ -13,7 +13,9 @@ import com.atcrew.common.exception.DomainException;
 import com.atcrew.common.response.CursorPage;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
+import com.atcrew.portfolio.PortfolioArtworkAddedEvent;
 import com.atcrew.portfolio.PortfolioArtworkCardInfo;
+import com.atcrew.portfolio.PortfolioArtworkRemovedEvent;
 import com.atcrew.portfolio.PortfolioCoverThumbnailInfo;
 import com.atcrew.portfolio.PortfolioDuplicationSourceInfo;
 import com.atcrew.portfolio.PortfolioInfo;
@@ -35,6 +37,7 @@ import com.atcrew.portfolio.internal.persistence.PortfolioItemSnapshotRepository
 import com.atcrew.portfolio.internal.persistence.PortfolioRepository;
 import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Predicate;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.PageRequest;
@@ -90,6 +93,7 @@ public class PortfolioServiceImpl implements PortfolioService {
     private final PortfolioBlocker portfolioBlocker;
     // Spring Boot 4가 자동 구성한 Jackson 3 매퍼 — HTTP 응답 직렬화와 동일한 설정으로 스냅샷 JSON을 만든다.
     private final JsonMapper jsonMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     PortfolioServiceImpl(PortfolioRepository portfolioRepository,
                          PortfolioItemRepository portfolioItemRepository,
@@ -99,7 +103,8 @@ public class PortfolioServiceImpl implements PortfolioService {
                          BillingService billingService,
                          ShareSlugGenerator shareSlugGenerator,
                          PortfolioBlocker portfolioBlocker,
-                         JsonMapper jsonMapper) {
+                         JsonMapper jsonMapper,
+                         ApplicationEventPublisher eventPublisher) {
         this.portfolioRepository = portfolioRepository;
         this.portfolioItemRepository = portfolioItemRepository;
         this.portfolioItemSnapshotRepository = portfolioItemSnapshotRepository;
@@ -109,6 +114,7 @@ public class PortfolioServiceImpl implements PortfolioService {
         this.shareSlugGenerator = shareSlugGenerator;
         this.portfolioBlocker = portfolioBlocker;
         this.jsonMapper = jsonMapper;
+        this.eventPublisher = eventPublisher;
     }
 
     // === 조회 ===
@@ -680,7 +686,16 @@ public class PortfolioServiceImpl implements PortfolioService {
     public void addArtworks(String memberId, String portfolioId, List<String> artworkIds) {
         Portfolio portfolio = findOwned(memberId, portfolioId);
         assertEditable(portfolio, memberId);
+        Set<String> beforeIds = Set.copyOf(itemArtworkIds(portfolioId));
         appendArtworks(portfolio, memberId, artworkIds);
+        // 이미 포함돼 있던 작품의 재선언(순서 변경 등)은 "추가"가 아니므로 제외한다.
+        for (String artworkId : artworkIds) {
+            if (!beforeIds.contains(artworkId)) {
+                eventPublisher.publishEvent(new PortfolioArtworkAddedEvent(
+                        portfolioId, artworkId, memberId, portfolio.getKind(), portfolio.getReflectionType(),
+                        "editor"));
+            }
+        }
     }
 
     /** 작품 제거 (§4). 남은 구성의 상대 순서는 유지한 채 ordinal만 다시 매긴다. */
@@ -692,6 +707,8 @@ public class PortfolioServiceImpl implements PortfolioService {
             throw new PortfolioException(PortfolioErrorCode.ARTWORK_NOT_FOUND, "artworkId=" + artworkId);
         }
         detachArtwork(portfolio, artworkId);
+        eventPublisher.publishEvent(new PortfolioArtworkRemovedEvent(
+                portfolioId, artworkId, memberId, portfolio.getKind(), portfolio.getReflectionType()));
     }
 
     /**
