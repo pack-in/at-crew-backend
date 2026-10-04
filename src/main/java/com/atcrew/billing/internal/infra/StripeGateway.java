@@ -46,18 +46,19 @@ public class StripeGateway {
     }
 
     /**
-     * Checkout 세션을 만들고 결제 페이지 URL을 반환한다.
+     * Checkout 세션을 만들고 세션 ID와 결제 페이지 URL을 반환한다.
      *
      * <p>단건 결제는 PaymentIntent ID를 원장의 refId로 남겨 환불 시 회수 대상을 역추적하므로,
      * 메타데이터에 의존하지 않고도 환불 처리가 가능하다.
      *
      * @param trialDays 구독 무료 체험 일수. 0이면 체험 없이 즉시 청구한다
      */
-    public String createCheckoutSession(String memberId, BillingProduct product, String customerId,
+    public CheckoutSession createCheckoutSession(String memberId, BillingProduct product, String customerId,
             int trialDays) {
         try {
-            return client.checkout().sessions()
-                    .create(checkoutParams(memberId, product, customerId, trialDays)).getUrl();
+            com.stripe.model.checkout.Session session = client.checkout().sessions()
+                    .create(checkoutParams(memberId, product, customerId, trialDays));
+            return new CheckoutSession(session.getId(), session.getUrl());
         } catch (StripeException e) {
             throw new BillingException(BillingErrorCode.STRIPE_REQUEST_FAILED, e);
         }

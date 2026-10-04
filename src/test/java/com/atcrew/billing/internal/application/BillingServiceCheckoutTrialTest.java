@@ -1,15 +1,20 @@
 package com.atcrew.billing.internal.application;
 
 import com.atcrew.billing.BillingProduct;
+import com.atcrew.billing.CheckoutSessionInfo;
 import com.atcrew.billing.CompanyAccountPort;
+import com.atcrew.billing.SubscriptionCheckoutStartedEvent;
 import com.atcrew.billing.internal.config.BillingProperties;
 import com.atcrew.billing.internal.domain.BillingCustomer;
+import com.atcrew.billing.internal.infra.CheckoutSession;
 import com.atcrew.billing.internal.infra.StripeGateway;
 import com.atcrew.billing.internal.persistence.BillingCustomerRepository;
 import com.atcrew.billing.internal.persistence.SubscriptionRepository;
 import com.atcrew.member.MemberService;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.util.Arrays;
 import java.util.List;
@@ -17,7 +22,10 @@ import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
@@ -34,15 +42,17 @@ class BillingServiceCheckoutTrialTest {
 
     private static final String MEMBER_ID = "member-1";
     private static final String CUSTOMER_ID = "cus_1";
+    private static final String SESSION_ID = "cs_1";
 
     private final SubscriptionRepository subscriptionRepository = mock(SubscriptionRepository.class);
     private final BillingCustomerRepository customerRepository = mock(BillingCustomerRepository.class);
     private final StripeGateway stripeGateway = mock(StripeGateway.class);
     private final CompanyAccountPort companyAccountPort = mock(CompanyAccountPort.class);
+    private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
 
     private final BillingServiceImpl service = new BillingServiceImpl(subscriptionRepository, customerRepository,
             mock(EntitlementService.class), stripeGateway, properties(), mock(MemberService.class),
-            companyAccountPort);
+            companyAccountPort, eventPublisher);
 
     @Test
     void 구독_이력이_없으면_열린_세션을_닫고_30일_체험으로_세션을_만든다() {
@@ -67,6 +77,24 @@ class BillingServiceCheckoutTrialTest {
     }
 
     @Test
+    void 세션_생성에_성공하면_세션_ID와_체험_일수를_실은_시작_이벤트를_발행한다() {
+        givenCustomer();
+        when(subscriptionRepository.existsByMemberId(MEMBER_ID)).thenReturn(false);
+
+        CheckoutSessionInfo info = service.createCheckoutSession(MEMBER_ID, BillingProduct.PRO_MONTHLY);
+
+        assertThat(info.checkoutUrl()).isEqualTo("https://checkout.stripe.test/" + SESSION_ID);
+        ArgumentCaptor<SubscriptionCheckoutStartedEvent> published =
+                ArgumentCaptor.forClass(SubscriptionCheckoutStartedEvent.class);
+        verify(eventPublisher).publishEvent(published.capture());
+        assertThat(published.getValue().memberId()).isEqualTo(MEMBER_ID);
+        assertThat(published.getValue().checkoutSessionId()).isEqualTo(SESSION_ID);
+        assertThat(published.getValue().product()).isEqualTo(BillingProduct.PRO_MONTHLY);
+        assertThat(published.getValue().trialDays()).isEqualTo(30);
+        assertThat(published.getValue().startedAt()).isNotNull();
+    }
+
+    @Test
     void 단건_결제는_열린_세션을_닫지_않고_체험도_붙이지_않는다() {
         givenCustomer();
 
@@ -83,6 +111,8 @@ class BillingServiceCheckoutTrialTest {
                 .thenReturn(List.of());
         when(customerRepository.findById(MEMBER_ID))
                 .thenReturn(Optional.of(BillingCustomer.create(MEMBER_ID, CUSTOMER_ID)));
+        when(stripeGateway.createCheckoutSession(eq(MEMBER_ID), any(BillingProduct.class), eq(CUSTOMER_ID), anyInt()))
+                .thenReturn(new CheckoutSession(SESSION_ID, "https://checkout.stripe.test/" + SESSION_ID));
     }
 
     private static BillingProperties properties() {
