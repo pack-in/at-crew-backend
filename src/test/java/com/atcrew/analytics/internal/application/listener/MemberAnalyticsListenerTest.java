@@ -3,11 +3,14 @@ package com.atcrew.analytics.internal.application.listener;
 import com.atcrew.analytics.AnalyticsEventPublisher;
 import com.atcrew.artwork.ArtworkService;
 import com.atcrew.billing.BillingService;
+import com.atcrew.member.AccountDeletionFailedEvent;
 import com.atcrew.member.MemberDeactivatedEvent;
+import com.atcrew.member.ProfileSectionSavedEvent;
 import com.atcrew.portfolio.PortfolioService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import java.time.Instant;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -78,5 +81,34 @@ class MemberAnalyticsListenerTest {
                 .isInstanceOf(RuntimeException.class);
 
         verify(analyticsEventPublisher, never()).publish(any(), any(), any(), any());
+    }
+
+    @Test
+    void 탈퇴_실패_이벤트는_에러코드를_실어_발행한다() {
+        listener.on(new AccountDeletionFailedEvent("member-004", "MEMBER_NOT_FOUND"));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> properties = ArgumentCaptor.forClass(Map.class);
+        verify(analyticsEventPublisher).publish(eq("account_deletion_failed"), eq("member-004"),
+                properties.capture(), eq("account_deletion_failed:member-004"));
+        assertThat(properties.getValue()).containsEntry("error_code", "MEMBER_NOT_FOUND");
+    }
+
+    @Test
+    void 프로필_저장_이벤트는_완성도_변경필드수_최초완성여부를_실어_발행한다() {
+        Instant occurredAt = Instant.parse("2026-10-05T00:00:00Z");
+
+        listener.on(new ProfileSectionSavedEvent("member-005", "profile_info", 1.0, true, 5, true, occurredAt));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> properties = ArgumentCaptor.forClass(Map.class);
+        verify(analyticsEventPublisher).publish(eq("profile_section_saved"), eq("member-005"),
+                properties.capture(), eq("profile_section_saved:member-005:" + occurredAt.toEpochMilli()));
+        assertThat(properties.getValue())
+                .containsEntry("section_type", "profile_info")
+                .containsEntry("completion_rate", 1.0)
+                .containsEntry("is_complete", true)
+                .containsEntry("changed_field_count", 5)
+                .containsEntry("is_first_completion", true);
     }
 }
