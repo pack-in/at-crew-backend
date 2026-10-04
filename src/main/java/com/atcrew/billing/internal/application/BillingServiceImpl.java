@@ -8,19 +8,23 @@ import com.atcrew.billing.CheckoutSessionInfo;
 import com.atcrew.billing.CompanyAccountPort;
 import com.atcrew.billing.PlanType;
 import com.atcrew.billing.PortalSessionInfo;
+import com.atcrew.billing.SubscriptionCheckoutStartedEvent;
 import com.atcrew.billing.SubscriptionStatus;
 import com.atcrew.billing.internal.config.BillingProperties;
 import com.atcrew.billing.internal.domain.BillingCustomer;
 import com.atcrew.billing.internal.domain.Subscription;
 import com.atcrew.billing.internal.exception.BillingErrorCode;
 import com.atcrew.billing.internal.exception.BillingException;
+import com.atcrew.billing.internal.infra.CheckoutSession;
 import com.atcrew.billing.internal.infra.StripeGateway;
 import com.atcrew.billing.internal.persistence.BillingCustomerRepository;
 import com.atcrew.billing.internal.persistence.SubscriptionRepository;
 import com.atcrew.member.MemberService;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -41,6 +45,7 @@ class BillingServiceImpl implements BillingService {
     private final BillingProperties properties;
     private final MemberService memberService;
     private final CompanyAccountPort companyAccountPort;
+    private final ApplicationEventPublisher eventPublisher;
 
     BillingServiceImpl(SubscriptionRepository subscriptionRepository,
             BillingCustomerRepository customerRepository,
@@ -48,7 +53,8 @@ class BillingServiceImpl implements BillingService {
             StripeGateway stripeGateway,
             BillingProperties properties,
             MemberService memberService,
-            CompanyAccountPort companyAccountPort) {
+            CompanyAccountPort companyAccountPort,
+            ApplicationEventPublisher eventPublisher) {
         this.subscriptionRepository = subscriptionRepository;
         this.customerRepository = customerRepository;
         this.entitlementService = entitlementService;
@@ -56,6 +62,7 @@ class BillingServiceImpl implements BillingService {
         this.properties = properties;
         this.memberService = memberService;
         this.companyAccountPort = companyAccountPort;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -131,8 +138,11 @@ class BillingServiceImpl implements BillingService {
             // 체험 자격은 이 시점에 판정되므로, 앞서 열어 둔 세션이 남아 있으면 그걸로 체험을 한 번 더 받을 수 있다.
             stripeGateway.expireOpenCheckoutSessions(customerId);
         }
-        return new CheckoutSessionInfo(stripeGateway.createCheckoutSession(
-                memberId, product, customerId, trialDays(product, isTrialEligible(memberId))));
+        int trialDays = trialDays(product, isTrialEligible(memberId));
+        CheckoutSession session = stripeGateway.createCheckoutSession(memberId, product, customerId, trialDays);
+        eventPublisher.publishEvent(new SubscriptionCheckoutStartedEvent(
+                memberId, session.id(), product, trialDays, Instant.now()));
+        return new CheckoutSessionInfo(session.url());
     }
 
     @Override

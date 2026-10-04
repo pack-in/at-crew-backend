@@ -2,7 +2,14 @@ package com.atcrew.billing.internal.application;
 
 import com.atcrew.billing.BillingProduct;
 import com.atcrew.billing.PlanType;
+import com.atcrew.billing.SubscriptionActivatedEvent;
+import com.atcrew.billing.SubscriptionBillingIntervalChangedEvent;
+import com.atcrew.billing.SubscriptionCancelRequestRevokedEvent;
+import com.atcrew.billing.SubscriptionCancelRequestedEvent;
+import com.atcrew.billing.SubscriptionEndReason;
+import com.atcrew.billing.SubscriptionEndedEvent;
 import com.atcrew.billing.SubscriptionPaymentFailedEvent;
+import com.atcrew.billing.SubscriptionReactivatedEvent;
 import com.atcrew.billing.SubscriptionStatus;
 import com.atcrew.billing.internal.config.BillingProperties;
 import com.atcrew.billing.internal.domain.BillingCustomer;
@@ -26,6 +33,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -43,6 +51,8 @@ public class BillingWebhookService {
 
     private static final List<SubscriptionStatus> LIVE_STATUSES =
             List.of(SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE);
+
+    private static final String SUBSCRIPTION_DELETED = "customer.subscription.deleted";
 
     private final WebhookEventRepository webhookEventRepository;
     private final SubscriptionRepository subscriptionRepository;
@@ -136,7 +146,8 @@ public class BillingWebhookService {
             return;
         }
 
-        SubscriptionStatus status = "customer.subscription.deleted".equals(event.getType())
+        boolean deleted = SUBSCRIPTION_DELETED.equals(event.getType());
+        SubscriptionStatus status = deleted
                 ? SubscriptionStatus.CANCELED
                 : toStatus(stripeSubscription.getStatus());
         PlanType plan = resolvePlan(stripeSubscription).orElseGet(() -> {
@@ -148,17 +159,114 @@ public class BillingWebhookService {
         Instant periodEnd = resolvePeriodEnd(stripeSubscription);
         boolean cancelAtPeriodEnd = Boolean.TRUE.equals(stripeSubscription.getCancelAtPeriodEnd());
 
-        subscriptionRepository.findByStripeSubscriptionId(stripeSubscription.getId())
-                .ifPresentOrElse(
-                        existing -> {
-                            if (!existing.sync(plan, status, periodEnd, cancelAtPeriodEnd, occurredAt)) {
-                                log.debug("이전 시각의 구독 이벤트 무시 eventId={}, subscriptionId={}",
-                                        event.getId(), stripeSubscription.getId());
-                            }
-                        },
-                        () -> subscriptionRepository.save(Subscription.create(memberId.get(),
-                                stripeSubscription.getId(), plan, status, periodEnd,
-                                cancelAtPeriodEnd, occurredAt)));
+        Optional<Subscription> mirrored =
+                subscriptionRepository.findByStripeSubscriptionId(stripeSubscription.getId());
+        if (mirrored.isEmpty()) {
+            // 재구독 판정에 쓸 직전 구독은 새 행을 저장하기 전에 찾는다 — 저장 뒤에는 방금 만든 행이 섞인다.
+            Optional<Subscription> previouslyCanceled = !deleted && status == SubscriptionStatus.ACTIVE
+                    ? subscriptionRepository.findFirstByMemberIdAndStatusOrderByStripeUpdatedAtDesc(
+                            memberId.get(), SubscriptionStatus.CANCELED)
+                    : Optional.empty();
+            Subscription created = subscriptionRepository.save(Subscription.create(memberId.get(),
+                    stripeSubscription.getId(), plan, status, periodEnd, cancelAtPeriodEnd, occurredAt));
+            publishCreatedAnalytics(event, created, previouslyCanceled, deleted, occurredAt);
+            return;
+        }
+
+        Subscription existing = mirrored.get();
+        // sync()가 필드를 덮어쓰기 전의 값 — 상태 전이 판정은 이 세 값과 반영 후 값을 비교해서 한다.
+        SubscriptionStatus previousStatus = existing.getStatus();
+        PlanType previousPlan = existing.getPlan();
+        boolean previousCancelAtPeriodEnd = existing.isCancelAtPeriodEnd();
+        if (!existing.sync(plan, status, periodEnd, cancelAtPeriodEnd, occurredAt)) {
+            log.debug("이전 시각의 구독 이벤트 무시 eventId={}, subscriptionId={}",
+                    event.getId(), stripeSubscription.getId());
+            return;
+        }
+        publishUpdatedAnalytics(event, existing, previousStatus, previousPlan, previousCancelAtPeriodEnd,
+                deleted, occurredAt);
+    }
+
+    /**
+     * 미러에 없던 구독이 새로 생긴 경우의 분석 이벤트. 최초 활성화·재활성화·종료 중 하나만 발행한다
+     * (PA-08) — 같은 Stripe 이벤트에서 둘 이상 나오면 집계가 중복된다.
+     */
+    private void publishCreatedAnalytics(Event event, Subscription created,
+            Optional<Subscription> previouslyCanceled, boolean deleted, Instant occurredAt) {
+        if (deleted) {
+            // 미러에 없던 구독의 삭제 — 직전 상태를 모르니 사유를 판정하지 않는다.
+            eventPublisher.publishEvent(new SubscriptionEndedEvent(created.getMemberId(),
+                    created.getStripeSubscriptionId(), created.getPlan(), SubscriptionEndReason.OTHER,
+                    occurredAt, event.getId()));
+            return;
+        }
+        if (created.getStatus() != SubscriptionStatus.ACTIVE) {
+            return; // 결제 미완료로 들어온 구독 — 혜택이 열리지 않았으므로 활성화로 세지 않는다
+        }
+        if (previouslyCanceled.isPresent()) {
+            eventPublisher.publishEvent(new SubscriptionReactivatedEvent(created.getMemberId(),
+                    created.getStripeSubscriptionId(), created.getPlan(),
+                    daysSinceEnd(previouslyCanceled.get(), occurredAt), occurredAt, event.getId()));
+            return;
+        }
+        eventPublisher.publishEvent(new SubscriptionActivatedEvent(created.getMemberId(),
+                created.getStripeSubscriptionId(), created.getPlan(), occurredAt, event.getId()));
+    }
+
+    /**
+     * 미러에 있던 구독이 갱신된 경우의 분석 이벤트. 종료 &gt; 취소 예약 변화 &gt; 결제 주기 변화 순으로
+     * 하나만 발행한다(PA-08). 결제 실패·복구로 인한 상태 전이는 invoice 계열이 담당한다.
+     */
+    private void publishUpdatedAnalytics(Event event, Subscription subscription,
+            SubscriptionStatus previousStatus, PlanType previousPlan, boolean previousCancelAtPeriodEnd,
+            boolean deleted, Instant occurredAt) {
+        if (deleted) {
+            eventPublisher.publishEvent(new SubscriptionEndedEvent(subscription.getMemberId(),
+                    subscription.getStripeSubscriptionId(), subscription.getPlan(),
+                    endReason(previousStatus, previousCancelAtPeriodEnd), occurredAt, event.getId()));
+            return;
+        }
+        if (previousCancelAtPeriodEnd != subscription.isCancelAtPeriodEnd()) {
+            if (subscription.isCancelAtPeriodEnd()) {
+                eventPublisher.publishEvent(new SubscriptionCancelRequestedEvent(subscription.getMemberId(),
+                        subscription.getStripeSubscriptionId(), subscription.getPlan(),
+                        subscription.getCurrentPeriodEnd(), occurredAt, event.getId()));
+            } else {
+                eventPublisher.publishEvent(new SubscriptionCancelRequestRevokedEvent(
+                        subscription.getMemberId(), subscription.getStripeSubscriptionId(),
+                        subscription.getPlan(), subscription.getCurrentPeriodEnd(), occurredAt,
+                        event.getId()));
+            }
+            return;
+        }
+        if (previousPlan != subscription.getPlan() && previousStatus == subscription.getStatus()) {
+            eventPublisher.publishEvent(new SubscriptionBillingIntervalChangedEvent(
+                    subscription.getMemberId(), subscription.getStripeSubscriptionId(), previousPlan,
+                    subscription.getPlan(), occurredAt, event.getId()));
+        }
+    }
+
+    /** 종료 사유는 삭제 웹훅이 오기 직전까지 미러에 남아 있던 상태로 판정한다. */
+    private SubscriptionEndReason endReason(SubscriptionStatus previousStatus,
+            boolean previousCancelAtPeriodEnd) {
+        if (previousCancelAtPeriodEnd) {
+            return SubscriptionEndReason.VOLUNTARY;
+        }
+        if (previousStatus == SubscriptionStatus.PAST_DUE) {
+            return SubscriptionEndReason.PAYMENT_FAILED;
+        }
+        return SubscriptionEndReason.OTHER;
+    }
+
+    /**
+     * 직전 구독이 끝난 뒤 지난 일수. 즉시 취소는 주기 종료 시각이 미래로 남아 음수가 될 수 있어 0으로 묶는다.
+     */
+    private Long daysSinceEnd(Subscription previous, Instant occurredAt) {
+        Instant previousPeriodEnd = previous.getCurrentPeriodEnd();
+        if (previousPeriodEnd == null) {
+            return null;
+        }
+        return Math.max(0L, Duration.between(previousPeriodEnd, occurredAt).toDays());
     }
 
     /** 정기 결제 실패 — 유예 없이 즉시 스타터로 내리고 알림 이벤트를 발행한다(설정-R03). */
