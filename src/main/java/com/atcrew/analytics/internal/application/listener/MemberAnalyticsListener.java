@@ -4,10 +4,14 @@ import com.atcrew.analytics.AnalyticsEventPublisher;
 import com.atcrew.analytics.internal.application.AnalyticsInsertId;
 import com.atcrew.artwork.ArtworkService;
 import com.atcrew.billing.BillingService;
+import com.atcrew.member.AccountDeletionFailedEvent;
 import com.atcrew.member.MemberDeactivatedEvent;
+import com.atcrew.member.ProfileSectionSavedEvent;
 import com.atcrew.portfolio.PortfolioService;
 import org.springframework.modulith.events.ApplicationModuleListener;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -21,6 +25,8 @@ import java.util.Map;
 class MemberAnalyticsListener {
 
     private static final String ACCOUNT_DELETED = "account_deleted";
+    private static final String ACCOUNT_DELETION_FAILED = "account_deletion_failed";
+    private static final String PROFILE_SECTION_SAVED = "profile_section_saved";
 
     private final AnalyticsEventPublisher analyticsEventPublisher;
     private final BillingService billingService;
@@ -54,5 +60,38 @@ class MemberAnalyticsListener {
         properties.put("portfolio_count", portfolioService.countOwnedByMember(memberId));
         analyticsEventPublisher.publish(ACCOUNT_DELETED, memberId, properties,
                 AnalyticsInsertId.of(ACCOUNT_DELETED, memberId));
+    }
+
+    /**
+     * 탈퇴 처리 실패 집계 — 실패 원인 에러 코드만 싣는다.
+     *
+     * <p>롤백된 트랜잭션에는 레지스트리에 완료 표시를 남길 커밋이 없어 {@code AFTER_ROLLBACK}로
+     * 동기 처리한다(package-info 참고). 재시도가 없으므로 전송 유실을 감수한다.
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_ROLLBACK)
+    void on(AccountDeletionFailedEvent event) {
+        String memberId = event.memberId();
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("error_code", event.errorCode());
+        analyticsEventPublisher.publish(ACCOUNT_DELETION_FAILED, memberId, properties,
+                AnalyticsInsertId.of(ACCOUNT_DELETION_FAILED, memberId));
+    }
+
+    /**
+     * 프로필 정보 저장 집계 — 완성도·변경 필드 수·최초 완성 여부를 함께 싣는다.
+     *
+     * <p>같은 회원이 반복해서 저장할 수 있는 이벤트라 {@code $insert_id}에 발생 시각까지 넣는다.
+     */
+    @ApplicationModuleListener
+    void on(ProfileSectionSavedEvent event) {
+        String memberId = event.memberId();
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("section_type", event.sectionType());
+        properties.put("completion_rate", event.completionRate());
+        properties.put("is_complete", event.isComplete());
+        properties.put("changed_field_count", event.changedFieldCount());
+        properties.put("is_first_completion", event.isFirstCompletion());
+        analyticsEventPublisher.publish(PROFILE_SECTION_SAVED, memberId, properties,
+                AnalyticsInsertId.of(PROFILE_SECTION_SAVED, memberId, event.occurredAt()));
     }
 }

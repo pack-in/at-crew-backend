@@ -1,6 +1,26 @@
 package com.atcrew.member.internal.application;
 
+import com.atcrew.member.AccountDeletionFailedEvent;
+import com.atcrew.member.ActiveRegion;
+import com.atcrew.member.ActivityField;
 import com.atcrew.member.ArtistProfileViewedEvent;
+import com.atcrew.member.AvailableStartPeriod;
+import com.atcrew.member.CustomTagInfo;
+import com.atcrew.member.CustomTagType;
+import com.atcrew.member.DesiredAnnualSalary;
+import com.atcrew.member.DesiredEmploymentType;
+import com.atcrew.member.DesiredGenre;
+import com.atcrew.member.DesiredMinimumGuarantee;
+import com.atcrew.member.DesiredRole;
+import com.atcrew.member.DesiredWorkLocation;
+import com.atcrew.member.DrawingStyle;
+import com.atcrew.member.EmploymentStatus;
+import com.atcrew.member.ExperienceLevel;
+import com.atcrew.member.FeedbackPreference;
+import com.atcrew.member.ProfileSectionSavedEvent;
+import com.atcrew.member.TeamExperience;
+import com.atcrew.member.UpdateInfoCommand;
+import com.atcrew.member.WorkPace;
 import com.atcrew.member.internal.domain.Member;
 import com.atcrew.member.internal.exception.MemberErrorCode;
 import com.atcrew.member.internal.exception.MemberException;
@@ -11,6 +31,7 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -96,5 +117,102 @@ class MemberServiceImplTest {
                 .extracting(e -> ((MemberException) e).getCode())
                 .isEqualTo(MemberErrorCode.MEMBER_NOT_FOUND.name());
         verify(eventPublisher, never()).publishEvent(any(ArtistProfileViewedEvent.class));
+    }
+
+    // ─── deactivate: account_deletion_failed (PA-04) ───────────────────
+
+    @Test
+    void 탈퇴_대상_회원이_없으면_실패_이벤트를_발행하고_예외를_다시_던진다() {
+        when(memberRepository.findById("missing-member")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> memberService.deactivate("missing-member"))
+                .isInstanceOf(MemberException.class)
+                .extracting(e -> ((MemberException) e).getCode())
+                .isEqualTo(MemberErrorCode.MEMBER_NOT_FOUND.name());
+
+        ArgumentCaptor<AccountDeletionFailedEvent> captor =
+                ArgumentCaptor.forClass(AccountDeletionFailedEvent.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        assertThat(captor.getValue().memberId()).isEqualTo("missing-member");
+        assertThat(captor.getValue().errorCode()).isEqualTo(MemberErrorCode.MEMBER_NOT_FOUND.name());
+    }
+
+    @Test
+    void 탈퇴에_성공하면_실패_이벤트를_발행하지_않는다() {
+        Member member = Member.register("leave@atcrew.com", "leave_handle", "탈퇴회원");
+        when(memberRepository.findById(member.getId())).thenReturn(Optional.of(member));
+
+        memberService.deactivate(member.getId());
+
+        verify(eventPublisher, never()).publishEvent(any(AccountDeletionFailedEvent.class));
+    }
+
+    // ─── updateInfo: profile_section_saved (PA-04) ─────────────────────
+
+    @Test
+    void 프로필_저장시_완성도와_실제로_바뀐_필드_수를_실어_발행한다() {
+        Member member = Member.register("profile@atcrew.com", "profile_handle", "프로필회원");
+        when(memberRepository.findById(member.getId())).thenReturn(Optional.of(member));
+        // employmentStatus(기본값 PREPARING→AVAILABLE)·contact(null→값) 2개만 실제로 바뀐다
+        UpdateInfoCommand command = new UpdateInfoCommand(
+                EmploymentStatus.AVAILABLE, null, null, null,
+                null, null, null, null, null,
+                null, null, null, null,
+                null, null, null, null,
+                null, "010-1234-5678", null, null, null, null);
+
+        memberService.updateInfo(member.getId(), command);
+
+        ArgumentCaptor<ProfileSectionSavedEvent> captor = ArgumentCaptor.forClass(ProfileSectionSavedEvent.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        ProfileSectionSavedEvent event = captor.getValue();
+        assertThat(event.memberId()).isEqualTo(member.getId());
+        assertThat(event.sectionType()).isEqualTo("profile_info");
+        assertThat(event.changedFieldCount()).isEqualTo(2);
+        // employmentStatus·totalSlotCount·availableSlotCount(기본값)·contact = 4/23
+        assertThat(event.completionRate()).isEqualTo(4 / 23.0);
+        assertThat(event.isComplete()).isFalse();
+        assertThat(event.isFirstCompletion()).isFalse();
+        assertThat(event.occurredAt()).isNotNull();
+    }
+
+    @Test
+    void 아무것도_바뀌지_않으면_변경_필드_수는_0이다() {
+        Member member = Member.register("notouch@atcrew.com", "notouch_handle", "무변경회원");
+        when(memberRepository.findById(member.getId())).thenReturn(Optional.of(member));
+        UpdateInfoCommand command = new UpdateInfoCommand(
+                null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null);
+
+        memberService.updateInfo(member.getId(), command);
+
+        ArgumentCaptor<ProfileSectionSavedEvent> captor = ArgumentCaptor.forClass(ProfileSectionSavedEvent.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        assertThat(captor.getValue().changedFieldCount()).isEqualTo(0);
+    }
+
+    @Test
+    void 전체_필드를_전부_채우면_처음으로_완성도_100퍼센트에_도달한다() {
+        Member member = Member.register("complete@atcrew.com", "complete_handle", "완성회원");
+        when(memberRepository.findById(member.getId())).thenReturn(Optional.of(member));
+        UpdateInfoCommand command = new UpdateInfoCommand(
+                EmploymentStatus.AVAILABLE, List.of(ActivityField.ILLUSTRATION), ExperienceLevel.THREE_TO_FOUR,
+                ActiveRegion.SEOUL, 5, 3, List.of(TeamExperience.SHORT_TERM), List.of(DrawingStyle.REALISTIC),
+                WorkPace.SPEED_FIRST, AvailableStartPeriod.WITHIN_ONE_WEEK, List.of(DesiredRole.ARTWORK),
+                List.of(DesiredGenre.FANTASY), List.of(DesiredEmploymentType.FREELANCE),
+                DesiredWorkLocation.REMOTE, List.of(FeedbackPreference.DIRECT),
+                DesiredMinimumGuarantee.FROM_30_TO_40, DesiredAnnualSalary.FROM_3000_TO_3500,
+                List.of(new CustomTagInfo(CustomTagType.DRAWING_STYLE, "수채화풍")),
+                "010-1234-5678", "sns-handle", "clip studio", "Asia/Seoul", "KR");
+
+        memberService.updateInfo(member.getId(), command);
+
+        ArgumentCaptor<ProfileSectionSavedEvent> captor = ArgumentCaptor.forClass(ProfileSectionSavedEvent.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        ProfileSectionSavedEvent event = captor.getValue();
+        assertThat(event.completionRate()).isEqualTo(1.0);
+        assertThat(event.isComplete()).isTrue();
+        assertThat(event.isFirstCompletion()).isTrue();
     }
 }

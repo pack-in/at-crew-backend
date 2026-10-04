@@ -1,5 +1,6 @@
 package com.atcrew.member.internal.application;
 
+import com.atcrew.member.AccountDeletionFailedEvent;
 import com.atcrew.member.AccountInfo;
 import com.atcrew.member.AddCareerCommand;
 import com.atcrew.member.ArtistProfileViewedEvent;
@@ -11,6 +12,7 @@ import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberProfileInfo;
 import com.atcrew.member.MemberService;
 import com.atcrew.member.PasswordVerification;
+import com.atcrew.member.ProfileSectionSavedEvent;
 import com.atcrew.member.ProfileSort;
 import com.atcrew.member.RegisterMemberCommand;
 import com.atcrew.member.SearchProfilesCommand;
@@ -20,6 +22,7 @@ import com.atcrew.member.internal.domain.TermsAgreement;
 import com.atcrew.member.internal.exception.MemberErrorCode;
 import com.atcrew.member.internal.exception.MemberException;
 import com.atcrew.member.internal.persistence.MemberRepository;
+import com.atcrew.common.exception.DomainException;
 import com.atcrew.common.logging.LogMask;
 import com.atcrew.common.response.OffsetPage;
 import jakarta.persistence.criteria.CriteriaBuilder;
@@ -375,8 +378,19 @@ class MemberServiceImpl implements MemberService {
     @Transactional
     public void updateInfo(String memberId, UpdateInfoCommand command) {
         Member member = findMemberById(memberId);
+        List<Object> before = member.profileFieldSnapshot();
+        double previousCompletionRate = ProfileCompletionCalculator.completionRate(before);
         member.updateInfo(command);
         memberRepository.save(member);
+        List<Object> after = member.profileFieldSnapshot();
+        double completionRate = ProfileCompletionCalculator.completionRate(after);
+        int changedFieldCount = ProfileCompletionCalculator.changedFieldCount(before, after);
+        boolean isComplete = completionRate == 1.0;
+        boolean isFirstCompletion = isComplete && previousCompletionRate < 1.0;
+        // section_type: 기본정보/구직정보가 한 엔드포인트로 묶여 있어 구분이 없다. 고정값 "profile_info".
+        // TODO: 프론트 회신(PH-02)으로 탭 분리 여부가 확정되면 분기 필요.
+        eventPublisher.publishEvent(new ProfileSectionSavedEvent(memberId, "profile_info",
+                completionRate, isComplete, changedFieldCount, isFirstCompletion, Instant.now()));
     }
 
     @Override
@@ -415,15 +429,21 @@ class MemberServiceImpl implements MemberService {
     @Override
     @Transactional
     public void deactivate(String memberId) {
-        Member member = memberRepository.findById(memberId)
-                .orElseThrow(() -> new MemberException(MemberErrorCode.MEMBER_NOT_FOUND, memberId));
-        if (!member.isActive()) {
-            return;
+        try {
+            Member member = memberRepository.findById(memberId)
+                    .orElseThrow(() -> new MemberException(MemberErrorCode.MEMBER_NOT_FOUND, memberId));
+            if (!member.isActive()) {
+                return;
+            }
+            member.deactivate();
+            memberRepository.save(member);
+            log.info("회원 탈퇴 처리: memberId={} email={}", memberId, LogMask.email(member.getDeletedLoginEmail()));
+            eventPublisher.publishEvent(new MemberDeactivatedEvent(memberId));
+        } catch (RuntimeException e) {
+            String errorCode = e instanceof DomainException de ? de.getCode() : "UNKNOWN";
+            eventPublisher.publishEvent(new AccountDeletionFailedEvent(memberId, errorCode));
+            throw e;
         }
-        member.deactivate();
-        memberRepository.save(member);
-        log.info("회원 탈퇴 처리: memberId={} email={}", memberId, LogMask.email(member.getDeletedLoginEmail()));
-        eventPublisher.publishEvent(new MemberDeactivatedEvent(memberId));
     }
 
     private Member findMemberById(String memberId) {
