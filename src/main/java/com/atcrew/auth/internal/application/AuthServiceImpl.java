@@ -2,6 +2,8 @@ package com.atcrew.auth.internal.application;
 
 import com.atcrew.auth.AuthInfo;
 import com.atcrew.auth.AuthService;
+import com.atcrew.auth.AuthSignupFailedEvent;
+import com.atcrew.auth.AuthSignupSucceededEvent;
 import com.atcrew.auth.EmailLoginCommand;
 import com.atcrew.auth.EmailRegisterCommand;
 import com.atcrew.auth.GoogleRegisterCommand;
@@ -27,6 +29,7 @@ import com.atcrew.member.RegisterMemberCommand;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -72,6 +75,7 @@ class AuthServiceImpl implements AuthService {
     private final PasswordChangeAttemptLimiter passwordChangeAttemptLimiter;
     private final MailSender mailSender;
     private final String resetCodePepper;
+    private final ApplicationEventPublisher eventPublisher;
 
     AuthServiceImpl(GoogleTokenVerifierPort googleTokenVerifierPort, MemberService memberService,
                     JwtProvider jwtProvider, RefreshTokenRepository refreshTokenRepository,
@@ -81,7 +85,8 @@ class AuthServiceImpl implements AuthService {
                     PasswordReauthTokenRepository passwordReauthTokenRepository,
                     PasswordChangeAttemptLimiter passwordChangeAttemptLimiter,
                     MailSender mailSender,
-                    @Value("${auth.password-reset.code-pepper}") String resetCodePepper) {
+                    @Value("${auth.password-reset.code-pepper}") String resetCodePepper,
+                    ApplicationEventPublisher eventPublisher) {
         this.googleTokenVerifierPort = googleTokenVerifierPort;
         this.memberService = memberService;
         this.jwtProvider = jwtProvider;
@@ -93,6 +98,7 @@ class AuthServiceImpl implements AuthService {
         this.passwordChangeAttemptLimiter = passwordChangeAttemptLimiter;
         this.mailSender = mailSender;
         this.resetCodePepper = resetCodePepper;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -169,47 +175,63 @@ class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public AuthInfo registerWithEmail(EmailRegisterCommand command) {
-        RegisterMemberCommand memberCommand = new RegisterMemberCommand(
-                command.email(), command.name(), AuthProvider.EMAIL, command.password(),
-                command.agreePrivacy(), command.agreeService(), command.agreeThirdParty(), command.agreeMarketing(),
-                command.timezone(), command.countryCode(), command.primaryLanguage());
+        try {
+            RegisterMemberCommand memberCommand = new RegisterMemberCommand(
+                    command.email(), command.name(), AuthProvider.EMAIL, command.password(),
+                    command.agreePrivacy(), command.agreeService(), command.agreeThirdParty(), command.agreeMarketing(),
+                    command.timezone(), command.countryCode(), command.primaryLanguage());
 
-        MemberInfo member = memberService.register(memberCommand);
+            MemberInfo member = memberService.register(memberCommand);
 
-        String accessToken = jwtProvider.generateAccessToken(member.id(), command.email());
-        String refreshTokenValue = issueRefreshToken(member.id());
+            String accessToken = jwtProvider.generateAccessToken(member.id(), command.email());
+            String refreshTokenValue = issueRefreshToken(member.id());
 
-        log.info("이메일 회원가입 성공: memberId={} email={}", member.id(), LogMask.email(command.email()));
-        return new AuthInfo(accessToken, refreshTokenValue, member, true);
+            eventPublisher.publishEvent(
+                    new AuthSignupSucceededEvent(member.id(), AuthProvider.EMAIL, member.primaryLanguage()));
+            log.info("이메일 회원가입 성공: memberId={} email={}", member.id(), LogMask.email(command.email()));
+            return new AuthInfo(accessToken, refreshTokenValue, member, true);
+        } catch (RuntimeException e) {
+            String errorCode = e instanceof DomainException de ? de.getCode() : "UNKNOWN";
+            eventPublisher.publishEvent(new AuthSignupFailedEvent(AuthProvider.EMAIL, errorCode));
+            throw e;
+        }
     }
 
     @Override
     @Transactional
     public AuthInfo registerWithGoogle(GoogleRegisterCommand command) {
-        // 위조·만료 토큰 반복 전송 방지 — 이메일을 모르는 시점이라 IP 카운터만 사용
-        loginAttemptLimiter.checkIpBlocked();
-
-        GoogleUser googleUser;
         try {
-            googleUser = googleTokenVerifierPort.verify(command.googleIdToken());
+            // 위조·만료 토큰 반복 전송 방지 — 이메일을 모르는 시점이라 IP 카운터만 사용
+            loginAttemptLimiter.checkIpBlocked();
+
+            GoogleUser googleUser;
+            try {
+                googleUser = googleTokenVerifierPort.verify(command.googleIdToken());
+            } catch (RuntimeException e) {
+                loginAttemptLimiter.recordIpFailure();
+                throw e;
+            }
+            String email = googleUser.email();
+
+            RegisterMemberCommand memberCommand = new RegisterMemberCommand(
+                    email, command.name(), AuthProvider.GOOGLE, null,
+                    command.agreePrivacy(), command.agreeService(), command.agreeThirdParty(), command.agreeMarketing(),
+                    command.timezone(), command.countryCode(), command.primaryLanguage());
+
+            MemberInfo member = memberService.register(memberCommand);
+
+            String accessToken = jwtProvider.generateAccessToken(member.id(), email);
+            String refreshTokenValue = issueRefreshToken(member.id());
+
+            eventPublisher.publishEvent(
+                    new AuthSignupSucceededEvent(member.id(), AuthProvider.GOOGLE, member.primaryLanguage()));
+            log.info("Google 회원가입 성공: memberId={} email={}", member.id(), LogMask.email(email));
+            return new AuthInfo(accessToken, refreshTokenValue, member, true);
         } catch (RuntimeException e) {
-            loginAttemptLimiter.recordIpFailure();
+            String errorCode = e instanceof DomainException de ? de.getCode() : "UNKNOWN";
+            eventPublisher.publishEvent(new AuthSignupFailedEvent(AuthProvider.GOOGLE, errorCode));
             throw e;
         }
-        String email = googleUser.email();
-
-        RegisterMemberCommand memberCommand = new RegisterMemberCommand(
-                email, command.name(), AuthProvider.GOOGLE, null,
-                command.agreePrivacy(), command.agreeService(), command.agreeThirdParty(), command.agreeMarketing(),
-                command.timezone(), command.countryCode(), command.primaryLanguage());
-
-        MemberInfo member = memberService.register(memberCommand);
-
-        String accessToken = jwtProvider.generateAccessToken(member.id(), email);
-        String refreshTokenValue = issueRefreshToken(member.id());
-
-        log.info("Google 회원가입 성공: memberId={} email={}", member.id(), LogMask.email(email));
-        return new AuthInfo(accessToken, refreshTokenValue, member, true);
     }
 
     @Override
