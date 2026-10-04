@@ -4,6 +4,8 @@ import com.atcrew.artwork.ArtworkAccess;
 import com.atcrew.artwork.ArtworkStatus;
 import com.atcrew.artwork.BookmarkEntryInfo;
 import com.atcrew.artwork.BookmarkFolderInfo;
+import com.atcrew.artwork.BookmarkRemovedEvent;
+import com.atcrew.artwork.BookmarkSavedEvent;
 import com.atcrew.artwork.BookmarkService;
 import com.atcrew.artwork.internal.domain.artwork.Artwork;
 import com.atcrew.artwork.internal.domain.bookmark.BookmarkEntry;
@@ -17,6 +19,7 @@ import com.atcrew.common.response.CursorPage;
 import com.atcrew.media.MediaService;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,17 +47,20 @@ class BookmarkServiceImpl implements BookmarkService {
     private final ArtworkRepository artworkRepository;
     private final MemberService memberService;
     private final MediaService mediaService;
+    private final ApplicationEventPublisher eventPublisher;
 
     BookmarkServiceImpl(BookmarkFolderRepository folderRepository,
                         BookmarkEntryRepository entryRepository,
                         ArtworkRepository artworkRepository,
                         MemberService memberService,
-                        MediaService mediaService) {
+                        MediaService mediaService,
+                        ApplicationEventPublisher eventPublisher) {
         this.folderRepository = folderRepository;
         this.entryRepository = entryRepository;
         this.artworkRepository = artworkRepository;
         this.memberService = memberService;
         this.mediaService = mediaService;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -243,6 +249,7 @@ class BookmarkServiceImpl implements BookmarkService {
         BookmarkEntry saved = entryRepository.save(entry);
         // 북마크순 정렬용 집계(이슈 #78) — 중복 저장은 위에서 이미 막았으므로 여기서는 항상 1 증가한다.
         artworkRepository.incrementBookmarkCount(artworkId);
+        eventPublisher.publishEvent(new BookmarkSavedEvent(memberId, artworkId, folderId, Instant.now()));
         MemberInfo author = memberService.findById(artwork.getAuthorId());
         return ArtworkMapper.toEntryInfo(saved, ArtworkMapper.toSummaryInfo(artwork, author,
                 ArtworkMedia.load(mediaService, artwork.getId())));
@@ -253,9 +260,11 @@ class BookmarkServiceImpl implements BookmarkService {
     public void removeBookmark(String memberId, String artworkId) {
         BookmarkEntry entry = entryRepository.findByMemberIdAndArtworkId(memberId, artworkId)
                 .orElseThrow(() -> new ArtworkException(ArtworkErrorCode.BOOKMARK_NOT_FOUND, artworkId));
+        String folderId = entry.getFolderId();
         entryRepository.delete(entry);
         // 작품이 이미 영구 삭제됐으면 갱신 대상이 없어 0행이 바뀐다 — 북마크 해제 자체는 성공시킨다.
         artworkRepository.decrementBookmarkCount(artworkId);
+        eventPublisher.publishEvent(new BookmarkRemovedEvent(memberId, artworkId, folderId, Instant.now()));
     }
 
     @Override
