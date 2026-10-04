@@ -93,4 +93,7 @@ public interface ArtworkService {
 
     /** 검색 전체 재색인용 순회 조회 — status/visibility 필터 없이 전체 작품을 createdAt 오름차순으로 순회한다. */
     CursorPage<ArtworkInfo> getArtworksForReindex(String cursor, int size);
+
+    /** 작가가 보유한 작품 수 — 휴지통으로 옮긴 작품(DELETED)은 빼고 센다. */
+    long countActiveByAuthor(String memberId);
 }

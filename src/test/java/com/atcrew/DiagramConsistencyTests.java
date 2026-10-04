@@ -184,9 +184,13 @@ class DiagramConsistencyTests {
     @Test
     void common을_제외한_모든_모듈이_common을_사용한다() {
         // modules.mmd는 common으로 가는 선 대신 "모든 모듈이 사용"이라고 적어 둔다. 그 문구가 사실인지 본다.
+        // analytics는 컨트롤러/보안/응답 포맷 등 common이 제공하는 것을 쓸 일이 없어 유일한 예외로 둔다
+        // (PostHog SDK 실패는 자체 로깅으로 삼키고, common.logging의 PII 마스킹 대상인 이메일 등을 다루지 않음).
+        Set<String> knownExceptions = Set.of("analytics");
         ApplicationModules modules = ApplicationModules.of(AtCrewBackendApplication.class);
         List<String> notUsing = modules.stream()
                 .filter(m -> !idOf(m).equals(COMMON))
+                .filter(m -> !knownExceptions.contains(idOf(m)))
                 .filter(m -> m.getDirectDependencies(modules).uniqueModules().noneMatch(t -> idOf(t).equals(COMMON)))
                 .map(DiagramConsistencyTests::idOf)
                 .toList();

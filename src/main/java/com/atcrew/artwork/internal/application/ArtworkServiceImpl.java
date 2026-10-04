@@ -666,6 +666,12 @@ class ArtworkServiceImpl implements ArtworkService {
         return CursorPage.of(items, nextCursor);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public long countActiveByAuthor(String memberId) {
+        return artworkRepository.countByAuthorIdAndStatusNot(memberId, ArtworkStatus.DELETED);
+    }
+
     // 내 작품·휴지통 목록은 등록일 내림차순 단일 커서를 그대로 쓴다(커뮤니티 피드만 정렬 기준이 여러 개다).
     private CursorPage<ArtworkSummaryInfo> toSummaryPage(List<Artwork> artworks, int size) {
         return toSummaryPage(artworks, size, last -> String.valueOf(last.getCreatedAt().toEpochMilli()));

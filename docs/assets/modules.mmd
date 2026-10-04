@@ -13,7 +13,8 @@ graph TD
   billing[billing<br/>Stripe 결제/구독]
   media[media<br/>이미지 업로드 파이프라인]
   member[member<br/>회원/작가 프로필]
-  common[common<br/>보안, 예외, 응답, 로깅, 관측<br/>모든 모듈이 사용]
+  analytics[analytics<br/>PostHog 이벤트 발행]
+  common[common<br/>보안, 예외, 응답, 로깅, 관측<br/>common 제외 analytics만 빼고 모든 모듈이 사용]
 
   company --> recruit
   company --> billing
@@ -29,6 +30,9 @@ graph TD
   recruit --> billing
   artwork --> media
   artwork --> billing
+  analytics --> billing
+  analytics --> artwork
+  analytics --> portfolio
   %% media를 billing 아래 층에 둬 두 모듈 사이에서 선이 교차하지 않게 한다(보이지 않는 선).
   billing ~~~ media
 
@@ -40,3 +44,4 @@ graph TD
   recruit -.-> member
   artwork -.-> member
   billing -.-> member
+  analytics -.-> member

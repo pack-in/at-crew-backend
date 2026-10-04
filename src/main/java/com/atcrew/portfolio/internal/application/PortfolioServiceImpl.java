@@ -19,6 +19,7 @@ import com.atcrew.portfolio.PortfolioDuplicationSourceInfo;
 import com.atcrew.portfolio.PortfolioInfo;
 import com.atcrew.portfolio.PortfolioKind;
 import com.atcrew.portfolio.PortfolioSelectableInfo;
+import com.atcrew.portfolio.PortfolioService;
 import com.atcrew.portfolio.PortfolioSharedInfo;
 import com.atcrew.portfolio.PortfolioSnapshotDetailInfo;
 import com.atcrew.portfolio.PortfolioSort;
@@ -61,14 +62,15 @@ import java.util.Set;
 /**
  * 포트폴리오 CRUD (docs/design/portfolio-module-design.md §4, §5).
  *
- * <p>portfolio는 다른 모듈이 동기 호출할 필요가 없는 리프 모듈이라 공개 인터페이스를 두지 않는다(§3).
- * 같은 모듈의 컨트롤러가 이 클래스를 직접 주입받는다(media의 {@code MediaCallbackService}와 동일한 형태).
+ * <p>포트폴리오 CRUD는 다른 모듈이 호출하지 않아 공개 인터페이스에 올리지 않는다(§3) — 같은 모듈의
+ * 컨트롤러가 이 클래스를 직접 주입받는다(media의 {@code MediaCallbackService}와 동일한 형태).
+ * 다른 모듈에 열어 준 조회만 {@link PortfolioService}로 노출한다.
  *
  * <p>작품 편입 여부(`artworks.portfolio_included`)는 이벤트가 아니라 같은 트랜잭션 안의 동기 호출로
  * 갱신한다 — 순서 역전이 없고 절대값 재계산이라 멱등하다(§1.2, §5.4).
  */
 @Service
-public class PortfolioServiceImpl {
+public class PortfolioServiceImpl implements PortfolioService {
 
     // 카드 커버는 2x2 배치라 최대 4장이다(마이페이지_작가-R39).
     private static final int COVER_THUMBNAIL_LIMIT = 4;
@@ -110,6 +112,16 @@ public class PortfolioServiceImpl {
     }
 
     // === 조회 ===
+
+    /**
+     * 작가 페이지는 회원마다 자동으로 하나 생기는 컨테이너라 "만든 포트폴리오"로 세지 않는다 —
+     * SHARED만 센다(§2.5).
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public int countOwnedByMember(String memberId) {
+        return Math.toIntExact(portfolioRepository.countByOwnerMemberIdAndKind(memberId, PortfolioKind.SHARED));
+    }
 
     /**
      * 내 포트폴리오 목록. 작가 페이지가 아직 없으면 이 시점에 만든다(§2.5) — 따라서 읽기 전용 트랜잭션이 아니다.
