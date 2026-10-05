@@ -216,14 +216,10 @@ class ArtworkServiceImpl implements ArtworkService {
             log.info("작품 업로드 완료: artworkId={} memberId={}", saved.getId(), memberId);
             return toInfo(saved, author);
         } catch (RuntimeException e) {
-            eventPublisher.publishEvent(new ArtworkPublishFailedEvent(memberId, errorCodeOf(e), Instant.now()));
+            eventPublisher.publishEvent(
+                    new ArtworkPublishFailedEvent(memberId, DomainException.codeOf(e), Instant.now()));
             throw e;
         }
-    }
-
-    /** 분석 실패 이벤트의 errorCode — 도메인 예외는 코드명을, 그 외는 예외 클래스명을 쓴다. */
-    private static String errorCodeOf(RuntimeException e) {
-        return e instanceof DomainException domainException ? domainException.getCode() : e.getClass().getSimpleName();
     }
 
     @Override

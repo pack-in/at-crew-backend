@@ -440,8 +440,8 @@ class MemberServiceImpl implements MemberService {
             log.info("회원 탈퇴 처리: memberId={} email={}", memberId, LogMask.email(member.getDeletedLoginEmail()));
             eventPublisher.publishEvent(new MemberDeactivatedEvent(memberId));
         } catch (RuntimeException e) {
-            String errorCode = e instanceof DomainException de ? de.getCode() : "UNKNOWN";
-            eventPublisher.publishEvent(new AccountDeletionFailedEvent(memberId, errorCode));
+            eventPublisher.publishEvent(
+                    new AccountDeletionFailedEvent(memberId, DomainException.codeOf(e), Instant.now()));
             throw e;
         }
     }

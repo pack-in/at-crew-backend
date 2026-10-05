@@ -67,14 +67,17 @@ class MemberAnalyticsListener {
      *
      * <p>롤백된 트랜잭션에는 레지스트리에 완료 표시를 남길 커밋이 없어 {@code AFTER_ROLLBACK}로
      * 동기 처리한다(package-info 참고). 재시도가 없으므로 전송 유실을 감수한다.
+     *
+     * <p>{@code publishAnonymous}를 쓴다 — 공통 속성(plan_type/locale) 조회는 billing·member를 DB로
+     * 왕복하는데, 막 롤백된 요청 스레드에서 그 조회까지 성공을 보장할 수 없다(AFTER_ROLLBACK 경로의
+     * JPA 세션 상태는 검증되지 않았다). distinct_id는 그대로 memberId를 써서 PostHog person은 맞게 묶인다.
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_ROLLBACK)
     void on(AccountDeletionFailedEvent event) {
-        String memberId = event.memberId();
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("error_code", event.errorCode());
-        analyticsEventPublisher.publish(ACCOUNT_DELETION_FAILED, memberId, properties,
-                AnalyticsInsertId.of(ACCOUNT_DELETION_FAILED, memberId));
+        analyticsEventPublisher.publishAnonymous(ACCOUNT_DELETION_FAILED, event.memberId(), properties,
+                AnalyticsInsertId.of(ACCOUNT_DELETION_FAILED, event.memberId(), event.occurredAt()));
     }
 
     /**

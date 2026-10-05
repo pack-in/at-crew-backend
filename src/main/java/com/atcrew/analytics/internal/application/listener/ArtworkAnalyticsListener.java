@@ -55,12 +55,15 @@ class ArtworkAnalyticsListener {
     /**
      * 업로드 트랜잭션이 롤백되는 경로에서 발행되므로 레지스트리를 거치지 않는 동기 리스너로만 받는다
      * (package-info.java 참고) — 재시도는 없다.
+     *
+     * <p>{@code publishAnonymous}를 쓴다 — 막 롤백된 요청 스레드에서 공통 속성(plan_type/locale)을
+     * 조회하려고 billing·member를 또 DB로 왕복시키지 않는다. distinct_id는 memberId 그대로다.
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_ROLLBACK)
     void onArtworkPublishFailed(ArtworkPublishFailedEvent event) {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("error_code", event.errorCode());
-        analyticsEventPublisher.publish(ARTWORK_PUBLISH_FAILED, event.memberId(), properties,
+        analyticsEventPublisher.publishAnonymous(ARTWORK_PUBLISH_FAILED, event.memberId(), properties,
                 AnalyticsInsertId.of(ARTWORK_PUBLISH_FAILED, event.memberId(), event.occurredAt()));
     }
 

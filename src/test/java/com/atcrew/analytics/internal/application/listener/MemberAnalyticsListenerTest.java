@@ -85,12 +85,16 @@ class MemberAnalyticsListenerTest {
 
     @Test
     void 탈퇴_실패_이벤트는_에러코드를_실어_발행한다() {
-        listener.on(new AccountDeletionFailedEvent("member-004", "MEMBER_NOT_FOUND"));
+        Instant occurredAt = Instant.parse("2026-10-05T00:00:00Z");
+
+        listener.on(new AccountDeletionFailedEvent("member-004", "MEMBER_NOT_FOUND", occurredAt));
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> properties = ArgumentCaptor.forClass(Map.class);
-        verify(analyticsEventPublisher).publish(eq("account_deletion_failed"), eq("member-004"),
-                properties.capture(), eq("account_deletion_failed:member-004"));
+        // 롤백 직후 DB 재조회(plan_type/locale)를 피하려고 publishAnonymous를 쓴다 — publish는 호출 안 됨.
+        verify(analyticsEventPublisher).publishAnonymous(eq("account_deletion_failed"), eq("member-004"),
+                properties.capture(), eq("account_deletion_failed:member-004:" + occurredAt.toEpochMilli()));
+        verify(analyticsEventPublisher, never()).publish(any(), any(), any(), any());
         assertThat(properties.getValue()).containsEntry("error_code", "MEMBER_NOT_FOUND");
     }
 

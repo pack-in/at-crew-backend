@@ -64,7 +64,9 @@ class PostHogAnalyticsEventPublisher implements AnalyticsEventPublisher {
             }
             postHog.capture(distinctId, eventName, options.build());
         } catch (RuntimeException e) {
-            log.warn("PostHog 이벤트 전송 실패: event={}, insertId={}", eventName, insertId, e);
+            // ERROR로 남긴다 — sentry.minimum-event-level=error라 Sentry로 알람이 간다(observability-design.md P2).
+            // warn이었다면 전송 장애가 아무도 모르게 조용히 쌓였을 것이다.
+            log.error("PostHog 이벤트 전송 실패: event={}, insertId={}", eventName, insertId, e);
         }
     }
 }

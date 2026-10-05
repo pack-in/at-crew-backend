@@ -89,15 +89,25 @@ class BillingServiceImpl implements BillingService {
     @Transactional(readOnly = true)
     public BillingSummaryInfo getSummary(String memberId) {
         Optional<Subscription> subscription = currentSubscription(memberId);
-        PlanType plan = subscription.filter(Subscription::grantsPro)
-                .map(Subscription::getPlan)
-                .orElse(PlanType.STARTER);
+        PlanType plan = planOf(subscription);
         return new BillingSummaryInfo(
                 plan,
                 subscription.map(Subscription::getStatus).orElse(null),
                 subscription.map(Subscription::getCurrentPeriodEnd).orElse(null),
                 subscription.map(Subscription::isCancelAtPeriodEnd).orElse(false),
                 entitlementService.getQuantities(memberId));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PlanType currentPlan(String memberId) {
+        return planOf(currentSubscription(memberId));
+    }
+
+    private PlanType planOf(Optional<Subscription> subscription) {
+        return subscription.filter(Subscription::grantsPro)
+                .map(Subscription::getPlan)
+                .orElse(PlanType.STARTER);
     }
 
     @Override

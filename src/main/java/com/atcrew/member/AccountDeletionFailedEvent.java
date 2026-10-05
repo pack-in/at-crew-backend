@@ -1,5 +1,7 @@
 package com.atcrew.member;
 
+import java.time.Instant;
+
 /**
  * 회원 탈퇴 처리 중 실패했을 때 발행되는 이벤트(plans/261005-posthog-analytics-events PA-04).
  *
@@ -8,7 +10,8 @@ package com.atcrew.member;
  * 영향을 주지 않는다.
  */
 public record AccountDeletionFailedEvent(
-        String memberId,  // 탈퇴를 시도한 회원 ID
-        String errorCode  // 실패 원인 에러 코드. DomainException이 아니면 "UNKNOWN"
+        String memberId,    // 탈퇴를 시도한 회원 ID
+        String errorCode,   // 실패 원인 에러 코드. DomainException이 아니면 "UNKNOWN"
+        Instant occurredAt  // $insert_id에 섞어 같은 날 반복 실패가 한 건으로 뭉개지지 않게 한다
 ) {
 }

@@ -56,10 +56,9 @@ class CommonPropertiesSupplier {
         return properties;
     }
 
-    /** PlanType을 내주는 billing 공개 메서드는 {@code getSummary} 하나뿐이다. */
     private Optional<String> planType(String memberId) {
         try {
-            return Optional.of(billingService.getSummary(memberId).plan().name());
+            return Optional.of(billingService.currentPlan(memberId).name());
         } catch (RuntimeException e) {
             log.debug("분석 공통 속성 plan_type 조회 실패: memberId={}", memberId, e);
             return Optional.empty();

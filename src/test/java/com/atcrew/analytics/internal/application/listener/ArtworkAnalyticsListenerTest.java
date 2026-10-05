@@ -53,8 +53,8 @@ class ArtworkAnalyticsListenerTest {
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> properties = ArgumentCaptor.forClass(Map.class);
-        verify(analyticsEventPublisher).publish(eq("artwork_publish_failed"), eq("member-2"), properties.capture(),
-                eq("artwork_publish_failed:member-2:" + occurredAt.toEpochMilli()));
+        verify(analyticsEventPublisher).publishAnonymous(eq("artwork_publish_failed"), eq("member-2"),
+                properties.capture(), eq("artwork_publish_failed:member-2:" + occurredAt.toEpochMilli()));
         assertThat(properties.getValue()).containsEntry("error_code", "STARTER_ARTWORK_LIMIT_EXCEEDED");
         // draft_id는 싣지 않는다(의도적 제외) — 키 자체가 없어야 한다.
         assertThat(properties.getValue()).doesNotContainKey("draft_id");

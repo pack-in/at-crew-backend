@@ -191,7 +191,7 @@ class AuthServiceImpl implements AuthService {
             log.info("이메일 회원가입 성공: memberId={} email={}", member.id(), LogMask.email(command.email()));
             return new AuthInfo(accessToken, refreshTokenValue, member, true);
         } catch (RuntimeException e) {
-            String errorCode = e instanceof DomainException de ? de.getCode() : "UNKNOWN";
+            String errorCode = DomainException.codeOf(e);
             eventPublisher.publishEvent(new AuthSignupFailedEvent(AuthProvider.EMAIL, errorCode));
             throw e;
         }
@@ -228,7 +228,7 @@ class AuthServiceImpl implements AuthService {
             log.info("Google 회원가입 성공: memberId={} email={}", member.id(), LogMask.email(email));
             return new AuthInfo(accessToken, refreshTokenValue, member, true);
         } catch (RuntimeException e) {
-            String errorCode = e instanceof DomainException de ? de.getCode() : "UNKNOWN";
+            String errorCode = DomainException.codeOf(e);
             eventPublisher.publishEvent(new AuthSignupFailedEvent(AuthProvider.GOOGLE, errorCode));
             throw e;
         }
