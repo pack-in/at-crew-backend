@@ -15,6 +15,7 @@ import com.atcrew.billing.SubscriptionPaymentRecoveredEvent;
 import com.atcrew.billing.SubscriptionPaymentSucceededEvent;
 import com.atcrew.billing.SubscriptionPaymentType;
 import com.atcrew.billing.SubscriptionReactivatedEvent;
+import com.atcrew.billing.SubscriptionRefundedEvent;
 import com.atcrew.billing.SubscriptionRenewedEvent;
 import com.atcrew.billing.SubscriptionStatus;
 import com.atcrew.billing.internal.config.BillingProperties;
@@ -426,7 +427,15 @@ public class BillingWebhookService {
      */
     private void onChargeRefunded(Event event) {
         Charge charge = dataObject(event, Charge.class);
-        if (!Boolean.TRUE.equals(charge.getRefunded())) {
+        boolean fullyRefunded = Boolean.TRUE.equals(charge.getRefunded());
+        // 권한 회수와 무관하게 환불 자체는 부분이어도 분석 이벤트로 남긴다.
+        resolveMemberId(charge.getCustomer(), null).ifPresent(memberId ->
+                eventPublisher.publishEvent(new SubscriptionRefundedEvent(memberId,
+                        fullyRefunded ? "full" : "partial",
+                        charge.getAmountRefunded() == null ? 0L : charge.getAmountRefunded(),
+                        charge.getCurrency() == null ? null : charge.getCurrency().toUpperCase(),
+                        event.getId())));
+        if (!fullyRefunded) {
             log.info("부분 환불은 권한을 회수하지 않습니다 chargeId={}", charge.getId());
             return;
         }

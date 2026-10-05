@@ -15,6 +15,7 @@ import com.atcrew.billing.SubscriptionPaymentRecoveredEvent;
 import com.atcrew.billing.SubscriptionPaymentSucceededEvent;
 import com.atcrew.billing.SubscriptionPaymentType;
 import com.atcrew.billing.SubscriptionReactivatedEvent;
+import com.atcrew.billing.SubscriptionRefundedEvent;
 import com.atcrew.billing.SubscriptionRenewedEvent;
 import com.atcrew.billing.SubscriptionStatus;
 import org.springframework.modulith.events.ApplicationModuleListener;
@@ -49,6 +50,7 @@ class BillingAnalyticsListener {
     private static final String PAYMENT_FAILED = "subscription_payment_failed";
     private static final String PAYMENT_RECOVERED = "subscription_payment_recovered";
     private static final String PAYMENT_METHOD_UPDATED = "payment_method_updated";
+    private static final String REFUNDED = "subscription_refunded";
 
     private final AnalyticsEventPublisher analyticsEventPublisher;
 
@@ -203,6 +205,17 @@ class BillingAnalyticsListener {
         properties.put("updated_at", iso(event.updatedAt()));
         analyticsEventPublisher.publish(PAYMENT_METHOD_UPDATED, event.memberId(), properties,
                 AnalyticsInsertId.of(PAYMENT_METHOD_UPDATED, event.stripeEventId()));
+    }
+
+    /** 환불 — 부분이어도 기록한다(권한 회수는 전체 환불만 대상이지만 분석은 별개). */
+    @ApplicationModuleListener
+    void onRefunded(SubscriptionRefundedEvent event) {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("refund_type", event.refundType());
+        properties.put("amount", event.amount());
+        properties.put("currency", event.currency());
+        analyticsEventPublisher.publish(REFUNDED, event.memberId(), properties,
+                AnalyticsInsertId.of(REFUNDED, event.stripeEventId()));
     }
 
     /** 결제 유형은 PostHog 속성 표기(소문자)로 내보낸다. 판별하지 못한 경우는 속성에서 빠진다. */
