@@ -2,6 +2,7 @@ package com.atcrew.analytics.internal.application.listener;
 
 import com.atcrew.analytics.AnalyticsEventPublisher;
 import com.atcrew.analytics.internal.application.AnalyticsInsertId;
+import com.atcrew.billing.PaymentMethodUpdatedEvent;
 import com.atcrew.billing.PlanType;
 import com.atcrew.billing.SubscriptionActivatedEvent;
 import com.atcrew.billing.SubscriptionBillingIntervalChangedEvent;
@@ -9,7 +10,13 @@ import com.atcrew.billing.SubscriptionCancelRequestRevokedEvent;
 import com.atcrew.billing.SubscriptionCancelRequestedEvent;
 import com.atcrew.billing.SubscriptionCheckoutStartedEvent;
 import com.atcrew.billing.SubscriptionEndedEvent;
+import com.atcrew.billing.SubscriptionPaymentFailureRecordedEvent;
+import com.atcrew.billing.SubscriptionPaymentRecoveredEvent;
+import com.atcrew.billing.SubscriptionPaymentSucceededEvent;
+import com.atcrew.billing.SubscriptionPaymentType;
 import com.atcrew.billing.SubscriptionReactivatedEvent;
+import com.atcrew.billing.SubscriptionRenewedEvent;
+import com.atcrew.billing.SubscriptionStatus;
 import org.springframework.modulith.events.ApplicationModuleListener;
 import org.springframework.stereotype.Component;
 
@@ -37,6 +44,11 @@ class BillingAnalyticsListener {
     private static final String CANCEL_REQUEST_REVOKED = "subscription_cancel_request_revoked";
     private static final String ENDED = "subscription_ended";
     private static final String BILLING_INTERVAL_CHANGED = "subscription_billing_interval_changed";
+    private static final String PAYMENT_SUCCEEDED = "subscription_payment_succeeded";
+    private static final String RENEWED = "subscription_renewed";
+    private static final String PAYMENT_FAILED = "subscription_payment_failed";
+    private static final String PAYMENT_RECOVERED = "subscription_payment_recovered";
+    private static final String PAYMENT_METHOD_UPDATED = "payment_method_updated";
 
     private final AnalyticsEventPublisher analyticsEventPublisher;
 
@@ -121,6 +133,86 @@ class BillingAnalyticsListener {
         properties.put("effective_at", iso(event.effectiveAt()));
         analyticsEventPublisher.publish(BILLING_INTERVAL_CHANGED, event.memberId(), properties,
                 AnalyticsInsertId.of(BILLING_INTERVAL_CHANGED, event.stripeEventId()));
+    }
+
+    /** 구독 최초 결제 성공. 정기 갱신은 {@link #onRenewed}가 담당한다. */
+    @ApplicationModuleListener
+    void onPaymentSucceeded(SubscriptionPaymentSucceededEvent event) {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("subscription_id", event.subscriptionId());
+        properties.put("billing_interval", billingInterval(event.plan()));
+        properties.put("payment_type", paymentType(event.paymentType()));
+        properties.put("amount", event.amount());
+        properties.put("currency", event.currency());
+        properties.put("paid_at", iso(event.paidAt()));
+        analyticsEventPublisher.publish(PAYMENT_SUCCEEDED, event.memberId(), properties,
+                AnalyticsInsertId.of(PAYMENT_SUCCEEDED, event.stripeEventId()));
+    }
+
+    /** 정기 갱신 결제 성공. renewal_number는 카운터 도입(V49) 이후 건만 센 값이다. */
+    @ApplicationModuleListener
+    void onRenewed(SubscriptionRenewedEvent event) {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("subscription_id", event.subscriptionId());
+        properties.put("billing_interval", billingInterval(event.plan()));
+        properties.put("renewal_number", event.renewalNumber());
+        properties.put("amount", event.amount());
+        properties.put("currency", event.currency());
+        properties.put("renewed_at", iso(event.renewedAt()));
+        analyticsEventPublisher.publish(RENEWED, event.memberId(), properties,
+                AnalyticsInsertId.of(RENEWED, event.stripeEventId()));
+    }
+
+    /**
+     * 구독 결제 실패. Stripe 웹훅이 정상 처리된 결과이므로 도메인 트랜잭션 롤백용 실패 리스너 패턴이
+     * 아니라 성공 계열과 같은 {@code @ApplicationModuleListener}를 쓴다(package-info.java 참고).
+     */
+    @ApplicationModuleListener
+    void onPaymentFailed(SubscriptionPaymentFailureRecordedEvent event) {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("subscription_id", event.subscriptionId());
+        properties.put("billing_interval", billingInterval(event.plan()));
+        properties.put("payment_type", paymentType(event.paymentType()));
+        properties.put("failure_code", event.failureCode());
+        properties.put("amount", event.amount());
+        properties.put("currency", event.currency());
+        properties.put("failed_at", iso(event.failedAt()));
+        analyticsEventPublisher.publish(PAYMENT_FAILED, event.memberId(), properties,
+                AnalyticsInsertId.of(PAYMENT_FAILED, event.stripeEventId()));
+    }
+
+    /** 결제 실패 후 복구. recovery_attempt_number는 카운터 도입(V49) 이후 건만 센 값이다. */
+    @ApplicationModuleListener
+    void onPaymentRecovered(SubscriptionPaymentRecoveredEvent event) {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("subscription_id", event.subscriptionId());
+        properties.put("billing_interval", billingInterval(event.plan()));
+        properties.put("recovery_attempt_number", event.recoveryAttemptNumber());
+        properties.put("amount", event.amount());
+        properties.put("currency", event.currency());
+        properties.put("recovered_at", iso(event.recoveredAt()));
+        analyticsEventPublisher.publish(PAYMENT_RECOVERED, event.memberId(), properties,
+                AnalyticsInsertId.of(PAYMENT_RECOVERED, event.stripeEventId()));
+    }
+
+    /** 결제 수단 등록. 카드 정보는 설계상 싣지 않고 구독 상태만 남긴다. */
+    @ApplicationModuleListener
+    void onPaymentMethodUpdated(PaymentMethodUpdatedEvent event) {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("subscription_status", subscriptionStatus(event.subscriptionStatus()));
+        properties.put("updated_at", iso(event.updatedAt()));
+        analyticsEventPublisher.publish(PAYMENT_METHOD_UPDATED, event.memberId(), properties,
+                AnalyticsInsertId.of(PAYMENT_METHOD_UPDATED, event.stripeEventId()));
+    }
+
+    /** 결제 유형은 PostHog 속성 표기(소문자)로 내보낸다. 판별하지 못한 경우는 속성에서 빠진다. */
+    private String paymentType(SubscriptionPaymentType paymentType) {
+        return paymentType == null ? null : paymentType.name().toLowerCase(Locale.ROOT);
+    }
+
+    /** 구독 상태도 소문자로 내보낸다. 살아 있는 구독이 없으면 속성에서 빠진다. */
+    private String subscriptionStatus(SubscriptionStatus status) {
+        return status == null ? null : status.name().toLowerCase(Locale.ROOT);
     }
 
     /** 플랜에서 결제 주기를 유도한다. 구독 이벤트의 플랜은 항상 프로 2종 중 하나다. */
