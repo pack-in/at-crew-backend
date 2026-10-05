@@ -140,8 +140,11 @@ class BillingServiceImpl implements BillingService {
         }
         int trialDays = trialDays(product, isTrialEligible(memberId));
         CheckoutSession session = stripeGateway.createCheckoutSession(memberId, product, customerId, trialDays);
-        eventPublisher.publishEvent(new SubscriptionCheckoutStartedEvent(
-                memberId, session.id(), product, trialDays, Instant.now()));
+        if (product.isSubscription()) {
+            // 단건 상품(BOOST 등) 체크아웃은 구독 전환 퍼널이 아니라 이벤트명 의미 밖이다 — 내지 않는다.
+            eventPublisher.publishEvent(new SubscriptionCheckoutStartedEvent(
+                    memberId, session.id(), product, trialDays, Instant.now()));
+        }
         return new CheckoutSessionInfo(session.url());
     }
 

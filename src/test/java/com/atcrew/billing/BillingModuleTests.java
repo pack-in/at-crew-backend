@@ -235,9 +235,9 @@ class BillingModuleTests {
     }
 
     @Test
-    void 전체_환불은_분석_이벤트를_발행한다(PublishedEvents events) {
+    void 구독_환불은_분석_이벤트를_발행한다(PublishedEvents events) {
+        // 단건 상품(checkoutCompleted) 경로를 안 타는 결제 — PURCHASE 원장이 없으니 "구독" 환불로 본다.
         String memberId = registerMemberWithCustomer("refund-analytics-full", "cus_refund_full");
-        webhookService.handle(checkoutCompleted("evt_refund_an_pay", memberId, BillingProduct.BOOST, "pi_refund_an_1"));
 
         webhookService.handle(chargeRefunded("evt_refund_an_back", "pi_refund_an_1", true,
                 "cus_refund_full", 500));
@@ -254,10 +254,8 @@ class BillingModuleTests {
     }
 
     @Test
-    void 부분_환불도_분석_이벤트는_발행한다(PublishedEvents events) {
+    void 구독_부분_환불도_분석_이벤트는_발행한다(PublishedEvents events) {
         String memberId = registerMemberWithCustomer("refund-analytics-partial", "cus_refund_partial");
-        webhookService.handle(checkoutCompleted("evt_refund_an_pay2", memberId, BillingProduct.BOOST,
-                "pi_refund_an_2"));
 
         webhookService.handle(chargeRefunded("evt_refund_an_back2", "pi_refund_an_2", false,
                 "cus_refund_partial", 200));
@@ -267,6 +265,20 @@ class BillingModuleTests {
                 .hasSize(1)
                 .first()
                 .satisfies(event -> assertThat(event.refundType()).isEqualTo("partial"));
+    }
+
+    @Test
+    void 단건_상품_환불은_구독_환불_분석_이벤트를_내지_않는다(PublishedEvents events) {
+        String memberId = registerMemberWithCustomer("refund-analytics-onetime", "cus_refund_onetime");
+        webhookService.handle(checkoutCompleted("evt_refund_onetime_pay", memberId, BillingProduct.BOOST,
+                "pi_refund_onetime_1"));
+
+        webhookService.handle(chargeRefunded("evt_refund_onetime_back", "pi_refund_onetime_1", true,
+                "cus_refund_onetime", 500));
+
+        assertThat(events.ofType(SubscriptionRefundedEvent.class)
+                .matching(event -> memberId.equals(event.memberId())))
+                .isEmpty();
     }
 
     // === 카탈로그 ===

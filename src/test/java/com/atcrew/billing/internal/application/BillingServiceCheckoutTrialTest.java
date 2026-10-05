@@ -102,6 +102,8 @@ class BillingServiceCheckoutTrialTest {
 
         verify(stripeGateway, never()).expireOpenCheckoutSessions(anyString());
         verify(stripeGateway).createCheckoutSession(MEMBER_ID, BillingProduct.BOOST, CUSTOMER_ID, 0);
+        // 단건 상품은 구독 전환 퍼널이 아니다 — subscription_checkout_started를 내면 안 된다.
+        verify(eventPublisher, never()).publishEvent(any(SubscriptionCheckoutStartedEvent.class));
     }
 
     private void givenCustomer() {

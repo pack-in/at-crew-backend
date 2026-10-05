@@ -428,18 +428,23 @@ public class BillingWebhookService {
     private void onChargeRefunded(Event event) {
         Charge charge = dataObject(event, Charge.class);
         boolean fullyRefunded = Boolean.TRUE.equals(charge.getRefunded());
-        // 권한 회수와 무관하게 환불 자체는 부분이어도 분석 이벤트로 남긴다.
-        resolveMemberId(charge.getCustomer(), null).ifPresent(memberId ->
-                eventPublisher.publishEvent(new SubscriptionRefundedEvent(memberId,
-                        fullyRefunded ? "full" : "partial",
-                        charge.getAmountRefunded() == null ? 0L : charge.getAmountRefunded(),
-                        charge.getCurrency() == null ? null : charge.getCurrency().toUpperCase(),
-                        event.getId())));
+        String paymentIntentId = charge.getPaymentIntent();
+        // Charge API엔 구독 인보이스 여부를 직접 알 길이 없다 — 단건 상품 환불은 PURCHASE 원장으로
+        // 역추적해서 가려낸다(권한 회수 로직이 이미 같은 조회를 한다). 분석 이벤트는 "구독" 환불만 대상이다.
+        boolean isOneTimePurchaseRefund = paymentIntentId != null
+                && !ledgerRepository.findByRefIdAndReason(paymentIntentId, LedgerReason.PURCHASE).isEmpty();
+        if (!isOneTimePurchaseRefund) {
+            resolveMemberId(charge.getCustomer(), null).ifPresent(memberId ->
+                    eventPublisher.publishEvent(new SubscriptionRefundedEvent(memberId,
+                            fullyRefunded ? "full" : "partial",
+                            charge.getAmountRefunded() == null ? 0L : charge.getAmountRefunded(),
+                            charge.getCurrency() == null ? null : charge.getCurrency().toUpperCase(Locale.ROOT),
+                            event.getId())));
+        }
         if (!fullyRefunded) {
             log.info("부분 환불은 권한을 회수하지 않습니다 chargeId={}", charge.getId());
             return;
         }
-        String paymentIntentId = charge.getPaymentIntent();
         if (paymentIntentId == null) {
             return;
         }
