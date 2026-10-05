@@ -1,6 +1,7 @@
 package com.atcrew.billing.internal.application;
 
 import com.atcrew.billing.BillingProduct;
+import com.atcrew.billing.PaymentMethodUpdatedEvent;
 import com.atcrew.billing.PlanType;
 import com.atcrew.billing.SubscriptionActivatedEvent;
 import com.atcrew.billing.SubscriptionBillingIntervalChangedEvent;
@@ -9,7 +10,12 @@ import com.atcrew.billing.SubscriptionCancelRequestedEvent;
 import com.atcrew.billing.SubscriptionEndReason;
 import com.atcrew.billing.SubscriptionEndedEvent;
 import com.atcrew.billing.SubscriptionPaymentFailedEvent;
+import com.atcrew.billing.SubscriptionPaymentFailureRecordedEvent;
+import com.atcrew.billing.SubscriptionPaymentRecoveredEvent;
+import com.atcrew.billing.SubscriptionPaymentSucceededEvent;
+import com.atcrew.billing.SubscriptionPaymentType;
 import com.atcrew.billing.SubscriptionReactivatedEvent;
+import com.atcrew.billing.SubscriptionRenewedEvent;
 import com.atcrew.billing.SubscriptionStatus;
 import com.atcrew.billing.internal.config.BillingProperties;
 import com.atcrew.billing.internal.domain.BillingCustomer;
@@ -25,6 +31,8 @@ import com.stripe.exception.EventDataObjectDeserializationException;
 import com.stripe.model.Charge;
 import com.stripe.model.Event;
 import com.stripe.model.Invoice;
+import com.stripe.model.PaymentMethod;
+import com.stripe.model.StripeError;
 import com.stripe.model.StripeObject;
 import com.stripe.model.SubscriptionItem;
 import org.slf4j.Logger;
@@ -36,6 +44,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 /**
@@ -53,6 +62,12 @@ public class BillingWebhookService {
             List.of(SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE);
 
     private static final String SUBSCRIPTION_DELETED = "customer.subscription.deleted";
+
+    /** 구독을 처음 시작할 때 발행되는 invoice의 billing_reason. */
+    private static final String BILLING_REASON_SUBSCRIPTION_CREATE = "subscription_create";
+
+    /** 결제 주기가 돌아와 발행되는 invoice의 billing_reason — 무료 체험 종료 후 첫 청구도 이 값이다. */
+    private static final String BILLING_REASON_SUBSCRIPTION_CYCLE = "subscription_cycle";
 
     private final WebhookEventRepository webhookEventRepository;
     private final SubscriptionRepository subscriptionRepository;
@@ -98,6 +113,7 @@ public class BillingWebhookService {
                  "customer.subscription.deleted" -> onSubscriptionChanged(event, occurredAt);
             case "invoice.payment_failed" -> onPaymentFailed(event, occurredAt);
             case "invoice.payment_succeeded" -> onPaymentSucceeded(event, occurredAt);
+            case "payment_method.attached" -> onPaymentMethodUpdated(event, occurredAt);
             case "charge.refunded" -> onChargeRefunded(event);
             default -> log.debug("구독하지 않는 이벤트 무시 type={}", event.getType());
         }
@@ -269,7 +285,10 @@ public class BillingWebhookService {
         return Math.max(0L, Duration.between(previousPeriodEnd, occurredAt).toDays());
     }
 
-    /** 정기 결제 실패 — 유예 없이 즉시 스타터로 내리고 알림 이벤트를 발행한다(설정-R03). */
+    /**
+     * 정기 결제 실패 — 유예 없이 즉시 스타터로 내리고 알림 이벤트를 발행한다(설정-R03).
+     * 알림용과 별개로 집계용 이벤트도 같이 낸다(PA-09) — 수신 모듈이 달라 계약을 섞지 않는다.
+     */
     private void onPaymentFailed(Event event, Instant occurredAt) {
         Invoice invoice = dataObject(event, Invoice.class);
         resolveMemberId(invoice.getCustomer(), null)
@@ -280,19 +299,126 @@ public class BillingWebhookService {
                     if (changed) {
                         eventPublisher.publishEvent(new SubscriptionPaymentFailedEvent(
                                 subscription.getMemberId(), subscription.getPlan(), occurredAt));
+                        eventPublisher.publishEvent(new SubscriptionPaymentFailureRecordedEvent(
+                                subscription.getMemberId(), subscription.getStripeSubscriptionId(),
+                                subscription.getPlan(), paymentType(invoice), failureCode(invoice),
+                                invoice.getAmountDue(), currency(invoice), occurredAt, event.getId()));
                     }
                 });
     }
 
-    /** 재결제 성공 — 웹훅 기준으로 플랜을 복원한다(설정-R03). */
+    /**
+     * 결제 성공 — 복구 대기였다면 웹훅 기준으로 플랜을 복원한다(설정-R03). 집계용으로는 복구/최초/갱신
+     * 중 하나만 발행한다(PA-09) — 한 웹훅에서 둘 이상 나오면 결제 건수가 중복으로 세어진다.
+     *
+     * <p>카운터(renewal_number·recovery_attempt_number) 증가는 별도 save 없이 dirty checking으로
+     * 반영된다 — 이 메서드는 {@link #handle} 트랜잭션 안에서 영속 상태의 엔티티를 바꾼다.
+     */
     private void onPaymentSucceeded(Event event, Instant occurredAt) {
         Invoice invoice = dataObject(event, Invoice.class);
-        resolveMemberId(invoice.getCustomer(), null)
-                .flatMap(this::currentSubscription)
-                .filter(subscription -> subscription.getStatus() == SubscriptionStatus.PAST_DUE)
-                .ifPresent(subscription -> subscription.sync(subscription.getPlan(),
-                        SubscriptionStatus.ACTIVE, subscription.getCurrentPeriodEnd(),
-                        subscription.isCancelAtPeriodEnd(), occurredAt));
+        Optional<Subscription> mirrored = resolveMemberId(invoice.getCustomer(), null)
+                .flatMap(this::currentSubscription);
+        if (mirrored.isEmpty()) {
+            log.debug("미러에 없는 구독의 결제 성공 무시 eventId={}, customerId={}",
+                    event.getId(), invoice.getCustomer());
+            return;
+        }
+
+        Subscription subscription = mirrored.get();
+        // sync()가 상태를 덮어쓰기 전의 값 — 복구인지 정상 결제인지는 이 값으로만 가릴 수 있다.
+        SubscriptionStatus previousStatus = subscription.getStatus();
+        if (previousStatus == SubscriptionStatus.PAST_DUE) {
+            if (!subscription.sync(subscription.getPlan(), SubscriptionStatus.ACTIVE,
+                    subscription.getCurrentPeriodEnd(), subscription.isCancelAtPeriodEnd(), occurredAt)) {
+                log.debug("이전 시각의 결제 성공 이벤트 무시 eventId={}, subscriptionId={}",
+                        event.getId(), subscription.getStripeSubscriptionId());
+                return;
+            }
+            int recoveryAttemptNumber = subscription.incrementRecoveryAttemptNumber();
+            eventPublisher.publishEvent(new SubscriptionPaymentRecoveredEvent(subscription.getMemberId(),
+                    subscription.getStripeSubscriptionId(), subscription.getPlan(),
+                    recoveryAttemptNumber, invoice.getAmountPaid(), currency(invoice), occurredAt,
+                    event.getId()));
+            return;
+        }
+
+        SubscriptionPaymentType paymentType = paymentType(invoice);
+        if (paymentType == SubscriptionPaymentType.INITIAL) {
+            eventPublisher.publishEvent(new SubscriptionPaymentSucceededEvent(subscription.getMemberId(),
+                    subscription.getStripeSubscriptionId(), subscription.getPlan(), paymentType,
+                    invoice.getAmountPaid(), currency(invoice), occurredAt, event.getId()));
+            return;
+        }
+        if (paymentType == SubscriptionPaymentType.RENEWAL) {
+            int renewalNumber = subscription.incrementRenewalNumber();
+            eventPublisher.publishEvent(new SubscriptionRenewedEvent(subscription.getMemberId(),
+                    subscription.getStripeSubscriptionId(), subscription.getPlan(), renewalNumber,
+                    invoice.getAmountPaid(), currency(invoice), occurredAt, event.getId()));
+            return;
+        }
+        // 플랜 변경 비례 배분(subscription_update)·수동 청구(manual) 등 — 구독 결제 건수로 세지 않는다.
+        // 특히 월↔연 전환은 PA-08의 subscription_billing_interval_changed로 이미 집계되므로,
+        // 여기서 갱신으로 세면 같은 사건이 두 번 잡힌다.
+        log.debug("구독 결제 유형을 판별하지 못해 집계하지 않습니다 eventId={}, billingReason={}",
+                event.getId(), invoice.getBillingReason());
+    }
+
+    /**
+     * 결제 수단 등록 — 카드 정보 없이 사건과 그 시점의 구독 상태만 집계한다(PA-09).
+     *
+     * <p>기본 결제 수단 변경({@code customer.updated})은 구독하지 않는다. 변경 여부를 알려면 Stripe가
+     * 주는 {@code previous_attributes}에 의존해야 하는데, PA-08에서 그 방식을 미러 스냅샷 비교로 대체했고
+     * Customer의 기본 결제 수단은 미러에 없어 비교 대상이 없다. 게다가 이 웹훅은 주소·이메일 변경 등
+     * 결제와 무관한 수정에도 오므로, 그대로 받으면 사건이 아닌 것까지 결제 수단 변경으로 집계된다.
+     */
+    private void onPaymentMethodUpdated(Event event, Instant occurredAt) {
+        PaymentMethod paymentMethod = dataObject(event, PaymentMethod.class);
+        Optional<String> memberId = resolveMemberId(paymentMethod.getCustomer(), null);
+        if (memberId.isEmpty()) {
+            log.debug("회원을 찾을 수 없는 결제 수단 이벤트 무시 eventId={}, customerId={}",
+                    event.getId(), paymentMethod.getCustomer());
+            return;
+        }
+        SubscriptionStatus status = currentSubscription(memberId.get())
+                .map(Subscription::getStatus)
+                .orElse(null);
+        eventPublisher.publishEvent(
+                new PaymentMethodUpdatedEvent(memberId.get(), status, occurredAt, event.getId()));
+    }
+
+    /** invoice의 billing_reason으로 결제 유형을 가린다. 아는 값이 아니면 null(집계 대상 아님). */
+    private SubscriptionPaymentType paymentType(Invoice invoice) {
+        String billingReason = invoice.getBillingReason();
+        if (BILLING_REASON_SUBSCRIPTION_CREATE.equals(billingReason)) {
+            return SubscriptionPaymentType.INITIAL;
+        }
+        if (BILLING_REASON_SUBSCRIPTION_CYCLE.equals(billingReason)) {
+            return SubscriptionPaymentType.RENEWAL;
+        }
+        return null;
+    }
+
+    /**
+     * 결제 실패 코드. 카드 거절 사유(decline_code)가 있으면 그것을, 없으면 Stripe 에러 코드를 쓴다.
+     *
+     * <p>대부분의 경우 null이다 — 지금 SDK(stripe-java 33.x)의 Invoice에는 결제 거절 정보를 담던
+     * {@code last_payment_error}가 없고 {@code last_finalization_error}(청구서 확정 실패)만 남아 있다.
+     * 거절 사유의 정본은 PaymentIntent인데, 그걸 읽으려면 billing에 지금 없는 Stripe 능동 호출이 필요해
+     * PA-09 범위를 벗어난다. 코드 없이도 실패 건수·유형 집계는 성립하므로 여기서는 받아올 수 있는 값만 싣는다.
+     */
+    private String failureCode(Invoice invoice) {
+        StripeError error = invoice.getLastFinalizationError();
+        if (error == null) {
+            return null;
+        }
+        return error.getDeclineCode() != null ? error.getDeclineCode() : error.getCode();
+    }
+
+    /** 통화는 USD 단일이지만 invoice가 준 값을 쓴다. Stripe는 소문자로 주므로 모듈 표기(대문자)로 맞춘다. */
+    private String currency(Invoice invoice) {
+        return invoice.getCurrency() == null
+                ? null
+                : invoice.getCurrency().toUpperCase(Locale.ROOT);
     }
 
     /**

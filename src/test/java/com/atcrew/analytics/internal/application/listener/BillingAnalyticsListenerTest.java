@@ -8,9 +8,16 @@ import com.atcrew.billing.SubscriptionBillingIntervalChangedEvent;
 import com.atcrew.billing.SubscriptionCancelRequestRevokedEvent;
 import com.atcrew.billing.SubscriptionCancelRequestedEvent;
 import com.atcrew.billing.SubscriptionCheckoutStartedEvent;
+import com.atcrew.billing.PaymentMethodUpdatedEvent;
 import com.atcrew.billing.SubscriptionEndReason;
 import com.atcrew.billing.SubscriptionEndedEvent;
+import com.atcrew.billing.SubscriptionPaymentFailureRecordedEvent;
+import com.atcrew.billing.SubscriptionPaymentRecoveredEvent;
+import com.atcrew.billing.SubscriptionPaymentSucceededEvent;
+import com.atcrew.billing.SubscriptionPaymentType;
 import com.atcrew.billing.SubscriptionReactivatedEvent;
+import com.atcrew.billing.SubscriptionRenewedEvent;
+import com.atcrew.billing.SubscriptionStatus;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -119,6 +126,63 @@ class BillingAnalyticsListenerTest {
                 .containsEntry("previous_interval", "monthly")
                 .containsEntry("new_interval", "yearly")
                 .containsEntry("effective_at", "2026-10-05T00:00:00Z");
+    }
+
+    @Test
+    void 최초_결제는_결제_유형과_금액을_싣는다() {
+        listener.onPaymentSucceeded(new SubscriptionPaymentSucceededEvent(MEMBER_ID, SUBSCRIPTION_ID,
+                PlanType.PRO_MONTHLY, SubscriptionPaymentType.INITIAL, 1_200L, "USD", OCCURRED_AT,
+                STRIPE_EVENT_ID));
+
+        assertThat(captured("subscription_payment_succeeded", "subscription_payment_succeeded:evt_1"))
+                .containsEntry("billing_interval", "monthly")
+                .containsEntry("payment_type", "initial")
+                .containsEntry("amount", 1_200L)
+                .containsEntry("currency", "USD")
+                .containsEntry("paid_at", "2026-10-05T00:00:00Z");
+    }
+
+    @Test
+    void 정기_갱신은_갱신_횟수를_싣는다() {
+        listener.onRenewed(new SubscriptionRenewedEvent(MEMBER_ID, SUBSCRIPTION_ID, PlanType.PRO_YEARLY,
+                3, 8_000L, "USD", OCCURRED_AT, STRIPE_EVENT_ID));
+
+        assertThat(captured("subscription_renewed", "subscription_renewed:evt_1"))
+                .containsEntry("billing_interval", "yearly")
+                .containsEntry("renewal_number", 3)
+                .containsEntry("renewed_at", "2026-10-05T00:00:00Z");
+    }
+
+    @Test
+    void 결제_실패는_실패_코드를_싣고_없으면_비워_보낸다() {
+        listener.onPaymentFailed(new SubscriptionPaymentFailureRecordedEvent(MEMBER_ID, SUBSCRIPTION_ID,
+                PlanType.PRO_MONTHLY, SubscriptionPaymentType.RENEWAL, null, 1_200L, "USD", OCCURRED_AT,
+                STRIPE_EVENT_ID));
+
+        assertThat(captured("subscription_payment_failed", "subscription_payment_failed:evt_1"))
+                .containsEntry("payment_type", "renewal")
+                .containsEntry("failure_code", null)
+                .containsEntry("failed_at", "2026-10-05T00:00:00Z");
+    }
+
+    @Test
+    void 결제_복구는_복구_횟수를_싣는다() {
+        listener.onPaymentRecovered(new SubscriptionPaymentRecoveredEvent(MEMBER_ID, SUBSCRIPTION_ID,
+                PlanType.PRO_MONTHLY, 2, 1_200L, "USD", OCCURRED_AT, STRIPE_EVENT_ID));
+
+        assertThat(captured("subscription_payment_recovered", "subscription_payment_recovered:evt_1"))
+                .containsEntry("recovery_attempt_number", 2)
+                .containsEntry("recovered_at", "2026-10-05T00:00:00Z");
+    }
+
+    @Test
+    void 결제_수단_등록은_구독_상태만_싣고_카드_정보는_싣지_않는다() {
+        listener.onPaymentMethodUpdated(new PaymentMethodUpdatedEvent(MEMBER_ID,
+                SubscriptionStatus.ACTIVE, OCCURRED_AT, STRIPE_EVENT_ID));
+
+        assertThat(captured("payment_method_updated", "payment_method_updated:evt_1"))
+                .containsOnlyKeys("subscription_status", "updated_at")
+                .containsEntry("subscription_status", "active");
     }
 
     private Map<String, Object> captured(String eventName, String insertId) {

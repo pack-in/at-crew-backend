@@ -56,6 +56,14 @@ public class Subscription implements Persistable<String> {
     @Column(name = "cancel_at_period_end", nullable = false)
     private boolean cancelAtPeriodEnd;
 
+    // 지금까지 성공한 정기 갱신 결제 횟수(PA-09). 최초 결제는 세지 않으므로 첫 갱신이 1이다.
+    @Column(name = "renewal_number", nullable = false)
+    private int renewalNumber;
+
+    // 결제 실패 후 복구(재결제 성공)에 성공한 횟수(PA-09). 첫 복구가 1이다.
+    @Column(name = "recovery_attempt_number", nullable = false)
+    private int recoveryAttemptNumber;
+
     @Column(name = "stripe_updated_at", nullable = false)
     private Instant stripeUpdatedAt;
 
@@ -92,6 +100,8 @@ public class Subscription implements Persistable<String> {
         subscription.status = status;
         subscription.currentPeriodEnd = currentPeriodEnd;
         subscription.cancelAtPeriodEnd = cancelAtPeriodEnd;
+        subscription.renewalNumber = 0;
+        subscription.recoveryAttemptNumber = 0;
         subscription.stripeUpdatedAt = stripeUpdatedAt;
         subscription.isNew = true;
         return subscription;
@@ -119,6 +129,24 @@ public class Subscription implements Persistable<String> {
         return status.grantsPro();
     }
 
+    /**
+     * 정기 갱신 결제가 성공했다(PA-09).
+     *
+     * @return 올린 뒤의 값 — 이번 결제가 몇 번째 갱신인지
+     */
+    public int incrementRenewalNumber() {
+        return ++this.renewalNumber;
+    }
+
+    /**
+     * 결제 실패 상태에서 복구됐다(PA-09).
+     *
+     * @return 올린 뒤의 값 — 이번 복구가 몇 번째인지
+     */
+    public int incrementRecoveryAttemptNumber() {
+        return ++this.recoveryAttemptNumber;
+    }
+
     @Override
     public String getId() { return id; }
     public String getMemberId() { return memberId; }
@@ -127,6 +155,8 @@ public class Subscription implements Persistable<String> {
     public SubscriptionStatus getStatus() { return status; }
     public Instant getCurrentPeriodEnd() { return currentPeriodEnd; }
     public boolean isCancelAtPeriodEnd() { return cancelAtPeriodEnd; }
+    public int getRenewalNumber() { return renewalNumber; }
+    public int getRecoveryAttemptNumber() { return recoveryAttemptNumber; }
     public Instant getStripeUpdatedAt() { return stripeUpdatedAt; }
 
     @Override
