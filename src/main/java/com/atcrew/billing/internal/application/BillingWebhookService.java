@@ -243,6 +243,16 @@ public class BillingWebhookService {
                     endReason(previousStatus, previousCancelAtPeriodEnd), occurredAt, event.getId()));
             return;
         }
+        if (subscription.getStatus() == SubscriptionStatus.ACTIVE
+                && subscription.markActivatedIfFirstTime(occurredAt)) {
+            // incomplete/PAST_DUE로 시작해 한 번도 활성화된 적 없던 구독이 지금 활성화됐다 — 결제
+            // 복구가 아니라 최초 활성화다(code-review 2026-10-06). 보통 invoice.payment_succeeded가
+            // 먼저 처리하지만 아직 안 왔을 수 있어 여기서도 같은 조건을 본다. markActivatedIfFirstTime은
+            // 한 번만 true를 주므로 두 핸들러가 경쟁해도 중복 발행되지 않는다.
+            eventPublisher.publishEvent(new SubscriptionActivatedEvent(subscription.getMemberId(),
+                    subscription.getStripeSubscriptionId(), subscription.getPlan(), occurredAt, event.getId()));
+            return;
+        }
         if (previousCancelAtPeriodEnd != subscription.isCancelAtPeriodEnd()) {
             if (subscription.isCancelAtPeriodEnd()) {
                 eventPublisher.publishEvent(new SubscriptionCancelRequestedEvent(subscription.getMemberId(),
@@ -302,18 +312,25 @@ public class BillingWebhookService {
                                 subscription.getMemberId(), subscription.getPlan(), occurredAt));
                         eventPublisher.publishEvent(new SubscriptionPaymentFailureRecordedEvent(
                                 subscription.getMemberId(), subscription.getStripeSubscriptionId(),
-                                subscription.getPlan(), paymentType(invoice), failureCode(invoice),
+                                subscription.getPlan(), paymentType(subscription), failureCode(invoice),
                                 invoice.getAmountDue(), currency(invoice), occurredAt, event.getId()));
                     }
                 });
     }
 
     /**
-     * 결제 성공 — 복구 대기였다면 웹훅 기준으로 플랜을 복원한다(설정-R03). 집계용으로는 복구/최초/갱신
-     * 중 하나만 발행한다(PA-09) — 한 웹훅에서 둘 이상 나오면 결제 건수가 중복으로 세어진다.
+     * 결제 성공 — 복구 대기였다면 웹훅 기준으로 플랜을 복원한다(설정-R03). 집계용으로는 최초활성화/
+     * 복구/최초결제/갱신 중 하나만 발행한다(PA-09, 단 최초활성화는 같은 결제가 최초결제이기도 해서
+     * 둘 다 난다) — 한 웹훅에서 서로 배타적이지 않은 둘 이상이 나오면 결제 건수가 중복으로 세어진다.
      *
-     * <p>카운터(renewal_number·recovery_attempt_number) 증가는 별도 save 없이 dirty checking으로
-     * 반영된다 — 이 메서드는 {@link #handle} 트랜잭션 안에서 영속 상태의 엔티티를 바꾼다.
+     * <p>복구 판정은 미러의 이전 상태(previousStatus==PAST_DUE)가 아니라 Stripe invoice의
+     * {@code attempt_count}로 한다(code-review 2026-10-06) — 미러 기준으로 판정하면
+     * {@code customer.subscription.updated}와 이 이벤트 중 어느 게 먼저 처리되느냐에 따라
+     * 결과가 갈린다. attempt_count는 이 인보이스 자체의 값이라 웹훅 도착 순서와 무관하다.
+     *
+     * <p>카운터(renewal_number·recovery_attempt_number) 증가와 activated_at/first_payment_at
+     * 마킹은 별도 save 없이 dirty checking으로 반영된다 — 이 메서드는 {@link #handle} 트랜잭션
+     * 안에서 영속 상태의 엔티티를 바꾼다.
      */
     private void onPaymentSucceeded(Event event, Instant occurredAt) {
         Invoice invoice = dataObject(event, Invoice.class);
@@ -324,17 +341,29 @@ public class BillingWebhookService {
                     event.getId(), invoice.getCustomer());
             return;
         }
-
         Subscription subscription = mirrored.get();
-        // sync()가 상태를 덮어쓰기 전의 값 — 복구인지 정상 결제인지는 이 값으로만 가릴 수 있다.
-        SubscriptionStatus previousStatus = subscription.getStatus();
-        if (previousStatus == SubscriptionStatus.PAST_DUE) {
-            if (!subscription.sync(subscription.getPlan(), SubscriptionStatus.ACTIVE,
-                    subscription.getCurrentPeriodEnd(), subscription.isCancelAtPeriodEnd(), occurredAt)) {
-                log.debug("이전 시각의 결제 성공 이벤트 무시 eventId={}, subscriptionId={}",
-                        event.getId(), subscription.getStripeSubscriptionId());
-                return;
-            }
+
+        long amountPaid = invoice.getAmountPaid() == null ? 0L : invoice.getAmountPaid();
+        if (amountPaid <= 0L) {
+            // 무료 체험 시작의 $0 인보이스 — 실제 결제가 없어 어떤 집계도 하지 않는다. 체험 종료 후
+            // 첫 실결제는 billing_reason이 subscription_cycle이라도 아래에서 "최초 결제"로 잡힌다.
+            log.debug("금액 0원 인보이스는 집계하지 않습니다 eventId={}", event.getId());
+            return;
+        }
+        if (!subscription.sync(subscription.getPlan(), SubscriptionStatus.ACTIVE,
+                subscription.getCurrentPeriodEnd(), subscription.isCancelAtPeriodEnd(), occurredAt)) {
+            log.debug("이전 시각의 결제 성공 이벤트 무시 eventId={}, subscriptionId={}",
+                    event.getId(), subscription.getStripeSubscriptionId());
+            return;
+        }
+
+        if (subscription.markActivatedIfFirstTime(occurredAt)) {
+            // incomplete/PAST_DUE로 시작해 한 번도 활성화된 적 없던 구독의 첫 성공 — 복구가 아니라
+            // 최초 활성화다. return 없이 아래로 흘려 같은 결제를 최초결제로도 집계한다(즉시결제
+            // 구독의 publishCreatedAnalytics+이 메서드 조합과 같은 패턴).
+            eventPublisher.publishEvent(new SubscriptionActivatedEvent(subscription.getMemberId(),
+                    subscription.getStripeSubscriptionId(), subscription.getPlan(), occurredAt, event.getId()));
+        } else if (invoice.getAttemptCount() != null && invoice.getAttemptCount() > 1) {
             int recoveryAttemptNumber = subscription.incrementRecoveryAttemptNumber();
             eventPublisher.publishEvent(new SubscriptionPaymentRecoveredEvent(subscription.getMemberId(),
                     subscription.getStripeSubscriptionId(), subscription.getPlan(),
@@ -343,25 +372,31 @@ public class BillingWebhookService {
             return;
         }
 
-        SubscriptionPaymentType paymentType = paymentType(invoice);
-        if (paymentType == SubscriptionPaymentType.INITIAL) {
+        String billingReason = invoice.getBillingReason();
+        boolean countable = BILLING_REASON_SUBSCRIPTION_CREATE.equals(billingReason)
+                || BILLING_REASON_SUBSCRIPTION_CYCLE.equals(billingReason);
+        if (!countable) {
+            // 플랜 변경 비례 배분(subscription_update)·수동 청구(manual) 등 — 구독 결제 건수로 세지
+            // 않는다. 특히 월↔연 전환은 subscription_billing_interval_changed로 이미 집계되므로,
+            // 여기서 갱신으로 세면 같은 사건이 두 번 잡힌다.
+            log.debug("구독 결제 유형을 판별하지 못해 집계하지 않습니다 eventId={}, billingReason={}",
+                    event.getId(), billingReason);
+            return;
+        }
+        if (subscription.markFirstPaymentIfFirstTime(occurredAt)) {
+            // 무료 체험 종료 후 첫 실결제도 여기 해당한다 — billing_reason은 subscription_cycle이지만
+            // 이 구독에 실제 돈이 오간 첫 순간이라 RENEWAL이 아니라 INITIAL로 센다(code-review
+            // 2026-10-06 — 기존엔 renewal_number #1로 잘못 잡혔다).
             eventPublisher.publishEvent(new SubscriptionPaymentSucceededEvent(subscription.getMemberId(),
-                    subscription.getStripeSubscriptionId(), subscription.getPlan(), paymentType,
-                    invoice.getAmountPaid(), currency(invoice), occurredAt, event.getId()));
+                    subscription.getStripeSubscriptionId(), subscription.getPlan(),
+                    SubscriptionPaymentType.INITIAL, invoice.getAmountPaid(), currency(invoice), occurredAt,
+                    event.getId()));
             return;
         }
-        if (paymentType == SubscriptionPaymentType.RENEWAL) {
-            int renewalNumber = subscription.incrementRenewalNumber();
-            eventPublisher.publishEvent(new SubscriptionRenewedEvent(subscription.getMemberId(),
-                    subscription.getStripeSubscriptionId(), subscription.getPlan(), renewalNumber,
-                    invoice.getAmountPaid(), currency(invoice), occurredAt, event.getId()));
-            return;
-        }
-        // 플랜 변경 비례 배분(subscription_update)·수동 청구(manual) 등 — 구독 결제 건수로 세지 않는다.
-        // 특히 월↔연 전환은 PA-08의 subscription_billing_interval_changed로 이미 집계되므로,
-        // 여기서 갱신으로 세면 같은 사건이 두 번 잡힌다.
-        log.debug("구독 결제 유형을 판별하지 못해 집계하지 않습니다 eventId={}, billingReason={}",
-                event.getId(), invoice.getBillingReason());
+        int renewalNumber = subscription.incrementRenewalNumber();
+        eventPublisher.publishEvent(new SubscriptionRenewedEvent(subscription.getMemberId(),
+                subscription.getStripeSubscriptionId(), subscription.getPlan(), renewalNumber,
+                invoice.getAmountPaid(), currency(invoice), occurredAt, event.getId()));
     }
 
     /**
@@ -388,15 +423,15 @@ public class BillingWebhookService {
     }
 
     /** invoice의 billing_reason으로 결제 유형을 가린다. 아는 값이 아니면 null(집계 대상 아님). */
-    private SubscriptionPaymentType paymentType(Invoice invoice) {
-        String billingReason = invoice.getBillingReason();
-        if (BILLING_REASON_SUBSCRIPTION_CREATE.equals(billingReason)) {
-            return SubscriptionPaymentType.INITIAL;
-        }
-        if (BILLING_REASON_SUBSCRIPTION_CYCLE.equals(billingReason)) {
-            return SubscriptionPaymentType.RENEWAL;
-        }
-        return null;
+    /**
+     * 결제 실패 집계용 최초/갱신 판정 — billing_reason이 아니라 이 구독에 실결제가 한 번도 없었는지로
+     * 가른다(code-review 2026-10-06). 무료 체험 종료 후 첫 실결제가 billing_reason=subscription_cycle로
+     * 와도 최초로 집계하는 {@link #onPaymentSucceeded}와 기준을 맞춘다.
+     */
+    private SubscriptionPaymentType paymentType(Subscription subscription) {
+        return subscription.getFirstPaymentAt() == null
+                ? SubscriptionPaymentType.INITIAL
+                : SubscriptionPaymentType.RENEWAL;
     }
 
     /**

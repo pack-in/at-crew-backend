@@ -53,11 +53,28 @@ class ProfileCompletionCalculatorTest {
     @Test
     void 일부_필드만_채워지면_그만큼만_완성도에_반영된다() {
         List<Object> snapshot = emptySnapshot();
-        snapshot.set(0, "AVAILABLE"); // employmentStatus
+        snapshot.set(1, List.of("ILLUSTRATION")); // activityFields
         snapshot.set(18, "010-1234-5678"); // contact
 
         assertThat(ProfileCompletionCalculator.filledCount(snapshot)).isEqualTo(2);
-        assertThat(ProfileCompletionCalculator.completionRate(snapshot)).isEqualTo(2 / 23.0);
+        assertThat(ProfileCompletionCalculator.completionRate(snapshot))
+                .isEqualTo(2 / (double) ProfileCompletionCalculator.TARGET_FIELD_COUNT);
+    }
+
+    // code-review 2026-10-06 — 가입 때부터 항상 값이 있는 5개(employmentStatus/totalSlotCount/
+    // availableSlotCount/timezone/countryCode)만 채워진 회원은 실질적으로 아무것도 안 적은 것과
+    // 같다. completion_rate가 0이 아니게 나오면 "완성도 0%에서 시작"이라는 전제가 깨진다.
+    @Test
+    void 가입시_항상_채워지는_필드만_있으면_완성도는_여전히_0이다() {
+        List<Object> snapshot = emptySnapshot();
+        snapshot.set(0, "PREPARING"); // employmentStatus 기본값
+        snapshot.set(4, 5);           // totalSlotCount 기본값
+        snapshot.set(5, 5);           // availableSlotCount 기본값
+        snapshot.set(21, "Asia/Seoul"); // timezone — 가입 시 항상 채워짐
+        snapshot.set(22, "KR");          // countryCode — 가입 시 항상 채워짐
+
+        assertThat(ProfileCompletionCalculator.filledCount(snapshot)).isZero();
+        assertThat(ProfileCompletionCalculator.completionRate(snapshot)).isZero();
     }
 
     @Test

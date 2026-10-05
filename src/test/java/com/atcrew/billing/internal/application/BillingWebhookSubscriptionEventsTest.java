@@ -211,6 +211,21 @@ class BillingWebhookSubscriptionEventsTest {
         verify(eventPublisher, never()).publishEvent(any(Object.class));
     }
 
+    // code-review 2026-10-06 — incomplete로 시작해 한 번도 활성화된 적 없던 구독이 나중에
+    // 정상화되면, 결제 복구가 아니라 최초 활성화로 집계해야 한다(기존엔 아무 이벤트도 안 났다).
+    @Test
+    void 한번도_활성화되지_않았던_구독이_나중에_활성화되면_최초_활성화로_집계한다() {
+        givenMirror(PlanType.PRO_MONTHLY, SubscriptionStatus.PAST_DUE, false);
+
+        service.handle(subscriptionEvent("evt_13", "customer.subscription.updated", "active",
+                false, MONTHLY_PRICE_ID, BASE_CREATED));
+
+        SubscriptionActivatedEvent published = captureOnly(SubscriptionActivatedEvent.class);
+        assertThat(published.memberId()).isEqualTo(MEMBER_ID);
+        assertThat(published.subscriptionId()).isEqualTo(SUBSCRIPTION_ID);
+        assertThat(published.stripeEventId()).isEqualTo("evt_13");
+    }
+
     @Test
     void 순서가_뒤바뀐_웹훅은_아무_이벤트도_내지_않는다() {
         when(subscriptionRepository.findByStripeSubscriptionId(SUBSCRIPTION_ID))

@@ -169,8 +169,12 @@ class MemberServiceImplTest {
         assertThat(event.memberId()).isEqualTo(member.getId());
         assertThat(event.sectionType()).isEqualTo("profile_info");
         assertThat(event.changedFieldCount()).isEqualTo(2);
-        // employmentStatus·totalSlotCount·availableSlotCount(기본값)·contact = 4/23
-        assertThat(event.completionRate()).isEqualTo(4 / 23.0);
+        // completion_rate 분모에선 가입 시 항상 채워지는 employmentStatus·totalSlotCount·
+        // availableSlotCount·timezone·countryCode를 뺀다(code-review 2026-10-06) — 이 테스트의
+        // 3-인자 개발용 가입 경로는 timezone/countryCode도 null이라 더더욱 안 센다. 실제로 채워진
+        // 건 contact 하나뿐이라 1/18.
+        assertThat(event.completionRate())
+                .isEqualTo(1 / (double) ProfileCompletionCalculator.TARGET_FIELD_COUNT);
         assertThat(event.isComplete()).isFalse();
         assertThat(event.isFirstCompletion()).isFalse();
         assertThat(event.occurredAt()).isNotNull();

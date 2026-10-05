@@ -435,9 +435,12 @@ class BillingModuleTests {
     }
 
     private Event invoiceEvent(String eventId, String type, String customerId, long created) {
+        // amount_paid > 0 — onPaymentSucceeded는 0원 인보이스(무료 체험 시작)를 아예 집계하지
+        // 않으므로, 이 금액이 없으면 재결제 복구 흐름의 상태 동기화 자체가 스킵된다.
         String json = """
                 {"id":"%s","object":"event","api_version":"%s","created":%d,"type":"%s",
-                 "data":{"object":{"id":"in_%s","object":"invoice","customer":"%s"}}}
+                 "data":{"object":{"id":"in_%s","object":"invoice","customer":"%s",
+                 "amount_paid":1000,"amount_due":1000,"currency":"usd"}}}
                 """.formatted(eventId, Stripe.API_VERSION, created, type, eventId, customerId);
         return Webhook.constructEventWithoutVerification(json);
     }

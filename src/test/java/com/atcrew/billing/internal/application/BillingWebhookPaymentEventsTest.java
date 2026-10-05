@@ -94,7 +94,7 @@ class BillingWebhookPaymentEventsTest {
 
     @Test
     void 정기_갱신_결제_성공은_갱신_이벤트와_함께_갱신_횟수를_올린다() {
-        Subscription mirror = givenMirror(SubscriptionStatus.ACTIVE);
+        Subscription mirror = givenEstablishedMirror(SubscriptionStatus.ACTIVE);
 
         service.handle(invoiceEvent("evt_2", "invoice.payment_succeeded", "subscription_cycle", null));
 
@@ -108,9 +108,10 @@ class BillingWebhookPaymentEventsTest {
 
     @Test
     void 복구_대기였던_구독의_결제_성공은_복구_이벤트와_함께_복구_횟수를_올린다() {
-        Subscription mirror = givenMirror(SubscriptionStatus.PAST_DUE);
+        Subscription mirror = givenEstablishedMirror(SubscriptionStatus.PAST_DUE);
 
-        service.handle(invoiceEvent("evt_3", "invoice.payment_succeeded", "subscription_cycle", null));
+        // attempt_count=2 — 복구 판정은 미러의 이전 상태가 아니라 이 값으로 한다(code-review 2026-10-06).
+        service.handle(invoiceEvent("evt_3", "invoice.payment_succeeded", "subscription_cycle", null, 2));
 
         SubscriptionPaymentRecoveredEvent published = captureOnly(SubscriptionPaymentRecoveredEvent.class);
         assertThat(published.recoveryAttemptNumber()).isEqualTo(1);
@@ -118,6 +119,27 @@ class BillingWebhookPaymentEventsTest {
         assertThat(mirror.getStatus()).isEqualTo(SubscriptionStatus.ACTIVE);
         assertThat(mirror.getRecoveryAttemptNumber()).isEqualTo(1);
         assertThat(mirror.getRenewalNumber()).isZero();
+    }
+
+    // code-review 2026-10-06 — incomplete로 시작해 한 번도 활성화된 적 없던 구독의 결제가 이제야
+    // 성공하면, 복구가 아니라 최초 활성화 + 최초 결제로 집계해야 한다(기존엔 복구로 잘못 잡혔다).
+    @Test
+    void 한번도_활성화되지_않았던_구독의_결제_성공은_최초_활성화와_최초_결제를_함께_낸다() {
+        Subscription mirror = givenMirror(SubscriptionStatus.PAST_DUE);
+
+        service.handle(invoiceEvent("evt_never_active", "invoice.payment_succeeded", "subscription_create",
+                null, 2));
+
+        List<Object> events = published();
+        assertThat(events).hasSize(2);
+        assertThat(events).hasAtLeastOneElementOfType(com.atcrew.billing.SubscriptionActivatedEvent.class);
+        SubscriptionPaymentSucceededEvent payment = events.stream()
+                .filter(SubscriptionPaymentSucceededEvent.class::isInstance)
+                .map(SubscriptionPaymentSucceededEvent.class::cast)
+                .findFirst().orElseThrow();
+        assertThat(payment.paymentType()).isEqualTo(SubscriptionPaymentType.INITIAL);
+        assertThat(mirror.getStatus()).isEqualTo(SubscriptionStatus.ACTIVE);
+        assertThat(mirror.getRecoveryAttemptNumber()).isZero();
     }
 
     @Test
@@ -142,7 +164,7 @@ class BillingWebhookPaymentEventsTest {
 
     @Test
     void 결제_실패는_알림_이벤트와_집계_이벤트를_함께_낸다() {
-        Subscription mirror = givenMirror(SubscriptionStatus.ACTIVE);
+        Subscription mirror = givenEstablishedMirror(SubscriptionStatus.ACTIVE);
 
         service.handle(invoiceEvent("evt_6", "invoice.payment_failed", "subscription_cycle", null));
 
@@ -245,14 +267,36 @@ class BillingWebhookPaymentEventsTest {
         return mirror;
     }
 
+    /**
+     * 이미 활성화·실결제 이력이 있는 구독 — 갱신/복구/실패(갱신 유형) 분기는 "이번이 처음"이 아닌
+     * 경우를 봐야 해서 {@link #givenMirror}와 달리 activatedAt/firstPaymentAt을 미리 채워 둔다.
+     */
+    private Subscription givenEstablishedMirror(SubscriptionStatus status) {
+        Subscription mirror = Subscription.create(MEMBER_ID, SUBSCRIPTION_ID, PlanType.PRO_MONTHLY,
+                SubscriptionStatus.ACTIVE, PERIOD_END, false, OCCURRED_AT.minusSeconds(200));
+        mirror.markFirstPaymentIfFirstTime(OCCURRED_AT.minusSeconds(200));
+        if (status != SubscriptionStatus.ACTIVE) {
+            mirror.sync(PlanType.PRO_MONTHLY, status, PERIOD_END, false, OCCURRED_AT.minusSeconds(100));
+        }
+        when(subscriptionRepository.findByMemberIdAndStatusInOrderByStripeUpdatedAtDesc(anyString(), any()))
+                .thenReturn(List.of(mirror));
+        return mirror;
+    }
+
     private Event invoiceEvent(String eventId, String type, String billingReason,
             String finalizationErrorJson) {
+        return invoiceEvent(eventId, type, billingReason, finalizationErrorJson, 1);
+    }
+
+    private Event invoiceEvent(String eventId, String type, String billingReason,
+            String finalizationErrorJson, int attemptCount) {
         String json = """
                 {"id":"%s","object":"event","api_version":"%s","created":%d,"type":"%s",
                  "data":{"object":{"id":"in_1","object":"invoice","customer":"%s",
-                 "billing_reason":"%s","amount_paid":%d,"amount_due":%d,"currency":"usd"%s}}}
+                 "billing_reason":"%s","amount_paid":%d,"amount_due":%d,"currency":"usd",
+                 "attempt_count":%d%s}}}
                 """.formatted(eventId, Stripe.API_VERSION, BASE_CREATED, type, CUSTOMER_ID,
-                billingReason, AMOUNT, AMOUNT,
+                billingReason, AMOUNT, AMOUNT, attemptCount,
                 finalizationErrorJson == null ? "" : ",\"last_finalization_error\":" + finalizationErrorJson);
         return Webhook.constructEventWithoutVerification(json);
     }

@@ -64,6 +64,16 @@ public class Subscription implements Persistable<String> {
     @Column(name = "recovery_attempt_number", nullable = false)
     private int recoveryAttemptNumber;
 
+    // 상태가 처음 ACTIVE가 된 시각. null이면 한 번도 활성화된 적이 없다 — incomplete로 시작해
+    // 아직 정상화되지 않은 구독이 여기 해당한다(code-review 2026-10-06).
+    @Column(name = "activated_at")
+    private Instant activatedAt;
+
+    // 금액이 0보다 큰 결제가 처음 성공한 시각. 무료 체험 시작의 $0 인보이스는 여기 안 든다 —
+    // 체험 종료 후 첫 실결제를 "최초 결제"로 보려면 활성화 시각과는 별개로 추적해야 한다.
+    @Column(name = "first_payment_at")
+    private Instant firstPaymentAt;
+
     @Column(name = "stripe_updated_at", nullable = false)
     private Instant stripeUpdatedAt;
 
@@ -102,6 +112,10 @@ public class Subscription implements Persistable<String> {
         subscription.cancelAtPeriodEnd = cancelAtPeriodEnd;
         subscription.renewalNumber = 0;
         subscription.recoveryAttemptNumber = 0;
+        // 트라이얼 포함 ACTIVE로 바로 시작하면 이 시점이 최초 활성화다. incomplete/PAST_DUE로
+        // 시작하면 null로 둔다 — 나중에 정상화될 때 markActivatedIfFirstTime()이 채운다.
+        subscription.activatedAt = status.grantsPro() ? stripeUpdatedAt : null;
+        subscription.firstPaymentAt = null;
         subscription.stripeUpdatedAt = stripeUpdatedAt;
         subscription.isNew = true;
         return subscription;
@@ -127,6 +141,34 @@ public class Subscription implements Persistable<String> {
 
     public boolean grantsPro() {
         return status.grantsPro();
+    }
+
+    /**
+     * 상태가 ACTIVE로 바뀌는 시점에 호출한다. 이미 한 번이라도 활성화됐던 적이 있으면(=복구) 아무
+     * 것도 하지 않는다 — null → 값 한 방향으로만 움직인다.
+     *
+     * @return 이번이 최초 활성화였으면 true(복구가 아니라 "활성화" 이벤트를 내야 한다는 뜻)
+     */
+    public boolean markActivatedIfFirstTime(Instant at) {
+        if (activatedAt != null) {
+            return false;
+        }
+        activatedAt = at;
+        return true;
+    }
+
+    /**
+     * 금액이 0보다 큰 결제가 성공하는 시점에 호출한다. 이미 한 번이라도 실결제가 있었으면
+     * 아무것도 하지 않는다.
+     *
+     * @return 이번이 최초 실결제였으면 true(최초/갱신 판정에 쓴다)
+     */
+    public boolean markFirstPaymentIfFirstTime(Instant at) {
+        if (firstPaymentAt != null) {
+            return false;
+        }
+        firstPaymentAt = at;
+        return true;
     }
 
     /**
@@ -157,6 +199,8 @@ public class Subscription implements Persistable<String> {
     public boolean isCancelAtPeriodEnd() { return cancelAtPeriodEnd; }
     public int getRenewalNumber() { return renewalNumber; }
     public int getRecoveryAttemptNumber() { return recoveryAttemptNumber; }
+    public Instant getActivatedAt() { return activatedAt; }
+    public Instant getFirstPaymentAt() { return firstPaymentAt; }
     public Instant getStripeUpdatedAt() { return stripeUpdatedAt; }
 
     @Override
