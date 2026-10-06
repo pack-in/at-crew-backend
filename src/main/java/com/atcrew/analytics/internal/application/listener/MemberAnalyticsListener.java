@@ -94,7 +94,11 @@ class MemberAnalyticsListener {
         properties.put("is_complete", event.isComplete());
         properties.put("changed_field_count", event.changedFieldCount());
         properties.put("is_first_completion", event.isFirstCompletion());
+        // 기본정보/구직정보가 한 저장 요청에서 같이 바뀌면 같은 occurredAt으로 이벤트가 2개 난다
+        // (MemberServiceImpl.updateInfo) — sectionType을 insertId에 안 넣으면 두 이벤트가 같은
+        // $insert_id를 갖게 되어 PostHog가 하나를 중복으로 버린다(E2E 2026-10-07 실측으로 발견).
         analyticsEventPublisher.publish(PROFILE_SECTION_SAVED, memberId, properties,
-                AnalyticsInsertId.of(PROFILE_SECTION_SAVED, memberId, event.occurredAt()));
+                AnalyticsInsertId.of(PROFILE_SECTION_SAVED, memberId + ":" + event.sectionType(),
+                        event.occurredAt()));
     }
 }

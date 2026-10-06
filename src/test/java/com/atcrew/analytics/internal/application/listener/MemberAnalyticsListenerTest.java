@@ -102,17 +102,34 @@ class MemberAnalyticsListenerTest {
     void 프로필_저장_이벤트는_완성도_변경필드수_최초완성여부를_실어_발행한다() {
         Instant occurredAt = Instant.parse("2026-10-05T00:00:00Z");
 
-        listener.on(new ProfileSectionSavedEvent("member-005", "profile_info", 1.0, true, 5, true, occurredAt));
+        listener.on(new ProfileSectionSavedEvent("member-005", "artist_info", 1.0, true, 5, true, occurredAt));
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> properties = ArgumentCaptor.forClass(Map.class);
         verify(analyticsEventPublisher).publish(eq("profile_section_saved"), eq("member-005"),
-                properties.capture(), eq("profile_section_saved:member-005:" + occurredAt.toEpochMilli()));
+                properties.capture(),
+                eq("profile_section_saved:member-005:artist_info:" + occurredAt.toEpochMilli()));
         assertThat(properties.getValue())
-                .containsEntry("section_type", "profile_info")
+                .containsEntry("section_type", "artist_info")
                 .containsEntry("completion_rate", 1.0)
                 .containsEntry("is_complete", true)
                 .containsEntry("changed_field_count", 5)
                 .containsEntry("is_first_completion", true);
+    }
+
+    // E2E 2026-10-07에서 실제로 잡힌 결함 — 기본정보/구직정보가 한 저장 요청에서 같이 바뀌면 두
+    // 이벤트의 occurredAt이 같아서, sectionType을 insertId에 안 넣으면 PostHog가 하나를 중복으로
+    // 버린다. 두 섹션 이벤트의 insertId가 서로 달라야 한다.
+    @Test
+    void 같은_시각에_발행된_서로_다른_섹션_이벤트는_insertId가_다르다() {
+        Instant occurredAt = Instant.parse("2026-10-05T00:00:00Z");
+
+        listener.on(new ProfileSectionSavedEvent("member-006", "artist_info", 0.2, false, 1, false, occurredAt));
+        listener.on(new ProfileSectionSavedEvent("member-006", "job_info", 0.0, false, 1, false, occurredAt));
+
+        ArgumentCaptor<String> insertIds = ArgumentCaptor.forClass(String.class);
+        verify(analyticsEventPublisher, org.mockito.Mockito.times(2))
+                .publish(eq("profile_section_saved"), eq("member-006"), any(), insertIds.capture());
+        assertThat(insertIds.getAllValues()).doesNotHaveDuplicates();
     }
 }
