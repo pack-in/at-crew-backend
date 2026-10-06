@@ -379,28 +379,42 @@ class MemberServiceImpl implements MemberService {
     public void updateInfo(String memberId, UpdateInfoCommand command) {
         Member member = findMemberById(memberId);
         List<Object> before = member.profileFieldSnapshot();
-        double previousCompletionRate = ProfileCompletionCalculator.completionRate(before);
         member.updateInfo(command);
         memberRepository.save(member);
         List<Object> after = member.profileFieldSnapshot();
-        double completionRate = ProfileCompletionCalculator.completionRate(after);
-        int changedFieldCount = ProfileCompletionCalculator.changedFieldCount(before, after);
+        Instant now = Instant.now();
+        // 저장 API는 기본정보/구직정보를 한 번에 받지만, 실제로 바뀐 필드를 보고 섹션을 가려
+        // 둘 다 바뀌면 이벤트를 2개로 나눠 낸다(FE 회신 PH-02, 2026-10-07).
+        publishProfileSectionSavedIfChanged(memberId, "artist_info",
+                ProfileCompletionCalculator.ARTIST_INFO_INDEXES, before, after, now);
+        publishProfileSectionSavedIfChanged(memberId, "job_info",
+                ProfileCompletionCalculator.JOB_INFO_INDEXES, before, after, now);
+    }
+
+    private void publishProfileSectionSavedIfChanged(String memberId, String sectionType,
+            List<Integer> sectionIndexes, List<Object> before, List<Object> after, Instant occurredAt) {
+        int changedFieldCount = ProfileCompletionCalculator.sectionChangedFieldCount(before, after, sectionIndexes);
+        if (changedFieldCount == 0) {
+            return;
+        }
+        double previousCompletionRate = ProfileCompletionCalculator.sectionCompletionRate(before, sectionIndexes);
+        double completionRate = ProfileCompletionCalculator.sectionCompletionRate(after, sectionIndexes);
         boolean isComplete = completionRate == 1.0;
         boolean isFirstCompletion = isComplete && previousCompletionRate < 1.0;
-        // section_type: 기본정보/구직정보가 한 엔드포인트로 묶여 있어 구분이 없다. 고정값 "profile_info".
-        // TODO: 프론트 회신(PH-02)으로 탭 분리 여부가 확정되면 분기 필요.
-        eventPublisher.publishEvent(new ProfileSectionSavedEvent(memberId, "profile_info",
-                completionRate, isComplete, changedFieldCount, isFirstCompletion, Instant.now()));
+        eventPublisher.publishEvent(new ProfileSectionSavedEvent(memberId, sectionType,
+                completionRate, isComplete, changedFieldCount, isFirstCompletion, occurredAt));
     }
 
     @Override
     @Transactional
     public CareerEntryInfo addCareer(String memberId, AddCareerCommand command) {
         Member member = findMemberById(memberId);
+        boolean hadCareerBefore = !member.getCareers().isEmpty();
         CareerEntryInfo entry = member.addCareer(command.workTitle(), command.role(),
                 command.startDate(), command.endDate(), command.ongoing(), command.description(),
                 LocalDate.now(member.zoneId()));
         memberRepository.save(member);
+        publishCareerSectionSaved(member, !hadCareerBefore);
         return entry;
     }
 
@@ -410,6 +424,16 @@ class MemberServiceImpl implements MemberService {
         Member member = findMemberById(memberId);
         member.deleteCareer(careerId);
         memberRepository.save(member);
+        publishCareerSectionSaved(member, false);
+    }
+
+    // 경력은 별도 API(POST/DELETE /members/me/careers)라 profile_section_saved를 career_info로
+    // 따로 낸다(FE 회신 PH-02, 2026-10-07). completion_rate는 "경력 1건 이상 있음"을 1.0으로 보는
+    // 이분법이다 — UpdateInfoCommand 23개 필드와 달리 경력은 개수 제한 없는 리스트라 비율 개념이 안 맞는다.
+    private void publishCareerSectionSaved(Member member, boolean isFirstCompletion) {
+        boolean hasAny = !member.getCareers().isEmpty();
+        eventPublisher.publishEvent(new ProfileSectionSavedEvent(member.getId(), "career_info",
+                hasAny ? 1.0 : 0.0, hasAny, 1, isFirstCompletion, Instant.now()));
     }
 
     @Override

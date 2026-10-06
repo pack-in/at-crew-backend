@@ -25,6 +25,8 @@ import com.atcrew.portfolio.PortfolioService;
 import com.atcrew.portfolio.PortfolioSharedInfo;
 import com.atcrew.portfolio.PortfolioSnapshotDetailInfo;
 import com.atcrew.portfolio.PortfolioSort;
+import com.atcrew.portfolio.PortfolioSubmitFailedEvent;
+import com.atcrew.portfolio.PortfolioSubmitSucceededEvent;
 import com.atcrew.portfolio.PortfolioSummaryInfo;
 import com.atcrew.portfolio.ReflectionType;
 import com.atcrew.portfolio.internal.domain.Portfolio;
@@ -561,19 +563,32 @@ public class PortfolioServiceImpl implements PortfolioService {
     @Transactional
     public PortfolioInfo createShared(String memberId, String title, ReflectionType reflectionType,
                                       List<String> artworkIds) {
-        assertPro(memberId);
-        String validatedTitle = validateTitle(title);
-        List<ArtworkInfo> artworks = orderByUploadedAt(resolveOwnedArtworks(memberId, artworkIds));
+        try {
+            assertPro(memberId);
+            String validatedTitle = validateTitle(title);
+            List<ArtworkInfo> artworks = orderByUploadedAt(resolveOwnedArtworks(memberId, artworkIds));
 
-        if (reflectionType == ReflectionType.SNAPSHOT) {
-            return createSnapshot(memberId, validatedTitle, artworks);
+            PortfolioInfo result;
+            if (reflectionType == ReflectionType.SNAPSHOT) {
+                result = createSnapshot(memberId, validatedTitle, artworks);
+            } else {
+                Portfolio portfolio = portfolioRepository.saveAndFlush(Portfolio.createShared(
+                        memberId, ReflectionType.LIVE, validatedTitle, shareSlugGenerator.generate()));
+                replaceItems(portfolio, artworks.stream().map(ArtworkInfo::id).toList());
+                result = PortfolioMapper.toInfo(portfolio, artworks.size(),
+                        artworks.stream().map(PortfolioMapper::toCardInfo).toList());
+            }
+            // 복제("복제해서 만들기")는 읽기 전용 프리필(getDuplicationSource)을 거쳐 이 메서드를 그대로
+            // 타므로 서버에서 구분이 안 된다 — mode는 항상 "create"다(PH-02 회신 폴백).
+            eventPublisher.publishEvent(new PortfolioSubmitSucceededEvent(memberId, result.id(), "create",
+                    result.kind(), result.reflectionType(), countOwnedByMember(memberId), result.itemCount(),
+                    Instant.now()));
+            return result;
+        } catch (RuntimeException e) {
+            eventPublisher.publishEvent(new PortfolioSubmitFailedEvent(memberId, "create",
+                    DomainException.codeOf(e), Instant.now()));
+            throw e;
         }
-        Portfolio portfolio = portfolioRepository.saveAndFlush(Portfolio.createShared(
-                memberId, ReflectionType.LIVE, validatedTitle, shareSlugGenerator.generate()));
-        replaceItems(portfolio, artworks.stream().map(ArtworkInfo::id).toList());
-
-        return PortfolioMapper.toInfo(portfolio, artworks.size(),
-                artworks.stream().map(PortfolioMapper::toCardInfo).toList());
     }
 
     /**
@@ -661,24 +676,34 @@ public class PortfolioServiceImpl implements PortfolioService {
     @Transactional
     public PortfolioInfo updatePortfolio(String memberId, String portfolioId, String title,
                                          List<String> artworkIds) {
-        Portfolio portfolio = findOwned(memberId, portfolioId);
-        assertEditable(portfolio, memberId);
-        String validatedTitle = title != null ? validateTitle(title) : null;
-        if (artworkIds != null) {
-            List<ArtworkInfo> artworks = orderByUploadedAt(resolveOwnedArtworks(memberId, artworkIds));
-            replaceItems(portfolio, artworks.stream().map(ArtworkInfo::id).toList());
+        try {
+            Portfolio portfolio = findOwned(memberId, portfolioId);
+            assertEditable(portfolio, memberId);
+            String validatedTitle = title != null ? validateTitle(title) : null;
+            if (artworkIds != null) {
+                List<ArtworkInfo> artworks = orderByUploadedAt(resolveOwnedArtworks(memberId, artworkIds));
+                replaceItems(portfolio, artworks.stream().map(ArtworkInfo::id).toList());
+            }
+            // portfolios를 건드리는 것은 구성 교체 뒤다 — 앞에서 엔티티를 dirty로 만들면 replaceItems의 벌크
+            // DELETE(flushAutomatically)가 portfolios를 먼저 flush해 portfolio_items → portfolios 쓰기 순서가
+            // 뒤집힌다(§8.9). 작가 페이지 제목 변경은 여기서 예외를 던지지만 같은 트랜잭션이라 구성 교체까지 함께
+            // 롤백돼 결과는 종전과 같다.
+            if (validatedTitle != null) {
+                // 작가 페이지면 엔티티가 ARTIST_PAGE_TITLE_IMMUTABLE을 던진다.
+                portfolio.updateTitle(validatedTitle);
+            }
+            portfolio.markEdited();
+            // 변경 감지로 반영된다 — 별도 save() 호출은 중복이다.
+            PortfolioInfo result = PortfolioMapper.toInfo(portfolio, itemCountOf(portfolio), loadCards(portfolio));
+            eventPublisher.publishEvent(new PortfolioSubmitSucceededEvent(memberId, result.id(), "edit",
+                    result.kind(), result.reflectionType(), countOwnedByMember(memberId), result.itemCount(),
+                    Instant.now()));
+            return result;
+        } catch (RuntimeException e) {
+            eventPublisher.publishEvent(new PortfolioSubmitFailedEvent(memberId, "edit",
+                    DomainException.codeOf(e), Instant.now()));
+            throw e;
         }
-        // portfolios를 건드리는 것은 구성 교체 뒤다 — 앞에서 엔티티를 dirty로 만들면 replaceItems의 벌크
-        // DELETE(flushAutomatically)가 portfolios를 먼저 flush해 portfolio_items → portfolios 쓰기 순서가
-        // 뒤집힌다(§8.9). 작가 페이지 제목 변경은 여기서 예외를 던지지만 같은 트랜잭션이라 구성 교체까지 함께
-        // 롤백돼 결과는 종전과 같다.
-        if (validatedTitle != null) {
-            // 작가 페이지면 엔티티가 ARTIST_PAGE_TITLE_IMMUTABLE을 던진다.
-            portfolio.updateTitle(validatedTitle);
-        }
-        portfolio.markEdited();
-        // 변경 감지로 반영된다 — 별도 save() 호출은 중복이다.
-        return PortfolioMapper.toInfo(portfolio, itemCountOf(portfolio), loadCards(portfolio));
     }
 
     /** 작품 추가 (§4). 기존 구성에 이어 붙인 뒤 업로드순으로 다시 정렬한다. */

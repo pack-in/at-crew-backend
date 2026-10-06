@@ -32,8 +32,15 @@ import java.util.Optional;
 @Service
 class BillingServiceImpl implements BillingService {
 
-    /** Customer Portal에서 돌아올 프론트 경로 — 설정 &gt; 요금제 및 결제 탭. */
-    private static final String PORTAL_RETURN_PATH = "/settings/billing";
+    /**
+     * Customer Portal에서 돌아올 프론트 경로 — 설정 &gt; 요금제 및 결제 탭.
+     *
+     * <p>프론트 실제 경로(PH-02 회신, 2026-10-06)에 맞춘 값. 언어 접두어는 백엔드가 붙이지 않는다 —
+     * {@code /billing/success}도 마찬가지로 URL에 언어 세그먼트를 안 넣고({@link
+     * com.atcrew.billing.internal.infra.StripeGateway#checkoutParams}), 접두어 처리는 프론트
+     * i18n 라우팅이 전담한다.
+     */
+    private static final String PORTAL_RETURN_PATH = "/setting?tab=billing";
 
     private static final List<SubscriptionStatus> LIVE_STATUSES =
             List.of(SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE);

@@ -1,6 +1,7 @@
 package com.atcrew.member.internal.application;
 
 import com.atcrew.member.AccountDeletionFailedEvent;
+import com.atcrew.member.AddCareerCommand;
 import com.atcrew.member.ActiveRegion;
 import com.atcrew.member.ActivityField;
 import com.atcrew.member.ArtistProfileViewedEvent;
@@ -39,6 +40,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -150,10 +152,10 @@ class MemberServiceImplTest {
     // ─── updateInfo: profile_section_saved (PA-04) ─────────────────────
 
     @Test
-    void 프로필_저장시_완성도와_실제로_바뀐_필드_수를_실어_발행한다() {
+    void 기본정보와_구직정보_필드가_같이_바뀌면_섹션별로_이벤트를_나눠_발행한다() {
         Member member = Member.register("profile@atcrew.com", "profile_handle", "프로필회원");
         when(memberRepository.findById(member.getId())).thenReturn(Optional.of(member));
-        // employmentStatus(기본값 PREPARING→AVAILABLE)·contact(null→값) 2개만 실제로 바뀐다
+        // employmentStatus(구직정보, 기본값 PREPARING→AVAILABLE)·contact(기본정보, null→값) — 섹션 하나씩만 바뀜
         UpdateInfoCommand command = new UpdateInfoCommand(
                 EmploymentStatus.AVAILABLE, null, null, null,
                 null, null, null, null, null,
@@ -164,24 +166,27 @@ class MemberServiceImplTest {
         memberService.updateInfo(member.getId(), command);
 
         ArgumentCaptor<ProfileSectionSavedEvent> captor = ArgumentCaptor.forClass(ProfileSectionSavedEvent.class);
-        verify(eventPublisher).publishEvent(captor.capture());
-        ProfileSectionSavedEvent event = captor.getValue();
-        assertThat(event.memberId()).isEqualTo(member.getId());
-        assertThat(event.sectionType()).isEqualTo("profile_info");
-        assertThat(event.changedFieldCount()).isEqualTo(2);
-        // completion_rate 분모에선 가입 시 항상 채워지는 employmentStatus·totalSlotCount·
-        // availableSlotCount·timezone·countryCode를 뺀다(code-review 2026-10-06) — 이 테스트의
-        // 3-인자 개발용 가입 경로는 timezone/countryCode도 null이라 더더욱 안 센다. 실제로 채워진
-        // 건 contact 하나뿐이라 1/18.
-        assertThat(event.completionRate())
-                .isEqualTo(1 / (double) ProfileCompletionCalculator.TARGET_FIELD_COUNT);
-        assertThat(event.isComplete()).isFalse();
-        assertThat(event.isFirstCompletion()).isFalse();
-        assertThat(event.occurredAt()).isNotNull();
+        verify(eventPublisher, times(2)).publishEvent(captor.capture());
+        List<ProfileSectionSavedEvent> events = captor.getAllValues();
+
+        ProfileSectionSavedEvent artistInfo = events.stream()
+                .filter(e -> e.sectionType().equals("artist_info")).findFirst().orElseThrow();
+        assertThat(artistInfo.memberId()).isEqualTo(member.getId());
+        assertThat(artistInfo.changedFieldCount()).isEqualTo(1); // contact
+        assertThat(artistInfo.completionRate()).isEqualTo(1 / 10.0); // 기본정보 대상 10개 중 1개
+        assertThat(artistInfo.isComplete()).isFalse();
+        assertThat(artistInfo.isFirstCompletion()).isFalse();
+        assertThat(artistInfo.occurredAt()).isNotNull();
+
+        ProfileSectionSavedEvent jobInfo = events.stream()
+                .filter(e -> e.sectionType().equals("job_info")).findFirst().orElseThrow();
+        assertThat(jobInfo.changedFieldCount()).isEqualTo(1); // employmentStatus
+        // employmentStatus는 가입 시 항상 채워지는 필드라 completion_rate 분모·분자에서 빠진다 — 0/8
+        assertThat(jobInfo.completionRate()).isZero();
     }
 
     @Test
-    void 아무것도_바뀌지_않으면_변경_필드_수는_0이다() {
+    void 아무것도_바뀌지_않으면_이벤트를_발행하지_않는다() {
         Member member = Member.register("notouch@atcrew.com", "notouch_handle", "무변경회원");
         when(memberRepository.findById(member.getId())).thenReturn(Optional.of(member));
         UpdateInfoCommand command = new UpdateInfoCommand(
@@ -191,13 +196,11 @@ class MemberServiceImplTest {
 
         memberService.updateInfo(member.getId(), command);
 
-        ArgumentCaptor<ProfileSectionSavedEvent> captor = ArgumentCaptor.forClass(ProfileSectionSavedEvent.class);
-        verify(eventPublisher).publishEvent(captor.capture());
-        assertThat(captor.getValue().changedFieldCount()).isEqualTo(0);
+        verify(eventPublisher, never()).publishEvent(any(ProfileSectionSavedEvent.class));
     }
 
     @Test
-    void 전체_필드를_전부_채우면_처음으로_완성도_100퍼센트에_도달한다() {
+    void 전체_필드를_전부_채우면_두_섹션_다_처음으로_완성도_100퍼센트에_도달한다() {
         Member member = Member.register("complete@atcrew.com", "complete_handle", "완성회원");
         when(memberRepository.findById(member.getId())).thenReturn(Optional.of(member));
         UpdateInfoCommand command = new UpdateInfoCommand(
@@ -213,10 +216,62 @@ class MemberServiceImplTest {
         memberService.updateInfo(member.getId(), command);
 
         ArgumentCaptor<ProfileSectionSavedEvent> captor = ArgumentCaptor.forClass(ProfileSectionSavedEvent.class);
+        verify(eventPublisher, times(2)).publishEvent(captor.capture());
+        for (ProfileSectionSavedEvent event : captor.getAllValues()) {
+            assertThat(event.completionRate()).isEqualTo(1.0);
+            assertThat(event.isComplete()).isTrue();
+            assertThat(event.isFirstCompletion()).isTrue();
+        }
+    }
+
+    // ─── addCareer/deleteCareer: profile_section_saved(career_info) (FE 회신 PH-02) ───
+
+    @Test
+    void 첫_경력_추가는_최초_완성으로_표시한다() {
+        Member member = Member.register("career@atcrew.com", "career_handle", "경력회원");
+        when(memberRepository.findById(member.getId())).thenReturn(Optional.of(member));
+        AddCareerCommand command = new AddCareerCommand("참여작", "작화", java.time.LocalDate.now(), null, true, "설명");
+
+        memberService.addCareer(member.getId(), command);
+
+        ArgumentCaptor<ProfileSectionSavedEvent> captor = ArgumentCaptor.forClass(ProfileSectionSavedEvent.class);
         verify(eventPublisher).publishEvent(captor.capture());
         ProfileSectionSavedEvent event = captor.getValue();
+        assertThat(event.sectionType()).isEqualTo("career_info");
         assertThat(event.completionRate()).isEqualTo(1.0);
         assertThat(event.isComplete()).isTrue();
+        assertThat(event.changedFieldCount()).isEqualTo(1);
         assertThat(event.isFirstCompletion()).isTrue();
+    }
+
+    @Test
+    void 두번째_경력_추가는_최초_완성이_아니다() {
+        Member member = Member.register("career2@atcrew.com", "career2_handle", "경력회원2");
+        member.addCareer("첫 참여작", "작화", java.time.LocalDate.now(), null, true, "설명", java.time.LocalDate.now());
+        when(memberRepository.findById(member.getId())).thenReturn(Optional.of(member));
+        AddCareerCommand command = new AddCareerCommand("두번째 참여작", "채색", java.time.LocalDate.now(), null, true, "설명");
+
+        memberService.addCareer(member.getId(), command);
+
+        ArgumentCaptor<ProfileSectionSavedEvent> captor = ArgumentCaptor.forClass(ProfileSectionSavedEvent.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        assertThat(captor.getValue().isFirstCompletion()).isFalse();
+    }
+
+    @Test
+    void 마지막_경력을_삭제하면_완성도가_0으로_떨어진다() {
+        Member member = Member.register("career3@atcrew.com", "career3_handle", "경력회원3");
+        var entry = member.addCareer("참여작", "작화", java.time.LocalDate.now(), null, true, "설명", java.time.LocalDate.now());
+        when(memberRepository.findById(member.getId())).thenReturn(Optional.of(member));
+
+        memberService.deleteCareer(member.getId(), entry.id());
+
+        ArgumentCaptor<ProfileSectionSavedEvent> captor = ArgumentCaptor.forClass(ProfileSectionSavedEvent.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        ProfileSectionSavedEvent event = captor.getValue();
+        assertThat(event.sectionType()).isEqualTo("career_info");
+        assertThat(event.completionRate()).isZero();
+        assertThat(event.isComplete()).isFalse();
+        assertThat(event.isFirstCompletion()).isFalse();
     }
 }
