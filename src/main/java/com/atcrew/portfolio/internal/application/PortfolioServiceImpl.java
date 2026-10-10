@@ -13,15 +13,20 @@ import com.atcrew.common.exception.DomainException;
 import com.atcrew.common.response.CursorPage;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
+import com.atcrew.portfolio.PortfolioArtworkAddedEvent;
 import com.atcrew.portfolio.PortfolioArtworkCardInfo;
+import com.atcrew.portfolio.PortfolioArtworkRemovedEvent;
 import com.atcrew.portfolio.PortfolioCoverThumbnailInfo;
 import com.atcrew.portfolio.PortfolioDuplicationSourceInfo;
 import com.atcrew.portfolio.PortfolioInfo;
 import com.atcrew.portfolio.PortfolioKind;
 import com.atcrew.portfolio.PortfolioSelectableInfo;
+import com.atcrew.portfolio.PortfolioService;
 import com.atcrew.portfolio.PortfolioSharedInfo;
 import com.atcrew.portfolio.PortfolioSnapshotDetailInfo;
 import com.atcrew.portfolio.PortfolioSort;
+import com.atcrew.portfolio.PortfolioSubmitFailedEvent;
+import com.atcrew.portfolio.PortfolioSubmitSucceededEvent;
 import com.atcrew.portfolio.PortfolioSummaryInfo;
 import com.atcrew.portfolio.ReflectionType;
 import com.atcrew.portfolio.internal.domain.Portfolio;
@@ -34,6 +39,7 @@ import com.atcrew.portfolio.internal.persistence.PortfolioItemSnapshotRepository
 import com.atcrew.portfolio.internal.persistence.PortfolioRepository;
 import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Predicate;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.PageRequest;
@@ -61,14 +67,15 @@ import java.util.Set;
 /**
  * 포트폴리오 CRUD (docs/design/portfolio-module-design.md §4, §5).
  *
- * <p>portfolio는 다른 모듈이 동기 호출할 필요가 없는 리프 모듈이라 공개 인터페이스를 두지 않는다(§3).
- * 같은 모듈의 컨트롤러가 이 클래스를 직접 주입받는다(media의 {@code MediaCallbackService}와 동일한 형태).
+ * <p>포트폴리오 CRUD는 다른 모듈이 호출하지 않아 공개 인터페이스에 올리지 않는다(§3) — 같은 모듈의
+ * 컨트롤러가 이 클래스를 직접 주입받는다(media의 {@code MediaCallbackService}와 동일한 형태).
+ * 다른 모듈에 열어 준 조회만 {@link PortfolioService}로 노출한다.
  *
  * <p>작품 편입 여부(`artworks.portfolio_included`)는 이벤트가 아니라 같은 트랜잭션 안의 동기 호출로
  * 갱신한다 — 순서 역전이 없고 절대값 재계산이라 멱등하다(§1.2, §5.4).
  */
 @Service
-public class PortfolioServiceImpl {
+public class PortfolioServiceImpl implements PortfolioService {
 
     // 카드 커버는 2x2 배치라 최대 4장이다(마이페이지_작가-R39).
     private static final int COVER_THUMBNAIL_LIMIT = 4;
@@ -88,6 +95,7 @@ public class PortfolioServiceImpl {
     private final PortfolioBlocker portfolioBlocker;
     // Spring Boot 4가 자동 구성한 Jackson 3 매퍼 — HTTP 응답 직렬화와 동일한 설정으로 스냅샷 JSON을 만든다.
     private final JsonMapper jsonMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     PortfolioServiceImpl(PortfolioRepository portfolioRepository,
                          PortfolioItemRepository portfolioItemRepository,
@@ -97,7 +105,8 @@ public class PortfolioServiceImpl {
                          BillingService billingService,
                          ShareSlugGenerator shareSlugGenerator,
                          PortfolioBlocker portfolioBlocker,
-                         JsonMapper jsonMapper) {
+                         JsonMapper jsonMapper,
+                         ApplicationEventPublisher eventPublisher) {
         this.portfolioRepository = portfolioRepository;
         this.portfolioItemRepository = portfolioItemRepository;
         this.portfolioItemSnapshotRepository = portfolioItemSnapshotRepository;
@@ -107,9 +116,20 @@ public class PortfolioServiceImpl {
         this.shareSlugGenerator = shareSlugGenerator;
         this.portfolioBlocker = portfolioBlocker;
         this.jsonMapper = jsonMapper;
+        this.eventPublisher = eventPublisher;
     }
 
     // === 조회 ===
+
+    /**
+     * 작가 페이지는 회원마다 자동으로 하나 생기는 컨테이너라 "만든 포트폴리오"로 세지 않는다 —
+     * SHARED만 센다(§2.5).
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public int countOwnedByMember(String memberId) {
+        return Math.toIntExact(portfolioRepository.countByOwnerMemberIdAndKind(memberId, PortfolioKind.SHARED));
+    }
 
     /**
      * 내 포트폴리오 목록. 작가 페이지가 아직 없으면 이 시점에 만든다(§2.5) — 따라서 읽기 전용 트랜잭션이 아니다.
@@ -543,19 +563,32 @@ public class PortfolioServiceImpl {
     @Transactional
     public PortfolioInfo createShared(String memberId, String title, ReflectionType reflectionType,
                                       List<String> artworkIds) {
-        assertPro(memberId);
-        String validatedTitle = validateTitle(title);
-        List<ArtworkInfo> artworks = orderByUploadedAt(resolveOwnedArtworks(memberId, artworkIds));
+        try {
+            assertPro(memberId);
+            String validatedTitle = validateTitle(title);
+            List<ArtworkInfo> artworks = orderByUploadedAt(resolveOwnedArtworks(memberId, artworkIds));
 
-        if (reflectionType == ReflectionType.SNAPSHOT) {
-            return createSnapshot(memberId, validatedTitle, artworks);
+            PortfolioInfo result;
+            if (reflectionType == ReflectionType.SNAPSHOT) {
+                result = createSnapshot(memberId, validatedTitle, artworks);
+            } else {
+                Portfolio portfolio = portfolioRepository.saveAndFlush(Portfolio.createShared(
+                        memberId, ReflectionType.LIVE, validatedTitle, shareSlugGenerator.generate()));
+                replaceItems(portfolio, artworks.stream().map(ArtworkInfo::id).toList());
+                result = PortfolioMapper.toInfo(portfolio, artworks.size(),
+                        artworks.stream().map(PortfolioMapper::toCardInfo).toList());
+            }
+            // 복제("복제해서 만들기")는 읽기 전용 프리필(getDuplicationSource)을 거쳐 이 메서드를 그대로
+            // 타므로 서버에서 구분이 안 된다 — mode는 항상 "create"다(PH-02 회신 폴백).
+            eventPublisher.publishEvent(new PortfolioSubmitSucceededEvent(memberId, result.id(), "create",
+                    result.kind(), result.reflectionType(), countOwnedByMember(memberId), result.itemCount(),
+                    Instant.now()));
+            return result;
+        } catch (RuntimeException e) {
+            eventPublisher.publishEvent(new PortfolioSubmitFailedEvent(memberId, "create",
+                    DomainException.codeOf(e), Instant.now()));
+            throw e;
         }
-        Portfolio portfolio = portfolioRepository.saveAndFlush(Portfolio.createShared(
-                memberId, ReflectionType.LIVE, validatedTitle, shareSlugGenerator.generate()));
-        replaceItems(portfolio, artworks.stream().map(ArtworkInfo::id).toList());
-
-        return PortfolioMapper.toInfo(portfolio, artworks.size(),
-                artworks.stream().map(PortfolioMapper::toCardInfo).toList());
     }
 
     /**
@@ -643,24 +676,34 @@ public class PortfolioServiceImpl {
     @Transactional
     public PortfolioInfo updatePortfolio(String memberId, String portfolioId, String title,
                                          List<String> artworkIds) {
-        Portfolio portfolio = findOwned(memberId, portfolioId);
-        assertEditable(portfolio, memberId);
-        String validatedTitle = title != null ? validateTitle(title) : null;
-        if (artworkIds != null) {
-            List<ArtworkInfo> artworks = orderByUploadedAt(resolveOwnedArtworks(memberId, artworkIds));
-            replaceItems(portfolio, artworks.stream().map(ArtworkInfo::id).toList());
+        try {
+            Portfolio portfolio = findOwned(memberId, portfolioId);
+            assertEditable(portfolio, memberId);
+            String validatedTitle = title != null ? validateTitle(title) : null;
+            if (artworkIds != null) {
+                List<ArtworkInfo> artworks = orderByUploadedAt(resolveOwnedArtworks(memberId, artworkIds));
+                replaceItems(portfolio, artworks.stream().map(ArtworkInfo::id).toList());
+            }
+            // portfolios를 건드리는 것은 구성 교체 뒤다 — 앞에서 엔티티를 dirty로 만들면 replaceItems의 벌크
+            // DELETE(flushAutomatically)가 portfolios를 먼저 flush해 portfolio_items → portfolios 쓰기 순서가
+            // 뒤집힌다(§8.9). 작가 페이지 제목 변경은 여기서 예외를 던지지만 같은 트랜잭션이라 구성 교체까지 함께
+            // 롤백돼 결과는 종전과 같다.
+            if (validatedTitle != null) {
+                // 작가 페이지면 엔티티가 ARTIST_PAGE_TITLE_IMMUTABLE을 던진다.
+                portfolio.updateTitle(validatedTitle);
+            }
+            portfolio.markEdited();
+            // 변경 감지로 반영된다 — 별도 save() 호출은 중복이다.
+            PortfolioInfo result = PortfolioMapper.toInfo(portfolio, itemCountOf(portfolio), loadCards(portfolio));
+            eventPublisher.publishEvent(new PortfolioSubmitSucceededEvent(memberId, result.id(), "edit",
+                    result.kind(), result.reflectionType(), countOwnedByMember(memberId), result.itemCount(),
+                    Instant.now()));
+            return result;
+        } catch (RuntimeException e) {
+            eventPublisher.publishEvent(new PortfolioSubmitFailedEvent(memberId, "edit",
+                    DomainException.codeOf(e), Instant.now()));
+            throw e;
         }
-        // portfolios를 건드리는 것은 구성 교체 뒤다 — 앞에서 엔티티를 dirty로 만들면 replaceItems의 벌크
-        // DELETE(flushAutomatically)가 portfolios를 먼저 flush해 portfolio_items → portfolios 쓰기 순서가
-        // 뒤집힌다(§8.9). 작가 페이지 제목 변경은 여기서 예외를 던지지만 같은 트랜잭션이라 구성 교체까지 함께
-        // 롤백돼 결과는 종전과 같다.
-        if (validatedTitle != null) {
-            // 작가 페이지면 엔티티가 ARTIST_PAGE_TITLE_IMMUTABLE을 던진다.
-            portfolio.updateTitle(validatedTitle);
-        }
-        portfolio.markEdited();
-        // 변경 감지로 반영된다 — 별도 save() 호출은 중복이다.
-        return PortfolioMapper.toInfo(portfolio, itemCountOf(portfolio), loadCards(portfolio));
     }
 
     /** 작품 추가 (§4). 기존 구성에 이어 붙인 뒤 업로드순으로 다시 정렬한다. */
@@ -668,7 +711,16 @@ public class PortfolioServiceImpl {
     public void addArtworks(String memberId, String portfolioId, List<String> artworkIds) {
         Portfolio portfolio = findOwned(memberId, portfolioId);
         assertEditable(portfolio, memberId);
+        Set<String> beforeIds = Set.copyOf(itemArtworkIds(portfolioId));
         appendArtworks(portfolio, memberId, artworkIds);
+        // 이미 포함돼 있던 작품의 재선언(순서 변경 등)은 "추가"가 아니므로 제외한다.
+        for (String artworkId : artworkIds) {
+            if (!beforeIds.contains(artworkId)) {
+                eventPublisher.publishEvent(new PortfolioArtworkAddedEvent(
+                        portfolioId, artworkId, memberId, portfolio.getKind(), portfolio.getReflectionType(),
+                        "editor"));
+            }
+        }
     }
 
     /** 작품 제거 (§4). 남은 구성의 상대 순서는 유지한 채 ordinal만 다시 매긴다. */
@@ -680,6 +732,8 @@ public class PortfolioServiceImpl {
             throw new PortfolioException(PortfolioErrorCode.ARTWORK_NOT_FOUND, "artworkId=" + artworkId);
         }
         detachArtwork(portfolio, artworkId);
+        eventPublisher.publishEvent(new PortfolioArtworkRemovedEvent(
+                portfolioId, artworkId, memberId, portfolio.getKind(), portfolio.getReflectionType()));
     }
 
     /**

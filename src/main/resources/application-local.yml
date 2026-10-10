@@ -41,3 +41,6 @@ artwork:
 search:
   internal:
     secret: ${SEARCH_INTERNAL_SECRET:local-only-internal-secret}
+
+posthog:
+  api-key: ${POSTHOG_API_KEY:local-only-posthog-api-key}

@@ -21,4 +21,11 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, Stri
 
     /** 취소된 이력을 포함해 구독을 한 번이라도 가졌는지. 무료 체험은 첫 구독에만 준다. */
     boolean existsByMemberId(String memberId);
+
+    /**
+     * 회원의 해당 상태 구독 중 가장 최근 것. 재구독(새 Stripe 구독 생성)을 최초 활성화와 구분하려면
+     * 직전에 끝난 구독이 필요하다(PA-08).
+     */
+    Optional<Subscription> findFirstByMemberIdAndStatusOrderByStripeUpdatedAtDesc(
+            String memberId, SubscriptionStatus status);
 }

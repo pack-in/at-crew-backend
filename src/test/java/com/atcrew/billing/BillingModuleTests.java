@@ -234,6 +234,53 @@ class BillingModuleTests {
         assertThat(billingService.getBalance(memberId, BillingProduct.BOOST)).isEqualTo(1);
     }
 
+    @Test
+    void 구독_환불은_분석_이벤트를_발행한다(PublishedEvents events) {
+        // 단건 상품(checkoutCompleted) 경로를 안 타는 결제 — PURCHASE 원장이 없으니 "구독" 환불로 본다.
+        String memberId = registerMemberWithCustomer("refund-analytics-full", "cus_refund_full");
+
+        webhookService.handle(chargeRefunded("evt_refund_an_back", "pi_refund_an_1", true,
+                "cus_refund_full", 500));
+
+        assertThat(events.ofType(SubscriptionRefundedEvent.class)
+                .matching(event -> memberId.equals(event.memberId())))
+                .hasSize(1)
+                .first()
+                .satisfies(event -> {
+                    assertThat(event.refundType()).isEqualTo("full");
+                    assertThat(event.amount()).isEqualTo(500L);
+                    assertThat(event.currency()).isEqualTo("USD");
+                });
+    }
+
+    @Test
+    void 구독_부분_환불도_분석_이벤트는_발행한다(PublishedEvents events) {
+        String memberId = registerMemberWithCustomer("refund-analytics-partial", "cus_refund_partial");
+
+        webhookService.handle(chargeRefunded("evt_refund_an_back2", "pi_refund_an_2", false,
+                "cus_refund_partial", 200));
+
+        assertThat(events.ofType(SubscriptionRefundedEvent.class)
+                .matching(event -> memberId.equals(event.memberId())))
+                .hasSize(1)
+                .first()
+                .satisfies(event -> assertThat(event.refundType()).isEqualTo("partial"));
+    }
+
+    @Test
+    void 단건_상품_환불은_구독_환불_분석_이벤트를_내지_않는다(PublishedEvents events) {
+        String memberId = registerMemberWithCustomer("refund-analytics-onetime", "cus_refund_onetime");
+        webhookService.handle(checkoutCompleted("evt_refund_onetime_pay", memberId, BillingProduct.BOOST,
+                "pi_refund_onetime_1"));
+
+        webhookService.handle(chargeRefunded("evt_refund_onetime_back", "pi_refund_onetime_1", true,
+                "cus_refund_onetime", 500));
+
+        assertThat(events.ofType(SubscriptionRefundedEvent.class)
+                .matching(event -> memberId.equals(event.memberId())))
+                .isEmpty();
+    }
+
     // === 카탈로그 ===
 
     @Test
@@ -388,18 +435,28 @@ class BillingModuleTests {
     }
 
     private Event invoiceEvent(String eventId, String type, String customerId, long created) {
+        // amount_paid > 0 — onPaymentSucceeded는 0원 인보이스(무료 체험 시작)를 아예 집계하지
+        // 않으므로, 이 금액이 없으면 재결제 복구 흐름의 상태 동기화 자체가 스킵된다.
         String json = """
                 {"id":"%s","object":"event","api_version":"%s","created":%d,"type":"%s",
-                 "data":{"object":{"id":"in_%s","object":"invoice","customer":"%s"}}}
+                 "data":{"object":{"id":"in_%s","object":"invoice","customer":"%s",
+                 "amount_paid":1000,"amount_due":1000,"currency":"usd"}}}
                 """.formatted(eventId, Stripe.API_VERSION, created, type, eventId, customerId);
         return Webhook.constructEventWithoutVerification(json);
     }
 
     private Event chargeRefunded(String eventId, String paymentIntentId, boolean fullyRefunded) {
+        return chargeRefunded(eventId, paymentIntentId, fullyRefunded, null, 0L);
+    }
+
+    private Event chargeRefunded(String eventId, String paymentIntentId, boolean fullyRefunded,
+            String customerId, long amountRefunded) {
         String json = """
                 {"id":"%s","object":"event","api_version":"%s","created":%d,"type":"charge.refunded",
-                 "data":{"object":{"id":"ch_%s","object":"charge","payment_intent":"%s","refunded":%s}}}
-                """.formatted(eventId, Stripe.API_VERSION, BASE_CREATED + 30, eventId, paymentIntentId, fullyRefunded);
+                 "data":{"object":{"id":"ch_%s","object":"charge","payment_intent":"%s","refunded":%s,
+                 "customer":%s,"amount_refunded":%d,"currency":"usd"}}}
+                """.formatted(eventId, Stripe.API_VERSION, BASE_CREATED + 30, eventId, paymentIntentId,
+                fullyRefunded, customerId == null ? "null" : "\"" + customerId + "\"", amountRefunded);
         return Webhook.constructEventWithoutVerification(json);
     }
 }

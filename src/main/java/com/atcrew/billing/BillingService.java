@@ -28,6 +28,12 @@ public interface BillingService {
     BillingSummaryInfo getSummary(String memberId);
 
     /**
+     * 현재 플랜만 가볍게 조회한다(프로 혜택 없으면 STARTER). {@link #getSummary}는 단건 상품 보유
+     * 개수까지 함께 조회해 plan_type만 필요한 호출(분석 공통 속성 등)에는 과하다.
+     */
+    PlanType currentPlan(String memberId);
+
+    /**
      * 요금제 카탈로그. 상품별 가격과 CTA 상태를 함께 계산한다(요금제-R03~R05).
      *
      * @param memberId 비로그인이면 null — 이때 CTA는 전부 구매 가능 상태로 내려간다

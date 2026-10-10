@@ -90,6 +90,12 @@ sentry:
     minimum-event-level: error
     minimum-breadcrumb-level: warn
 
+# 분석 이벤트(plans/261005-posthog-analytics-events) — API 키는 기본값 없음(jwt.secret과 같은 이유).
+# 로컬 개발용 값은 application-local.yml에 있다.
+posthog:
+  api-key: ${POSTHOG_API_KEY}
+  host: ${POSTHOG_HOST:https://us.i.posthog.com}
+
 cors:
   allowed-origins: http://localhost:3000,http://localhost:56000
 
