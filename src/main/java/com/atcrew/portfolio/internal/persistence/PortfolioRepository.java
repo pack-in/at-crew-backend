@@ -23,6 +23,9 @@ public interface PortfolioRepository extends JpaRepository<Portfolio, String>, J
     // 탈퇴 시 소유 포트폴리오 전체(공유 + 작가 페이지)를 차단하기 위한 조회(§5.2).
     List<Portfolio> findByOwnerMemberId(String ownerMemberId);
 
+    // 소유 포트폴리오 개수(PortfolioService.countOwnedByMember) — 엔티티를 끌어오지 않고 센다.
+    long countByOwnerMemberIdAndKind(String ownerMemberId, PortfolioKind kind);
+
     Optional<Portfolio> findByShareSlug(String shareSlug);
 
     // 슬러그 발급 시 충돌 재시도 판정용(§2.6).

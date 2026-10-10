@@ -15,7 +15,12 @@ import com.atcrew.artwork.UpdateArtworkCommand;
 import com.atcrew.artwork.UploadArtworkCommand;
 import com.atcrew.artwork.Visibility;
 import com.atcrew.artwork.ArtworkChangedEvent;
+import com.atcrew.artwork.ArtworkDeletedEvent;
+import com.atcrew.artwork.ArtworkEditedEvent;
 import com.atcrew.artwork.ArtworkPortfolioSelectionRequested;
+import com.atcrew.artwork.ArtworkPublishedEvent;
+import com.atcrew.artwork.ArtworkPublishFailedEvent;
+import com.atcrew.artwork.ArtworkVisibilityChangedEvent;
 import com.atcrew.artwork.internal.domain.artwork.Artwork;
 import com.atcrew.artwork.internal.domain.artwork.Material;
 import com.atcrew.artwork.internal.domain.view.ArtworkHotScore;
@@ -24,6 +29,7 @@ import com.atcrew.artwork.internal.exception.ArtworkErrorCode;
 import com.atcrew.artwork.internal.exception.ArtworkException;
 import com.atcrew.artwork.internal.persistence.ArtworkRepository;
 import com.atcrew.billing.BillingService;
+import com.atcrew.common.exception.DomainException;
 import com.atcrew.common.response.CursorPage;
 import com.atcrew.common.response.OffsetPage;
 import com.atcrew.media.MediaConstraints;
@@ -57,6 +63,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -155,53 +162,64 @@ class ArtworkServiceImpl implements ArtworkService {
     @Override
     @Transactional
     public ArtworkInfo uploadArtwork(String memberId, UploadArtworkCommand command) {
-        assertArtworkQuota(memberId, 1);
-        assertLanguagesAllowed(memberId, command.languages());
-        assertNoDuplicateImageKeys(command.imageKeys());
-        // 새 작품이라 물려받을 key가 없다 — 모든 key가 본인에게 발급된 것이어야 한다(#190).
-        assertKeysOwned(memberId,
-                submittedKeys(command.imageKeys(), command.thumbnailKey(), command.materials()), Set.of());
-        assertThumbnailSeparate(command.thumbnailKey(), command.imageKeys());
-        List<Material> materials = toMaterials(command.materials());
-        Artwork artwork = Artwork.create(
-                memberId,
-                command.title(),
-                command.description(),
-                command.imageKeys(),
-                command.representativeImageIndex(),
-                command.thumbnailKey(),
-                command.imageLayoutType(),
-                command.artworkField(),
-                command.creativeType(),
-                command.roles(),
-                command.genres(),
-                command.customTags(),
-                command.tags(),
-                command.ageRating(),
-                command.languages(),
-                visibilityOf(command.publishToFeed()),
-                command.tools(),
-                command.workDuration(),
-                command.cutCount(),
-                command.videoLinks(),
-                materials
-        );
-        Artwork saved = artworkRepository.save(artwork);
-        // 포트폴리오 편입은 portfolio가 이 트랜잭션 안에서 동기 처리한다 — 검증 실패 시 업로드까지 롤백된다.
-        // 이미지 처리 트리거는 커밋 뒤에만 나가므로(#174) 이 순서가 롤백 가능성에 영향을 주지는 않는다.
-        eventPublisher.publishEvent(new ArtworkPortfolioSelectionRequested(
-                memberId, saved.getId(), command.portfolioIds()));
-        MediaQualityTier qualityTier = qualityTierOf(memberId);
-        mediaService.registerAndTriggerProcessing(MediaOwnerType.ARTWORK, saved.getId(),
-                command.imageKeys(), MediaVariantProfile.ORIGINAL, qualityTier);
-        if (command.thumbnailKey() != null) {
-            mediaService.registerAndTriggerProcessing(MediaOwnerType.ARTWORK_THUMBNAIL, saved.getId(),
-                    List.of(command.thumbnailKey()), MediaVariantProfile.THUMBNAIL_WITH_ADULT_BLUR, qualityTier);
+        try {
+            assertArtworkQuota(memberId, 1);
+            assertLanguagesAllowed(memberId, command.languages());
+            assertNoDuplicateImageKeys(command.imageKeys());
+            // 새 작품이라 물려받을 key가 없다 — 모든 key가 본인에게 발급된 것이어야 한다(#190).
+            assertKeysOwned(memberId,
+                    submittedKeys(command.imageKeys(), command.thumbnailKey(), command.materials()), Set.of());
+            assertThumbnailSeparate(command.thumbnailKey(), command.imageKeys());
+            List<Material> materials = toMaterials(command.materials());
+            Artwork artwork = Artwork.create(
+                    memberId,
+                    command.title(),
+                    command.description(),
+                    command.imageKeys(),
+                    command.representativeImageIndex(),
+                    command.thumbnailKey(),
+                    command.imageLayoutType(),
+                    command.artworkField(),
+                    command.creativeType(),
+                    command.roles(),
+                    command.genres(),
+                    command.customTags(),
+                    command.tags(),
+                    command.ageRating(),
+                    command.languages(),
+                    visibilityOf(command.publishToFeed()),
+                    command.tools(),
+                    command.workDuration(),
+                    command.cutCount(),
+                    command.videoLinks(),
+                    materials
+            );
+            Artwork saved = artworkRepository.save(artwork);
+            // 포트폴리오 편입은 portfolio가 이 트랜잭션 안에서 동기 처리한다 — 검증 실패 시 업로드까지 롤백된다.
+            // 이미지 처리 트리거는 커밋 뒤에만 나가므로(#174) 이 순서가 롤백 가능성에 영향을 주지는 않는다.
+            eventPublisher.publishEvent(new ArtworkPortfolioSelectionRequested(
+                    memberId, saved.getId(), command.portfolioIds()));
+            MediaQualityTier qualityTier = qualityTierOf(memberId);
+            mediaService.registerAndTriggerProcessing(MediaOwnerType.ARTWORK, saved.getId(),
+                    command.imageKeys(), MediaVariantProfile.ORIGINAL, qualityTier);
+            if (command.thumbnailKey() != null) {
+                mediaService.registerAndTriggerProcessing(MediaOwnerType.ARTWORK_THUMBNAIL, saved.getId(),
+                        List.of(command.thumbnailKey()), MediaVariantProfile.THUMBNAIL_WITH_ADULT_BLUR, qualityTier);
+            }
+            eventPublisher.publishEvent(new ArtworkChangedEvent(saved.getId()));
+            MemberInfo author = memberService.findById(memberId);
+            // 이번 작품을 포함해 센다 — save() 이후라 저장된 엔티티도 카운트에 들어간다(countActiveByAuthor는
+            // DELETED만 제외해 저장 직후 상태(PROCESSING)도 센다).
+            long uploadOrder = countActiveByAuthor(memberId);
+            eventPublisher.publishEvent(new ArtworkPublishedEvent(
+                    saved.getId(), memberId, uploadOrder, uploadOrder == 1, saved.getVisibility()));
+            log.info("작품 업로드 완료: artworkId={} memberId={}", saved.getId(), memberId);
+            return toInfo(saved, author);
+        } catch (RuntimeException e) {
+            eventPublisher.publishEvent(
+                    new ArtworkPublishFailedEvent(memberId, DomainException.codeOf(e), Instant.now()));
+            throw e;
         }
-        eventPublisher.publishEvent(new ArtworkChangedEvent(saved.getId()));
-        MemberInfo author = memberService.findById(memberId);
-        log.info("작품 업로드 완료: artworkId={} memberId={}", saved.getId(), memberId);
-        return toInfo(saved, author);
     }
 
     @Override
@@ -301,6 +319,10 @@ class ArtworkServiceImpl implements ArtworkService {
             replaceMaterials(artwork, toMaterials(command.materials()));
         }
 
+        // changed_section_ids 계산용 스냅샷 — updateDetails가 null 아닌 값만 덮어써 변경 추적이 없으므로
+        // 호출 전 값을 떠 두고 호출 후 실제로 달라진 필드만 가려낸다(분석 이벤트 artwork_edited).
+        Map<String, Object> detailsBeforeUpdate = snapshotDetailFields(artwork);
+
         artwork.updateDetails(
                 command.title(),
                 command.description(),
@@ -319,6 +341,7 @@ class ArtworkServiceImpl implements ArtworkService {
                 command.cutCount(),
                 command.videoLinks()
         );
+        List<String> changedSectionIds = changedDetailFields(detailsBeforeUpdate, artwork);
 
         // 이미지 목록은 media가 맞춘다 — 남는 이미지는 변환 결과를 그대로 두고, 빠진 것만 고아 큐로 간다(#193).
         // 프론트가 수정 요청마다 폼 전체를 보내 imageKeys가 항상 실려 오므로, 바뀐 게 없으면 여기서 아무 일도
@@ -338,8 +361,47 @@ class ArtworkServiceImpl implements ArtworkService {
 
         Artwork saved = artworkRepository.save(artwork);
         eventPublisher.publishEvent(new ArtworkChangedEvent(saved.getId()));
+        eventPublisher.publishEvent(new ArtworkEditedEvent(saved.getId(), memberId, changedSectionIds, Instant.now()));
         MemberInfo author = memberService.findById(memberId);
         return ArtworkMapper.toInfo(saved, author, new ArtworkMedia(images, thumbnail));
+    }
+
+    // artwork_edited의 changed_section_ids 대상 필드 — Artwork.updateDetails()가 다루는 필드와 동일한 집합이다.
+    private static final List<String> EDITABLE_DETAIL_FIELDS = List.of(
+            "title", "description", "imageLayoutType", "thumbnailKey", "artworkField", "creativeType",
+            "roles", "genres", "customTags", "tags", "ageRating", "languages", "tools",
+            "workDuration", "cutCount", "videoLinks");
+
+    private static Map<String, Object> snapshotDetailFields(Artwork artwork) {
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        snapshot.put("title", artwork.getTitle());
+        snapshot.put("description", artwork.getDescription());
+        snapshot.put("imageLayoutType", artwork.getImageLayoutType());
+        snapshot.put("thumbnailKey", artwork.getThumbnailKey());
+        snapshot.put("artworkField", artwork.getArtworkField());
+        snapshot.put("creativeType", artwork.getCreativeType());
+        snapshot.put("roles", artwork.getRoles());
+        snapshot.put("genres", artwork.getGenres());
+        snapshot.put("customTags", artwork.getCustomTags());
+        snapshot.put("tags", artwork.getTags());
+        snapshot.put("ageRating", artwork.getAgeRating());
+        snapshot.put("languages", artwork.getLanguages());
+        snapshot.put("tools", artwork.getTools());
+        snapshot.put("workDuration", artwork.getWorkDuration());
+        snapshot.put("cutCount", artwork.getCutCount());
+        snapshot.put("videoLinks", artwork.getVideoLinks());
+        return snapshot;
+    }
+
+    private static List<String> changedDetailFields(Map<String, Object> before, Artwork after) {
+        Map<String, Object> afterSnapshot = snapshotDetailFields(after);
+        List<String> changed = new ArrayList<>();
+        for (String field : EDITABLE_DETAIL_FIELDS) {
+            if (!Objects.equals(before.get(field), afterSnapshot.get(field))) {
+                changed.add(field);
+            }
+        }
+        return changed;
     }
 
     /**
@@ -416,15 +478,22 @@ class ArtworkServiceImpl implements ArtworkService {
                                   List<String> portfolioIds) {
         Artwork artwork = findArtworkById(artworkId);
         artwork.assertOwner(memberId);
+        Visibility previousVisibility = artwork.getVisibility();
         // 편입 반영이 먼저다 — 실패하면 공개 상태 변경까지 함께 롤백돼야 반쪽 상태가 남지 않는다.
         // 공개 상태 변경을 뒤로 미루는 것도 같은 트랜잭션 안의 쓰기 순서 때문이다 — artworks를 먼저 dirty로
         // 만들면 편입 반영의 벌크 DELETE(flushAutomatically)가 artworks를 portfolio_items보다 먼저 flush해,
         // portfolio_items → artworks 순으로 쓰는 포트폴리오 삭제 경로와 잠금 순서가 어긋난다
         // (docs/design/portfolio-module-design.md §8.9).
         eventPublisher.publishEvent(new ArtworkPortfolioSelectionRequested(memberId, artworkId, portfolioIds));
-        artwork.changeVisibility(visibilityOf(publishToFeed));
+        Visibility newVisibility = visibilityOf(publishToFeed);
+        artwork.changeVisibility(newVisibility);
         artworkRepository.save(artwork);
         eventPublisher.publishEvent(new ArtworkChangedEvent(artworkId));
+        // 값이 실제로 바뀌지 않았으면(같은 상태로 재선언) 분석 이벤트를 내지 않는다.
+        if (previousVisibility != newVisibility) {
+            eventPublisher.publishEvent(new ArtworkVisibilityChangedEvent(
+                    artworkId, memberId, previousVisibility, newVisibility, Instant.now()));
+        }
     }
 
     // 공개 상태는 사용자가 고르는 값이 아니라 노출 위치 조합에서 계산되는 파생값이다(업로드-R09).
@@ -442,6 +511,7 @@ class ArtworkServiceImpl implements ArtworkService {
         artwork.moveToTrash();
         artworkRepository.save(artwork);
         eventPublisher.publishEvent(new ArtworkChangedEvent(artworkId));
+        eventPublisher.publishEvent(new ArtworkDeletedEvent(artworkId, memberId, Instant.now()));
     }
 
     @Override
@@ -664,6 +734,12 @@ class ArtworkServiceImpl implements ArtworkService {
                 ? String.valueOf(page.get(page.size() - 1).getCreatedAt().toEpochMilli())
                 : null;
         return CursorPage.of(items, nextCursor);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public long countActiveByAuthor(String memberId) {
+        return artworkRepository.countByAuthorIdAndStatusNot(memberId, ArtworkStatus.DELETED);
     }
 
     // 내 작품·휴지통 목록은 등록일 내림차순 단일 커서를 그대로 쓴다(커뮤니티 피드만 정렬 기준이 여러 개다).

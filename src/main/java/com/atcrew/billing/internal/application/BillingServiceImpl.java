@@ -8,19 +8,23 @@ import com.atcrew.billing.CheckoutSessionInfo;
 import com.atcrew.billing.CompanyAccountPort;
 import com.atcrew.billing.PlanType;
 import com.atcrew.billing.PortalSessionInfo;
+import com.atcrew.billing.SubscriptionCheckoutStartedEvent;
 import com.atcrew.billing.SubscriptionStatus;
 import com.atcrew.billing.internal.config.BillingProperties;
 import com.atcrew.billing.internal.domain.BillingCustomer;
 import com.atcrew.billing.internal.domain.Subscription;
 import com.atcrew.billing.internal.exception.BillingErrorCode;
 import com.atcrew.billing.internal.exception.BillingException;
+import com.atcrew.billing.internal.infra.CheckoutSession;
 import com.atcrew.billing.internal.infra.StripeGateway;
 import com.atcrew.billing.internal.persistence.BillingCustomerRepository;
 import com.atcrew.billing.internal.persistence.SubscriptionRepository;
 import com.atcrew.member.MemberService;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -28,8 +32,15 @@ import java.util.Optional;
 @Service
 class BillingServiceImpl implements BillingService {
 
-    /** Customer Portal에서 돌아올 프론트 경로 — 설정 &gt; 요금제 및 결제 탭. */
-    private static final String PORTAL_RETURN_PATH = "/settings/billing";
+    /**
+     * Customer Portal에서 돌아올 프론트 경로 — 설정 &gt; 요금제 및 결제 탭.
+     *
+     * <p>프론트 실제 경로(PH-02 회신, 2026-10-06)에 맞춘 값. 언어 접두어는 백엔드가 붙이지 않는다 —
+     * {@code /billing/success}도 마찬가지로 URL에 언어 세그먼트를 안 넣고({@link
+     * com.atcrew.billing.internal.infra.StripeGateway#checkoutParams}), 접두어 처리는 프론트
+     * i18n 라우팅이 전담한다.
+     */
+    private static final String PORTAL_RETURN_PATH = "/setting?tab=billing";
 
     private static final List<SubscriptionStatus> LIVE_STATUSES =
             List.of(SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE);
@@ -41,6 +52,7 @@ class BillingServiceImpl implements BillingService {
     private final BillingProperties properties;
     private final MemberService memberService;
     private final CompanyAccountPort companyAccountPort;
+    private final ApplicationEventPublisher eventPublisher;
 
     BillingServiceImpl(SubscriptionRepository subscriptionRepository,
             BillingCustomerRepository customerRepository,
@@ -48,7 +60,8 @@ class BillingServiceImpl implements BillingService {
             StripeGateway stripeGateway,
             BillingProperties properties,
             MemberService memberService,
-            CompanyAccountPort companyAccountPort) {
+            CompanyAccountPort companyAccountPort,
+            ApplicationEventPublisher eventPublisher) {
         this.subscriptionRepository = subscriptionRepository;
         this.customerRepository = customerRepository;
         this.entitlementService = entitlementService;
@@ -56,6 +69,7 @@ class BillingServiceImpl implements BillingService {
         this.properties = properties;
         this.memberService = memberService;
         this.companyAccountPort = companyAccountPort;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -82,15 +96,25 @@ class BillingServiceImpl implements BillingService {
     @Transactional(readOnly = true)
     public BillingSummaryInfo getSummary(String memberId) {
         Optional<Subscription> subscription = currentSubscription(memberId);
-        PlanType plan = subscription.filter(Subscription::grantsPro)
-                .map(Subscription::getPlan)
-                .orElse(PlanType.STARTER);
+        PlanType plan = planOf(subscription);
         return new BillingSummaryInfo(
                 plan,
                 subscription.map(Subscription::getStatus).orElse(null),
                 subscription.map(Subscription::getCurrentPeriodEnd).orElse(null),
                 subscription.map(Subscription::isCancelAtPeriodEnd).orElse(false),
                 entitlementService.getQuantities(memberId));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PlanType currentPlan(String memberId) {
+        return planOf(currentSubscription(memberId));
+    }
+
+    private PlanType planOf(Optional<Subscription> subscription) {
+        return subscription.filter(Subscription::grantsPro)
+                .map(Subscription::getPlan)
+                .orElse(PlanType.STARTER);
     }
 
     @Override
@@ -131,8 +155,14 @@ class BillingServiceImpl implements BillingService {
             // 체험 자격은 이 시점에 판정되므로, 앞서 열어 둔 세션이 남아 있으면 그걸로 체험을 한 번 더 받을 수 있다.
             stripeGateway.expireOpenCheckoutSessions(customerId);
         }
-        return new CheckoutSessionInfo(stripeGateway.createCheckoutSession(
-                memberId, product, customerId, trialDays(product, isTrialEligible(memberId))));
+        int trialDays = trialDays(product, isTrialEligible(memberId));
+        CheckoutSession session = stripeGateway.createCheckoutSession(memberId, product, customerId, trialDays);
+        if (product.isSubscription()) {
+            // 단건 상품(BOOST 등) 체크아웃은 구독 전환 퍼널이 아니라 이벤트명 의미 밖이다 — 내지 않는다.
+            eventPublisher.publishEvent(new SubscriptionCheckoutStartedEvent(
+                    memberId, session.id(), product, trialDays, Instant.now()));
+        }
+        return new CheckoutSessionInfo(session.url());
     }
 
     @Override

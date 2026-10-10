@@ -1,6 +1,8 @@
 package com.atcrew.auth.internal.application;
 
 import com.atcrew.auth.AuthInfo;
+import com.atcrew.auth.AuthSignupFailedEvent;
+import com.atcrew.auth.AuthSignupSucceededEvent;
 import com.atcrew.auth.EmailLoginCommand;
 import com.atcrew.auth.EmailRegisterCommand;
 import com.atcrew.auth.GoogleRegisterCommand;
@@ -26,6 +28,7 @@ import com.atcrew.member.internal.exception.MemberErrorCode;
 import com.atcrew.member.internal.exception.MemberException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 
 import java.time.Instant;
@@ -52,6 +55,7 @@ class AuthServiceImplTest {
     PasswordReauthTokenRepository passwordReauthTokenRepository;
     PasswordChangeAttemptLimiter passwordChangeAttemptLimiter;
     MailSender mailSender;
+    ApplicationEventPublisher eventPublisher;
     AuthServiceImpl authService;
 
     static final String TOKEN = "google-id-token";
@@ -74,10 +78,11 @@ class AuthServiceImplTest {
         passwordReauthTokenRepository = mock(PasswordReauthTokenRepository.class);
         passwordChangeAttemptLimiter = mock(PasswordChangeAttemptLimiter.class);
         mailSender = mock(MailSender.class);
+        eventPublisher = mock(ApplicationEventPublisher.class);
         authService = new AuthServiceImpl(googleTokenVerifierPort, memberService, jwtProvider,
                 refreshTokenRepository, loginAttemptLimiter, passwordResetTokenRepository,
                 passwordResetAttemptLimiter, passwordReauthTokenRepository, passwordChangeAttemptLimiter,
-                mailSender, RESET_CODE_PEPPER);
+                mailSender, RESET_CODE_PEPPER, eventPublisher);
 
         when(jwtProvider.generateAccessToken(anyString(), anyString())).thenReturn(ACCESS_TOKEN);
         when(jwtProvider.generateRefreshToken(anyString())).thenReturn(REFRESH_TOKEN);
@@ -231,6 +236,7 @@ class AuthServiceImplTest {
                 "홍길동".equals(cmd.name()) &&
                 cmd.agreePrivacy() && cmd.agreeService() && cmd.agreeThirdParty()
         ));
+        verify(eventPublisher).publishEvent(new AuthSignupSucceededEvent(MEMBER_ID, AuthProvider.EMAIL, Language.KO));
     }
 
     @Test
@@ -242,6 +248,9 @@ class AuthServiceImplTest {
                 new EmailRegisterCommand(EMAIL, "Pass1234!", "홍길동", true, true, true, false, "Asia/Seoul", "KR", Language.KO)))
                 .isInstanceOf(DomainException.class)
                 .satisfies(e -> assertThat(((DomainException) e).getStatus()).isEqualTo(HttpStatus.CONFLICT));
+
+        verify(eventPublisher).publishEvent(
+                new AuthSignupFailedEvent(AuthProvider.EMAIL, MemberErrorCode.DUPLICATE_EMAIL.name()));
     }
 
     // ─── Google 회원가입 ──────────────────────────────────────────────
@@ -259,6 +268,7 @@ class AuthServiceImplTest {
                 cmd.authProvider() == AuthProvider.GOOGLE && cmd.rawPassword() == null));
         verify(loginAttemptLimiter).checkIpBlocked();
         verify(loginAttemptLimiter, never()).recordIpFailure();
+        verify(eventPublisher).publishEvent(new AuthSignupSucceededEvent(MEMBER_ID, AuthProvider.GOOGLE, Language.KO));
     }
 
     @Test
@@ -273,6 +283,8 @@ class AuthServiceImplTest {
 
         verify(loginAttemptLimiter).recordIpFailure();
         verify(memberService, never()).register(any());
+        verify(eventPublisher).publishEvent(
+                new AuthSignupFailedEvent(AuthProvider.GOOGLE, AuthErrorCode.INVALID_GOOGLE_TOKEN.name()));
     }
 
     @Test

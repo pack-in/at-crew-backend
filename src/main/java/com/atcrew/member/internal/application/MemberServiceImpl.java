@@ -1,5 +1,6 @@
 package com.atcrew.member.internal.application;
 
+import com.atcrew.member.AccountDeletionFailedEvent;
 import com.atcrew.member.AccountInfo;
 import com.atcrew.member.AddCareerCommand;
 import com.atcrew.member.ArtistProfileViewedEvent;
@@ -11,6 +12,7 @@ import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberProfileInfo;
 import com.atcrew.member.MemberService;
 import com.atcrew.member.PasswordVerification;
+import com.atcrew.member.ProfileSectionSavedEvent;
 import com.atcrew.member.ProfileSort;
 import com.atcrew.member.RegisterMemberCommand;
 import com.atcrew.member.SearchProfilesCommand;
@@ -20,6 +22,7 @@ import com.atcrew.member.internal.domain.TermsAgreement;
 import com.atcrew.member.internal.exception.MemberErrorCode;
 import com.atcrew.member.internal.exception.MemberException;
 import com.atcrew.member.internal.persistence.MemberRepository;
+import com.atcrew.common.exception.DomainException;
 import com.atcrew.common.logging.LogMask;
 import com.atcrew.common.response.OffsetPage;
 import jakarta.persistence.criteria.CriteriaBuilder;
@@ -375,18 +378,43 @@ class MemberServiceImpl implements MemberService {
     @Transactional
     public void updateInfo(String memberId, UpdateInfoCommand command) {
         Member member = findMemberById(memberId);
+        List<Object> before = member.profileFieldSnapshot();
         member.updateInfo(command);
         memberRepository.save(member);
+        List<Object> after = member.profileFieldSnapshot();
+        Instant now = Instant.now();
+        // 저장 API는 기본정보/구직정보를 한 번에 받지만, 실제로 바뀐 필드를 보고 섹션을 가려
+        // 둘 다 바뀌면 이벤트를 2개로 나눠 낸다(FE 회신 PH-02, 2026-10-07).
+        publishProfileSectionSavedIfChanged(memberId, "artist_info",
+                ProfileCompletionCalculator.ARTIST_INFO_INDEXES, before, after, now);
+        publishProfileSectionSavedIfChanged(memberId, "job_info",
+                ProfileCompletionCalculator.JOB_INFO_INDEXES, before, after, now);
+    }
+
+    private void publishProfileSectionSavedIfChanged(String memberId, String sectionType,
+            List<Integer> sectionIndexes, List<Object> before, List<Object> after, Instant occurredAt) {
+        int changedFieldCount = ProfileCompletionCalculator.sectionChangedFieldCount(before, after, sectionIndexes);
+        if (changedFieldCount == 0) {
+            return;
+        }
+        double previousCompletionRate = ProfileCompletionCalculator.sectionCompletionRate(before, sectionIndexes);
+        double completionRate = ProfileCompletionCalculator.sectionCompletionRate(after, sectionIndexes);
+        boolean isComplete = completionRate == 1.0;
+        boolean isFirstCompletion = isComplete && previousCompletionRate < 1.0;
+        eventPublisher.publishEvent(new ProfileSectionSavedEvent(memberId, sectionType,
+                completionRate, isComplete, changedFieldCount, isFirstCompletion, occurredAt));
     }
 
     @Override
     @Transactional
     public CareerEntryInfo addCareer(String memberId, AddCareerCommand command) {
         Member member = findMemberById(memberId);
+        boolean hadCareerBefore = !member.getCareers().isEmpty();
         CareerEntryInfo entry = member.addCareer(command.workTitle(), command.role(),
                 command.startDate(), command.endDate(), command.ongoing(), command.description(),
                 LocalDate.now(member.zoneId()));
         memberRepository.save(member);
+        publishCareerSectionSaved(member, !hadCareerBefore);
         return entry;
     }
 
@@ -396,6 +424,16 @@ class MemberServiceImpl implements MemberService {
         Member member = findMemberById(memberId);
         member.deleteCareer(careerId);
         memberRepository.save(member);
+        publishCareerSectionSaved(member, false);
+    }
+
+    // 경력은 별도 API(POST/DELETE /members/me/careers)라 profile_section_saved를 career_info로
+    // 따로 낸다(FE 회신 PH-02, 2026-10-07). completion_rate는 "경력 1건 이상 있음"을 1.0으로 보는
+    // 이분법이다 — UpdateInfoCommand 23개 필드와 달리 경력은 개수 제한 없는 리스트라 비율 개념이 안 맞는다.
+    private void publishCareerSectionSaved(Member member, boolean isFirstCompletion) {
+        boolean hasAny = !member.getCareers().isEmpty();
+        eventPublisher.publishEvent(new ProfileSectionSavedEvent(member.getId(), "career_info",
+                hasAny ? 1.0 : 0.0, hasAny, 1, isFirstCompletion, Instant.now()));
     }
 
     @Override
@@ -415,15 +453,21 @@ class MemberServiceImpl implements MemberService {
     @Override
     @Transactional
     public void deactivate(String memberId) {
-        Member member = memberRepository.findById(memberId)
-                .orElseThrow(() -> new MemberException(MemberErrorCode.MEMBER_NOT_FOUND, memberId));
-        if (!member.isActive()) {
-            return;
+        try {
+            Member member = memberRepository.findById(memberId)
+                    .orElseThrow(() -> new MemberException(MemberErrorCode.MEMBER_NOT_FOUND, memberId));
+            if (!member.isActive()) {
+                return;
+            }
+            member.deactivate();
+            memberRepository.save(member);
+            log.info("회원 탈퇴 처리: memberId={} email={}", memberId, LogMask.email(member.getDeletedLoginEmail()));
+            eventPublisher.publishEvent(new MemberDeactivatedEvent(memberId));
+        } catch (RuntimeException e) {
+            eventPublisher.publishEvent(
+                    new AccountDeletionFailedEvent(memberId, DomainException.codeOf(e), Instant.now()));
+            throw e;
         }
-        member.deactivate();
-        memberRepository.save(member);
-        log.info("회원 탈퇴 처리: memberId={} email={}", memberId, LogMask.email(member.getDeletedLoginEmail()));
-        eventPublisher.publishEvent(new MemberDeactivatedEvent(memberId));
     }
 
     private Member findMemberById(String memberId) {

@@ -54,6 +54,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -393,6 +394,24 @@ public class Member implements Persistable<String> {
             validateCountryCode(command.countryCode());
             this.countryCode = command.countryCode();
         }
+    }
+
+    /**
+     * {@code UpdateInfoCommand}와 1:1 대응하는 23개 프로필 필드의 현재 값 스냅샷
+     * (plans/261005-posthog-analytics-events PA-04, profile_section_saved 완성도·변경 필드 수 계산용).
+     *
+     * <p>리스트형 필드는 항상 빈 컬렉션으로 초기화돼 있어(절대 null 아님) 그대로 참조를 담아도
+     * {@code updateInfo()}가 교체(재할당)만 하고 가변(add/remove)하지 않으므로, 호출 전에 뽑은
+     * 스냅샷은 호출 후에도 그 시점 값 그대로 남는다.
+     */
+    public List<Object> profileFieldSnapshot() {
+        return Arrays.asList(
+                employmentStatus, activityFields, experienceLevel, activeRegion,
+                totalSlotCount, availableSlotCount, teamExperiences, drawingStyles, workPace,
+                availableStartPeriod, desiredRoles, desiredGenres, desiredEmploymentTypes,
+                desiredWorkLocation, feedbackPreferences, desiredMinimumGuarantee, desiredAnnualSalary,
+                customTags, contact, sns, tools, timezone, countryCode
+        );
     }
 
     /**

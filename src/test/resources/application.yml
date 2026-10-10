@@ -72,6 +72,13 @@ auth:
   password-reset:
     code-pepper: test-password-reset-code-pepper
 
+# 분석 이벤트(plans/261005-posthog-analytics-events) — 이 파일이 main application.yml을 완전히
+# 대체하므로 키가 없으면 PostHog 클라이언트 빈이 기동에 실패한다. 테스트가 외부로 나가서는 안 되므로
+# host는 닿지 않는 로컬 주소로 둔다 — capture()는 메모리 큐에 넣고 바로 돌아오고 전송만 조용히 실패한다.
+posthog:
+  api-key: test-posthog-api-key
+  host: http://localhost:1
+
 # 결제/구독(plans/260813-stripe-billing) — 이 파일이 main application.yml을 완전히 대체하므로
 # 상품 카탈로그를 여기에도 둔다. 없으면 요금제 API가 "상품 설정이 없습니다"로 500을 낸다.
 # 실제 Stripe 호출은 테스트에서 하지 않으므로 키는 비워 두고, Price ID만 판별 가능한 더미 값을 쓴다.

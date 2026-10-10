@@ -58,6 +58,9 @@ dependencies {
 	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
 	// 결제/구독(plans/260813-stripe-billing) — Stripe 직결. Checkout·Customer Portal·웹훅 서명 검증에 사용한다.
 	implementation 'com.stripe:stripe-java:33.3.0'
+	// 분석 이벤트(plans/261005-posthog-analytics-events) — PostHog 공식 서버사이드 JVM SDK.
+	// 이름이 비슷한 com.posthog:posthog(클라이언트/Android용)와 다른 아티팩트다.
+	implementation 'com.posthog:posthog-server:2.3.2'
 	implementation platform('software.amazon.awssdk:bom:2.31.5')
 	implementation 'software.amazon.awssdk:s3'
 	implementation 'software.amazon.awssdk:url-connection-client'
