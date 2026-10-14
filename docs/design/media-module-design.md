@@ -289,7 +289,7 @@ public record MediaAssetProcessedEvent(MediaOwnerType ownerType, String ownerId,
 비밀값은 `media.key-signature.secret`이고 운영에서 비어 있으면 기동하지 않는다. 교체할 때는 이전 값을
 `previous-secrets`에 남긴다 — 지우면 그 전에 발급된 key가 전부 검증에 실패해 수정 요청이 막힌다.
 
-`generatePresignedUrls`의 count(1~30)/contentType 화이트리스트(jpeg/png/webp) 검증은 `ArtworkServiceImpl`에서
+`generatePresignedUrls`의 count(1~99)/contentType 화이트리스트(jpeg/png/webp) 검증은 `ArtworkServiceImpl`에서
 그대로 옮겨온다 — 도메인과 무관한 범용 검증이라 변경 없음.
 
 ---

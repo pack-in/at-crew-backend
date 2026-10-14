@@ -48,7 +48,7 @@ class MediaServiceImpl implements MediaService {
     }
     @Override public List<PresignedUrlInfo> generatePresignedUrls(String memberId, int count, List<String> contentTypes, List<Long> fileSizes) {
         if (memberId == null || memberId.isBlank()) throw new IllegalArgumentException("발급 대상 회원이 필요합니다.");
-        if (count < 1 || count > 30) throw new IllegalArgumentException("이미지 개수는 1~30개여야 합니다.");
+        if (count < 1 || count > 99) throw new IllegalArgumentException("이미지 개수는 1~99개여야 합니다.");
         if (contentTypes == null || contentTypes.size() != count || contentTypes.stream().anyMatch(t -> !ALLOWED_CONTENT_TYPES.contains(t)))
             throw new IllegalArgumentException("지원하지 않는 이미지 content type입니다.");
         // fileSizes는 선택 입력이다 — 보내지 않는 클라이언트도 계속 받아준다(Worker가 실측으로 다시 거른다).
@@ -101,7 +101,7 @@ class MediaServiceImpl implements MediaService {
     }
     /**
      * 유지되는 행의 ordinal을 확정값(0부터)으로 바로 옮기면 아직 자리를 비우지 않은 다른 행과
-     * uk_ma_owner_order가 충돌한다. 한 번에 이 오프셋만큼 밀어 두고 확정한다 — 소유자당 이미지 30장 상한보다
+     * uk_ma_owner_order가 충돌한다. 한 번에 이 오프셋만큼 밀어 두고 확정한다 — 소유자당 이미지 99장 상한보다
      * 충분히 크다.
      */
     private static final int ORDINAL_STAGING_OFFSET = 1_000;
@@ -179,7 +179,7 @@ class MediaServiceImpl implements MediaService {
     private static void validateSpecs(MediaOwnerType ownerType, String ownerId, List<MediaAssetSpec> desired,
                                       MediaVariantProfile profile, MediaQualityTier qualityTier) {
         if (ownerType == null || ownerId == null || ownerId.isBlank() || profile == null || qualityTier == null
-                || desired == null || desired.size() > 30
+                || desired == null || desired.size() > 99
                 || desired.stream().anyMatch(s -> s == null || s.key() == null || s.key().isBlank())
                 || desired.stream().map(MediaAssetSpec::key).distinct().count() != desired.size())
             throw new IllegalArgumentException("유효하지 않은 media asset 요청입니다.");
@@ -188,7 +188,7 @@ class MediaServiceImpl implements MediaService {
     // 특정하지 못해 그 소유자의 이미지 처리가 영구히 멈춘다.
     private static void validate(MediaOwnerType ownerType, String ownerId, List<String> imageKeys, MediaVariantProfile profile, MediaQualityTier qualityTier) {
         if (ownerType == null || ownerId == null || ownerId.isBlank() || profile == null || qualityTier == null
-                || imageKeys == null || imageKeys.isEmpty() || imageKeys.size() > 30
+                || imageKeys == null || imageKeys.isEmpty() || imageKeys.size() > 99
                 || imageKeys.stream().anyMatch(k -> k == null || k.isBlank())
                 || imageKeys.stream().distinct().count() != imageKeys.size())
             throw new IllegalArgumentException("유효하지 않은 media asset 요청입니다.");

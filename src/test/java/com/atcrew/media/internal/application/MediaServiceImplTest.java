@@ -189,9 +189,9 @@ class MediaServiceImplTest {
                         MediaVariantProfile.ORIGINAL, null));
     }
 
-    @Test void presignRejectsCountsOutsideOneToThirtyAndUnsupportedContentTypes() {
+    @Test void presignRejectsCountsOutsideOneToNinetyNineAndUnsupportedContentTypes() {
         assertThatIllegalArgumentException().isThrownBy(() -> service.generatePresignedUrls("member-1", 0, List.of(), null));
-        assertThatIllegalArgumentException().isThrownBy(() -> service.generatePresignedUrls("member-1", 31, java.util.Collections.nCopies(31, "image/jpeg"), null));
+        assertThatIllegalArgumentException().isThrownBy(() -> service.generatePresignedUrls("member-1", 100, java.util.Collections.nCopies(100, "image/jpeg"), null));
         assertThatIllegalArgumentException().isThrownBy(() -> service.generatePresignedUrls("member-1", 1, List.of("image/gif"), null));
     }
 
