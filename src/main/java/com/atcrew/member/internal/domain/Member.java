@@ -137,7 +137,7 @@ public class Member implements Persistable<String> {
     // 증분은 항상 DB 레벨 UPDATE로 처리한다(MemberRepository.incrementProfileViewCount).
     private int profileViewCount = 0;
 
-    // 단일 선택 — 피그마 4971:25431, 기획서 마이페이지_작가-R23("단일 칩: … 활동 지역(10)").
+    // 단일 선택 — 피그마 4971:25431, 기획서 마이페이지_작가-R23("단일 칩: … 활동 지역(10)"). 해외 칩 추가로 11개.
     @Enumerated(EnumType.STRING)
     private ActiveRegion activeRegion;
 
