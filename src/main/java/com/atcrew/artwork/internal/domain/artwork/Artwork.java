@@ -229,7 +229,7 @@ public class Artwork implements Persistable<String> {
                                  List<String> tools, WorkDuration workDuration,
                                  Integer cutCount, List<String> videoLinks,
                                  List<Material> materials) {
-        if (imageKeys == null || imageKeys.isEmpty() || imageKeys.size() > 30) {
+        if (imageKeys == null || imageKeys.isEmpty() || imageKeys.size() > 99) {
             throw new ArtworkException(ArtworkErrorCode.INVALID_IMAGE_COUNT);
         }
         if (representativeImageIndex < 0 || representativeImageIndex >= imageKeys.size()) {
@@ -337,7 +337,7 @@ public class Artwork implements Persistable<String> {
 
     /** 이미지 목록을 바꾼 뒤 대표 이미지 자리를 옮긴다. 개수는 media가 확정한 목록에서 받는다. */
     public void repositionRepresentative(int newRepresentativeIndex, int imageCount) {
-        if (imageCount <= 0 || imageCount > 30) {
+        if (imageCount <= 0 || imageCount > 99) {
             throw new ArtworkException(ArtworkErrorCode.INVALID_IMAGE_COUNT);
         }
         if (newRepresentativeIndex < 0 || newRepresentativeIndex >= imageCount) {

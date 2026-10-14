@@ -288,7 +288,7 @@ owner로 따로 둔다(media-module-design.md §3). 응답에서는 `images[]`�
 
 ### Presigned URL 제약
 
-- `count`: 1~30, `contentTypes`: `image/jpeg` / `image/png` / `image/webp`만 허용
+- `count`: 1~99, `contentTypes`: `image/jpeg` / `image/png` / `image/webp`만 허용
 - `count`와 `contentTypes` 배열 크기는 반드시 일치해야 함 (불일치 시 400)
 - 유효기간: 10분 (`presign-expiration-minutes` 설정)
 - 생성된 키 형식: `raw/{UUID}.{ext}`
@@ -713,7 +713,7 @@ R2는 Cloudflare R2 (S3 호환). AWS SDK S3 v2를 사용하되 `Region.of("auto"
 | `ARTWORK_ACCESS_DENIED` | 403 | 본인 작품이 아님 |
 | `ARTWORK_NOT_READY` | 400 | 처리 중인 작품에서 불가한 작업 |
 | `ARTWORK_NOT_DELETED` | 400 | 휴지통에 없는 작품에 복구/영구삭제 시도 |
-| `INVALID_IMAGE_COUNT` | 400 | 이미지 수 범위(1~30) 초과 또는 count·contentTypes 수 불일치 |
+| `INVALID_IMAGE_COUNT` | 400 | 이미지 수 범위(1~99) 초과 또는 count·contentTypes 수 불일치 |
 | `INVALID_CONTENT_TYPE` | 400 | jpeg/png/webp 외 형식 |
 | `INVALID_REPRESENTATIVE_INDEX` | 400 | 대표 이미지 인덱스 범위 초과 |
 | `INVALID_CURSOR` | 400 | 비정수 커서 값 |

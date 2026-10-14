@@ -19,7 +19,7 @@ public enum ArtworkErrorCode {
     // (요금제-R04 "여러 활동 언어로 노출 확대", 설정-R14의 주 언어 해제 금지와 같은 결)
     LANGUAGE_NOT_ALLOWED(HttpStatus.FORBIDDEN, "작품 언어에는 주 사용 언어를 반드시 포함해야 합니다"),
     INVALID_LANGUAGE_COUNT(HttpStatus.BAD_REQUEST, "게시물 언어는 1개 이상 4개 이하로 선택해야 합니다"),
-    INVALID_IMAGE_COUNT(HttpStatus.BAD_REQUEST, "이미지 수는 1개 이상 30개 이하여야 합니다"),
+    INVALID_IMAGE_COUNT(HttpStatus.BAD_REQUEST, "이미지 수는 1개 이상 99개 이하여야 합니다"),
     INVALID_CONTENT_TYPE(HttpStatus.BAD_REQUEST, "허용되지 않는 이미지 형식입니다. jpeg, png, webp만 가능합니다"),
     // 상한값은 media 모듈이 Worker와 공유한다(MediaConstraints.MAX_ORIGINAL_BYTES) — 문구의 100MB는 그 값이다
     IMAGE_TOO_LARGE(HttpStatus.BAD_REQUEST, "이미지 한 장의 용량은 100MB를 넘을 수 없습니다"),

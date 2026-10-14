@@ -17,7 +17,7 @@ import jakarta.validation.constraints.Size;
 import java.util.List;
 
 public record UpdateArtworkRequest(
-        @Size(max = 30) List<String> imageKeys,
+        @Size(max = 99) List<String> imageKeys,
         @Min(0) Integer representativeImageIndex,
         String thumbnailKey,
         ImageLayoutType imageLayoutType,

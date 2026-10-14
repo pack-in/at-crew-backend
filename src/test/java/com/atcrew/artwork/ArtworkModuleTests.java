@@ -1031,37 +1031,37 @@ class ArtworkModuleTests {
     }
 
     @Test
-    void 이미지는_30장까지_업로드할_수_있고_31장이면_거부된다() {
+    void 이미지는_99장까지_업로드할_수_있고_100장이면_거부된다() {
         String memberId = registerAuthor();
-        List<String> thirtyImages = java.util.stream.IntStream.range(0, 30)
+        List<String> ninetyNineImages = java.util.stream.IntStream.range(0, 99)
                 .mapToObj(i -> signedKey(memberId, "bulk-" + i))
                 .toList();
 
-        ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, baseUploadCommand(thirtyImages, List.of()));
+        ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, baseUploadCommand(ninetyNineImages, List.of()));
 
-        assertThat(uploaded.images()).hasSize(30);
+        assertThat(uploaded.images()).hasSize(99);
 
-        List<String> thirtyOneImages = new ArrayList<>(thirtyImages);
-        thirtyOneImages.add(signedKey(memberId, "bulk-30"));
-        assertThatThrownBy(() -> artworkService.uploadArtwork(memberId, baseUploadCommand(thirtyOneImages, List.of())))
+        List<String> hundredImages = new ArrayList<>(ninetyNineImages);
+        hundredImages.add(signedKey(memberId, "bulk-99"));
+        assertThatThrownBy(() -> artworkService.uploadArtwork(memberId, baseUploadCommand(hundredImages, List.of())))
                 .isInstanceOf(DomainException.class)
                 .extracting(e -> ((DomainException) e).getCode())
                 .isEqualTo("INVALID_IMAGE_COUNT");
     }
 
     @Test
-    void presign은_30개까지_발급되고_31개면_거부된다() {
-        List<String> contentTypes30 = java.util.stream.IntStream.range(0, 30)
+    void presign은_99개까지_발급되고_100개면_거부된다() {
+        List<String> contentTypes99 = java.util.stream.IntStream.range(0, 99)
                 .mapToObj(i -> "image/png")
                 .toList();
 
-        List<PresignedUrlInfo> urls = artworkService.generatePresignedUrls(presignMemberId(), 30, contentTypes30, null);
+        List<PresignedUrlInfo> urls = artworkService.generatePresignedUrls(presignMemberId(), 99, contentTypes99, null);
 
-        assertThat(urls).hasSize(30);
+        assertThat(urls).hasSize(99);
 
-        List<String> contentTypes31 = new ArrayList<>(contentTypes30);
-        contentTypes31.add("image/png");
-        assertThatThrownBy(() -> artworkService.generatePresignedUrls(presignMemberId(), 31, contentTypes31, null))
+        List<String> contentTypes100 = new ArrayList<>(contentTypes99);
+        contentTypes100.add("image/png");
+        assertThatThrownBy(() -> artworkService.generatePresignedUrls(presignMemberId(), 100, contentTypes100, null))
                 .isInstanceOf(DomainException.class)
                 .extracting(e -> ((DomainException) e).getCode())
                 .isEqualTo("INVALID_IMAGE_COUNT");
