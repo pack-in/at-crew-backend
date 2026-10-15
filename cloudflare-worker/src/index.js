@@ -49,13 +49,29 @@ const MAX_ORIGINAL_BYTES = 100 * 1024 * 1024;
 //
 // STANDARD·STANDARD_WITH_ADULT_BLUR는 이 구분 이전 이름이다. 서버보다 Worker를 먼저 배포하는 동안 옛 서버가
 // 보내는 요청을 예전과 똑같이 처리하려고 남겨 둔다 — 서버 배포가 끝나면 더는 오지 않는다.
+//
+// og: 카드 썸네일로 공유 링크 미리보기(OG) 이미지 2종(일반·블러)을 함께 만든다. 성인물 여부는 업로드 뒤에도 바뀌므로
+// 블러본처럼 등급과 무관하게 항상 둘 다 만든다. 어느 쪽을 노출할지는 서버가 연령 등급으로 고른다.
 const VARIANT_SETS = {
-  ORIGINAL: { original: true, thumb: false, thumbAdult: false },
-  THUMBNAIL: { original: false, thumb: true, thumbAdult: false },
-  THUMBNAIL_WITH_ADULT_BLUR: { original: false, thumb: true, thumbAdult: true },
-  STANDARD: { original: true, thumb: true, thumbAdult: false },
-  STANDARD_WITH_ADULT_BLUR: { original: true, thumb: true, thumbAdult: true },
+  ORIGINAL: { original: true, thumb: false, thumbAdult: false, og: false },
+  THUMBNAIL: { original: false, thumb: true, thumbAdult: false, og: false },
+  THUMBNAIL_WITH_ADULT_BLUR: { original: false, thumb: true, thumbAdult: true, og: true },
+  STANDARD: { original: true, thumb: true, thumbAdult: false, og: false },
+  STANDARD_WITH_ADULT_BLUR: { original: true, thumb: true, thumbAdult: true, og: false },
 };
+
+// OG 전용(백필) — 이미 처리된 카드 썸네일로 OG만 만든다. raw는 지워졌으므로 원본 검사·삭제를 하지 않는다.
+// 서버의 MediaVariantProfile에는 없는 이름이다(R2StorageAdapter.OG_ONLY_PROFILE) — 자산에 저장되는 프로필이 아니다.
+const OG_ONLY_PROFILE = "OG_ONLY";
+
+// 공유 링크 미리보기(OG) 규격 — docs/design/og-image-design.md D1·D3. 썸네일 전체를 높이 630에 맞춰 가운데 두고(contain),
+// 좌우는 같은 이미지를 cover로 늘려 흐리게 채운다. 3:4 썸네일을 중앙 크롭하면 세로의 60%가 잘리고 2배 확대가 필요해서다.
+// 규격을 바꿔 다시 만들 때는 접두사를 바꾼다(og2/) — 파일을 immutable로 캐시하므로 같은 key로 덮으면 반영되지 않는다.
+const OG_WIDTH = 1200;
+const OG_HEIGHT = 630;
+const OG_BACKGROUND_BLUR = 50;
+const OG_JPEG_QUALITY = 85;
+const OG_CACHE_CONTROL = "public, max-age=31536000, immutable";
 
 // 실패 사유 문자열 상한. 서버가 로그 한 줄로 남기므로 스택까지 실어 보낼 이유가 없다.
 const FAILURE_REASON_MAX = 300;
@@ -81,6 +97,17 @@ export default {
     const { ownerType, ownerId, imageKeys, sourceUrls, variantProfile, qualityTier } = payload;
     if (!ownerType || !ownerId || !Array.isArray(imageKeys) || imageKeys.length === 0) {
       return new Response("Invalid payload", { status: 400 });
+    }
+    // OG 전용(백필) — 썸네일 key를 받아 R2 바인딩으로 직접 읽는다. presigned URL(sourceUrls)은 없다.
+    if (variantProfile === OG_ONLY_PROFILE) {
+      const { thumbKeys, thumbAdultKeys } = payload;
+      if (!Array.isArray(thumbKeys) || !Array.isArray(thumbAdultKeys)
+          || thumbKeys.length !== imageKeys.length || thumbAdultKeys.length !== imageKeys.length) {
+        return new Response("thumbKeys/thumbAdultKeys must match imageKeys", { status: 400 });
+      }
+      ctx.waitUntil(Promise.all(imageKeys.map((key, i) =>
+        processOgOnly(env, ownerType, ownerId, key, thumbKeys[i], thumbAdultKeys[i]))));
+      return new Response(null, { status: 202 });
     }
     // sourceUrls는 imageKeys와 같은 순서의 읽기용 서명 URL이다(R2StorageAdapter.triggerWorker).
     if (!Array.isArray(sourceUrls) || sourceUrls.length !== imageKeys.length) {
@@ -136,8 +163,14 @@ async function processOne(env, ownerType, ownerId, imageKey, sourceUrl, variantP
       thumbAdultRes ? putVariant(env, thumbAdultKey, thumbAdultRes) : Promise.resolve(),
     ]);
 
+    // OG는 방금 저장한 썸네일로 만든다(raw가 아니라) — 백필과 같은 경로라 결과가 같다. 실패해도 null일 뿐 썸네일
+    // 처리는 성공이다(createOgPair가 던지지 않는다).
+    const og = variants.og
+      ? await createOgPair(env, baseName, thumbKey, thumbAdultKey)
+      : { ogKey: null, ogAdultKey: null };
+
     const delivered = await callback(env, {
-      ownerType, ownerId, imageKey, thumbKey, thumbAdultKey, originalAvifKey, status: "DONE",
+      ownerType, ownerId, imageKey, thumbKey, thumbAdultKey, originalAvifKey, ...og, status: "DONE",
     });
 
     // 원본은 변환 결과가 대체하므로 여기서 지운다 — 저장량의 대부분이 raw다(실측 99.5%).
@@ -226,12 +259,69 @@ function thumbOptions({ blur }) {
   return options;
 }
 
+// OG 백필 1건 — 원본 검사·원본 삭제 없이 썸네일 두 장으로 OG만 만들어 OG 전용 콜백으로 보낸다.
+async function processOgOnly(env, ownerType, ownerId, imageKey, thumbKey, thumbAdultKey) {
+  const baseName = imageKey.split("/").pop().replace(/\.[^/.]+$/, "");
+  const og = await createOgPair(env, baseName, thumbKey, thumbAdultKey);
+  await callback(env, { ownerType, ownerId, imageKey, ...og }, ogCallbackUrl(env));
+}
+
+// 일반·블러 OG를 만들어 저장하고 key를 돌려준다. 절대 던지지 않는다 — OG는 부가 산출물이라 실패가 썸네일 처리를
+// FAILED로 만들면 안 된다(docs/design/og-image-design.md D7). 한쪽만 성공하면 그쪽 key만 돌려준다: 이미 R2에 쓴
+// 파일을 null로 보고하면 어디서도 참조하지 않는 고아가 된다.
+async function createOgPair(env, baseName, thumbKey, thumbAdultKey) {
+  const [ogKey, ogAdultKey] = await Promise.all([
+    createOg(env, thumbKey, `og/${baseName}.jpg`),
+    createOg(env, thumbAdultKey, `og-adult/${baseName}.jpg`),
+  ]);
+  return { ogKey, ogAdultKey };
+}
+
+// 썸네일(AVIF) 한 장으로 OG 1장을 합성한다. Images 바인딩을 쓰는 이유: fetch+cf.image는 AVIF 입력을 거부한다
+// (ERROR 9520, 2026-10-15 실측). 성인물은 블러본 썸네일을 소스로 쓴다 — 바인딩에서 오버레이에 blur를 걸면 같은 9520으로
+// 실패하고, thumb-adult는 이미 홈-R06 카드와 같은 블러(ADULT_BLUR)라 기획서의 "같은 방식"과도 맞는다.
+async function createOg(env, sourceKey, ogKey) {
+  if (!sourceKey) return null;
+  try {
+    // 배경과 오버레이가 각자 스트림을 소비하므로 두 번 읽는다(썸네일이라 수십 KB).
+    const [background, foreground] = await Promise.all([
+      env.MEDIA_BUCKET.get(sourceKey), env.MEDIA_BUCKET.get(sourceKey),
+    ]);
+    if (!background || !foreground) throw new Error(`R2에서 썸네일을 찾을 수 없음: ${sourceKey}`);
+    const overlay = env.IMAGES.input(foreground.body)
+      .transform({ width: OG_WIDTH, height: OG_HEIGHT, fit: "contain" });
+    const result = await env.IMAGES.input(background.body)
+      .transform({ width: OG_WIDTH, height: OG_HEIGHT, fit: "cover", gravity: "center", blur: OG_BACKGROUND_BLUR })
+      .draw(overlay)
+      .output({ format: "image/jpeg", quality: OG_JPEG_QUALITY });
+    await env.MEDIA_BUCKET.put(ogKey, result.response().body, {
+      httpMetadata: { contentType: "image/jpeg", cacheControl: OG_CACHE_CONTROL },
+    });
+    return ogKey;
+  } catch (err) {
+    console.error(`OG 생성 실패(기본 이미지로 나간다): sourceKey=${sourceKey} ogKey=${ogKey} ${err}`);
+    return null;
+  }
+}
+
+// OG 전용 콜백 주소 — 썸네일 콜백과 엔드포인트가 다르다(같은 경로로 받으면 서버가 썸네일 key를 null로 덮는다).
+// 시크릿을 하나 더 두지 않고 SERVER_CALLBACK_URL에서 만든다. 형식이 다르면(예: 구 경로) 잘못된 곳으로 보내지 않고 null.
+function ogCallbackUrl(env) {
+  const base = env.SERVER_CALLBACK_URL || "";
+  const suffix = "/internal/media/images/processed";
+  return base.endsWith(suffix) ? base.slice(0, -suffix.length) + "/internal/media/images/og-processed" : null;
+}
+
 // 서버가 실제로 받았는지를 돌려준다 — 원본 삭제 여부가 이 결과에 달려 있다.
 // 네트워크 오류로 던지지 않고 false를 돌려준다: 콜백 실패가 변환 성공까지 되돌릴 이유는 없고,
 // 실패로 처리하면 이미 만들어 둔 AVIF가 버려진 채 FAILED 콜백이 한 번 더 나간다.
-async function callback(env, body) {
+async function callback(env, body, url = env.SERVER_CALLBACK_URL) {
+  if (!url) {
+    console.error(`콜백 주소 없음(SERVER_CALLBACK_URL 형식 확인): imageKey=${body.imageKey}`);
+    return false;
+  }
   try {
-    const res = await fetch(env.SERVER_CALLBACK_URL, {
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Internal-Secret": env.INTERNAL_SECRET },
       body: JSON.stringify(body),
