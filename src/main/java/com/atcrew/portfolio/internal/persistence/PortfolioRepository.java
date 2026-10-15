@@ -28,6 +28,9 @@ public interface PortfolioRepository extends JpaRepository<Portfolio, String>, J
 
     Optional<Portfolio> findByShareSlug(String shareSlug);
 
-    // 슬러그 발급 시 충돌 재시도 판정용(§2.6).
-    boolean existsByShareSlug(String shareSlug);
+    // 6자 공개 코드 발급 시 소유자 내 충돌 사전 조회(member-handle-design §3.2).
+    boolean existsByOwnerMemberIdAndPublicCode(String ownerMemberId, String publicCode);
+
+    // 공개 URL /{handle}/portfolio/{code} 해석 — (owner_member_id, public_code) UNIQUE라 최대 1건. 작가 페이지는 코드가 null이다.
+    Optional<Portfolio> findByOwnerMemberIdAndPublicCode(String ownerMemberId, String publicCode);
 }

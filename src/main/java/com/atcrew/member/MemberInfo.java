@@ -86,6 +86,11 @@ public record MemberInfo(
         // === 설정 [피그마: 설정 화면 토글] ===
         // 본인 계정에만 반환되는 값이라 공개 프로필(MemberProfileInfo)에는 포함하지 않는다.
         boolean marketingAgreed,     // 마케팅 정보 수신 동의
-        boolean adultContentVisible  // 성인 콘텐츠 표시
+        boolean adultContentVisible, // 성인 콘텐츠 표시
+
+        // === 사용자 아이디 변경 [설정-R17, member-handle-design §1.3] ===
+        // 오류 응답은 data가 비어 있어 HANDLE_CHANGE_TOO_SOON에 시각을 실을 수 없으므로 이 값으로 전달한다.
+        @Schema(nullable = true)
+        Instant handleChangeAvailableAt // 다음 handle 변경 가능 시각(UTC). 지금 변경 가능하면 null(응답에서 생략)
 ) {
 }

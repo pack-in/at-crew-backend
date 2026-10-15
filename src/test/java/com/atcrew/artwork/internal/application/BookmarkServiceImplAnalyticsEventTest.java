@@ -92,7 +92,7 @@ class BookmarkServiceImplAnalyticsEventTest {
 
     // 다른 회원 작품이라도 READY면 북마크 대상이다 — accessFor(ALLOWED)를 만족시키려고 PUBLIC으로 만든다.
     private Artwork readyArtwork() {
-        Artwork artwork = Artwork.create("author-" + UUID.randomUUID(), "제목", "설명",
+        Artwork artwork = Artwork.create("author-" + UUID.randomUUID(), UUID.randomUUID().toString().substring(0, 6), "제목", "설명",
                 List.of("image-key-1"), 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL, List.of(), List.of(), List.of(), List.of(),
                 AgeRating.ALL, List.of(Language.KO), Visibility.PUBLIC, List.of(), null, null, List.of(), List.of());

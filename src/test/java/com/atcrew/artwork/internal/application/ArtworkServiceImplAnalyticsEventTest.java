@@ -18,6 +18,7 @@ import com.atcrew.artwork.internal.exception.ArtworkErrorCode;
 import com.atcrew.artwork.internal.exception.ArtworkException;
 import com.atcrew.artwork.internal.persistence.ArtworkRepository;
 import com.atcrew.billing.BillingService;
+import com.atcrew.common.id.PublicCodeGenerator;
 import com.atcrew.media.MediaService;
 import com.atcrew.member.Language;
 import com.atcrew.member.MemberInfo;
@@ -61,12 +62,14 @@ class ArtworkServiceImplAnalyticsEventTest {
     ArtworkViewRecorder artworkViewRecorder = mock(ArtworkViewRecorder.class);
 
     ArtworkServiceImpl service = new ArtworkServiceImpl(artworkRepository, memberService, mediaService,
-            billingService, eventPublisher, artworkPurger, artworkViewRecorder);
+            billingService, eventPublisher, artworkPurger, artworkViewRecorder, new PublicCodeGenerator());
 
     @BeforeEach
     void setUp() {
         // save()는 새로 만든 엔티티를 그대로 돌려준다 — Artwork.create()가 이미 ID를 할당해 둔다.
         when(artworkRepository.save(any(Artwork.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        // 업로드는 코드 UNIQUE 경쟁을 서비스 안에서 잡으려고 saveAndFlush()로 저장한다.
+        when(artworkRepository.saveAndFlush(any(Artwork.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(memberService.findById(MEMBER_ID)).thenReturn(memberInfo(MEMBER_ID));
     }
 
@@ -181,7 +184,7 @@ class ArtworkServiceImplAnalyticsEventTest {
     }
 
     private Artwork existingArtwork() {
-        Artwork artwork = Artwork.create(MEMBER_ID, "기존 제목", "기존 설명",
+        Artwork artwork = Artwork.create(MEMBER_ID, "abc123", "기존 제목", "기존 설명",
                 List.of("image-key-1"), 0, null, ImageLayoutType.VERTICAL_SCROLL,
                 ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL, List.of(), List.of(), List.of(), List.of(),
                 AgeRating.ALL, List.of(Language.KO), Visibility.PUBLIC, List.of(), null, null, List.of(), List.of());
@@ -208,6 +211,6 @@ class ArtworkServiceImplAnalyticsEventTest {
                 id, "handle-" + id, null, null, "작가", null, List.of(), null, null, List.of(),
                 List.of(), null, null, List.of(), List.of(), List.of(), null, List.of(), null, null,
                 List.of(), 0, 0, null, null, null, List.of(), true, null, null, null, null,
-                null, null, Language.KO, List.of(), false, false);
+                null, null, Language.KO, List.of(), false, false, null);
     }
 }

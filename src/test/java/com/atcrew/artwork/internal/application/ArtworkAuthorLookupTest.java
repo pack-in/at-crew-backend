@@ -23,6 +23,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 
 import java.util.List;
+import java.util.UUID;
 import java.util.Map;
 import java.util.Set;
 
@@ -60,7 +61,7 @@ class ArtworkAuthorLookupTest {
     void 존재하지_않는_작가의_작품을_저장한다() {
         artworkRepository.deleteAll();
         Artwork artwork = Artwork.create(
-                MISSING_AUTHOR_ID, "작가 없는 작품", "설명",
+                MISSING_AUTHOR_ID, UUID.randomUUID().toString().substring(0, 6), "작가 없는 작품", "설명",
                 List.of("raw/1.png"), 0, null,
                 ImageLayoutType.VERTICAL_SCROLL, ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
                 List.of(ArtworkRole.values()[0]), List.of(Genre.values()[0]), null,

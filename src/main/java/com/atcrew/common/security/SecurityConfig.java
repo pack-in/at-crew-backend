@@ -96,8 +96,21 @@ class SecurityConfig {
                     }
                     // GET /api/members/me는 본인 전용이므로, {handle} 템플릿이 "me"를 핸들로 오인해
                     // 인증을 우회하지 않도록 리터럴 경로를 먼저 선언한다(위 companies/recruit/portfolio와 동일 패턴).
+                    // /api/members/me/**도 같은 이유로 아래 {handle} 하위 공개 패턴보다 먼저 막는다 — /me/artworks/{id} 같은
+                    // 본인 전용 경로가 /{handle}/artworks/{code} 공개 패턴에 걸려 인증 없이 열리지 않게 한다(member-handle-design §2.2).
                     auth.requestMatchers(HttpMethod.GET, "/api/members/me").authenticated()
+                            .requestMatchers("/api/members/me/**").authenticated()
                             .requestMatchers(HttpMethod.GET, "/api/members/{handle}").permitAll()
+                            // 공개 주소 /{handle}/artwork/{code}·/{handle}/portfolio/{code} — 작품은 artwork, 포트폴리오는
+                            // portfolio 모듈 컨트롤러가 처리한다.
+                            .requestMatchers(HttpMethod.GET, "/api/members/{handle}/artworks/{code}").permitAll()
+                            .requestMatchers(HttpMethod.GET, "/api/members/{handle}/portfolios/{code}").permitAll()
+                            .requestMatchers(HttpMethod.GET, "/api/members/{handle}/portfolios/{code}/artworks").permitAll()
+                            .requestMatchers(HttpMethod.GET,
+                                    "/api/members/{handle}/portfolios/{code}/snapshots/{snapshotPublicId}").permitAll()
+                            // handle 사전 확인 — 가입 화면은 토큰 없이, 설정 화면은 토큰과 함께 호출한다(인증 선택).
+                            // 두 세그먼트 경로라 위 단일 세그먼트 {handle} 템플릿과 겹치지 않는다.
+                            .requestMatchers(HttpMethod.GET, "/api/members/handles/availability").permitAll()
                             .requestMatchers(HttpMethod.GET, "/api/artworks/{artworkId}").permitAll()
                             // 작품 열람 기록 — 비로그인 열람도 익명 UUID로 집계한다(홈-R14).
                             .requestMatchers(HttpMethod.POST, "/api/artworks/{artworkId}/views").permitAll()

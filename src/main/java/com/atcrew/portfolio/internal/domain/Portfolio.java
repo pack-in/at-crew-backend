@@ -58,8 +58,13 @@ public class Portfolio implements Persistable<String> {
     // ARTIST_PAGE는 null — 화면은 사용자 이름 헤더를 쓴다(§2.1).
     private String title;
 
-    // SHARED만. SecureRandom 22자 slug(§2.6) — 발급은 서비스 책임이라 생성자로 주입받는다.
+    // 옛 공유 링크(/portfolio/{slug}) 해석 전용. 신규 발급을 중단해 V53 이후 생성된 포트폴리오는 null이다
+    // (member-handle-design §3.3).
     private String shareSlug;
+
+    // 공개 URL /{handle}/portfolio/{code}의 6자 코드(member-handle-design §3). SHARED만, ARTIST_PAGE는 null.
+    // 소유자 안에서만 유일하고 발급은 서비스 책임이라 생성 시 주입받는다.
+    private String publicCode;
 
     private String artistPageKey;
 
@@ -109,7 +114,7 @@ public class Portfolio implements Persistable<String> {
     protected Portfolio() {
     }
 
-    /** 작가 페이지 포트폴리오 — 항상 LIVE이고 제목·공유 슬러그가 없다. */
+    /** 작가 페이지 포트폴리오 — 항상 LIVE이고 제목·공개 코드가 없다. */
     public static Portfolio createArtistPage(String ownerMemberId) {
         Portfolio portfolio = newPortfolio(ownerMemberId, PortfolioKind.ARTIST_PAGE, ReflectionType.LIVE);
         portfolio.artistPageKey = ARTIST_PAGE_KEY;
@@ -118,10 +123,10 @@ public class Portfolio implements Persistable<String> {
 
     /** 공유 포트폴리오 — 반영 유형(LIVE/SNAPSHOT)은 생성 시 결정되고 이후 전환할 수 없다(§2). */
     public static Portfolio createShared(String ownerMemberId, ReflectionType reflectionType,
-                                         String title, String shareSlug) {
+                                         String title, String publicCode) {
         Portfolio portfolio = newPortfolio(ownerMemberId, PortfolioKind.SHARED, reflectionType);
         portfolio.title = title;
-        portfolio.shareSlug = shareSlug;
+        portfolio.publicCode = publicCode;
         return portfolio;
     }
 
@@ -191,6 +196,7 @@ public class Portfolio implements Persistable<String> {
     public ReflectionType getReflectionType() { return reflectionType; }
     public String getTitle() { return title; }
     public String getShareSlug() { return shareSlug; }
+    public String getPublicCode() { return publicCode; }
     public String getArtistPageKey() { return artistPageKey; }
     public int getItemCount() { return itemCount; }
     public Instant getSnapshotAt() { return snapshotAt; }

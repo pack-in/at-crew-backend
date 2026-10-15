@@ -77,17 +77,17 @@ class PortfolioModuleTests {
     }
 
     @Test
-    void 공유_포트폴리오는_회원당_여러_개를_슬러그와_함께_저장할_수_있다() {
+    void 공유_포트폴리오는_회원당_여러_개를_공개_코드와_함께_저장할_수_있다() {
         String memberId = newMemberId();
 
         portfolioRepository.saveAndFlush(
-                Portfolio.createShared(memberId, ReflectionType.LIVE, "포트폴리오 A", newSlug()));
+                Portfolio.createShared(memberId, ReflectionType.LIVE, "포트폴리오 A", newCode()));
         Portfolio second = portfolioRepository.saveAndFlush(
-                Portfolio.createShared(memberId, ReflectionType.SNAPSHOT, "포트폴리오 B", newSlug()));
+                Portfolio.createShared(memberId, ReflectionType.SNAPSHOT, "포트폴리오 B", newCode()));
 
-        assertThat(portfolioRepository.existsByShareSlug(second.getShareSlug())).isTrue();
-        assertThat(portfolioRepository.findByShareSlug(second.getShareSlug()).orElseThrow().getTitle())
-                .isEqualTo("포트폴리오 B");
+        assertThat(portfolioRepository.existsByOwnerMemberIdAndPublicCode(memberId, second.getPublicCode())).isTrue();
+        // 신규 slug 발급은 중단됐다(member-handle-design §3.3) — 옛 링크 해석용 컬럼만 남는다.
+        assertThat(second.getShareSlug()).isNull();
     }
 
     @Test
@@ -140,7 +140,7 @@ class PortfolioModuleTests {
     @Test
     void 고정형_스냅샷은_렌더_컬럼과_상세_JSON을_함께_보존한다() {
         Portfolio portfolio = portfolioRepository.save(
-                Portfolio.createShared(newMemberId(), ReflectionType.SNAPSHOT, "고정형", newSlug()));
+                Portfolio.createShared(newMemberId(), ReflectionType.SNAPSHOT, "고정형", newCode()));
         portfolio.markAsSnapshot("작가", "{\"handle\":\"artist\"}");
         portfolioRepository.save(portfolio);
         Instant sourceCreatedAt = Instant.parse("2026-01-02T03:04:05Z");
@@ -170,7 +170,7 @@ class PortfolioModuleTests {
 
     @Test
     void 차단은_최초_시점을_유지한다() {
-        Portfolio portfolio = Portfolio.createShared(newMemberId(), ReflectionType.LIVE, "공유", newSlug());
+        Portfolio portfolio = Portfolio.createShared(newMemberId(), ReflectionType.LIVE, "공유", newCode());
 
         portfolio.block();
         Instant firstBlockedAt = portfolio.getBlockedAt();
@@ -192,7 +192,7 @@ class PortfolioModuleTests {
         return json.replace(" ", "");
     }
 
-    private String newSlug() {
-        return UUID.randomUUID().toString().replace("-", "").substring(0, 22);
+    private String newCode() {
+        return UUID.randomUUID().toString().substring(0, 6);
     }
 }

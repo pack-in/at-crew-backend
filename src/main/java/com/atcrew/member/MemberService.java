@@ -26,13 +26,28 @@ public interface MemberService {
      */
     MemberProfileInfo findProfileByHandle(String handle, String viewerMemberId);
 
-    MemberInfo findByHandle(String handle);
+    /**
+     * 공개 URL의 handle을 원장(member_handles)으로 해석한다(docs/design/member-handle-design.md §2.1).
+     * 조회는 대소문자 무관이며, 옛 handle이면 {@code moved=true}와 함께 현재 handle을 돌려준다.
+     *
+     * @throws com.atcrew.common.exception.DomainException 원장에 없으면 MEMBER_NOT_FOUND(404),
+     *         소유 회원이 탈퇴했으면 MEMBER_WITHDRAWN(410)
+     */
+    ResolvedHandle resolveHandle(String handle);
 
     /**
-     * 주어진 handle을 가진(탈퇴 여부 무관) 회원이 존재하는지 확인한다. 포트폴리오 공유 slug 발급 시 충돌 검사용.
-     * 탈퇴 시 회원의 handle은 null로 클리어되므로, 활성 회원의 handle만 "존재"로 판단한다 — 별도 필터 불필요.
+     * 본인 handle 변경(설정-R17, member-handle-design §1.3). 같은 값 5분 이내 재전송은 성공으로 응답하고,
+     * 성공하면 {@link MemberHandleChangedEvent}를 발행한다.
      */
-    boolean existsByHandle(String handle);
+    HandleChangeInfo changeHandle(String memberId, String handle);
+
+    /**
+     * handle 사용 가능 여부 사전 확인(member-handle-design §1.4).
+     *
+     * @param viewerMemberId 로그인 회원 ID. 비로그인이면 null — 값이 있으면 본인 소유 handle은 사용 가능으로 보되,
+     *                       현재 handle과 대소문자까지 같으면 변경 API와 같이 {@code HANDLE_UNCHANGED}로 답한다
+     */
+    HandleAvailabilityInfo checkHandleAvailability(String handle, String viewerMemberId);
 
     MemberInfo findByLoginEmailAndProvider(String loginEmail, AuthProvider authProvider);
 

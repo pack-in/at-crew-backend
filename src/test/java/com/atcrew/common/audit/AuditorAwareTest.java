@@ -21,6 +21,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -65,7 +66,7 @@ class AuditorAwareTest {
 
     private Artwork 작품(String authorId) {
         return Artwork.create(
-                authorId, "감사 주체 검증용 작품", "설명",
+                authorId, UUID.randomUUID().toString().substring(0, 6), "감사 주체 검증용 작품", "설명",
                 List.of("raw/1.png"), 0, null,
                 ImageLayoutType.VERTICAL_SCROLL, ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
                 List.of(ArtworkRole.values()[0]), List.of(Genre.values()[0]), null,

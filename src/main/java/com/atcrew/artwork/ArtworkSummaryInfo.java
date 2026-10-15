@@ -8,6 +8,7 @@ public record ArtworkSummaryInfo(
         String authorId,           // 작성자 회원 ID
         String authorName,         // 작성자 이름
         String authorHandle,       // 작성자 handle
+        String publicCode,         // 공개 URL /{authorHandle}/artwork/{publicCode}의 6자 코드 — 작가 안에서만 유일
         String title,              // 작품 제목
         String thumbKey,           // 카드 썸네일 R2 키
         String thumbAdultKey,      // 성인 블러 썸네일 R2 키

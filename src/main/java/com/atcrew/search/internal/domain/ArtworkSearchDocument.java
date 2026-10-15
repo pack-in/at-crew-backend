@@ -48,6 +48,10 @@ public class ArtworkSearchDocument {
     @Field(type = FieldType.Keyword)
     private String authorHandle;
 
+    // 공개 URL /{authorHandle}/artwork/{publicCode}의 6자 코드(member-handle-design §3.4) — 응답 전용, 검색 대상 아님
+    @Field(type = FieldType.Keyword, index = false)
+    private String publicCode;
+
     @Field(type = FieldType.Keyword)
     private String artworkField;
 
@@ -88,7 +92,7 @@ public class ArtworkSearchDocument {
     }
 
     public ArtworkSearchDocument(String id, String title, String description, List<String> tags,
-                                  String authorId, String authorName, String authorHandle,
+                                  String authorId, String authorName, String authorHandle, String publicCode,
                                   String artworkField, String creativeType, String ageRating,
                                   List<String> languages,
                                   List<String> roles, List<String> genres, List<String> materialTargets,
@@ -101,6 +105,7 @@ public class ArtworkSearchDocument {
         this.authorId = authorId;
         this.authorName = authorName;
         this.authorHandle = authorHandle;
+        this.publicCode = publicCode;
         this.artworkField = artworkField;
         this.creativeType = creativeType;
         this.ageRating = ageRating;
@@ -121,6 +126,7 @@ public class ArtworkSearchDocument {
     public String getAuthorId() { return authorId; }
     public String getAuthorName() { return authorName; }
     public String getAuthorHandle() { return authorHandle; }
+    public String getPublicCode() { return publicCode; }
     public String getArtworkField() { return artworkField; }
     public String getCreativeType() { return creativeType; }
     public String getAgeRating() { return ageRating; }

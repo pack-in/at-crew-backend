@@ -35,6 +35,7 @@ class ArtworkSearchMapper {
                 info.authorId(),
                 info.authorName(),
                 info.authorHandle(),
+                info.publicCode(),
                 info.artworkField() != null ? info.artworkField().name() : null,
                 info.creativeType() != null ? info.creativeType().name() : null,
                 info.ageRating() != null ? info.ageRating().name() : null,

@@ -81,9 +81,10 @@ class MemberControllerValidationTest {
     void 핸들_패턴_위반_가입_거부() throws Exception {
         mockMvc.perform(post("/api/members")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(registerBody("user@test.com", "invalid handle!", "홍길동")))
+                        .content(registerBody("user@test.com", "bad handle!", "홍길동")))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                // 형식은 HandleValidator가 검증해 가입·변경 API와 같은 오류 코드를 낸다(member-handle-design §1.2)
+                .andExpect(jsonPath("$.code").value("HANDLE_INVALID_CHARACTERS"))
                 .andDo(document("member/validation/register-invalid-handle-pattern"));
     }
 
