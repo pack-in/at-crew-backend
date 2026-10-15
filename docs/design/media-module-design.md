@@ -75,6 +75,7 @@ presign 발급·Worker 트리거·webhook 수신·재시도·고아파일 정리
 | thumbKey | VARCHAR(500) NULL | `variantProfile=THUMBNAIL*`일 때 Worker 처리 후 채워짐 |
 | thumbAdultKey | VARCHAR(500) NULL | `variantProfile=THUMBNAIL_WITH_ADULT_BLUR`일 때만 채워짐 |
 | originalAvifKey | VARCHAR(500) NULL | `variantProfile=ORIGINAL`일 때 Worker 처리 후 채워짐 |
+| ogKey / ogAdultKey | VARCHAR(500) NULL | 공유 미리보기(OG) 1200×630 JPEG. `THUMBNAIL_WITH_ADULT_BLUR`일 때 Worker가 썸네일로 합성(V51). 실패·백필 전이면 null — [og-image-design.md](og-image-design.md) |
 | variantProfile | VARCHAR(30) | `MediaVariantProfile` — ORIGINAL, THUMBNAIL, THUMBNAIL_WITH_ADULT_BLUR (§3) |
 | qualityTier | VARCHAR(20) | `MediaQualityTier` — WEB, ORIGINAL. 컬럼 추가 이전 행은 ORIGINAL(V33 기본값) |
 | processingStatus | VARCHAR(30) | PENDING / DONE / FAILED |
@@ -113,7 +114,10 @@ public enum MediaProcessingStatus { PENDING, DONE, FAILED }
 |---|---|---|
 | `ORIGINAL` | 작품 본문(`ARTWORK`), recruit 전체(썸네일 슬롯 포함) | `original/`만. 화질은 `MediaQualityTier` |
 | `THUMBNAIL` | 현재 없음(블러가 필요 없는 카드 썸네일용) | `thumb/` 588×784 |
-| `THUMBNAIL_WITH_ADULT_BLUR` | 작품 지정 썸네일(`ARTWORK_THUMBNAIL`) | `thumb/`, `thumb-adult/` |
+| `THUMBNAIL_WITH_ADULT_BLUR` | 작품 지정 썸네일(`ARTWORK_THUMBNAIL`) | `thumb/`, `thumb-adult/`, `og/`, `og-adult/` |
+
+OG 백필용 `OG_ONLY`는 Worker 트리거 payload에만 있는 이름이고 이 enum에는 없다 — 자산에 저장되는 프로필이 아니다
+(트리거·콜백 계약은 [og-image-design.md](og-image-design.md) §3).
 
 작품의 사용자 지정 썸네일(업로드-R05, FE가 3:4로 잘라 올림)은 본문과 **owner type을 나눠** `ARTWORK_THUMBNAIL`
 (ownerId = 작품 ID) 자산 1장으로 둔다. 같은 owner의 slotRole로 두면 본문 목록을 읽는 곳(대표 이미지 인덱스·처리
@@ -239,7 +243,8 @@ public interface MediaService {
 public record PresignedUrlInfo(String key, String uploadUrl);
 
 public record MediaAssetInfo(String originalKey, String thumbKey, String thumbAdultKey,
-                              String originalAvifKey, MediaProcessingStatus status);
+                              String originalAvifKey, MediaProcessingStatus status,
+                              int ordinal, String slotRole, String ogKey, String ogAdultKey);
 
 public record MediaAssetProcessedEvent(MediaOwnerType ownerType, String ownerId, String imageKey,
                                         String thumbKey, String thumbAdultKey, String originalAvifKey,
@@ -330,13 +335,15 @@ Body: {
   "thumbKey": "thumb/....avif",              // variantProfile=THUMBNAIL*일 때만
   "thumbAdultKey": "thumb-adult/....avif",   // variantProfile=THUMBNAIL_WITH_ADULT_BLUR일 때만
   "originalAvifKey": "original/....avif",    // variantProfile=ORIGINAL일 때만
+  "ogKey": "og/....jpg",                     // variantProfile=THUMBNAIL_WITH_ADULT_BLUR일 때만. 생성 실패면 null
+  "ogAdultKey": "og-adult/....jpg",          // 같은 조건. 부분 성공이면 한쪽만 null
   "status": "DONE" | "FAILED",
   "failureReason": "변환 실패: status=409 ..."   // FAILED일 때만. 선택 필드
 }
 ```
 
 대응하는 `media_assets` 행이 없는 콜백(이미지 교체·소유자 삭제 뒤 늦게 도착한 콜백)은 무시하되, Worker가 이미 써 둔
-변형본 키(`thumbKey`/`thumbAdultKey`/`originalAvifKey`)를 고아 큐에 넣어 `OrphanImageCleanupScheduler`가 지우게 한다.
+변형본 키(`thumbKey`/`thumbAdultKey`/`originalAvifKey`/`ogKey`/`ogAdultKey`)를 고아 큐에 넣어 `OrphanImageCleanupScheduler`가 지우게 한다.
 원본 키는 교체·영구 삭제 경로가 이미 정리 대상으로 넘겼으므로 넣지 않는다.
 
 `failureReason`은 **저장하지 않고 서버 로그(WARN)로만 남긴다.** 실패는 드문 이벤트이고 필요한 것은
