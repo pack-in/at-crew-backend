@@ -261,9 +261,15 @@ function thumbOptions({ blur }) {
 
 // OG 백필 1건 — 원본 검사·원본 삭제 없이 썸네일 두 장으로 OG만 만들어 OG 전용 콜백으로 보낸다.
 async function processOgOnly(env, ownerType, ownerId, imageKey, thumbKey, thumbAdultKey) {
+  // 결과를 보고할 곳이 없으면 만들지 않는다 — 서버가 모르는 OG 파일은 어디서도 정리되지 않는다.
+  const url = ogCallbackUrl(env);
+  if (!url) {
+    console.error(`OG 전용 콜백 주소를 만들 수 없음(SERVER_CALLBACK_URL 형식 확인) — 건너뜀: imageKey=${imageKey}`);
+    return;
+  }
   const baseName = imageKey.split("/").pop().replace(/\.[^/.]+$/, "");
   const og = await createOgPair(env, baseName, thumbKey, thumbAdultKey);
-  await callback(env, { ownerType, ownerId, imageKey, ...og }, ogCallbackUrl(env));
+  await callback(env, { ownerType, ownerId, imageKey, ...og }, url);
 }
 
 // 일반·블러 OG를 만들어 저장하고 key를 돌려준다. 절대 던지지 않는다 — OG는 부가 산출물이라 실패가 썸네일 처리를
