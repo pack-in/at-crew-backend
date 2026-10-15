@@ -28,22 +28,26 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, Long> {
     @Query("select a from MediaAsset a where a.ownerType = :ownerType and a.ownerId = :ownerId and a.originalKey = :originalKey")
     Optional<MediaAsset> findByOwnerAndOriginalKeyForUpdate(@Param("ownerType") MediaOwnerType ownerType,
             @Param("ownerId") String ownerId, @Param("originalKey") String originalKey);
-    /** 후보 중 자산으로 등록돼 있는 original key — 등록되지 않은 raw 원본을 가릴 때 쓴다(#216). */
-    /** OG 백필 대상 — 카드 썸네일 자산 중 처리가 끝났고 썸네일 2종이 있는데 OG가 없는 행. id 순으로 이어 읽는다. */
+    /**
+     * OG 백필 대상 — 카드 썸네일 자산 중 처리가 끝났고 썸네일 2종이 있는데 OG가 하나라도 없는 행. id 순으로 이어 읽는다.
+     * 한쪽만 실패한 행도 포함해야 한다 — 일반본만 있는 성인물은 블러본이 없어 계속 기본 이미지로 나간다.
+     */
     @Query("select a from MediaAsset a where a.ownerType = :ownerType and a.processingStatus = :status"
-            + " and a.thumbKey is not null and a.thumbAdultKey is not null and a.ogKey is null and a.id > :afterId"
+            + " and a.thumbKey is not null and a.thumbAdultKey is not null and (a.ogKey is null or a.ogAdultKey is null) and a.id > :afterId"
             + " order by a.id asc")
     List<MediaAsset> findOgBackfillTargets(@Param("ownerType") MediaOwnerType ownerType,
                                            @Param("status") MediaProcessingStatus status,
                                            @Param("afterId") long afterId, Pageable pageable);
 
     @Query("select count(a) from MediaAsset a where a.ownerType = :ownerType and a.processingStatus = :status"
-            + " and a.thumbKey is not null and a.thumbAdultKey is not null and a.ogKey is null and a.id > :afterId")
+            + " and a.thumbKey is not null and a.thumbAdultKey is not null and (a.ogKey is null or a.ogAdultKey is null) and a.id > :afterId")
     long countOgBackfillTargets(@Param("ownerType") MediaOwnerType ownerType,
                                 @Param("status") MediaProcessingStatus status, @Param("afterId") long afterId);
 
+    /** 고정형 스냅샷 OG 백필 전용 — thumb_key에 인덱스가 없어 풀스캔이지만 운영자가 한 번 돌리는 경로라 감수한다. */
     List<MediaAsset> findByThumbKeyIn(Collection<String> thumbKeys);
 
+    /** 후보 중 자산으로 등록돼 있는 original key — 등록되지 않은 raw 원본을 가릴 때 쓴다(#216). */
     @Query("select a.originalKey from MediaAsset a where a.originalKey in :keys")
     List<String> findExistingOriginalKeys(@Param("keys") Collection<String> keys);
 

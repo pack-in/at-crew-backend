@@ -300,7 +300,10 @@ async function createOg(env, sourceKey, ogKey) {
       .transform({ width: OG_WIDTH, height: OG_HEIGHT, fit: "cover", gravity: "center", blur: OG_BACKGROUND_BLUR })
       .draw(overlay)
       .output({ format: "image/jpeg", quality: OG_JPEG_QUALITY });
-    await env.MEDIA_BUCKET.put(ogKey, result.response().body, {
+    // 바이트로 받아 넣는다 — R2 put은 길이를 모르는 스트림을 거부할 수 있고, Images 바인딩 출력 스트림의 길이 보장은
+    // 문서에 없다. 결과가 수십 KB라 메모리 부담은 없다.
+    const bytes = await result.response().arrayBuffer();
+    await env.MEDIA_BUCKET.put(ogKey, bytes, {
       httpMetadata: { contentType: "image/jpeg", cacheControl: OG_CACHE_CONTROL },
     });
     return ogKey;

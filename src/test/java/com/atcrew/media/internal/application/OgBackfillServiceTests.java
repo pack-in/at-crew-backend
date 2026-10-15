@@ -60,6 +60,21 @@ class OgBackfillServiceTests {
         verify(worker, never()).triggerOgAsync(any(), eq(pending), any(), any(), any());
     }
 
+    // 신규 업로드에서 블러본만 실패한 성인물 — 일반본이 있어도 블러본이 없으면 기본 이미지로 나가므로 백필 대상이다.
+    @Test
+    void og가_한쪽만_있는_행도_백필_대상이다() {
+        String ownerId = UUID.randomUUID().toString();
+        mediaService.syncAssets(MediaOwnerType.ARTWORK_THUMBNAIL, ownerId, List.of(MediaAssetSpec.of("raw/half.png")),
+                MediaVariantProfile.THUMBNAIL_WITH_ADULT_BLUR, MediaQualityTier.WEB);
+        callbackService.process(MediaOwnerType.ARTWORK_THUMBNAIL, ownerId, "raw/half.png", "thumb/half.avif",
+                "thumb-adult/half.avif", null, "og/half.jpg", null, MediaProcessingStatus.DONE, null);
+
+        backfillService.backfill(1000, 0L);
+
+        verify(worker).triggerOgAsync(MediaOwnerType.ARTWORK_THUMBNAIL, ownerId, "raw/half.png",
+                "thumb/half.avif", "thumb-adult/half.avif");
+    }
+
     // 콜백은 비동기라 직후 재호출하면 아직 og가 비어 있다 — afterId로 이어 읽어 같은 행을 두 번 보내지 않는다.
     @Test
     void limit만큼_보내고_남은_건수와_이어_읽을_id를_돌려준다() {

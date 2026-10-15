@@ -75,9 +75,13 @@ public class MediaAsset {
     /**
      * 기존 자산에 OG key만 붙인다(백필). 썸네일 key와 처리 상태는 건드리지 않는다 — OG 전용 콜백은 썸네일 필드를 싣지
      * 않으므로 {@link #markProcessed}로 받으면 썸네일 key가 null로 덮인다.
+     *
+     * <p>null은 "이번에 만들지 못했다"는 뜻이라 기존 값을 지우지 않는다. 지우면 이미 R2에 있는 OG 파일이 어디서도 참조되지
+     * 않아 정리 경로에서도 빠진다. OG key는 원본 key에서 정해지므로 값이 오면 기존과 같다.
      */
     public void attachOgKeys(String ogKey, String ogAdultKey) {
-        this.ogKey = ogKey; this.ogAdultKey = ogAdultKey;
+        if (ogKey != null) this.ogKey = ogKey;
+        if (ogAdultKey != null) this.ogAdultKey = ogAdultKey;
     }
     public Long getId() { return id; }
     public MediaOwnerType getOwnerType() { return ownerType; }

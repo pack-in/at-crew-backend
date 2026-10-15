@@ -108,6 +108,20 @@ class MediaInternalControllerTest {
         verify(events, never()).publishEvent(any());
     }
 
+    // 백필을 다시 돌렸는데 이번엔 다른 쪽이 실패한 경우 — 이미 기록된 key를 null로 지우면 그 파일이 추적에서 빠진다.
+    @Test void ogCallbackKeepsExistingKeyWhenOneSideFailsAgain() throws Exception {
+        thumbnailAsset.attachOgKeys(null, "og-adult/t.jpg");
+        mockMvc.perform(post("/internal/media/images/og-processed")
+                        .header("X-Internal-Secret", "secret").contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {"ownerType":"ARTWORK_THUMBNAIL","ownerId":"artwork-1","imageKey":"raw/t.png",
+                             "ogKey":"og/t.jpg","ogAdultKey":null}
+                            """))
+                .andExpect(status().isNoContent());
+        org.assertj.core.api.Assertions.assertThat(thumbnailAsset.getOgKey()).isEqualTo("og/t.jpg");
+        org.assertj.core.api.Assertions.assertThat(thumbnailAsset.getOgAdultKey()).isEqualTo("og-adult/t.jpg");
+    }
+
     // 백필 도중 썸네일이 교체·삭제되면 행이 없다 — 이미 R2에 쓴 og 파일은 고아 정리로 보낸다.
     @Test void ogCallbackForMissingAssetOrphansOgFiles() throws Exception {
         mockMvc.perform(post("/internal/media/images/og-processed")
