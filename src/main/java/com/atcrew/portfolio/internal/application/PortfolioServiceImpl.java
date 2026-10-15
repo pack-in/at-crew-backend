@@ -84,6 +84,8 @@ public class PortfolioServiceImpl implements PortfolioService {
     // 상한도 요청 크기에 비례한다(기본 size=20이면 210행). 비인증 요청이 대량의 휴지통·차단 구성 행을
     // 무제한으로 훑지 않게 하는 안전장치다.
     private static final int MAX_SCAN_CHUNKS = 10;
+    /** 공유 헤더 OG 후보 스캔의 청크 크기 — 보통 첫 행에서 끝나지만, 최신 쪽이 처리 중·차단이면 이만큼씩 더 읽는다. */
+    private static final int OG_SCAN_CHUNK_SIZE = 20;
 
     private final PortfolioRepository portfolioRepository;
     private final PortfolioItemRepository portfolioItemRepository;
@@ -218,7 +220,55 @@ public class PortfolioServiceImpl implements PortfolioService {
                 resolveOwnerName(portfolio),
                 itemCountOf(portfolio),
                 portfolio.getCreatedAt(),
-                portfolio.getUpdatedAt());
+                portfolio.getUpdatedAt(),
+                sharedOgImageKey(portfolio));
+    }
+
+    /**
+     * 공유 링크 미리보기(OG) 이미지 — 담긴 작품 중 외부 열람 가능한 업로드 최신 1개의 OG(docs/design/og-image-design.md).
+     *
+     * <p>성인물도 후보이며 블러본이 나간다(작품 목록은 비로그인에게 성인물을 숨기지만 OG 기획은 블러로 노출한다).
+     * 피드 비공개도 후보다 — 포트폴리오에 담긴 이상 링크로 열람 가능하다. 후보가 없거나 고른 작품에 OG가 없으면 null이고
+     * FE가 기본 이미지를 쓴다. 다음 후보로 넘어가지 않는다(기획서: 선정된 작품의 이미지를 못 쓰면 기본 이미지).
+     */
+    private String sharedOgImageKey(Portfolio portfolio) {
+        if (portfolio.getReflectionType() == ReflectionType.SNAPSHOT) {
+            return portfolioItemSnapshotRepository
+                    .findFirstByPortfolioIdAndBlockedAtIsNullOrderByOrdinalDesc(portfolio.getId())
+                    .map(PortfolioItemSnapshot::getOgKey)
+                    .orElse(null);
+        }
+        return latestSharedViewableArtwork(portfolio.getId()).map(ArtworkInfo::ogImageKey).orElse(null);
+    }
+
+    /**
+     * 구성 행을 ordinal 내림차순(업로드 최신부터)으로 훑어 공유 열람 가능한 첫 작품을 찾는다. ordinal은 모든 편입 경로에서
+     * 업로드순으로 매겨지므로({@link #orderByUploadedAt}) 첫 통과 작품이 곧 업로드 최신이다.
+     *
+     * <p>{@link #scanViewableArtworks}와 같은 이어 읽기·상한 정책이지만 방향이 반대이고 1건에서 멈춘다. 최신 쪽에 처리 중·차단
+     * 작품이 상한보다 많이 쌓이면 더 오래된 후보가 있어도 비어 있다(기본 이미지로 나간다) — 비인증 요청의 비용 방어가 우선이다.
+     */
+    private Optional<ArtworkInfo> latestSharedViewableArtwork(String portfolioId) {
+        Pageable pageable = PageRequest.of(0, OG_SCAN_CHUNK_SIZE);
+        Integer scanBefore = null;
+        for (int chunks = 0; chunks < MAX_SCAN_CHUNKS; chunks++) {
+            List<PortfolioItem> chunk = scanBefore == null
+                    ? portfolioItemRepository.findByPortfolioIdOrderByOrdinalDesc(portfolioId, pageable)
+                    : portfolioItemRepository.findByPortfolioIdAndOrdinalLessThanOrderByOrdinalDesc(
+                            portfolioId, scanBefore, pageable);
+            for (PortfolioItem row : chunk) {
+                Optional<ArtworkInfo> artwork = artworkService.getArtworkForIndexing(row.getArtworkId())
+                        .filter(PortfolioServiceImpl::sharedViewable);
+                if (artwork.isPresent()) {
+                    return artwork;
+                }
+            }
+            if (chunk.size() < OG_SCAN_CHUNK_SIZE) {
+                return Optional.empty();
+            }
+            scanBefore = chunk.getLast().getOrdinal();
+        }
+        return Optional.empty();
     }
 
     /**
@@ -659,10 +709,10 @@ public class PortfolioServiceImpl implements PortfolioService {
                 artwork.description(),
                 artwork.representativeImageIndex());
         return PortfolioItemSnapshot.of(portfolioId, ordinal, artwork.id(), artwork.title(),
-                card.thumbKey(), card.thumbAdultKey(), artwork.ageRating(), artwork.artworkField(),
+                card.thumbKey(), card.thumbAdultKey(), artwork.ogImageKey(), artwork.ageRating(), artwork.artworkField(),
                 artwork.createdAt(), jsonMapper.writeValueAsString(payload),
-                // 보존 판정 색인: 카드 썸네일(사용자 지정 썸네일일 수 있다)과 본문 이미지 key.
-                payload.referencedMediaKeys(card.thumbKey(), card.thumbAdultKey()));
+                // 보존 판정 색인: 카드 썸네일(사용자 지정 썸네일일 수 있다)·OG 이미지·본문 이미지 key.
+                payload.referencedMediaKeys(card.thumbKey(), card.thumbAdultKey(), artwork.ogImageKey()));
     }
 
     // === 수정 ===

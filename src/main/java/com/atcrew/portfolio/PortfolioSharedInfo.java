@@ -16,6 +16,8 @@ public record PortfolioSharedInfo(
         String ownerName,              // 헤더용 작성자 이름 — 고정형은 생성 시점에 얼린 이름, 그 외는 현재 이름
         int itemCount,                 // 담긴 작품 수
         Instant createdAt,             // 생성 시각
-        Instant updatedAt              // 최종 수정 시각
+        Instant updatedAt,             // 최종 수정 시각
+        // 공유 미리보기(OG) 이미지 key — 담긴 작품 중 외부 열람 가능한 업로드 최신 1개(성인물은 블러본). 없으면 null(기본 이미지)
+        String ogImageKey
 ) {
 }

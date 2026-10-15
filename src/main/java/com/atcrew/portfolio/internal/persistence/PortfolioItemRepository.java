@@ -20,6 +20,12 @@ public interface PortfolioItemRepository extends JpaRepository<PortfolioItem, Lo
     List<PortfolioItem> findByPortfolioIdAndOrdinalGreaterThanOrderByOrdinal(String portfolioId, int ordinal,
                                                                             Pageable pageable);
 
+    // 공유 헤더 OG 후보 — 업로드 최신부터 거꾸로 훑는다(ordinal이 업로드순이라 내림차순 첫 열람 가능 작품이 최신).
+    List<PortfolioItem> findByPortfolioIdOrderByOrdinalDesc(String portfolioId, Pageable pageable);
+
+    List<PortfolioItem> findByPortfolioIdAndOrdinalLessThanOrderByOrdinalDesc(String portfolioId, int ordinal,
+                                                                             Pageable pageable);
+
     // 구성 교체 시 DELETE가 새 INSERT보다 먼저 실행돼야 (portfolio_id, ordinal) 유니크 제약에 걸리지 않는다.
     // 파생 삭제는 flush 순서상 INSERT 뒤로 밀리므로 즉시 실행되는 벌크 DML을 쓴다.
     @Modifying(flushAutomatically = true)
