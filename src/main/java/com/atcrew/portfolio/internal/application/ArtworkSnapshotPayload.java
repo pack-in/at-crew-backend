@@ -42,12 +42,12 @@ record ArtworkSnapshotPayload(
      * 있었기 때문인데(#188), 업로드 key에 소유자 서명이 들어가면서(#190) 그 전제가 사라졌다. 첨부도 영구 삭제
      * 대상이라 보존 판정이 필요하다.
      */
-    Set<String> referencedMediaKeys(String cardThumbKey, String cardThumbAdultKey) {
+    Set<String> referencedMediaKeys(String cardThumbKey, String cardThumbAdultKey, String ogKey) {
         Stream<String> imageKeys = images == null ? Stream.empty() : images.stream().flatMap(img -> Stream.of(
                 img.originalKey(), img.thumbKey(), img.thumbAdultKey(), img.originalAvifKey()));
         Stream<String> attachmentKeys = materials == null ? Stream.empty() : materials.stream()
                 .flatMap(m -> m.attachmentKeys() == null ? Stream.empty() : m.attachmentKeys().stream());
-        return Stream.concat(Stream.concat(Stream.of(cardThumbKey, cardThumbAdultKey), imageKeys), attachmentKeys)
+        return Stream.concat(Stream.concat(Stream.of(cardThumbKey, cardThumbAdultKey, ogKey), imageKeys), attachmentKeys)
                 .filter(k -> k != null && !k.isBlank())
                 .collect(Collectors.toCollection(LinkedHashSet::new));
     }

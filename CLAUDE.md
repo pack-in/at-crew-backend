@@ -53,11 +53,14 @@
 | [docs/design/google-login-frontend-integration.md](docs/design/google-login-frontend-integration.md) | Google 로그인 프론트 연동 요청서 — Firebase JS SDK 제거, Google Identity Services(GIS)로 ID Token 직접 발급, 로그인/회원가입 API 계약, 에러코드별 처리 가이드 |
 | [docs/design/settings-i18n-design.md](docs/design/settings-i18n-design.md) | 설정 API 전체(로그아웃·비밀번호 변경·마케팅 동의·성인 콘텐츠 토글)·이메일 발송 인프라(Resend)·i18n 필드·언어 세그먼트 설계 |
 | [docs/design/media-module-design.md](docs/design/media-module-design.md) | media 모듈 설계 — artwork에 내장돼 있던 Presigned URL 발급·Worker 트리거·webhook·재시도·고아파일 정리를 범용 모듈로 추출, artwork·recruit이 공용 소비 |
+| [docs/design/og-image-design.md](docs/design/og-image-design.md) | 공유 링크 미리보기(OG) 이미지 — 카드 썸네일로 1200×630 JPEG 합성(contain+흐린 배경, Images 바인딩), 성인물 블러본 선택 규칙, 작품 상세·공유 포트폴리오 `ogImageKey`, 고정형 스냅샷 얼리기, 알려진 제약·배포 순서 |
+| [docs/design/og-image-frontend-integration.md](docs/design/og-image-frontend-integration.md) | OG 프론트 연동 요청서 — `ogImageKey` 사용법, null이면 기본 이미지, 접근 제한 시 OG 미제공, 플랫폼별 이미지 불필요 |
 | [docs/design/global-country-plan-design.md](docs/design/global-country-plan-design.md) | 거주 국가(Member.countryCode) 설계 — Phase 1. Pro 플랜 노출국가(Artwork.targetCountryCodes)는 로드맵 5순위(결제/구독) 도달 후 Phase 2로 보류 |
 | [docs/design/ha-expansion-path.md](docs/design/ha-expansion-path.md) | 고가용성 확장 경로 — 앱 2대 + RDS Multi-AZ를 Terraform으로 정의만 하고 끄둔 상태(`ha_enabled=false`), 전환 트리거·절차·비용. ALB 대신 Cloudflare Tunnel replica를 쓰는 근거 |
 | [docs/design/observability-design.md](docs/design/observability-design.md) | 관측·알람 설계 — Grafana Cloud(메트릭·로그·업타임) + Sentry(에러) + Discord 2단계 알람, 배포 헬스체크·조건부 롤백, DB 백업과 백업 실패 감지 |
 | [docs/design/infra-security-hardening-design.md](docs/design/infra-security-hardening-design.md) | 프로덕션 인프라 보안 강화 설계 — VPC Public/Private 분리·자체 NAT 인스턴스·Cloudflare Tunnel 기반 인바운드 제거, RDS/ALB 대신 저비용 대안 채택 근거. DB 이중화(D6/D7/D11)는 `ha-expansion-path.md`로 대체됨 |
 | [docs/operations/incident-runbook.md](docs/operations/incident-runbook.md) | 장애 대응 런북 — 알람별 확인·복구 절차, 배포 롤백, DB 복원 |
+| [docs/operations/og-image-backfill.md](docs/operations/og-image-backfill.md) | OG 이미지 백필 절차 — 배포 전 작품·고정형 스냅샷에 OG를 채우는 내부 API 2단계 호출, 선행 조건, 실행 기록 |
 | [docs/operations/moderation-block.md](docs/operations/moderation-block.md) | 운영 차단(모더레이션) 절차 — 차단 SQL·재색인 호출 세트·보관 정책. 관리자 API 도입 전까지 DB 직접 UPDATE로 수행 |
 | [docs/testing/rest-docs-guide.md](docs/testing/rest-docs-guide.md) | MockMvc + Spring REST Docs 테스트 전략, 계층 구조, 새 API 개발 체크리스트. §6에 API 문서 자동 퍼블리시 파이프라인(https://at-crew-api-docs.pages.dev/, main push마다 자동 갱신) |
 | [docs/roadmap.md](docs/roadmap.md) | 모듈 개발 로드맵 — Figma 대비 미구현 영역 및 착수 우선순위(인증 시스템 → recruit → 기업 프로필 → 검색 → 결제 → 설정) |

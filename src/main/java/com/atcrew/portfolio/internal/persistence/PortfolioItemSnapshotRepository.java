@@ -29,6 +29,12 @@ public interface PortfolioItemSnapshotRepository extends JpaRepository<Portfolio
     List<PortfolioItemSnapshot> findByPortfolioIdAndBlockedAtIsNullAndOrdinalGreaterThanOrderByOrdinal(
             String portfolioId, int ordinal, Pageable pageable);
 
+    // 공유 헤더 OG — 차단되지 않은 스냅샷 중 업로드 최신(ordinal 최대) 1건.
+    Optional<PortfolioItemSnapshot> findFirstByPortfolioIdAndBlockedAtIsNullOrderByOrdinalDesc(String portfolioId);
+
+    // OG 백필 2단계 — 아직 OG가 없는 스냅샷 행을 id 순으로 이어 읽는다.
+    List<PortfolioItemSnapshot> findByOgKeyIsNullAndIdGreaterThanOrderById(long afterId, Pageable pageable);
+
     // 카드 "N개" 표기 — 고정형은 생성 당시 스냅샷 수를 쓰되 차단된 스냅샷만 뺀다(마이페이지_작가-R39).
     long countByPortfolioIdAndBlockedAtIsNull(String portfolioId);
 

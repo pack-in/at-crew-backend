@@ -56,7 +56,7 @@ class RecruitTrashImageCleanupSchedulerTest {
         givenExpired("posting-1", posting);
         when(mediaService.getAssets(MediaOwnerType.JOB_POSTING, "posting-1")).thenReturn(List.of(
                 new MediaAssetInfo("raw/a.png", "thumb/a.avif", null, "original/a.avif",
-                        MediaProcessingStatus.DONE, 0, "REFERENCE")));
+                        MediaProcessingStatus.DONE, 0, "REFERENCE", null, null)));
 
         int cleaned = scheduler(Period.ofYears(1)).cleanUpExpiredTrashImages();
 

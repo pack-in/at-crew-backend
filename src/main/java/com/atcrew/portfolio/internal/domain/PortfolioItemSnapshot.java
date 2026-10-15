@@ -70,6 +70,11 @@ public class PortfolioItemSnapshot {
     @Column(name = "thumb_adult_key", length = 500)
     private String thumbAdultKey;
 
+    // 공유 미리보기(OG) 이미지 key — 생성 시점의 연령 등급으로 고른 값 하나만 얼린다(등급도 얼리므로 다른 쪽은 쓰이지 않는다).
+    // 원본 썸네일에 OG가 없었으면 null이며, OG 백필 뒤 attachOgKey로 채운다.
+    @Column(name = "og_key", length = 500)
+    private String ogKey;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "age_rating", length = 30)
     private AgeRating ageRating;
@@ -104,7 +109,7 @@ public class PortfolioItemSnapshot {
     }
 
     public static PortfolioItemSnapshot of(String portfolioId, int ordinal, String sourceArtworkId,
-                                           String title, String thumbKey, String thumbAdultKey,
+                                           String title, String thumbKey, String thumbAdultKey, String ogKey,
                                            AgeRating ageRating, ArtworkField artworkField,
                                            Instant sourceCreatedAt, String payloadJson,
                                            Collection<String> referencedMediaKeys) {
@@ -116,6 +121,7 @@ public class PortfolioItemSnapshot {
         snapshot.title = title;
         snapshot.thumbKey = thumbKey;
         snapshot.thumbAdultKey = thumbAdultKey;
+        snapshot.ogKey = ogKey;
         snapshot.ageRating = ageRating;
         snapshot.artworkField = artworkField;
         snapshot.sourceCreatedAt = sourceCreatedAt;
@@ -123,6 +129,18 @@ public class PortfolioItemSnapshot {
         // 색인을 팩토리에서 필수로 받는다 — 선택 호출로 두면 새 생성 경로가 빠뜨려도 조용히 보존 대상에서 빠진다.
         referencedMediaKeys.stream().filter(k -> k != null && !k.isBlank()).forEach(snapshot.mediaKeys::add);
         return snapshot;
+    }
+
+    /**
+     * OG 백필로 OG key를 채운다 — 보존 색인에도 함께 넣어야 원본 썸네일이 교체·삭제돼도 이 스냅샷의 OG 파일이 남는다.
+     * 스냅샷은 write-once지만(§2.3) OG는 배포 뒤 추가된 파생 산출물이라 이 한 필드만 예외로 나중에 채운다.
+     */
+    public void attachOgKey(String ogKey) {
+        if (ogKey == null || ogKey.isBlank()) {
+            return;
+        }
+        this.ogKey = ogKey;
+        this.mediaKeys.add(ogKey);
     }
 
     public Long getId() { return id; }
@@ -133,6 +151,7 @@ public class PortfolioItemSnapshot {
     public String getTitle() { return title; }
     public String getThumbKey() { return thumbKey; }
     public String getThumbAdultKey() { return thumbAdultKey; }
+    public String getOgKey() { return ogKey; }
     public AgeRating getAgeRating() { return ageRating; }
     public ArtworkField getArtworkField() { return artworkField; }
     public Instant getSourceCreatedAt() { return sourceCreatedAt; }

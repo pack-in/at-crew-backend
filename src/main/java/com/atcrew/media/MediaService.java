@@ -64,4 +64,10 @@ public interface MediaService {
     void deleteAssetsForOwner(MediaOwnerType ownerType, String ownerId, Collection<String> handledKeys);
     void deleteFiles(List<String> keys);
     void markOrphaned(List<String> keys);
+
+    /**
+     * 썸네일 key로 그 자산의 OG key 쌍을 찾는다 — 고정형 스냅샷은 썸네일 key만 얼려 두었으므로, OG 백필 뒤 스냅샷에
+     * OG를 채울 때 쓴다. 자산 행이 없거나(썸네일 교체로 삭제) OG가 아직 없는 key는 결과에 담기지 않는다.
+     */
+    Map<String, MediaAssetInfo> findOgKeysByThumbKeys(Collection<String> thumbKeys);
 }

@@ -23,6 +23,8 @@ import java.util.Map;
 @Component
 class R2StorageAdapter implements ArtworkStoragePort {
     private static final Logger log = LoggerFactory.getLogger(R2StorageAdapter.class);
+    /** Worker {@code VARIANT_SETS}의 OG 전용 분기 이름과 같아야 한다. */
+    static final String OG_ONLY_PROFILE = "OG_ONLY";
     /** Worker에 넘기는 원본 읽기 URL의 유효 시간. 재시도도 매번 새로 발급하므로 짧게 잡을 이유가 없다. */
     private static final long SOURCE_URL_EXPIRATION_MINUTES = 60;
     private final R2Properties props; private final S3Presigner presigner; private final S3Client s3Client;
@@ -60,6 +62,20 @@ class R2StorageAdapter implements ArtworkStoragePort {
                             "variantProfile", variantProfile.name(),
                             "qualityTier", qualityTier.name())).retrieve().toBodilessEntity();
         } catch (Exception e) { log.error("Worker 트리거 실패: ownerType={} ownerId={} keys={}", ownerType, ownerId, imageKeys, e); }
+    }
+    /**
+     * OG 전용 트리거. variantProfile 값 "OG_ONLY"는 Worker의 분기 이름일 뿐 {@link MediaVariantProfile}에 넣지 않는다 —
+     * 그 enum은 media_assets.variant_profile에 저장되는 "자산이 어떤 변형본을 갖는가"이고, OG 전용은 저장될 일이 없다.
+     * presigned URL은 만들지 않는다 — Worker가 R2 바인딩으로 썸네일을 직접 읽는다(Images 바인딩 입력은 스트림).
+     */
+    @Override public void triggerOgWorker(MediaOwnerType ownerType, String ownerId, String imageKey, String thumbKey,
+                                          String thumbAdultKey) {
+        try {
+            restClient.post().uri(props.workerTriggerUrl()).header("X-Callback-Secret", props.callbackSecret())
+                    .body(Map.of("ownerType", ownerType.name(), "ownerId", ownerId, "imageKeys", List.of(imageKey),
+                            "thumbKeys", List.of(thumbKey), "thumbAdultKeys", List.of(thumbAdultKey),
+                            "variantProfile", OG_ONLY_PROFILE)).retrieve().toBodilessEntity();
+        } catch (Exception e) { log.error("OG Worker 트리거 실패: ownerType={} ownerId={} key={}", ownerType, ownerId, imageKey, e); }
     }
     private String generatePresignedGetUrl(String key) {
         var get = GetObjectRequest.builder().bucket(props.bucket()).key(key).build();

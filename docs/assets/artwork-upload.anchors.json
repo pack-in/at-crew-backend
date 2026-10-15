@@ -56,6 +56,11 @@
     {
       "text": "afterCommit",
       "path": "src/main/java/com/atcrew/media"
+    },
+    {
+      "text": "Images 바인딩",
+      "code": "env.IMAGES",
+      "path": "cloudflare-worker/src"
     }
   ]
 }

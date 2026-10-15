@@ -153,7 +153,7 @@ class MediaServiceImpl implements MediaService {
     }
     private static MediaAssetInfo toInfo(MediaAsset a) {
         return new MediaAssetInfo(a.getOriginalKey(), a.getThumbKey(), a.getThumbAdultKey(), a.getOriginalAvifKey(),
-                a.getProcessingStatus(), a.getOrdinal(), a.getSlotRole());
+                a.getProcessingStatus(), a.getOrdinal(), a.getSlotRole(), a.getOgKey(), a.getOgAdultKey());
     }
     /**
      * 자산 행을 지우면 그 행이 가리키던 파일(원본·변형본)은 고아 큐로 보낸다. 영구 삭제 키 목록은 삭제 시점의 소유자
@@ -167,10 +167,17 @@ class MediaServiceImpl implements MediaService {
         assets.deleteAll(rows);
     }
     @Override public void deleteFiles(List<String> keys) { storagePort.deleteFiles(keys); }
-    /** 자산 행이 가리키는 R2 key 전체(원본·변형본 3종). null은 markOrphaned가 거른다. */
+    @Override @Transactional(readOnly = true) public Map<String, MediaAssetInfo> findOgKeysByThumbKeys(Collection<String> thumbKeys) {
+        if (thumbKeys == null || thumbKeys.isEmpty()) return Map.of();
+        // 같은 썸네일 key를 두 행이 가질 수는 없다(변형본 key는 원본 key의 UUID에서 나온다) — 그래도 겹치면 먼저 읽힌 행을 쓴다.
+        return assets.findByThumbKeyIn(Set.copyOf(thumbKeys)).stream()
+                .filter(a -> a.getOgKey() != null || a.getOgAdultKey() != null)
+                .collect(Collectors.toMap(MediaAsset::getThumbKey, MediaServiceImpl::toInfo, (a, b) -> a));
+    }
+    /** 자산 행이 가리키는 R2 key 전체(원본·변형본 3종·OG 2종). null은 markOrphaned가 거른다. */
     private static List<String> keysOf(List<MediaAsset> rows) {
         return rows.stream().flatMap(a -> Stream.of(a.getOriginalKey(), a.getThumbKey(),
-                a.getThumbAdultKey(), a.getOriginalAvifKey())).toList();
+                a.getThumbAdultKey(), a.getOriginalAvifKey(), a.getOgKey(), a.getOgAdultKey())).toList();
     }
 
     /** 고아 key 적재의 유일한 경로 — null·빈 key는 걸러내고, 남는 것이 없으면 행을 만들지 않는다. */

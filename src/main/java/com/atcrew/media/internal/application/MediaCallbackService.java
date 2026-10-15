@@ -3,6 +3,7 @@ package com.atcrew.media.internal.application;
 import com.atcrew.media.*;
 import com.atcrew.media.internal.persistence.MediaAssetRepository;
 import java.util.Arrays;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
@@ -30,7 +31,7 @@ public class MediaCallbackService {
     @Transactional
     public void process(MediaOwnerType ownerType, String ownerId, String imageKey, String thumbKey, String thumbAdultKey,
                  String originalAvifKey, MediaProcessingStatus status) {
-        doProcess(ownerType, ownerId, imageKey, thumbKey, thumbAdultKey, originalAvifKey, status, null);
+        doProcess(ownerType, ownerId, imageKey, thumbKey, thumbAdultKey, originalAvifKey, null, null, status, null);
     }
 
     /**
@@ -41,17 +42,37 @@ public class MediaCallbackService {
     @Transactional
     public void process(MediaOwnerType ownerType, String ownerId, String imageKey, String thumbKey, String thumbAdultKey,
                  String originalAvifKey, MediaProcessingStatus status, String failureReason) {
-        doProcess(ownerType, ownerId, imageKey, thumbKey, thumbAdultKey, originalAvifKey, status, failureReason);
+        doProcess(ownerType, ownerId, imageKey, thumbKey, thumbAdultKey, originalAvifKey, null, null, status, failureReason);
+    }
+
+    /**
+     * @param ogKey      공유 미리보기(OG) 이미지 key. 카드 썸네일 자산만 받으며 생성에 실패하면 null이다 — OG는 부가
+     *                   산출물이라 썸네일 처리 결과(status)에 영향을 주지 않는다.
+     * @param ogAdultKey 성인물 블러 OG 이미지 key. 부분 성공이면 한쪽만 null로 온다.
+     */
+    @Transactional
+    public void process(MediaOwnerType ownerType, String ownerId, String imageKey, String thumbKey, String thumbAdultKey,
+                 String originalAvifKey, String ogKey, String ogAdultKey, MediaProcessingStatus status,
+                 String failureReason) {
+        doProcess(ownerType, ownerId, imageKey, thumbKey, thumbAdultKey, originalAvifKey, ogKey, ogAdultKey, status,
+                failureReason);
     }
 
     private void doProcess(MediaOwnerType ownerType, String ownerId, String imageKey, String thumbKey,
-                 String thumbAdultKey, String originalAvifKey, MediaProcessingStatus status, String failureReason) {
+                 String thumbAdultKey, String originalAvifKey, String ogKey, String ogAdultKey,
+                 MediaProcessingStatus status, String failureReason) {
         if (status == MediaProcessingStatus.FAILED) {
             log.warn("이미지 변환 실패: ownerType={} ownerId={} imageKey={} reason={}",
                     ownerType, ownerId, imageKey, failureReason != null ? failureReason : "(사유 미제공)");
         }
         assets.findByOwnerAndOriginalKeyForUpdate(ownerType, ownerId, imageKey).ifPresentOrElse(asset -> {
-            asset.markProcessed(thumbKey, thumbAdultKey, originalAvifKey, status);
+            asset.markProcessed(thumbKey, thumbAdultKey, originalAvifKey, ogKey, ogAdultKey, status);
+            if (status == MediaProcessingStatus.DONE && asset.getVariantProfile() == MediaVariantProfile.THUMBNAIL_WITH_ADULT_BLUR
+                    && (ogKey == null || ogAdultKey == null)) {
+                // 기본 이미지로 나갈 뿐 서비스는 정상이다 — 원인 추적과 백필 대상 확인용으로만 남긴다.
+                log.warn("OG 이미지 누락: ownerType={} ownerId={} imageKey={} ogKey={} ogAdultKey={}",
+                        ownerType, ownerId, imageKey, ogKey, ogAdultKey);
+            }
             events.publishEvent(new MediaAssetProcessedEvent(ownerType, ownerId, imageKey, thumbKey, thumbAdultKey,
                     originalAvifKey, status));
         },
@@ -59,13 +80,25 @@ public class MediaCallbackService {
         // 도착한 옛 콜백이거나, Worker가 받은 키와 서버 기록이 어긋난 경우다. Worker가 이미 R2에 써 둔 변형본은
         // 어디서도 참조하지 않으므로 고아 큐에 넣어 OrphanImageCleanupScheduler가 지우게 한다. 원본(imageKey)은
         // 교체·영구 삭제 경로가 이미 정리 대상으로 넘겼으므로 넣지 않는다.
-        () -> orphanDerivedKeys(ownerType, ownerId, imageKey, status, thumbKey, thumbAdultKey, originalAvifKey));
+        () -> orphanDerivedKeys(ownerType, ownerId, imageKey, status,
+                Arrays.asList(thumbKey, thumbAdultKey, originalAvifKey, ogKey, ogAdultKey)));
+    }
+
+    /**
+     * OG 전용 처리(백필) 결과를 기존 자산에 붙인다. 썸네일 key·처리 상태는 건드리지 않고 이벤트도 발행하지 않는다 —
+     * 작품 상태와 무관한 부가 산출물이다. 백필 도중 썸네일이 교체·삭제돼 행이 없으면 og 파일을 고아 정리로 보낸다.
+     */
+    @Transactional
+    public void attachOg(MediaOwnerType ownerType, String ownerId, String imageKey, String ogKey, String ogAdultKey) {
+        assets.findByOwnerAndOriginalKeyForUpdate(ownerType, ownerId, imageKey).ifPresentOrElse(
+                asset -> asset.attachOgKeys(ogKey, ogAdultKey),
+                () -> orphanDerivedKeys(ownerType, ownerId, imageKey, null, Arrays.asList(ogKey, ogAdultKey)));
     }
 
     private void orphanDerivedKeys(MediaOwnerType ownerType, String ownerId, String imageKey, MediaProcessingStatus status,
-                                   String thumbKey, String thumbAdultKey, String originalAvifKey) {
+                                   List<String> derivedKeys) {
         log.warn("콜백 대상 자산 없음 — 변형본을 고아 정리 대상에 넣고 무시: ownerType={} ownerId={} imageKey={} status={}",
                 ownerType, ownerId, imageKey, status);
-        mediaService.markOrphaned(Arrays.asList(thumbKey, thumbAdultKey, originalAvifKey));
+        mediaService.markOrphaned(derivedKeys);
     }
 }

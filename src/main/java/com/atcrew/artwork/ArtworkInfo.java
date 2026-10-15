@@ -20,6 +20,9 @@ public record ArtworkInfo(
         // 사용자 지정 썸네일의 변환 결과 — 표시는 thumbKey, 변환 전이면 originalKey. 썸네일을 변환하기 전에
         // 올라온 작품은 null이라 thumbnailKey를 그대로 쓴다. 카드 판정은 ArtworkCardThumbnail에 있다.
         ArtworkImageInfo thumbnailImage,
+        // 공유 링크 미리보기(OG) 1200×630 JPEG key — 사용자 지정 썸네일로 만든 것을 연령 등급에 맞춰 고른 값(성인물은 블러본,
+        // ArtworkOgImage). 썸네일 처리 전·OG 생성 실패·지정 썸네일이 없는 예전 작품이면 null이고 FE가 기본 이미지를 쓴다.
+        String ogImageKey,
         ImageLayoutType imageLayoutType,
         ArtworkField artworkField,
         CreativeType creativeType,

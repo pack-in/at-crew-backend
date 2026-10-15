@@ -8,6 +8,8 @@ import com.atcrew.media.MediaProcessingStatus;
 import com.atcrew.media.MediaQualityTier;
 import com.atcrew.media.MediaService;
 import com.atcrew.media.MediaVariantProfile;
+import com.atcrew.media.internal.domain.OrphanedMediaKey;
+import com.atcrew.media.internal.persistence.OrphanedMediaKeyRepository;
 import com.atcrew.support.DatabaseCleanupExtension;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,6 +34,12 @@ class MediaSyncAssetsTests {
 
     @Autowired
     MediaService mediaService;
+
+    @Autowired
+    MediaCallbackService callbackService;
+
+    @Autowired
+    OrphanedMediaKeyRepository orphans;
 
     @Test
     void 순서를_뒤집어도_유니크_제약에_걸리지_않고_행을_유지한다() {
@@ -81,6 +89,54 @@ class MediaSyncAssetsTests {
         assertThat(byOwner.get(first)).extracting(MediaAssetInfo::status)
                 .containsOnly(MediaProcessingStatus.PENDING);
         assertThat(byOwner.get(second)).extracting(MediaAssetInfo::originalKey).containsExactly("raw/s.png");
+    }
+
+    // 썸네일을 교체하면 예전 자산 행이 지워진다 — 그 행의 OG 파일도 고아 정리로 넘겨야 R2에 남지 않는다.
+    @Test
+    void 썸네일을_교체하면_예전_og_파일도_고아_정리_대상에_넣는다() {
+        String ownerId = ownerId();
+        mediaService.syncAssets(MediaOwnerType.ARTWORK_THUMBNAIL, ownerId, specs("raw/old.png"),
+                MediaVariantProfile.THUMBNAIL_WITH_ADULT_BLUR, MediaQualityTier.WEB);
+        callbackService.process(MediaOwnerType.ARTWORK_THUMBNAIL, ownerId, "raw/old.png", "thumb/old.avif",
+                "thumb-adult/old.avif", null, "og/old.jpg", "og-adult/old.jpg", MediaProcessingStatus.DONE, null);
+
+        mediaService.syncAssets(MediaOwnerType.ARTWORK_THUMBNAIL, ownerId, specs("raw/new.png"),
+                MediaVariantProfile.THUMBNAIL_WITH_ADULT_BLUR, MediaQualityTier.WEB);
+
+        assertThat(orphans.findAll()).flatExtracting(OrphanedMediaKey::getKeys)
+                .contains("og/old.jpg", "og-adult/old.jpg", "thumb/old.avif");
+    }
+
+    @Test
+    void og_key가_자산_조회_결과에_담긴다() {
+        String ownerId = ownerId();
+        mediaService.syncAssets(MediaOwnerType.ARTWORK_THUMBNAIL, ownerId, specs("raw/t.png"),
+                MediaVariantProfile.THUMBNAIL_WITH_ADULT_BLUR, MediaQualityTier.WEB);
+        callbackService.process(MediaOwnerType.ARTWORK_THUMBNAIL, ownerId, "raw/t.png", "thumb/t.avif",
+                "thumb-adult/t.avif", null, "og/t.jpg", "og-adult/t.jpg", MediaProcessingStatus.DONE, null);
+
+        assertThat(mediaService.getAssets(MediaOwnerType.ARTWORK_THUMBNAIL, ownerId))
+                .extracting(MediaAssetInfo::ogKey, MediaAssetInfo::ogAdultKey)
+                .containsExactly(org.assertj.core.groups.Tuple.tuple("og/t.jpg", "og-adult/t.jpg"));
+    }
+
+    @Test
+    void 썸네일_key로_og_key를_찾고_og가_없는_자산은_뺀다() {
+        String withOg = ownerId();
+        String withoutOg = ownerId();
+        mediaService.syncAssets(MediaOwnerType.ARTWORK_THUMBNAIL, withOg, specs("raw/w.png"),
+                MediaVariantProfile.THUMBNAIL_WITH_ADULT_BLUR, MediaQualityTier.WEB);
+        callbackService.process(MediaOwnerType.ARTWORK_THUMBNAIL, withOg, "raw/w.png", "thumb/w.avif",
+                "thumb-adult/w.avif", null, "og/w.jpg", "og-adult/w.jpg", MediaProcessingStatus.DONE, null);
+        mediaService.syncAssets(MediaOwnerType.ARTWORK_THUMBNAIL, withoutOg, specs("raw/n.png"),
+                MediaVariantProfile.THUMBNAIL_WITH_ADULT_BLUR, MediaQualityTier.WEB);
+        callbackService.process(MediaOwnerType.ARTWORK_THUMBNAIL, withoutOg, "raw/n.png", "thumb/n.avif",
+                "thumb-adult/n.avif", null, MediaProcessingStatus.DONE);
+
+        var found = mediaService.findOgKeysByThumbKeys(List.of("thumb/w.avif", "thumb/n.avif", "thumb/gone.avif"));
+
+        assertThat(found).containsOnlyKeys("thumb/w.avif");
+        assertThat(found.get("thumb/w.avif").ogAdultKey()).isEqualTo("og-adult/w.jpg");
     }
 
     private static List<MediaAssetSpec> specs(String... keys) {
