@@ -2,6 +2,7 @@ package com.atcrew.artwork.internal.application;
 
 import com.atcrew.artwork.ArtworkCardThumbnail;
 import com.atcrew.artwork.ArtworkImageInfo;
+import com.atcrew.artwork.ArtworkOgImage;
 import com.atcrew.artwork.ImageProcessingStatus;
 import com.atcrew.artwork.ArtworkInfo;
 import com.atcrew.artwork.ArtworkSummaryInfo;
@@ -34,6 +35,9 @@ class ArtworkMapper {
                 artwork.getRepresentativeImageIndex(),
                 artwork.getThumbnailKey(),
                 media.thumbnail() != null ? toImageInfo(media.thumbnail()) : null,
+                media.thumbnail() != null
+                        ? ArtworkOgImage.select(artwork.getAgeRating(), media.thumbnail().ogKey(), media.thumbnail().ogAdultKey())
+                        : null,
                 artwork.getImageLayoutType(),
                 artwork.getArtworkField(),
                 artwork.getCreativeType(),

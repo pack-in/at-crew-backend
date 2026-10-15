@@ -53,7 +53,7 @@ class ArtworkPurger {
     }
 
     /**
-     * 영구 삭제 대상 R2 key 전체 — 본문 이미지·지정 썸네일 자산의 원본과 변형본, 옛 지정 썸네일, 자료 첨부.
+     * 영구 삭제 대상 R2 key 전체 — 본문 이미지·지정 썸네일 자산의 원본과 변형본(OG 포함), 옛 지정 썸네일, 자료 첨부.
      *
      * <p>썸네일 변환 이전에 올라온 지정 썸네일({@code artwork.thumbnailKey})과 자료 첨부는 media_assets에 행이 없다.
      * 여기서 빠지면 어디서도 지워지지 않고 R2에 남으므로 후보에 넣는다. 한동안 첨부를 뺐던 것은 소유 검증이 없어 남의 key가 섞일 수
@@ -68,7 +68,9 @@ class ArtworkPurger {
                         img.originalKey(),
                         img.thumbKey(),
                         img.thumbAdultKey(),
-                        img.originalAvifKey()
+                        img.originalAvifKey(),
+                        img.ogKey(),
+                        img.ogAdultKey()
                 ));
         Stream<String> attachmentKeys = artwork.getMaterials().stream()
                 .map(Material::getAttachmentKeys).filter(Objects::nonNull).flatMap(List::stream);

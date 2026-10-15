@@ -102,7 +102,7 @@ class ArtworkSearchMapperTest {
         );
         return new ArtworkInfo(
                 "artwork-1", "author-1", "작가이름", "handle1",
-                "제목", "설명", images, representativeImageIndex, thumbnailKey, thumbnailImage,
+                "제목", "설명", images, representativeImageIndex, thumbnailKey, thumbnailImage, null,
                 ImageLayoutType.VERTICAL_SCROLL,
                 ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL, List.of(ArtworkRole.LINEART),
                 List.of(Genre.BL), List.of(), List.of("태그1", "태그2"), List.of(), null, null, List.of(),
