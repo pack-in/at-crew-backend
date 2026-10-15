@@ -3,6 +3,7 @@ package com.atcrew.media.internal.persistence;
 import com.atcrew.media.*;
 import com.atcrew.media.internal.domain.MediaAsset;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -28,6 +29,21 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, Long> {
     Optional<MediaAsset> findByOwnerAndOriginalKeyForUpdate(@Param("ownerType") MediaOwnerType ownerType,
             @Param("ownerId") String ownerId, @Param("originalKey") String originalKey);
     /** 후보 중 자산으로 등록돼 있는 original key — 등록되지 않은 raw 원본을 가릴 때 쓴다(#216). */
+    /** OG 백필 대상 — 카드 썸네일 자산 중 처리가 끝났고 썸네일 2종이 있는데 OG가 없는 행. id 순으로 이어 읽는다. */
+    @Query("select a from MediaAsset a where a.ownerType = :ownerType and a.processingStatus = :status"
+            + " and a.thumbKey is not null and a.thumbAdultKey is not null and a.ogKey is null and a.id > :afterId"
+            + " order by a.id asc")
+    List<MediaAsset> findOgBackfillTargets(@Param("ownerType") MediaOwnerType ownerType,
+                                           @Param("status") MediaProcessingStatus status,
+                                           @Param("afterId") long afterId, Pageable pageable);
+
+    @Query("select count(a) from MediaAsset a where a.ownerType = :ownerType and a.processingStatus = :status"
+            + " and a.thumbKey is not null and a.thumbAdultKey is not null and a.ogKey is null and a.id > :afterId")
+    long countOgBackfillTargets(@Param("ownerType") MediaOwnerType ownerType,
+                                @Param("status") MediaProcessingStatus status, @Param("afterId") long afterId);
+
+    List<MediaAsset> findByThumbKeyIn(Collection<String> thumbKeys);
+
     @Query("select a.originalKey from MediaAsset a where a.originalKey in :keys")
     List<String> findExistingOriginalKeys(@Param("keys") Collection<String> keys);
 

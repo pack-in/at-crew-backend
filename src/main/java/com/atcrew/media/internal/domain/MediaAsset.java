@@ -26,6 +26,9 @@ public class MediaAsset {
     private String thumbKey;
     private String thumbAdultKey;
     private String originalAvifKey;
+    // 공유 링크 미리보기(OG) 1200×630 JPEG — 카드 썸네일 자산(THUMBNAIL_WITH_ADULT_BLUR)에만 생긴다. 생성 전·실패면 null.
+    private String ogKey;
+    private String ogAdultKey;
     @Enumerated(EnumType.STRING) private MediaVariantProfile variantProfile;
     // 업로드 시점 플랜으로 확정된 변환 화질 — 재시도가 최초와 같은 결과를 내도록 함께 보관한다.
     @Enumerated(EnumType.STRING) private MediaQualityTier qualityTier;
@@ -59,9 +62,24 @@ public class MediaAsset {
 
     public void markProcessed(String thumbKey, String thumbAdultKey, String originalAvifKey,
                               MediaProcessingStatus status) {
+        markProcessed(thumbKey, thumbAdultKey, originalAvifKey, null, null, status);
+    }
+
+    public void markProcessed(String thumbKey, String thumbAdultKey, String originalAvifKey,
+                              String ogKey, String ogAdultKey, MediaProcessingStatus status) {
         this.thumbKey = thumbKey; this.thumbAdultKey = thumbAdultKey; this.originalAvifKey = originalAvifKey;
+        this.ogKey = ogKey; this.ogAdultKey = ogAdultKey;
         this.processingStatus = status;
     }
+
+    /**
+     * 기존 자산에 OG key만 붙인다(백필). 썸네일 key와 처리 상태는 건드리지 않는다 — OG 전용 콜백은 썸네일 필드를 싣지
+     * 않으므로 {@link #markProcessed}로 받으면 썸네일 key가 null로 덮인다.
+     */
+    public void attachOgKeys(String ogKey, String ogAdultKey) {
+        this.ogKey = ogKey; this.ogAdultKey = ogAdultKey;
+    }
+    public Long getId() { return id; }
     public MediaOwnerType getOwnerType() { return ownerType; }
     public String getOwnerId() { return ownerId; }
     public Integer getOrdinal() { return ordinal; }
@@ -70,6 +88,8 @@ public class MediaAsset {
     public String getThumbKey() { return thumbKey; }
     public String getThumbAdultKey() { return thumbAdultKey; }
     public String getOriginalAvifKey() { return originalAvifKey; }
+    public String getOgKey() { return ogKey; }
+    public String getOgAdultKey() { return ogAdultKey; }
     public MediaVariantProfile getVariantProfile() { return variantProfile; }
     public MediaQualityTier getQualityTier() { return qualityTier; }
     public MediaProcessingStatus getProcessingStatus() { return processingStatus; }

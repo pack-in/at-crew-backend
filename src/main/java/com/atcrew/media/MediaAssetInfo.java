@@ -6,7 +6,9 @@ package com.atcrew.media;
  *                    (표시용은 originalAvifKey·thumbKey).
  * @param ordinal     소유자 안에서의 순서(0부터).
  * @param slotRole    소유자가 정한 슬롯 이름. 없으면 null({@link MediaAssetSpec} 참고).
+ * @param ogKey       공유 미리보기(OG) 1200×630 JPEG key. 카드 썸네일 자산에만 있고 생성 전·실패면 null.
+ * @param ogAdultKey  성인물 블러 OG key. 조건은 ogKey와 같다. 어느 쪽을 노출할지는 소유자가 연령 등급으로 고른다.
  */
 public record MediaAssetInfo(String originalKey, String thumbKey, String thumbAdultKey,
                              String originalAvifKey, MediaProcessingStatus status,
-                             int ordinal, String slotRole) { }
+                             int ordinal, String slotRole, String ogKey, String ogAdultKey) { }
