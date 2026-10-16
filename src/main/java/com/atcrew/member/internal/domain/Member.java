@@ -50,6 +50,7 @@ import org.springframework.data.domain.Persistable;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -72,6 +73,10 @@ public class Member implements Persistable<String> {
     private String loginEmail;
 
     private String handle;
+
+    // 사용자 직접 handle 변경 성공 시각 — 30일 변경 제한 기준. 가입·운영자 변경은 기록하지 않아 null로 남는다
+    // (docs/design/member-handle-design.md §1.1).
+    private Instant handleChangedAt;
 
     private String name;
 
@@ -137,7 +142,7 @@ public class Member implements Persistable<String> {
     // 증분은 항상 DB 레벨 UPDATE로 처리한다(MemberRepository.incrementProfileViewCount).
     private int profileViewCount = 0;
 
-    // 단일 선택 — 피그마 4971:25431, 기획서 마이페이지_작가-R23("단일 칩: … 활동 지역(10)").
+    // 단일 선택 — 피그마 4971:25431, 기획서 마이페이지_작가-R23("단일 칩: … 활동 지역(10)"). 해외 칩 추가로 11개.
     @Enumerated(EnumType.STRING)
     private ActiveRegion activeRegion;
 
@@ -516,6 +521,51 @@ public class Member implements Persistable<String> {
         }
     }
 
+    // handle 변경 주기·멱등 재전송 창 (member-handle-design §1.3, 설정-R17)
+    private static final Duration HANDLE_CHANGE_INTERVAL = Duration.ofDays(30);
+    private static final Duration HANDLE_CHANGE_REPLAY_WINDOW = Duration.ofMinutes(5);
+
+    /**
+     * 다음 handle 변경 가능 시각. 지금 변경할 수 있으면 null — 사용자 직접 변경 이력이 없거나(가입·운영자 변경은
+     * 미산정) 마지막 변경으로부터 정확히 30일이 지났을 때다.
+     */
+    public Instant handleChangeAvailableAt(Instant now) {
+        if (handleChangedAt == null) {
+            return null;
+        }
+        Instant availableAt = handleChangedAt.plus(HANDLE_CHANGE_INTERVAL);
+        return availableAt.isAfter(now) ? availableAt : null;
+    }
+
+    /**
+     * 네트워크 재시도로 같은 변경 요청이 다시 온 것인지 — 요청값이 현재 handle과 대소문자까지 같고 마지막 직접 변경이
+     * 5분 이내다. 창을 30일로 잡으면 제한 기간 중 같은 값 재입력이 "30일 제한" 대신 성공으로 응답된다.
+     */
+    public boolean isHandleChangeReplay(String requested, Instant now) {
+        return handleChangedAt != null
+                && requested.equals(handle)
+                && Duration.between(handleChangedAt, now).compareTo(HANDLE_CHANGE_REPLAY_WINDOW) < 0;
+    }
+
+    public void assertHandleChangeAllowed(Instant now) {
+        Instant availableAt = handleChangeAvailableAt(now);
+        if (availableAt != null) {
+            throw new MemberException(MemberErrorCode.HANDLE_CHANGE_TOO_SOON,
+                    "memberId=" + id + " availableAt=" + availableAt);
+        }
+    }
+
+    /**
+     * 사용자 직접 변경. 형식·원장 소유 검사는 호출 전에 끝나 있어야 한다(오류 우선순위가 §1.3 순서로 정해져 있어
+     * 서비스가 30일 제한부터 단계별로 판정한다). 변경 시각을 기록해 30일 제한이 시작된다.
+     */
+    public void changeHandle(String newHandle, Instant now) {
+        assertActive();
+        assertHandleChangeAllowed(now);
+        this.handle = newHandle;
+        this.handleChangedAt = now;
+    }
+
     public void recordLogin() {
         assertActive();
         this.lastLoginAt = Instant.now();
@@ -535,6 +585,7 @@ public class Member implements Persistable<String> {
     public String getId() { return id; }
     public String getLoginEmail() { return loginEmail; }
     public String getHandle() { return handle; }
+    public Instant getHandleChangedAt() { return handleChangedAt; }
     public String getName() { return name; }
     public AuthProvider getAuthProvider() { return authProvider; }
     public EmploymentStatus getEmploymentStatus() { return employmentStatus; }

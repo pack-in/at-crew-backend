@@ -29,6 +29,7 @@ import com.atcrew.support.BillingTestSupport;
 import com.atcrew.support.RestDocsIntegrationSupport;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import org.springframework.restdocs.payload.JsonFieldType;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import java.time.Duration;
@@ -98,6 +99,11 @@ class SearchApiDocTest extends RestDocsIntegrationSupport {
                                 fieldWithPath("data.items[].id").description("결과 ID"),
                                 fieldWithPath("data.items[].postType").description("게시글 유형 (PORTFOLIO 등)"),
                                 fieldWithPath("data.items[].title").description("제목"),
+                                fieldWithPath("data.items[].authorHandle").type(JsonFieldType.STRING).optional()
+                                        .description("작가 현재 사용자 아이디 — 포트폴리오(작품) 결과만, 그 외 유형은 생략"),
+                                fieldWithPath("data.items[].publicCode").type(JsonFieldType.STRING).optional()
+                                        .description("작품 6자 공개 코드 — 카드 링크는 /{authorHandle}/artwork/{publicCode}. "
+                                                + "포트폴리오 외 유형은 생략"),
                                 fieldWithPath("data.totalCount").description("전체 결과 건수"),
                                 fieldWithPath("data.hasNext").description("다음 페이지 존재 여부")
                         )

@@ -2,6 +2,7 @@ package com.atcrew.member.internal.web;
 
 import com.atcrew.common.security.SecurityUtils;
 import com.atcrew.common.web.GlobalExceptionHandler;
+import com.atcrew.member.ActiveRegion;
 import com.atcrew.member.MemberService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -17,7 +18,10 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import java.util.List;
 import java.util.Map;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.springframework.restdocs.mockmvc.MockMvcRestDocumentation.document;
 import static org.springframework.restdocs.mockmvc.MockMvcRestDocumentation.documentationConfiguration;
 import static org.springframework.restdocs.operation.preprocess.Preprocessors.prettyPrint;
@@ -81,9 +85,10 @@ class MemberControllerValidationTest {
     void 핸들_패턴_위반_가입_거부() throws Exception {
         mockMvc.perform(post("/api/members")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(registerBody("user@test.com", "invalid handle!", "홍길동")))
+                        .content(registerBody("user@test.com", "bad handle!", "홍길동")))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
+                // 형식은 HandleValidator가 검증해 가입·변경 API와 같은 오류 코드를 낸다(member-handle-design §1.2)
+                .andExpect(jsonPath("$.code").value("HANDLE_INVALID_CHARACTERS"))
                 .andDo(document("member/validation/register-invalid-handle-pattern"));
     }
 
@@ -96,6 +101,17 @@ class MemberControllerValidationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"))
                 .andDo(document("member/validation/update-info-invalid-enum-value"));
+    }
+
+    @Test
+    void 정보_수정_활동_지역_해외_허용() throws Exception {
+        // 피그마 Q7(8118:126833) 활동 지역 칩에 "해외"가 추가됐다.
+        mockMvc.perform(patch("/api/members/me/info")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("activeRegion", "OVERSEAS"))))
+                .andExpect(status().isNoContent());
+
+        verify(memberService).updateInfo(any(), argThat(command -> command.activeRegion() == ActiveRegion.OVERSEAS));
     }
 
     @Test

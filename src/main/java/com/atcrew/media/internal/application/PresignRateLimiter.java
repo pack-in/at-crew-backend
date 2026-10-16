@@ -22,6 +22,10 @@ import java.util.Map;
  *
  * <p>기록은 인스턴스 메모리에만 둔다. 앱을 2대로 늘리면(ha-expansion-path.md) 인스턴스마다 따로 세므로
  * 실효 한도가 대수만큼 커진다 — 그때는 공유 저장소로 옮겨야 한다. 지금은 1대 구성이라 이 단순함을 택한다.
+ *
+ * <p>재기동하면 기록이 비워진다. 재기동은 배포나 장애 재시작({@code restart: always})으로 일어나고 요청자가
+ * 원하는 때 일으킬 수 없으므로, 재기동 한 번에 창 하나 동안 한도만큼 더 받을 수 있는 정도다. 배포가 주 1회
+ * 수준인 동안은 감수한다(#216). 원본이 쌓이는 것을 실제로 막는 장치는 {@code UnregisteredRawCleanupScheduler}다.
  */
 @Component
 public class PresignRateLimiter {

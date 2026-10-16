@@ -11,7 +11,8 @@ public record RegisterMemberCommand(
         boolean agreeMarketing,
         String timezone,          // IANA tz ID, 가입 시 클라이언트 자동감지값
         String countryCode,       // ISO 3166-1 alpha-2, 거주 국가
-        Language primaryLanguage  // 주 사용 언어, 가입 시 필수·이후 변경 불가(로그인-R19)
+        Language primaryLanguage, // 주 사용 언어, 가입 시 필수·이후 변경 불가(로그인-R19)
+        String handle             // 사용자 아이디. FE 전환기 동안 선택 입력 — null·빈 값·공백뿐이면 서버가 생성(member-handle-design §4.1)
 ) {
     @Override
     public String toString() {
@@ -21,6 +22,6 @@ public record RegisterMemberCommand(
                ", agreeService=" + agreeService + ", agreeThirdParty=" + agreeThirdParty +
                ", agreeMarketing=" + agreeMarketing + ", timezone=" + timezone +
                ", countryCode=" + countryCode +
-               ", primaryLanguage=" + primaryLanguage + "]";
+               ", primaryLanguage=" + primaryLanguage + ", handle=" + handle + "]";
     }
 }

@@ -37,9 +37,11 @@ class MemberModuleTests {
     void 회원_가입_후_핸들로_조회() {
         MemberInfo member = memberService.register("test@atcrew.com", "testhandle", "테스트");
 
-        MemberInfo found = memberService.findByHandle("testhandle");
+        ResolvedHandle resolved = memberService.resolveHandle("testhandle");
+        MemberInfo found = memberService.findById(resolved.memberId());
 
         assertThat(found.id()).isEqualTo(member.id());
+        assertThat(resolved.currentHandle()).isEqualTo("testhandle");
         assertThat(found.name()).isEqualTo("테스트");
         assertThat(found.employmentStatus()).isEqualTo(EmploymentStatus.PREPARING);
     }
@@ -80,7 +82,7 @@ class MemberModuleTests {
 
     @Test
     void 없는_핸들_조회_시_예외() {
-        assertThatThrownBy(() -> memberService.findByHandle("nonexistent"))
+        assertThatThrownBy(() -> memberService.resolveHandle("nonexistent"))
                 .isInstanceOf(MemberException.class)
                 .extracting(e -> ((MemberException) e).getCode())
                 .isEqualTo(MemberErrorCode.MEMBER_NOT_FOUND.name());
@@ -92,30 +94,6 @@ class MemberModuleTests {
                 .isInstanceOf(MemberException.class)
                 .extracting(e -> ((MemberException) e).getCode())
                 .isEqualTo(MemberErrorCode.MEMBER_NOT_FOUND.name());
-    }
-
-    // ─── existsByHandle (portfolio 공유 slug 충돌 검사) ──────────────────
-
-    @Test
-    void 존재하는_핸들은_존재로_판단() {
-        memberService.register("exists-handle@atcrew.com", "existshandle", "존재핸들회원");
-
-        assertThat(memberService.existsByHandle("existshandle")).isTrue();
-    }
-
-    @Test
-    void 존재하지_않는_핸들은_존재하지_않음으로_판단() {
-        assertThat(memberService.existsByHandle("nosuchhandle")).isFalse();
-    }
-
-    @Test
-    void 탈퇴_회원의_과거_핸들은_존재하지_않음으로_판단() {
-        MemberInfo member = memberService.register("deactivated-handle@atcrew.com", "deactivatedhandle", "탈퇴예정회원");
-
-        memberService.deactivate(member.id());
-
-        // 탈퇴 시 handle이 null로 클리어되므로, 과거 핸들은 slug 충돌 검사에서 재사용 가능해야 한다.
-        assertThat(memberService.existsByHandle("deactivatedhandle")).isFalse();
     }
 
     // ─── updateName ───────────────────────────────────────────────────
@@ -359,7 +337,7 @@ class MemberModuleTests {
     private MemberInfo registerWithPrimaryLanguage(String emailPrefix, String name, Language primaryLanguage) {
         return memberService.register(new RegisterMemberCommand(
                 emailPrefix + "@atcrew.com", name, AuthProvider.EMAIL, "Secure1!",
-                true, true, true, false, "Asia/Seoul", "KR", primaryLanguage));
+                true, true, true, false, "Asia/Seoul", "KR", primaryLanguage, null));
     }
 
     @Test

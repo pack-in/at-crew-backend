@@ -23,8 +23,10 @@ import com.atcrew.member.TeamExperience;
 import com.atcrew.member.UpdateInfoCommand;
 import com.atcrew.member.WorkPace;
 import com.atcrew.member.internal.domain.Member;
+import com.atcrew.member.internal.domain.MemberHandle;
 import com.atcrew.member.internal.exception.MemberErrorCode;
 import com.atcrew.member.internal.exception.MemberException;
+import com.atcrew.member.internal.persistence.MemberHandleRepository;
 import com.atcrew.member.internal.persistence.MemberRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -53,6 +55,7 @@ import static org.mockito.Mockito.when;
 class MemberServiceImplTest {
 
     MemberRepository memberRepository;
+    MemberHandleRepository memberHandleRepository;
     ApplicationEventPublisher eventPublisher;
     PasswordEncoder passwordEncoder;
     MemberServiceImpl memberService;
@@ -63,13 +66,23 @@ class MemberServiceImplTest {
         eventPublisher = mock(ApplicationEventPublisher.class);
         passwordEncoder = mock(PasswordEncoder.class);
         when(passwordEncoder.encode(any())).thenReturn("dummy-hash");
-        memberService = new MemberServiceImpl(memberRepository, eventPublisher, passwordEncoder);
+        memberHandleRepository = mock(MemberHandleRepository.class);
+        memberService = new MemberServiceImpl(memberRepository, memberHandleRepository,
+                new MemberHandleChanger(memberRepository, memberHandleRepository, eventPublisher), eventPublisher,
+                passwordEncoder);
+    }
+
+    // 공개 프로필 조회는 원장(member_handles) → 회원 ID 순으로 해석한다(member-handle-design §2.1).
+    private void givenLedger(Member artist) {
+        when(memberHandleRepository.findById(artist.getHandle()))
+                .thenReturn(Optional.of(new MemberHandle(artist.getHandle(), artist.getId())));
+        when(memberRepository.findById(artist.getId())).thenReturn(Optional.of(artist));
     }
 
     @Test
     void 다른_회원이_조회하면_ArtistProfileViewedEvent가_발행된다() {
         Member artist = Member.register("artist@atcrew.com", "artist_handle", "작가");
-        when(memberRepository.findByHandle("artist_handle")).thenReturn(Optional.of(artist));
+        givenLedger(artist);
 
         memberService.findProfileByHandle("artist_handle", "viewer-001");
 
@@ -83,7 +96,7 @@ class MemberServiceImplTest {
     @Test
     void 본인이_본인_프로필을_조회하면_이벤트가_발행되지_않는다() {
         Member artist = Member.register("self@atcrew.com", "self_handle", "본인");
-        when(memberRepository.findByHandle("self_handle")).thenReturn(Optional.of(artist));
+        givenLedger(artist);
 
         memberService.findProfileByHandle("self_handle", artist.getId());
 
@@ -93,7 +106,7 @@ class MemberServiceImplTest {
     @Test
     void 비로그인_조회는_viewerMemberId가_null인_이벤트로_발행된다() {
         Member artist = Member.register("anon@atcrew.com", "anon_handle", "익명대상");
-        when(memberRepository.findByHandle("anon_handle")).thenReturn(Optional.of(artist));
+        givenLedger(artist);
 
         memberService.findProfileByHandle("anon_handle", null);
 
@@ -103,7 +116,7 @@ class MemberServiceImplTest {
     @Test
     void 단일_인자_오버로드는_비로그인_조회와_동일하게_동작한다() {
         Member artist = Member.register("legacy@atcrew.com", "legacy_handle", "레거시");
-        when(memberRepository.findByHandle("legacy_handle")).thenReturn(Optional.of(artist));
+        givenLedger(artist);
 
         memberService.findProfileByHandle("legacy_handle");
 
@@ -112,7 +125,7 @@ class MemberServiceImplTest {
 
     @Test
     void 존재하지_않는_핸들이면_이벤트를_발행하지_않고_예외를_던진다() {
-        when(memberRepository.findByHandle("missing")).thenReturn(Optional.empty());
+        when(memberHandleRepository.findById("missing")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> memberService.findProfileByHandle("missing", "viewer-001"))
                 .isInstanceOf(MemberException.class)

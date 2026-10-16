@@ -18,6 +18,16 @@ public interface ArtworkService {
     ArtworkInfo getArtwork(String artworkId, String viewerMemberId);
 
     /**
+     * 공개 URL {@code /{handle}/artwork/{code}}로 작품 상세를 조회한다(member-handle-design §2.2).
+     * handle은 원장으로 해석해 옛 handle도 받고, 접근 판정·응답은 {@link #getArtwork}와 같다.
+     * 응답의 {@code authorHandle}은 항상 현재 handle이다 — FE가 URL과 비교해 리다이렉트한다.
+     *
+     * @throws com.atcrew.common.exception.DomainException handle이 원장에 없으면 MEMBER_NOT_FOUND(404), 탈퇴 회원 소유면
+     *         MEMBER_WITHDRAWN(410), 그 작가에게 해당 코드가 없으면 ARTWORK_NOT_FOUND(404). 그 외는 {@link #getArtwork}와 같다
+     */
+    ArtworkInfo getArtworkByPublicCode(String handle, String publicCode, String viewerMemberId);
+
+    /**
      * 작품 열람 기록(홈-R14) — 유효 열람(최초 또는 24시간 경과 재방문)이면 기간 조회수 원천 이벤트를 남기고
      * 누적 조회수를 올린다. 24시간 안의 반복 열람·본인 작품·열람 불가 작품·없는 작품·탈퇴 회원은 조용히 무시한다.
      *
@@ -90,6 +100,9 @@ public interface ArtworkService {
      * 색인 여부를 직접 판단한다(docs/design/search-module-design.md §5.1). 삭제된 작품은 빈 Optional.
      */
     Optional<ArtworkInfo> getArtworkForIndexing(String artworkId);
+
+    /** 검색 재색인용 — 작가가 쓴 모든 작품 ID(휴지통·비공개 포함). 색인 대상 여부는 호출 측이 단건 색인 규칙으로 판단한다. */
+    List<String> getArtworkIdsByAuthor(String authorId);
 
     /** 검색 전체 재색인용 순회 조회 — status/visibility 필터 없이 전체 작품을 createdAt 오름차순으로 순회한다. */
     CursorPage<ArtworkInfo> getArtworksForReindex(String cursor, int size);

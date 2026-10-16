@@ -3,6 +3,7 @@ package com.atcrew.member.internal.web;
 import com.atcrew.common.response.ApiResponse;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
+import com.atcrew.member.internal.domain.HandleValidator;
 import com.atcrew.member.internal.web.dto.RegisterRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -32,11 +33,19 @@ class DevMemberController {
     }
 
     @Operation(summary = "회원 가입 (개발용)", description = "Firebase 인증 없이 이메일·핸들·이름으로 직접 가입합니다. 개발·테스트 환경 전용.")
-    @ApiResponses(@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "회원 가입 성공"))
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "회원 가입 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400",
+                    description = "HANDLE_REQUIRED(빈 값), HANDLE_TOO_SHORT(4자 미만), HANDLE_TOO_LONG(15자 이상), "
+                            + "HANDLE_INVALID_CHARACTERS(영문·숫자·밑줄 외 문자), "
+                            + "HANDLE_CONSECUTIVE_UNDERSCORES(연속 밑줄), HANDLE_RESERVED(예약어)"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409",
+                    description = "DUPLICATE_HANDLE(이미 쓰였던 handle), DUPLICATE_MEMBER_INFO(동시 가입 충돌)")
+    })
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<MemberInfo> register(@RequestBody @Valid RegisterRequest request) {
-        return ApiResponse.success(
-                memberService.register(request.loginEmail(), request.handle(), request.name()));
+        String handle = HandleValidator.validate(request.handle());
+        return ApiResponse.success(memberService.register(request.loginEmail(), handle, request.name()));
     }
 }

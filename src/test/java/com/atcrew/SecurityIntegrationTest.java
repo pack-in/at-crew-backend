@@ -1,8 +1,22 @@
 package com.atcrew;
 
+import com.atcrew.artwork.AgeRating;
+import com.atcrew.artwork.ArtworkField;
+import com.atcrew.artwork.ArtworkInfo;
+import com.atcrew.artwork.ArtworkService;
+import com.atcrew.artwork.CreativeType;
+import com.atcrew.artwork.ImageLayoutType;
+import com.atcrew.artwork.UploadArtworkCommand;
+import com.atcrew.billing.internal.persistence.SubscriptionRepository;
 import com.atcrew.common.security.JwtProvider;
+import com.atcrew.media.internal.application.MediaKeySigner;
+import com.atcrew.member.Language;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
+import com.atcrew.portfolio.PortfolioInfo;
+import com.atcrew.portfolio.ReflectionType;
+import com.atcrew.portfolio.internal.application.PortfolioServiceImpl;
+import com.atcrew.support.BillingTestSupport;
 import com.atcrew.support.RestDocsIntegrationSupport;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
@@ -10,6 +24,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
+import java.util.List;
 import java.util.UUID;
 
 import static org.springframework.restdocs.mockmvc.MockMvcRestDocumentation.document;
@@ -30,6 +45,20 @@ class SecurityIntegrationTest extends RestDocsIntegrationSupport {
     @Autowired
     MemberService memberService;
 
+    // 공개 주소 응답 검증용 픽스처 — 작품·포트폴리오는 서비스로 직접 만든다(PortfolioApiDocTest와 같은 방식).
+    @Autowired
+    ArtworkService artworkService;
+
+    @Autowired
+    PortfolioServiceImpl portfolioService;
+
+    @Autowired
+    SubscriptionRepository subscriptionRepository;
+
+    // 업로드 key의 소유자 서명(#190) — 테스트도 같은 규칙으로 key를 만든다.
+    @Autowired
+    MediaKeySigner keySigner;
+
     // ─── 섹션 1: 보호된 엔드포인트 토큰 없음 → 401 ──────────────────────
 
     @Test
@@ -48,6 +77,15 @@ class SecurityIntegrationTest extends RestDocsIntegrationSupport {
         mockMvc.perform(patch("/api/members/me/info")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+    }
+
+    @Test
+    void handle_변경_토큰_없음_401() throws Exception {
+        mockMvc.perform(patch("/api/members/me/handle")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"handle\":\"Pack_1n\"}"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
     }
@@ -194,6 +232,36 @@ class SecurityIntegrationTest extends RestDocsIntegrationSupport {
     }
 
     @Test
+    void 유효한_토큰_handle_변경_후_내_정보에_다음_변경_가능_시각이_담긴다() throws Exception {
+        MemberInfo member = memberService.register(uniqueEmail(), uniqueHandle(), "핸들변경");
+        String token = jwtProvider.generateAccessToken(member.id(), member.loginEmail());
+        String newHandle = "Sec_" + UUID.randomUUID().toString().substring(0, 6);
+
+        mockMvc.perform(patch("/api/members/me/handle")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .content("{\"handle\":\"" + newHandle + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.handle").value(newHandle))
+                .andExpect(jsonPath("$.data.handleChangeAvailableAt").isNotEmpty());
+
+        mockMvc.perform(get("/api/members/me").header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.handle").value(newHandle))
+                .andExpect(jsonPath("$.data.handleChangeAvailableAt").isNotEmpty());
+
+        // 토큰이 있으면 본인 소유 handle은 사용 가능으로 판정한다
+        mockMvc.perform(get("/api/members/handles/availability").param("handle", newHandle.toUpperCase())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.available").value(true));
+        mockMvc.perform(get("/api/members/handles/availability").param("handle", newHandle))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.available").value(false))
+                .andExpect(jsonPath("$.data.errorCode").value("DUPLICATE_HANDLE"));
+    }
+
+    @Test
     void 유효한_토큰_탈퇴_204() throws Exception {
         MemberInfo member = memberService.register(uniqueEmail(), uniqueHandle(), "탈퇴유저");
         String token = jwtProvider.generateAccessToken(member.id(), member.loginEmail());
@@ -210,6 +278,14 @@ class SecurityIntegrationTest extends RestDocsIntegrationSupport {
         // 없는 핸들이어도 보안 필터를 통과 → 404
         mockMvc.perform(get("/api/members/nonexistent_handle"))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void handle_사전_확인_토큰_없이_200() throws Exception {
+        // 인증 선택 엔드포인트 — 가입 화면은 토큰 없이 호출한다(member-handle-design §1.4)
+        mockMvc.perform(get("/api/members/handles/availability").param("handle", "Free_handle1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.available").value(true));
     }
 
     @Test
@@ -306,6 +382,96 @@ class SecurityIntegrationTest extends RestDocsIntegrationSupport {
         mockMvc.perform(get("/api/search"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SUCCESS"));
+    }
+
+    // ─── 공개 주소 /{handle}/artwork|portfolio/{code} (member-handle-design §2.2) ─────
+
+    // /api/members/me/**는 {handle} 하위 공개 패턴보다 먼저 인증으로 막힌다 — 매핑이 없는 경로도 401이 먼저다.
+    @Test
+    void 본인_전용_하위_경로는_공개_패턴에_걸리지_않고_토큰_없으면_401() throws Exception {
+        for (String path : new String[] {
+                "/api/members/me/artworks/abcdef",
+                "/api/members/me/portfolios/abcdef",
+                "/api/members/me/portfolios/abcdef/artworks",
+                "/api/members/me/portfolios/abcdef/snapshots/" + UUID.randomUUID()}) {
+            mockMvc.perform(get(path))
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+        }
+    }
+
+    // permitAll이 실제로 열려 있는지 — 인증 없이 서비스까지 도달해 handle 해석 결과(404)가 나와야 한다.
+    @Test
+    void 공개_주소는_토큰_없이_handle_해석까지_도달한다() throws Exception {
+        String unknown = uniqueHandle();
+        for (String path : new String[] {
+                "/api/members/" + unknown + "/artworks/abcdef",
+                "/api/members/" + unknown + "/portfolios/abcdef",
+                "/api/members/" + unknown + "/portfolios/abcdef/artworks",
+                "/api/members/" + unknown + "/portfolios/abcdef/snapshots/" + UUID.randomUUID()}) {
+            mockMvc.perform(get(path))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.code").value("MEMBER_NOT_FOUND"));
+        }
+    }
+
+    @Test
+    void 공개_주소_경로_변수_형식이_틀리면_400() throws Exception {
+        String tooLongHandle = "a".repeat(51);
+        for (String path : new String[] {
+                "/api/members/valid_handle/artworks/ABCDEF",
+                "/api/members/valid_handle/artworks/abcde",
+                "/api/members/" + tooLongHandle + "/artworks/abcdef",
+                "/api/members/valid_handle/portfolios/abc12!",
+                "/api/members/" + tooLongHandle + "/portfolios/abcdef/artworks",
+                "/api/members/valid_handle/portfolios/abcdef/snapshots/not-a-uuid"}) {
+            mockMvc.perform(get(path))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("COMMON_INVALID_INPUT"));
+        }
+    }
+
+    @Test
+    void 공개_주소로_비로그인_포트폴리오_열람_200과_주소_조립_정보() throws Exception {
+        MemberInfo owner = memberService.register(uniqueEmail(), uniqueHandle(), "공개주소");
+        BillingTestSupport.grantProPlan(subscriptionRepository, owner.id());
+        PortfolioInfo created = portfolioService.createShared(owner.id(), "공유", ReflectionType.LIVE, List.of());
+
+        mockMvc.perform(get("/api/members/{handle}/portfolios/{code}", owner.handle(), created.publicCode()))
+                .andExpect(status().isOk())
+                .andExpect(header().string("X-Robots-Tag", "noindex"))
+                .andExpect(jsonPath("$.data.id").value(created.id()))
+                .andExpect(jsonPath("$.data.ownerHandle").value(owner.handle()))
+                .andExpect(jsonPath("$.data.publicCode").value(created.publicCode()));
+        mockMvc.perform(get("/api/members/{handle}/portfolios/{code}/artworks", owner.handle(), created.publicCode()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items").isEmpty());
+    }
+
+    @Test
+    void 공개_주소와_ID_작품_상세_응답에_현재_handle과_코드가_담긴다() throws Exception {
+        MemberInfo author = memberService.register(uniqueEmail(), uniqueHandle(), "공개작품");
+        String token = jwtProvider.generateAccessToken(author.id(), author.loginEmail());
+        String name = UUID.randomUUID().toString();
+        String key = "raw/" + keySigner.sign(author.id(), name) + "/" + name + ".png";
+        ArtworkInfo uploaded = artworkService.uploadArtwork(author.id(), new UploadArtworkCommand(
+                List.of(key), 0, null, ImageLayoutType.VERTICAL_SCROLL,
+                "작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
+                List.of(), List.of(), null, List.of(),
+                AgeRating.ALL, List.of(Language.KO), true, List.of(), List.of(), null, null, List.of(), List.of()));
+
+        // 처리 중(PROCESSING) 작품은 본인만 열람할 수 있어 작성자 토큰으로 조회한다.
+        mockMvc.perform(get("/api/members/{handle}/artworks/{code}", author.handle().toUpperCase(), uploaded.publicCode())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(uploaded.id()))
+                .andExpect(jsonPath("$.data.authorHandle").value(author.handle()))
+                .andExpect(jsonPath("$.data.publicCode").value(uploaded.publicCode()));
+        mockMvc.perform(get("/api/artworks/{artworkId}", uploaded.id())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.authorHandle").value(author.handle()))
+                .andExpect(jsonPath("$.data.publicCode").value(uploaded.publicCode()));
     }
 
     // ─── 헬퍼 ──────────────────────────────────────────────────────────

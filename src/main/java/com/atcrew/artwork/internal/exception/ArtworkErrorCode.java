@@ -37,6 +37,8 @@ public enum ArtworkErrorCode {
     BOOKMARK_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 북마크한 작품입니다"),
     BOOKMARK_NOT_FOUND(HttpStatus.NOT_FOUND, "북마크를 찾을 수 없습니다"),
     PRESIGN_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "업로드 URL 생성에 실패했습니다"),
+    // 6자 공개 코드 발급 실패 — 사전 조회 재추첨 3회 소진 또는 사전 조회 뒤 동시 경쟁으로 UNIQUE 위반(member-handle-design §3.2)
+    PUBLIC_CODE_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "작품 주소 생성에 실패했습니다"),
     INVALID_CURSOR(HttpStatus.BAD_REQUEST, "유효하지 않은 커서 값입니다"),
     INVALID_SIZE(HttpStatus.BAD_REQUEST, "size는 0 이상이어야 합니다"),
     // 작품 열람 기록의 X-Anonymous-Id 헤더(홈-R14) — FE가 발급한 익명 UUID가 아니면 dedup 키로 쓸 수 없다

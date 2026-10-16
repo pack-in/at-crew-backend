@@ -16,8 +16,6 @@ public interface MemberRepository extends JpaRepository<Member, String>, JpaSpec
 
     Optional<Member> findByHandle(String handle);
 
-    boolean existsByHandle(String handle);
-
     // (loginEmail, authProvider) 복합 키 조회
     Optional<Member> findByLoginEmailAndAuthProvider(String loginEmail, AuthProvider authProvider);
 

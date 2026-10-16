@@ -22,13 +22,17 @@ class PortfolioMapper {
 
     // itemCount는 엔티티 캐시 값이 아니라 서비스가 계산해 넘긴다 — 고정형은 운영 차단된 스냅샷을 빼야 하고,
     // 차단은 이벤트를 발행하지 않아 캐시에 반영되지 않기 때문이다(마이페이지_작가-R39).
-    static PortfolioInfo toInfo(Portfolio portfolio, int itemCount, List<PortfolioArtworkCardInfo> artworks) {
+    // ownerHandle도 서비스가 넘긴다 — 소유자의 현재 handle은 member 모듈 조회가 필요하다.
+    static PortfolioInfo toInfo(Portfolio portfolio, String ownerHandle, int itemCount,
+                                List<PortfolioArtworkCardInfo> artworks) {
         return new PortfolioInfo(
                 portfolio.getId(),
                 portfolio.getKind(),
                 portfolio.getReflectionType(),
                 portfolio.getTitle(),
                 portfolio.getShareSlug(),
+                ownerHandle,
+                portfolio.getPublicCode(),
                 itemCount,
                 artworks,
                 portfolio.getCreatedAt(),
@@ -37,7 +41,7 @@ class PortfolioMapper {
     }
 
     // 커버 썸네일은 별도 조회가 필요하므로 서비스 레이어에서 채워 넘긴다(toInfo의 artworks와 동일한 형태).
-    static PortfolioSummaryInfo toSummaryInfo(Portfolio portfolio, int itemCount,
+    static PortfolioSummaryInfo toSummaryInfo(Portfolio portfolio, String ownerHandle, int itemCount,
                                               List<PortfolioCoverThumbnailInfo> coverThumbnails) {
         return new PortfolioSummaryInfo(
                 portfolio.getId(),
@@ -45,6 +49,8 @@ class PortfolioMapper {
                 portfolio.getReflectionType(),
                 portfolio.getTitle(),
                 portfolio.getShareSlug(),
+                ownerHandle,
+                portfolio.getPublicCode(),
                 itemCount,
                 coverThumbnails,
                 portfolio.getCreatedAt(),
@@ -68,6 +74,7 @@ class PortfolioMapper {
         return new PortfolioArtworkCardInfo(
                 artwork.id(),
                 null,                       // 최신 반영형 카드는 스냅샷이 없다
+                artwork.publicCode(),
                 artwork.title(),
                 thumbnail.thumbKey(),
                 thumbnail.thumbAdultKey(),
@@ -94,6 +101,7 @@ class PortfolioMapper {
         return new PortfolioArtworkCardInfo(
                 null,
                 snapshot.getSnapshotPublicId(),
+                null,                       // 원본 주소를 노출하지 않는다 — artworkId와 같은 이유
                 snapshot.getTitle(),
                 snapshot.getThumbKey(),
                 snapshot.getThumbAdultKey(),

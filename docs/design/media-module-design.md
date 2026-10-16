@@ -264,6 +264,11 @@ public record MediaAssetProcessedEvent(MediaOwnerType ownerType, String ownerId,
 기록은 인스턴스 메모리에만 둔다. 앱을 2대로 늘리면 인스턴스마다 따로 세므로 실효 한도가 대수만큼 커진다
 (`ha-expansion-path.md`) — 그때는 공유 저장소로 옮긴다.
 
+재기동하면 기록이 비워진다. 재기동은 배포나 장애 재시작(`restart: always`)으로 일어나고 요청자가 원하는 때 일으킬
+수 없으므로, 재기동 한 번에 창 하나 동안 한도만큼 더 받을 수 있는 정도다. 배포가 주 1회 수준인 동안은 감수하기로
+했다(#216). 배포가 하루 여러 번으로 잦아지거나
+앱을 2대로 늘리면 `LoginAttemptLimiter`처럼 DB 카운터로 옮긴다.
+
 **등록되지 않은 원본 회수**: `UnregisteredRawCleanupScheduler`가 6시간마다 `raw/` 아래에서 일정 시간(기본
 2일) 이상 지난 객체를 훑어, media 자산에도 없고 어떤 참조처도 쓰지 않는 것을 정리한다.
 

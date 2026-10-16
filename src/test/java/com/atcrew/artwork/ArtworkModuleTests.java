@@ -1199,7 +1199,7 @@ class ArtworkModuleTests {
         return memberService.register(new RegisterMemberCommand(
                 "lang-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12) + "@atcrew.com",
                 "언어작가", AuthProvider.EMAIL, "Secure1!",
-                true, true, true, false, "Asia/Seoul", "KR", primaryLanguage)).id();
+                true, true, true, false, "Asia/Seoul", "KR", primaryLanguage, null)).id();
     }
 
     private ArtworkInfo uploadMinimal(String memberId, String... imageKeys) {

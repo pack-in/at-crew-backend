@@ -106,7 +106,7 @@ class SearchServiceImplTest {
     }
 
     private ArtworkSearchDocument artworkDoc(String id, long createdAtMillis) {
-        return new ArtworkSearchDocument(id, "title", "desc", List.of(), "author-1", "작가", "handle",
+        return new ArtworkSearchDocument(id, "title", "desc", List.of(), "author-1", "작가", "handle", "abc123",
                 null, null, null, java.util.List.of(), List.of(), List.of(), List.of(), null, null,
                 Instant.ofEpochMilli(createdAtMillis), Instant.ofEpochMilli(createdAtMillis));
     }

@@ -170,7 +170,9 @@ class PortfolioServiceTests {
 
         assertThat(created.kind()).isEqualTo(PortfolioKind.SHARED);
         assertThat(created.reflectionType()).isEqualTo(ReflectionType.LIVE);
-        assertThat(created.shareSlug()).isNotBlank().hasSize(22);
+        // 6자 공개 코드와 함께 전환기 slug도 받는다(member-handle-design §3.3).
+        assertThat(created.shareSlug()).matches("^[A-Za-z0-9_-]{22}$");
+        assertThat(portfolioRepository.findById(created.id()).orElseThrow().getPublicCode()).matches("^[a-z0-9]{6}$");
         assertThat(created.itemCount()).isEqualTo(2);
         assertThat(created.artworks()).extracting(PortfolioArtworkCardInfo::artworkId)
                 .containsExactly(artworkId, secondArtworkId);
@@ -222,7 +224,9 @@ class PortfolioServiceTests {
                 memberId, "고정형", ReflectionType.SNAPSHOT, List.of(artworkId, secondArtworkId));
 
         assertThat(created.reflectionType()).isEqualTo(ReflectionType.SNAPSHOT);
-        assertThat(created.shareSlug()).isNotBlank().hasSize(22);
+        // 6자 공개 코드와 함께 전환기 slug도 받는다(member-handle-design §3.3).
+        assertThat(created.shareSlug()).matches("^[A-Za-z0-9_-]{22}$");
+        assertThat(portfolioRepository.findById(created.id()).orElseThrow().getPublicCode()).matches("^[a-z0-9]{6}$");
         assertThat(created.itemCount()).isEqualTo(2);
         // 고정형 카드는 원본 작품 ID 대신 스냅샷 ID를 노출한다(마이페이지_작가-R39, PH-01).
         assertThat(created.artworks())
@@ -796,7 +800,7 @@ class PortfolioServiceTests {
 
         blockArtwork(blockedArtworkId);
 
-        assertThat(portfolioService.getSharedPortfolioArtworks(created.shareSlug(), null, 20).items())
+        assertThat(portfolioService.getSharedPortfolioArtworks(legacySlug(created.id()), null, 20).items())
                 .extracting(PortfolioArtworkCardInfo::artworkId)
                 .containsExactly(keptArtworkId);
         assertThat(findSummary(memberId, created.id()).coverThumbnails())
@@ -825,8 +829,8 @@ class PortfolioServiceTests {
         assertThat(findSummary(memberId, created.id()).coverThumbnails())
                 .extracting(PortfolioCoverThumbnailInfo::thumbKey)
                 .containsExactly("thumb-1");
-        assertThat(portfolioService.getSharedPortfolio(created.shareSlug()).itemCount()).isEqualTo(1);
-        assertThat(portfolioService.getSharedPortfolioArtworks(created.shareSlug(), null, 20).items())
+        assertThat(portfolioService.getSharedPortfolio(legacySlug(created.id())).itemCount()).isEqualTo(1);
+        assertThat(portfolioService.getSharedPortfolioArtworks(legacySlug(created.id()), null, 20).items())
                 .extracting(PortfolioArtworkCardInfo::snapshotId)
                 .containsExactly(keptSnapshotId);
     }
@@ -843,18 +847,18 @@ class PortfolioServiceTests {
         PortfolioInfo created = portfolioService.createShared(owner, "공유 포트폴리오", ReflectionType.LIVE,
                 List.of(allArtworkId, r18ArtworkId));
 
-        assertThat(portfolioService.getSharedPortfolioArtworks(created.shareSlug(), null, 20, viewer).items())
+        assertThat(portfolioService.getSharedPortfolioArtworks(legacySlug(created.id()), null, 20, viewer).items())
                 .extracting(PortfolioArtworkCardInfo::artworkId)
                 .containsExactly(allArtworkId);
 
         // 소유자 본인 조회는 표시 설정과 무관하게 항상 노출된다(마이페이지_작가-R21).
-        assertThat(portfolioService.getSharedPortfolioArtworks(created.shareSlug(), null, 20, owner).items())
+        assertThat(portfolioService.getSharedPortfolioArtworks(legacySlug(created.id()), null, 20, owner).items())
                 .extracting(PortfolioArtworkCardInfo::artworkId)
                 .containsExactlyInAnyOrder(allArtworkId, r18ArtworkId);
 
         // 표시 ON이면 필터가 걸리지 않는다.
         memberService.updateAdultContentVisible(viewer, true);
-        assertThat(portfolioService.getSharedPortfolioArtworks(created.shareSlug(), null, 20, viewer).items())
+        assertThat(portfolioService.getSharedPortfolioArtworks(legacySlug(created.id()), null, 20, viewer).items())
                 .extracting(PortfolioArtworkCardInfo::artworkId)
                 .containsExactlyInAnyOrder(allArtworkId, r18ArtworkId);
     }
@@ -870,12 +874,12 @@ class PortfolioServiceTests {
         PortfolioInfo created = portfolioService.createShared(owner, "고정형", ReflectionType.SNAPSHOT,
                 List.of(allArtworkId, g18ArtworkId));
 
-        assertThat(portfolioService.getSharedPortfolioArtworks(created.shareSlug(), null, 20, viewer).items())
+        assertThat(portfolioService.getSharedPortfolioArtworks(legacySlug(created.id()), null, 20, viewer).items())
                 .hasSize(1)
                 .extracting(PortfolioArtworkCardInfo::snapshotId)
                 .containsExactly(created.artworks().getFirst().snapshotId());
 
-        assertThat(portfolioService.getSharedPortfolioArtworks(created.shareSlug(), null, 20, owner).items())
+        assertThat(portfolioService.getSharedPortfolioArtworks(legacySlug(created.id()), null, 20, owner).items())
                 .hasSize(2);
     }
 
@@ -991,7 +995,7 @@ class PortfolioServiceTests {
         PortfolioInfo created = portfolioService.createShared(
                 memberId, "공유 포트폴리오", ReflectionType.LIVE, List.of(fillerArtworkId, artworkId));
 
-        PortfolioSharedInfo shared = portfolioService.getSharedPortfolio(created.shareSlug());
+        PortfolioSharedInfo shared = portfolioService.getSharedPortfolio(legacySlug(created.id()));
 
         assertThat(shared.id()).isEqualTo(created.id());
         assertThat(shared.kind()).isEqualTo(PortfolioKind.SHARED);
@@ -999,7 +1003,7 @@ class PortfolioServiceTests {
         assertThat(shared.title()).isEqualTo("공유 포트폴리오");
         assertThat(shared.ownerName()).isEqualTo("작가");
         assertThat(shared.itemCount()).isEqualTo(2);
-        assertThat(portfolioService.getSharedPortfolioArtworks(created.shareSlug(), null, 20).items())
+        assertThat(portfolioService.getSharedPortfolioArtworks(legacySlug(created.id()), null, 20).items())
                 .extracting(PortfolioArtworkCardInfo::artworkId)
                 .containsExactly(fillerArtworkId, artworkId);
     }
@@ -1014,7 +1018,7 @@ class PortfolioServiceTests {
         PortfolioInfo created = portfolioService.createShared(
                 memberId, "공유", ReflectionType.LIVE, List.of(older, newest));
 
-        assertThat(portfolioService.getSharedPortfolio(created.shareSlug()).ogImageKey())
+        assertThat(portfolioService.getSharedPortfolio(legacySlug(created.id())).ogImageKey())
                 .isEqualTo("og-adult/" + newest + ".jpg");
     }
 
@@ -1028,7 +1032,7 @@ class PortfolioServiceTests {
 
         portfolioService.addArtworks(memberId, created.id(), List.of(older));
 
-        assertThat(portfolioService.getSharedPortfolio(created.shareSlug()).ogImageKey())
+        assertThat(portfolioService.getSharedPortfolio(legacySlug(created.id())).ogImageKey())
                 .isEqualTo("og/" + newest + ".jpg");
     }
 
@@ -1042,7 +1046,7 @@ class PortfolioServiceTests {
                 memberId, "공유", ReflectionType.LIVE, List.of(feedPrivate, blocked, processing));
         blockArtwork(blocked);
 
-        assertThat(portfolioService.getSharedPortfolio(created.shareSlug()).ogImageKey())
+        assertThat(portfolioService.getSharedPortfolio(legacySlug(created.id())).ogImageKey())
                 .isEqualTo("og/" + feedPrivate + ".jpg");
     }
 
@@ -1065,12 +1069,12 @@ class PortfolioServiceTests {
         artworkService.updateArtwork(memberId, older, new UpdateArtworkCommand(null, null, null, null, null,
                 null, null, null, null, null, null, null, AgeRating.ALL, null, null, null, null, null, null));
 
-        assertThat(portfolioService.getSharedPortfolio(created.shareSlug()).ogImageKey())
+        assertThat(portfolioService.getSharedPortfolio(legacySlug(created.id())).ogImageKey())
                 .isEqualTo("og/" + newest + ".jpg");
 
         blockSnapshotsOf(newest);
 
-        assertThat(portfolioService.getSharedPortfolio(created.shareSlug()).ogImageKey())
+        assertThat(portfolioService.getSharedPortfolio(legacySlug(created.id())).ogImageKey())
                 .isEqualTo("og-adult/" + older + ".jpg");
     }
 
@@ -1082,7 +1086,7 @@ class PortfolioServiceTests {
         PortfolioInfo created = portfolioService.createShared(
                 memberId, "고정형", ReflectionType.SNAPSHOT, List.of(artworkId));
 
-        assertThat(portfolioService.getSharedPortfolio(created.shareSlug()).ogImageKey()).isNull();
+        assertThat(portfolioService.getSharedPortfolio(legacySlug(created.id())).ogImageKey()).isNull();
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM portfolio_snapshot_media_keys k JOIN portfolio_item_snapshots s ON s.id = k.snapshot_id"
                         + " WHERE s.portfolio_id = ? AND k.media_key LIKE 'og%'", Integer.class, created.id())).isZero();
@@ -1127,7 +1131,7 @@ class PortfolioServiceTests {
                 .containsExactly(shared.id());
     }
 
-    // 탈퇴 회원은 handle이 클리어되므로 해석 자체가 실패한다 — 작가 페이지가 새로 생기면 안 된다.
+    // 탈퇴 회원의 handle은 원장에 남아 410 탈퇴 안내로 끝난다(member-handle-design §2.1) — 작가 페이지가 새로 생기면 안 된다.
     @Test
     void 탈퇴한_회원의_handle로는_작가_페이지가_생성되지_않는다() {
         String memberId = registerMember();
@@ -1136,9 +1140,11 @@ class PortfolioServiceTests {
         memberService.deactivate(memberId);
 
         assertThatThrownBy(() -> portfolioService.getSharedPortfolio(handle))
-                .isInstanceOf(PortfolioException.class)
-                .extracting(e -> ((DomainException) e).getStatus())
-                .isEqualTo(HttpStatus.NOT_FOUND);
+                .isInstanceOf(DomainException.class)
+                .satisfies(e -> {
+                    assertThat(((DomainException) e).getCode()).isEqualTo("MEMBER_WITHDRAWN");
+                    assertThat(((DomainException) e).getStatus()).isEqualTo(HttpStatus.GONE);
+                });
         assertThat(portfolioRepository.findByOwnerMemberIdAndKind(memberId, PortfolioKind.ARTIST_PAGE)).isEmpty();
     }
 
@@ -1155,8 +1161,8 @@ class PortfolioServiceTests {
 
         memberService.updateName(memberId, "바뀐 이름");
 
-        assertThat(portfolioService.getSharedPortfolio(snapshot.shareSlug()).ownerName()).isEqualTo("작가");
-        assertThat(portfolioService.getSharedPortfolio(live.shareSlug()).ownerName()).isEqualTo("바뀐 이름");
+        assertThat(portfolioService.getSharedPortfolio(legacySlug(snapshot.id())).ownerName()).isEqualTo("작가");
+        assertThat(portfolioService.getSharedPortfolio(legacySlug(live.id())).ownerName()).isEqualTo("바뀐 이름");
     }
 
     @Test
@@ -1179,11 +1185,11 @@ class PortfolioServiceTests {
         memberService.deactivate(memberId);
         awaitBlocked(created.id());
 
-        assertThatThrownBy(() -> portfolioService.getSharedPortfolio(created.shareSlug()))
+        assertThatThrownBy(() -> portfolioService.getSharedPortfolio(legacySlug(created.id())))
                 .isInstanceOf(PortfolioException.class)
                 .extracting(e -> ((DomainException) e).getCode())
                 .isEqualTo("PORTFOLIO_BLOCKED");
-        assertThatThrownBy(() -> portfolioService.getSharedPortfolioArtworks(created.shareSlug(), null, 20))
+        assertThatThrownBy(() -> portfolioService.getSharedPortfolioArtworks(legacySlug(created.id()), null, 20))
                 .isInstanceOf(PortfolioException.class)
                 .extracting(e -> ((DomainException) e).getStatus())
                 .isEqualTo(HttpStatus.GONE);
@@ -1213,9 +1219,10 @@ class PortfolioServiceTests {
     void 소유자를_확인할_수_없는_포트폴리오는_열람_시점에_차단된다() {
         Portfolio orphan = portfolioRepository.save(Portfolio.createShared(
                 UUID.randomUUID().toString(), ReflectionType.LIVE, "주인 없는 포트폴리오",
-                UUID.randomUUID().toString().replace("-", "").substring(0, 22)));
+                UUID.randomUUID().toString().substring(0, 6), null));
+        String slug = legacySlug(orphan.getId());
 
-        assertThatThrownBy(() -> portfolioService.getSharedPortfolio(orphan.getShareSlug()))
+        assertThatThrownBy(() -> portfolioService.getSharedPortfolio(slug))
                 .isInstanceOf(PortfolioException.class)
                 .extracting(e -> ((DomainException) e).getCode())
                 .isEqualTo("PORTFOLIO_BLOCKED");
@@ -1241,7 +1248,7 @@ class PortfolioServiceTests {
         memberService.updateName(memberId, "바뀐 이름");
 
         PortfolioSnapshotDetailInfo detail =
-                portfolioService.getSharedSnapshotDetail(created.shareSlug(), snapshotId);
+                portfolioService.getSharedSnapshotDetail(legacySlug(created.id()), snapshotId);
 
         assertThat(detail.snapshotId()).isEqualTo(snapshotId);
         assertThat(detail.title()).isEqualTo("작품");
@@ -1269,7 +1276,7 @@ class PortfolioServiceTests {
                 memberId, "최신 반영형", ReflectionType.LIVE, List.of(artworkId, fillerArtworkId));
         String snapshotId = snapshot.artworks().getFirst().snapshotId();
 
-        assertThatThrownBy(() -> portfolioService.getSharedSnapshotDetail(live.shareSlug(), snapshotId))
+        assertThatThrownBy(() -> portfolioService.getSharedSnapshotDetail(legacySlug(live.id()), snapshotId))
                 .isInstanceOf(PortfolioException.class)
                 .extracting(e -> ((DomainException) e).getStatus())
                 .isEqualTo(HttpStatus.NOT_FOUND);
@@ -1288,7 +1295,7 @@ class PortfolioServiceTests {
 
         String firstSnapshotId = first.artworks().getFirst().snapshotId();
         assertThat(second.artworks().getFirst().snapshotId()).isNotEqualTo(firstSnapshotId);
-        assertThatThrownBy(() -> portfolioService.getSharedSnapshotDetail(second.shareSlug(), firstSnapshotId))
+        assertThatThrownBy(() -> portfolioService.getSharedSnapshotDetail(legacySlug(second.id()), firstSnapshotId))
                 .isInstanceOf(PortfolioException.class)
                 .extracting(e -> ((DomainException) e).getCode())
                 .isEqualTo("PORTFOLIO_NOT_FOUND");
@@ -1306,7 +1313,7 @@ class PortfolioServiceTests {
 
         blockSnapshotsOf(artworkId);
 
-        assertThatThrownBy(() -> portfolioService.getSharedSnapshotDetail(created.shareSlug(), snapshotId))
+        assertThatThrownBy(() -> portfolioService.getSharedSnapshotDetail(legacySlug(created.id()), snapshotId))
                 .isInstanceOf(PortfolioException.class)
                 .extracting(e -> ((DomainException) e).getStatus())
                 .isEqualTo(HttpStatus.NOT_FOUND);
@@ -1321,10 +1328,11 @@ class PortfolioServiceTests {
         PortfolioInfo created = portfolioService.createShared(
                 memberId, "고정형", ReflectionType.SNAPSHOT, List.of(artworkId, fillerArtworkId));
         String snapshotId = created.artworks().getFirst().snapshotId();
+        String slug = legacySlug(created.id());   // 행이 지워지기 전에 붙여 둔다
 
         portfolioService.deletePortfolio(memberId, created.id());
 
-        assertThatThrownBy(() -> portfolioService.getSharedSnapshotDetail(created.shareSlug(), snapshotId))
+        assertThatThrownBy(() -> portfolioService.getSharedSnapshotDetail(slug, snapshotId))
                 .isInstanceOf(PortfolioException.class)
                 .extracting(e -> ((DomainException) e).getStatus())
                 .isEqualTo(HttpStatus.NOT_FOUND);
@@ -1343,7 +1351,7 @@ class PortfolioServiceTests {
         memberService.deactivate(memberId);
         awaitBlocked(created.id());
 
-        assertThatThrownBy(() -> portfolioService.getSharedSnapshotDetail(created.shareSlug(), snapshotId))
+        assertThatThrownBy(() -> portfolioService.getSharedSnapshotDetail(legacySlug(created.id()), snapshotId))
                 .isInstanceOf(PortfolioException.class)
                 .extracting(e -> ((DomainException) e).getStatus())
                 .isEqualTo(HttpStatus.GONE);
@@ -1365,14 +1373,14 @@ class PortfolioServiceTests {
                 "{\"description\":\"옛 설명\"}", snapshotId);
 
         PortfolioSnapshotDetailInfo detail =
-                portfolioService.getSharedSnapshotDetail(created.shareSlug(), snapshotId);
+                portfolioService.getSharedSnapshotDetail(legacySlug(created.id()), snapshotId);
 
         assertThat(detail.description()).isEqualTo("옛 설명");
         assertThat(detail.images()).isEmpty();
         assertThat(detail.tags()).isEmpty();
         assertThat(detail.representativeImageIndex()).isZero();
         // 카드 목록도 roles가 없는 구버전 행을 빈 목록으로 내려준다.
-        assertThat(portfolioService.getSharedPortfolioArtworks(created.shareSlug(), null, 20).items())
+        assertThat(portfolioService.getSharedPortfolioArtworks(legacySlug(created.id()), null, 20).items())
                 .extracting(PortfolioArtworkCardInfo::roles)
                 .containsExactly(List.of(), List.of(ArtworkRole.LINEART));
     }
@@ -1392,7 +1400,7 @@ class PortfolioServiceTests {
                 null, null, null, null, null, null, null, null,
                 List.of(ArtworkRole.COLORING), null, null, null, null, null, null, null, null, null, null));
 
-        assertThat(portfolioService.getSharedPortfolioArtworks(created.shareSlug(), null, 20).items())
+        assertThat(portfolioService.getSharedPortfolioArtworks(legacySlug(created.id()), null, 20).items())
                 .extracting(PortfolioArtworkCardInfo::artworkId, PortfolioArtworkCardInfo::roles)
                 .containsExactly(tuple(firstArtworkId, List.of(ArtworkRole.LINEART)),
                         tuple(secondArtworkId, List.of(ArtworkRole.COLORING)));
@@ -1414,7 +1422,7 @@ class PortfolioServiceTests {
                 null, null, null, null, null, null, null, null,
                 List.of(ArtworkRole.COLORING), null, null, null, null, null, null, null, null, null, null));
 
-        assertThat(portfolioService.getSharedPortfolioArtworks(created.shareSlug(), null, 20).items())
+        assertThat(portfolioService.getSharedPortfolioArtworks(legacySlug(created.id()), null, 20).items())
                 .extracting(PortfolioArtworkCardInfo::roles)
                 .containsExactly(List.of(ArtworkRole.LINEART), List.of(ArtworkRole.LINEART));
         assertThat(portfolioService.getPortfolio(memberId, created.id()).artworks())
@@ -1437,7 +1445,7 @@ class PortfolioServiceTests {
                 "UPDATE portfolio_item_snapshots SET payload_json = ? WHERE snapshot_public_id = ?",
                 "{\"roles\":[\"REMOVED_ROLE\",\"COLORING\"]}", snapshotId);
 
-        assertThat(portfolioService.getSharedPortfolioArtworks(created.shareSlug(), null, 20).items())
+        assertThat(portfolioService.getSharedPortfolioArtworks(legacySlug(created.id()), null, 20).items())
                 .extracting(PortfolioArtworkCardInfo::roles)
                 .containsExactly(List.of(ArtworkRole.COLORING), List.of(ArtworkRole.LINEART));
         assertThat(portfolioService.getPortfolio(memberId, created.id()).artworks())
@@ -1455,7 +1463,7 @@ class PortfolioServiceTests {
                 List.of(firstArtworkId, secondArtworkId, thirdArtworkId));
 
         CursorPage<PortfolioArtworkCardInfo> firstPage =
-                portfolioService.getSharedPortfolioArtworks(created.shareSlug(), null, 2);
+                portfolioService.getSharedPortfolioArtworks(legacySlug(created.id()), null, 2);
 
         assertThat(firstPage.items())
                 .extracting(PortfolioArtworkCardInfo::artworkId)
@@ -1464,7 +1472,7 @@ class PortfolioServiceTests {
         assertThat(firstPage.nextCursor()).isEqualTo("1");
 
         CursorPage<PortfolioArtworkCardInfo> secondPage =
-                portfolioService.getSharedPortfolioArtworks(created.shareSlug(), firstPage.nextCursor(), 2);
+                portfolioService.getSharedPortfolioArtworks(legacySlug(created.id()), firstPage.nextCursor(), 2);
 
         assertThat(secondPage.items())
                 .extracting(PortfolioArtworkCardInfo::artworkId)
@@ -1488,7 +1496,7 @@ class PortfolioServiceTests {
         artworkService.deleteArtwork(memberId, artworkIds.get(2));
 
         CursorPage<PortfolioArtworkCardInfo> firstPage =
-                portfolioService.getSharedPortfolioArtworks(created.shareSlug(), null, 2);
+                portfolioService.getSharedPortfolioArtworks(legacySlug(created.id()), null, 2);
 
         assertThat(firstPage.items())
                 .extracting(PortfolioArtworkCardInfo::artworkId)
@@ -1496,7 +1504,7 @@ class PortfolioServiceTests {
         assertThat(firstPage.hasNext()).isTrue();
 
         CursorPage<PortfolioArtworkCardInfo> secondPage =
-                portfolioService.getSharedPortfolioArtworks(created.shareSlug(), firstPage.nextCursor(), 2);
+                portfolioService.getSharedPortfolioArtworks(legacySlug(created.id()), firstPage.nextCursor(), 2);
 
         assertThat(secondPage.items())
                 .extracting(PortfolioArtworkCardInfo::artworkId)
@@ -1516,7 +1524,7 @@ class PortfolioServiceTests {
         artworkService.deleteArtwork(memberId, artworkIds.get(2));
 
         CursorPage<PortfolioArtworkCardInfo> page =
-                portfolioService.getSharedPortfolioArtworks(created.shareSlug(), null, 2);
+                portfolioService.getSharedPortfolioArtworks(legacySlug(created.id()), null, 2);
 
         assertThat(page.items())
                 .extracting(PortfolioArtworkCardInfo::artworkId)
@@ -1537,7 +1545,7 @@ class PortfolioServiceTests {
         String imageKey = signedKey(memberId, UUID.randomUUID().toString());
         String artworkId = uploadWithSelection(memberId, true, List.of(created.id()), imageKey);
 
-        assertThat(portfolioService.getSharedPortfolioArtworks(created.shareSlug(), null, 20).items())
+        assertThat(portfolioService.getSharedPortfolioArtworks(legacySlug(created.id()), null, 20).items())
                 .extracting(PortfolioArtworkCardInfo::artworkId)
                 .containsExactly(fillerArtworkId1, fillerArtworkId2);
         // 본인 화면에서는 처리 중에도 구성에 담긴 것으로 보인다.
@@ -1549,7 +1557,7 @@ class PortfolioServiceTests {
                 "thumb", null, "avif", MediaProcessingStatus.DONE);
         awaitReady(memberId, artworkId);
 
-        assertThat(portfolioService.getSharedPortfolioArtworks(created.shareSlug(), null, 20).items())
+        assertThat(portfolioService.getSharedPortfolioArtworks(legacySlug(created.id()), null, 20).items())
                 .extracting(PortfolioArtworkCardInfo::artworkId)
                 .containsExactly(fillerArtworkId1, fillerArtworkId2, artworkId);
     }
@@ -1572,7 +1580,7 @@ class PortfolioServiceTests {
         trashedArtworkIds.forEach(artworkId -> artworkService.deleteArtwork(memberId, artworkId));
 
         CursorPage<PortfolioArtworkCardInfo> firstPage =
-                portfolioService.getSharedPortfolioArtworks(created.shareSlug(), null, 1);
+                portfolioService.getSharedPortfolioArtworks(legacySlug(created.id()), null, 1);
 
         // 상한에 걸려 카드는 못 채웠지만 남은 구간을 감추지 않는다.
         assertThat(firstPage.items()).isEmpty();
@@ -1582,7 +1590,7 @@ class PortfolioServiceTests {
         String cursor = firstPage.nextCursor();
         for (int page = 0; page < 10 && cursor != null; page++) {
             CursorPage<PortfolioArtworkCardInfo> next =
-                    portfolioService.getSharedPortfolioArtworks(created.shareSlug(), cursor, 1);
+                    portfolioService.getSharedPortfolioArtworks(legacySlug(created.id()), cursor, 1);
             next.items().forEach(card -> collected.add(card.artworkId()));
             cursor = next.nextCursor();
         }
@@ -1989,6 +1997,22 @@ class PortfolioServiceTests {
         assertThat(portfolioItemRepository.findByPortfolioIdOrderByOrdinal(created.id()))
                 .extracting(PortfolioItem::getArtworkId)
                 .containsExactly(baseArtworkId, fillerArtworkId);
+    }
+
+    /**
+     * 옛 공유 링크 slug를 붙여 돌려준다. 신규 slug 발급이 중단돼(member-handle-design §3.3) 새 포트폴리오에는 slug가
+     * 없다. 새 주소(/{handle}/portfolio/{code}) 조회는 PortfolioPublicAddressTests가 검증하고, 이 테스트의 공유 열람
+     * 검증은 옛 링크용으로 유지되는 slug 조회 경로로 한다. 이미 붙어 있으면 그 값을 그대로 쓴다.
+     */
+    private String legacySlug(String portfolioId) {
+        String existing = jdbcTemplate.queryForObject(
+                "SELECT share_slug FROM portfolios WHERE id = ?", String.class, portfolioId);
+        if (existing != null) {
+            return existing;
+        }
+        String slug = UUID.randomUUID().toString().replace("-", "").substring(0, 22);
+        jdbcTemplate.update("UPDATE portfolios SET share_slug = ? WHERE id = ?", slug, portfolioId);
+        return slug;
     }
 
     private String registerMember() {

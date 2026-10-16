@@ -19,7 +19,7 @@
 | 순환 의존 | `portfolio → artwork`는 필요(작품 검증·조회)하지만 `artwork → portfolio`(완전 비공개 판정)는 순환이 된다 → `artworks.portfolio_included` 비정규화 컬럼을 두고 portfolio가 같은 트랜잭션에서 동기 갱신하는 방식으로 끊는다(§4.1) |
 | 유형 | 작가 페이지(`ARTIST_PAGE`, 회원당 1개, 전 플랜) / 공유(`SHARED`, 프로 전용) — 공유는 다시 최신 반영형(`LIVE`)과 고정형(`SNAPSHOT`)으로 나뉜다. 유형 전환 불가, 복제만 가능 |
 | 스냅샷 저장 | 하이브리드 — 렌더 핵심 필드(제목·썸네일·연령등급 등)는 컬럼, 상세 본문은 `payload_json` 1컬럼(§2.3) |
-| 공유 링크 | `/portfolio/{id}` — 작가 페이지는 `member.handle`, 공유는 `SecureRandom` 기반 22자 slug. 조회는 slug 우선 → 없으면 handle |
+| 공유 링크 | ~~`/portfolio/{id}` — 작가 페이지는 `member.handle`, 공유는 `SecureRandom` 기반 22자 slug. 조회는 slug 우선 → 없으면 handle~~ **2026-10-15 [member-handle-design.md](member-handle-design.md)로 대체** — slug 신규 발급 중단, 옛 링크(`/portfolio/{handle\|slug}`) 해석만 유지. 새 주소는 작가 페이지 `/{handle}`, 공유 `/{handle}/portfolio/{6자 코드}` |
 | 미해결 리스크 | 고정형 스냅샷이 원본 R2 이미지 키를 그대로 참조 — 원본 영구삭제 시 이미지가 깨짐(§5). media retention 확장 PR(별도)로 해소 예정, 이번 설계는 알려진 제약으로 명시 |
 
 ---
@@ -219,6 +219,12 @@ CREATE TABLE portfolio_item_snapshots (
 **작가 페이지 포트폴리오는 가입 시 자동 생성하지 않는다.** 최초 조회·작품 추가 시 `getOrCreateArtistPage(memberId)`로 lazy 생성한다 — 기존 회원 backfill 마이그레이션이 불필요해진다.
 
 ### 2.6 공유 슬러그 생성
+
+> **2026-10-15 [member-handle-design.md](member-handle-design.md)로 대체됨 — slug 신규 발급 중단, 옛 링크 해석만 유지.**
+> 아래 서술(22자 slug 발급, `existsByHandle` 충돌 검사·재시도)은 설계 당시 기록으로 남기며 현재 코드에는 없다.
+> `ShareSlugGenerator`와 `MemberService.existsByHandle` 기반 검사는 제거됐고, 공유 포트폴리오는 소유자 안에서만 유일한
+> 6자 공개 코드(`portfolios.public_code`)를 받는다(member-handle-design §3). `portfolios.share_slug`는 옛 공유 링크
+> 해석 전용으로만 남는다.
 
 ```java
 byte[] buf = new byte[16];

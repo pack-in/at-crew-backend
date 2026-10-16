@@ -80,6 +80,6 @@ class CommonPropertiesSupplierTest {
                 id, "handle-" + id, null, null, "작가", null, List.of(), null, null, List.of(),
                 List.of(), null, null, List.of(), List.of(), List.of(), null, List.of(), null, null,
                 List.of(), 0, 0, null, null, null, List.of(), true, null, null, null, null,
-                null, null, Language.KO, List.of(), false, false);
+                null, null, Language.KO, List.of(), false, false, null);
     }
 }

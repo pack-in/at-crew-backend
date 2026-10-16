@@ -39,7 +39,8 @@
 - `POST /api/auth/google/login`, `POST /api/auth/google/register`
 - `POST /api/auth/refresh`
 - `POST /api/members` (prod 제외 — 개발용)
-- `GET /api/members/{handle}`
+- `GET /api/members/{handle}`, `GET /api/members/handles/availability`
+- `GET /api/members/{handle}/artworks/{code}`, `GET /api/members/{handle}/portfolios/{code}/**`
 - `GET /api/artworks/{artworkId}`
 - `GET /api/community/artworks`
 - `POST /internal/artwork/images/processed` (별도 `X-Internal-Secret` 헤더 검증)
@@ -146,7 +147,7 @@
 ```
 **필드 제약**:
 - `loginEmail`: `@NotBlank @Email`
-- `handle`: `@NotBlank`, 정규식 `^[a-zA-Z0-9_-]{3,30}$` (영문·숫자·_·- 3~30자)
+- `handle`: `@Size(max=50)` + `HandleValidator`(컨트롤러에서 검증) — 영문·숫자·밑줄(_) 4~14자, 연속 밑줄(`__`)·예약어 불가, 대소문자 무관 중복 불가 (member-handle-design §1.2)
 - `name`: `@NotBlank @Size(max=16)`
 
 **정상 응답 (201)**: `data`에 MemberInfo (id, handle, name 등).
@@ -155,10 +156,12 @@
 | 케이스 | 변경 값 | 예상 에러 코드 | HTTP |
 |--------|---------|--------------|------|
 | 이메일 형식 오류 | loginEmail: "notEmail" | COMMON_INVALID_INPUT | 400 |
-| 핸들 형식 오류 | handle: "ab" (3자 미만) | COMMON_INVALID_INPUT | 400 |
+| 핸들 형식 오류 | handle: "ab" (4자 미만) | HANDLE_TOO_SHORT | 400 |
+| 핸들 빈 값 | handle 생략·공백 | HANDLE_REQUIRED | 400 |
+| 핸들 예약어 | handle: "admin" | HANDLE_RESERVED | 400 |
 | 이름 길이 초과 | name: 17자 이상 | COMMON_INVALID_INPUT | 400 |
 | 이메일 중복 | 기존 loginEmail 재사용 | DUPLICATE_EMAIL | 409 |
-| 핸들 중복 | 기존 handle 재사용 | DUPLICATE_HANDLE | 409 |
+| 핸들 중복 | 기존(또는 탈퇴 회원이 쓰던) handle 재사용, 대소문자만 다른 값 포함 | DUPLICATE_HANDLE | 409 |
 
 ---
 
@@ -180,7 +183,8 @@
   "agreeMarketing": false,
   "timezone": "Asia/Seoul",
   "countryCode": "KR",
-  "primaryLanguage": "KO"
+  "primaryLanguage": "KO",
+  "handle": "Pack_1n"
 }
 ```
 **필드 제약**:
@@ -194,6 +198,7 @@
 - `agreeService`/`agreePrivacy`/`agreeThirdParty`: **셋 다 `true`여야 한다.**
   하나라도 빠지면 `TERMS_NOT_AGREED`로 거부된다(`Member.validateTerms`)
 - `agreeMarketing`: 선택
+- `handle`: 선택(전환기) — 영문·숫자·밑줄(_) 4~14자, 규칙은 위 1-0과 같음. 생략하면 서버가 `{이름부 ≤8자}_{숫자 5자리}`로 생성한다. 형식 오류는 `HANDLE_*`(400), 중복은 `DUPLICATE_HANDLE`(409). Google 가입(`/api/auth/google/register`)도 동일
 
 **정상 응답 (201)**:
 ```json
@@ -333,15 +338,55 @@
 
 **목적**: @핸들로 회원 프로필 조회.
 **인증**: 불필요 (공개)
-**Path Variable**: `handle` — 정규식 `^[a-zA-Z0-9_-]{3,30}$` (예: `creator_kim`)
+**Path Variable**: `handle` — 정규식 `^[A-Za-z0-9_-]{1,50}$` (예: `creator_kim`). 옛 handle(하이픈 포함·최대 30자)까지 받으며 새 규칙(4~14자)은 생성·변경 시에만 적용한다. 옛 handle이면 응답의 `handle`이 현재 값으로 내려온다
 
 **정상 응답 (200)**: `data`에 MemberProfileInfo (공개 프로필).
 
 **예외 케이스**:
 | 케이스 | 변경 값 | 예상 에러 코드 | HTTP |
 |--------|---------|--------------|------|
-| 핸들 형식 오류 | handle: "ab" | COMMON_INVALID_INPUT | 400 |
-| 존재하지 않는 회원 | 없는 handle | MEMBER_NOT_FOUND | 404 |
+| 핸들 형식 오류 | handle: "a b"(허용 외 문자) | COMMON_INVALID_INPUT | 400 |
+| 존재하지 않는 회원 | 한 번도 쓰인 적 없는 handle | MEMBER_NOT_FOUND | 404 |
+| 탈퇴한 회원 | 탈퇴 회원이 쓰던 handle | MEMBER_WITHDRAWN | 410 |
+
+---
+
+### 2-1a. 사용자 아이디 사전 확인 [GET /api/members/handles/availability?handle=]
+
+**목적**: 가입·설정 화면의 사용 가능 여부 확인. **인증**: 선택 (토큰이 있으면 본인이 소유한 현재·옛 handle은 사용 가능으로 판정)
+
+**정상 응답 (200)**: `{ "available": true, "errorCode": null }`. 사용 불가여도 200이며 `errorCode`에 `HANDLE_REQUIRED`·`HANDLE_TOO_SHORT`·`HANDLE_TOO_LONG`·`HANDLE_INVALID_CHARACTERS`·`HANDLE_CONSECUTIVE_UNDERSCORES`·`HANDLE_RESERVED`·`DUPLICATE_HANDLE` 중 하나가 담긴다.
+
+**예외 케이스**: handle이 50자 초과 → COMMON_INVALID_INPUT (400)
+
+---
+
+### 2-1b. 사용자 아이디 변경 [PATCH /api/members/me/handle]
+
+**목적**: 설정-R17 사용자 아이디 변경. **인증**: 필요
+
+**Request Body**: `{ "handle": "Pack_1n" }` — **정상 응답 (200)**: `{ "handle": "Pack_1n", "handleChangeAvailableAt": "..." }`
+
+**예외 케이스**:
+| 케이스 | 변경 값 | 예상 에러 코드 | HTTP |
+|--------|---------|--------------|------|
+| 빈 값·현재와 같은 값 | handle: "" 또는 현재 handle | HANDLE_UNCHANGED | 400 |
+| 형식 위반 | 4자 미만·15자 이상·허용 외 문자·`__`·예약어 | HANDLE_TOO_SHORT 등 `HANDLE_*` | 400 |
+| 50자 초과 | handle 51자 | COMMON_INVALID_INPUT | 400 |
+| 30일 이내 재변경 | 변경 직후 다른 값 | HANDLE_CHANGE_TOO_SOON | 409 |
+| 다른 회원이 쓴(쓰던) handle | 타 회원·탈퇴 회원 handle | DUPLICATE_HANDLE | 409 |
+| 같은 값 5분 내 재전송 | 방금 성공한 값 | 성공(200, 멱등) | 200 |
+
+변경 후 `GET /api/members/me`의 `handleChangeAvailableAt`이 채워진다(지금 변경 가능하면 필드 없음).
+
+---
+
+### 2-1c. 작품·포트폴리오 공개 주소 조회
+
+- `GET /api/members/{handle}/artworks/{code}` — 작품 상세(인증 선택). 응답의 `authorHandle`(현재 handle)·`publicCode`
+- `GET /api/members/{handle}/portfolios/{code}`, `.../artworks`, `.../snapshots/{snapshotPublicId}` — 공유 포트폴리오(인증 불필요)
+
+`code`는 영문 소문자·숫자 6자. 옛 handle도 받으며, 없는 handle은 MEMBER_NOT_FOUND(404), 탈퇴 회원은 MEMBER_WITHDRAWN(410), 그 작가에게 없는 코드는 ARTWORK_NOT_FOUND / PORTFOLIO_NOT_FOUND(404).
 
 ---
 
@@ -389,7 +434,7 @@
 ```
 **필드 제약**:
 - `activityFields`: `@Size(max=4)`, 원소 `@NotNull` (`[]` 전송 시 전체 삭제)
-- `activeRegion`: 단일 선택 (SEOUL·GYEONGGI·GANGWON·CHUNGBUK·CHUNGNAM·JEONBUK·JEONNAM·GYEONGBUK·GYEONGNAM·JEJU)
+- `activeRegion`: 단일 선택 (SEOUL·GYEONGGI·GANGWON·CHUNGBUK·CHUNGNAM·JEONBUK·JEONNAM·GYEONGBUK·GYEONGNAM·JEJU·OVERSEAS)
 - `teamExperiences`: `@Size(max=4)`, 원소 `@NotNull`
 - `totalSlotCount`: `@Min(1) @Max(5)`
 - `availableSlotCount`: `@Min(0) @Max(5)`, `totalSlotCount` 이하여야 함(서비스단 검증)
