@@ -13,8 +13,13 @@ compatibility_date = "2026-08-05"
 binding = "MEDIA_BUCKET"
 bucket_name = "at-crew-storage"
 
-# Images 바인딩은 쓰지 않는다. 변환은 fetch(url, {cf:{image}})로 하고, 그 경로는 바인딩과 달리
+# 원본·썸네일 변환은 Images 바인딩이 아니라 fetch(url, {cf:{image}})로 한다. 그 경로는 바인딩과 달리
 # 원본 바이트를 Worker 메모리로 가져오지 않아 입력 한계가 20MB가 아니라 100MB다.
+#
+# 공유 미리보기(OG) 합성만 바인딩을 쓴다. 입력이 이미 만든 썸네일(AVIF, 수십 KB)이라 20MB 한계와 무관하고,
+# cf.image는 AVIF 입력을 거부한다(ERROR 9520, 2026-10-15 실측). docs/design/og-image-design.md D3.
+[images]
+binding = "IMAGES"
 
 # 시크릿(CALLBACK_SECRET, INTERNAL_SECRET, SERVER_CALLBACK_URL)은 wrangler.toml에 적지 않는다.
 # `wrangler secret put <이름>`으로 등록한다 (README 참고).

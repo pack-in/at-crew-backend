@@ -165,9 +165,9 @@
       "from": "worker",
       "to": "r2",
       "y": 664,
-      "label": "원본 변환해 변형본 저장",
+      "label": "변형본·OG 이미지 저장",
       "variant": "default",
-      "note": "cf.image로 변환"
+      "note": "cf.image로 변환, OG는 Images 바인딩으로 합성"
     },
     {
       "from": "worker",

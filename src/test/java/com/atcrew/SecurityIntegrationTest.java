@@ -258,6 +258,23 @@ class SecurityIntegrationTest extends RestDocsIntegrationSupport {
                 .andExpect(jsonPath("$.code").value("INTERNAL_SECRET_INVALID"));
     }
 
+    // OG 콜백·백필 API — Security 필터를 통과해 컨트롤러의 시크릿 검사에 도달해야 한다(필터 차단 코드가 아니어야 한다).
+    @Test
+    void og_내부_API_permitAll_통과() throws Exception {
+        mockMvc.perform(post("/internal/media/images/og-processed")
+                        .header("X-Internal-Secret", "wrong-secret")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"ownerType\":\"ARTWORK_THUMBNAIL\",\"ownerId\":\"a\",\"imageKey\":\"raw/a.png\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(org.hamcrest.Matchers.not("UNAUTHENTICATED")));
+        mockMvc.perform(post("/internal/media/og/backfill").header("X-Internal-Secret", "wrong-secret"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(org.hamcrest.Matchers.not("UNAUTHENTICATED")));
+        mockMvc.perform(post("/internal/portfolio/og/backfill-snapshots").header("X-Internal-Secret", "wrong-secret"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(org.hamcrest.Matchers.not("UNAUTHENTICATED")));
+    }
+
     @Disabled("MVP 범위 밖 — recruit(구인·구직·팀원모집) 미출시, 출시 시 해제")
     @Test
     void 재색인_recruit_permitAll_통과() throws Exception {

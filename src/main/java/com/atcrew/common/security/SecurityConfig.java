@@ -114,6 +114,11 @@ class SecurityConfig {
                             .requestMatchers(HttpMethod.GET, "/api/companies/{companyId}").permitAll()
                             .requestMatchers(HttpMethod.GET, "/api/companies/{companyId}/careers").permitAll()
                             .requestMatchers(HttpMethod.POST, "/internal/media/images/processed").permitAll()
+                            // OG 이미지 — Worker의 OG 전용 콜백과 운영 백필 API. 인증은 X-Internal-Secret으로 한다
+                            // (docs/operations/og-image-backfill.md).
+                            .requestMatchers(HttpMethod.POST, "/internal/media/images/og-processed").permitAll()
+                            .requestMatchers(HttpMethod.POST, "/internal/media/og/backfill").permitAll()
+                            .requestMatchers(HttpMethod.POST, "/internal/portfolio/og/backfill-snapshots").permitAll()
                             // 구 경로 — Worker 전환 기간 한정 shim(docs/design/media-module-design.md §9.2).
                             // Worker가 새 형식으로 전환된 뒤 LegacyArtworkCallbackController와 함께 제거한다.
                             .requestMatchers(HttpMethod.POST, "/internal/artwork/images/processed").permitAll()

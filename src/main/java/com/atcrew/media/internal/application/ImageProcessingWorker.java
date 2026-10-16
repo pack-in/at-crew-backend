@@ -12,4 +12,8 @@ class ImageProcessingWorker {
                              MediaVariantProfile variantProfile, MediaQualityTier qualityTier) {
         storagePort.triggerWorker(ownerType, ownerId, imageKeys, variantProfile, qualityTier);
     }
+    @Async void triggerOgAsync(MediaOwnerType ownerType, String ownerId, String imageKey, String thumbKey,
+                               String thumbAdultKey) {
+        storagePort.triggerOgWorker(ownerType, ownerId, imageKey, thumbKey, thumbAdultKey);
+    }
 }

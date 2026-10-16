@@ -1004,6 +1004,90 @@ class PortfolioServiceTests {
                 .containsExactly(fillerArtworkId, artworkId);
     }
 
+    // === 공유 링크 미리보기(OG) — docs/design/og-image-design.md ===
+
+    @Test
+    void 공유_헤더_og는_업로드_최신_작품의_og이고_성인물은_블러본이다() {
+        String memberId = registerProMember();
+        String older = uploadReadyArtworkWithOg(memberId, AgeRating.ALL, true);
+        String newest = uploadReadyArtworkWithOg(memberId, AgeRating.R18, true);
+        PortfolioInfo created = portfolioService.createShared(
+                memberId, "공유", ReflectionType.LIVE, List.of(older, newest));
+
+        assertThat(portfolioService.getSharedPortfolio(created.shareSlug()).ogImageKey())
+                .isEqualTo("og-adult/" + newest + ".jpg");
+    }
+
+    // ordinal이 업로드순이라는 불변식 — 오래된 작품을 나중에 담아도 후보는 여전히 업로드 최신이다.
+    @Test
+    void 오래된_작품을_나중에_담아도_업로드_최신_작품의_og를_쓴다() {
+        String memberId = registerProMember();
+        String older = uploadReadyArtworkWithOg(memberId, AgeRating.ALL, true);
+        String newest = uploadReadyArtworkWithOg(memberId, AgeRating.ALL, true);
+        PortfolioInfo created = portfolioService.createShared(memberId, "공유", ReflectionType.LIVE, List.of(newest));
+
+        portfolioService.addArtworks(memberId, created.id(), List.of(older));
+
+        assertThat(portfolioService.getSharedPortfolio(created.shareSlug()).ogImageKey())
+                .isEqualTo("og/" + newest + ".jpg");
+    }
+
+    @Test
+    void 처리_중이거나_차단된_최신_작품은_건너뛰고_피드_비공개_작품은_후보다() {
+        String memberId = registerProMember();
+        String feedPrivate = uploadReadyArtworkWithOg(memberId, AgeRating.ALL, false);
+        String blocked = uploadReadyArtworkWithOg(memberId, AgeRating.ALL, true);
+        String processing = uploadPendingArtwork(memberId, signedKey(memberId, UUID.randomUUID().toString()));
+        PortfolioInfo created = portfolioService.createShared(
+                memberId, "공유", ReflectionType.LIVE, List.of(feedPrivate, blocked, processing));
+        blockArtwork(blocked);
+
+        assertThat(portfolioService.getSharedPortfolio(created.shareSlug()).ogImageKey())
+                .isEqualTo("og/" + feedPrivate + ".jpg");
+    }
+
+    @Test
+    void 담긴_작품이_없으면_og는_null이다() {
+        String memberId = registerMember();
+        String handle = memberService.findById(memberId).handle();
+
+        assertThat(portfolioService.getSharedPortfolio(handle).ogImageKey()).isNull();
+    }
+
+    // 고정형은 생성 시점의 등급으로 고른 OG를 얼린다 — 원본 등급을 바꿔도 따라가지 않는다.
+    @Test
+    void 고정형_헤더_og는_생성_시점에_얼린_값이고_차단된_스냅샷은_건너뛴다() {
+        String memberId = registerProMember();
+        String older = uploadReadyArtworkWithOg(memberId, AgeRating.R18, true);
+        String newest = uploadReadyArtworkWithOg(memberId, AgeRating.ALL, true);
+        PortfolioInfo created = portfolioService.createShared(
+                memberId, "고정형", ReflectionType.SNAPSHOT, List.of(older, newest));
+        artworkService.updateArtwork(memberId, older, new UpdateArtworkCommand(null, null, null, null, null,
+                null, null, null, null, null, null, null, AgeRating.ALL, null, null, null, null, null, null));
+
+        assertThat(portfolioService.getSharedPortfolio(created.shareSlug()).ogImageKey())
+                .isEqualTo("og/" + newest + ".jpg");
+
+        blockSnapshotsOf(newest);
+
+        assertThat(portfolioService.getSharedPortfolio(created.shareSlug()).ogImageKey())
+                .isEqualTo("og-adult/" + older + ".jpg");
+    }
+
+    // OG가 없는 작품(지정 썸네일 없음)으로도 고정형을 만들 수 있어야 한다 — 보존 색인 PK가 NOT NULL이라 null이 들어가면 생성이 깨진다.
+    @Test
+    void og가_없는_작품으로_고정형을_만들면_og는_null이다() {
+        String memberId = registerProMember();
+        String artworkId = uploadArtwork(memberId);
+        PortfolioInfo created = portfolioService.createShared(
+                memberId, "고정형", ReflectionType.SNAPSHOT, List.of(artworkId));
+
+        assertThat(portfolioService.getSharedPortfolio(created.shareSlug()).ogImageKey()).isNull();
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM portfolio_snapshot_media_keys k JOIN portfolio_item_snapshots s ON s.id = k.snapshot_id"
+                        + " WHERE s.portfolio_id = ? AND k.media_key LIKE 'og%'", Integer.class, created.id())).isZero();
+    }
+
     // 슬러그로 찾지 못하면 작가 페이지 handle로 해석한다(§2.6).
     @Test
     void 작가_handle로_작가_페이지를_열람한다() {
@@ -2028,6 +2112,27 @@ class PortfolioServiceTests {
                 List.of(ArtworkRole.LINEART), List.of(Genre.FANTASY), null, List.of("태그"),
                 AgeRating.ALL, List.of(Language.KO), true, List.of(), List.of("clip studio"),
                 new WorkDuration(1, 1, 1, 1), 1, List.of(), List.of())).id();
+    }
+
+    /**
+     * 지정 썸네일과 OG까지 처리된 READY 작품. OG key는 Worker 규칙 대신 작품 ID로 지어 어느 작품의 OG인지 바로 보이게 한다.
+     */
+    private String uploadReadyArtworkWithOg(String memberId, AgeRating ageRating, boolean publishToFeed) {
+        String imageKey = signedKey(memberId, UUID.randomUUID().toString());
+        String thumbnailKey = signedKey(memberId, UUID.randomUUID().toString());
+        String artworkId = artworkService.uploadArtwork(memberId, new UploadArtworkCommand(
+                List.of(imageKey), 0, thumbnailKey, ImageLayoutType.VERTICAL_SCROLL,
+                "작품", "설명", ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
+                List.of(ArtworkRole.LINEART), List.of(Genre.FANTASY), null, List.of("태그"),
+                ageRating, List.of(Language.KO), publishToFeed, List.of(), List.of(), null, null, List.of(),
+                List.of())).id();
+        mediaCallbackService.process(MediaOwnerType.ARTWORK_THUMBNAIL, artworkId, thumbnailKey,
+                "thumb/" + artworkId + ".avif", "thumb-adult/" + artworkId + ".avif", null,
+                "og/" + artworkId + ".jpg", "og-adult/" + artworkId + ".jpg", MediaProcessingStatus.DONE, null);
+        mediaCallbackService.process(MediaOwnerType.ARTWORK, artworkId, imageKey,
+                null, null, "original/" + artworkId + ".avif", MediaProcessingStatus.DONE);
+        awaitReady(memberId, artworkId);
+        return artworkId;
     }
 
     /** 커버 썸네일 값을 구분하려면 이미지 처리 완료까지 태워야 하므로 media webhook 경로로 썸네일 키를 지정한다. */

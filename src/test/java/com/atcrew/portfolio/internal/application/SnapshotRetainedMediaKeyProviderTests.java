@@ -67,6 +67,28 @@ class SnapshotRetainedMediaKeyProviderTests {
                 .containsExactlyInAnyOrder("raw/a.png", "thumb/a.avif", "thumb-adult/a.avif", "raw/a.avif");
     }
 
+    // 작가가 썸네일을 바꾸면 예전 자산의 OG 파일이 고아가 된다 — 고정형이 얼려 둔 OG는 지우면 안 된다.
+    @Test
+    void 스냅샷이_얼린_og_이미지_키를_보존한다() {
+        String portfolioId = givenSnapshotPortfolio();
+        snapshotRepository.save(snapshotOf(portfolioId, "thumb/o.avif", "thumb-adult/o.avif", "og/o.jpg"));
+
+        var retained = provider.retainedKeys(List.of("og/o.jpg", "og-adult/o.jpg"));
+
+        assertThat(retained).containsExactly("og/o.jpg");
+    }
+
+    // 백필로 나중에 채운 OG도 색인에 들어가야 보존된다.
+    @Test
+    void 백필로_채운_og_이미지_키도_보존한다() {
+        String portfolioId = givenSnapshotPortfolio();
+        PortfolioItemSnapshot snapshot = snapshotRepository.save(snapshotOf(portfolioId, "thumb/p.avif", null));
+        snapshot.attachOgKey("og/p.jpg");
+        snapshotRepository.saveAndFlush(snapshot);
+
+        assertThat(provider.retainedKeys(List.of("og/p.jpg"))).containsExactly("og/p.jpg");
+    }
+
     // 고아 행은 이미지 한 장의 변형본만 담기도 한다 — 썸네일이 후보에 없어도 스냅샷이 참조하는 key는 보존한다.
     @Test
     void 후보에_썸네일이_없어도_스냅샷이_참조하는_상세_이미지_키를_보존한다() {
@@ -167,11 +189,16 @@ class SnapshotRetainedMediaKeyProviderTests {
     // 운영 경로(PortfolioServiceImpl.toSnapshot)와 같은 메서드로 색인 key를 만든다.
     private PortfolioItemSnapshot snapshotOf(String portfolioId, String thumbKey, String thumbAdultKey,
                                              ArtworkImageInfo... images) {
+        return snapshotOf(portfolioId, thumbKey, thumbAdultKey, null, images);
+    }
+
+    private PortfolioItemSnapshot snapshotOf(String portfolioId, String thumbKey, String thumbAdultKey, String ogKey,
+                                             ArtworkImageInfo... images) {
         ArtworkSnapshotPayload payload = new ArtworkSnapshotPayload(List.of(images), List.of(), List.of(),
                 List.of(), List.of(), List.of(), List.of(), "본문", 0);
         return PortfolioItemSnapshot.of(portfolioId, 0, UUID.randomUUID().toString(), "작품",
-                thumbKey, thumbAdultKey, AgeRating.ALL, ArtworkField.ILLUSTRATION, Instant.now(),
-                jsonMapper.writeValueAsString(payload), payload.referencedMediaKeys(thumbKey, thumbAdultKey));
+                thumbKey, thumbAdultKey, ogKey, AgeRating.ALL, ArtworkField.ILLUSTRATION, Instant.now(),
+                jsonMapper.writeValueAsString(payload), payload.referencedMediaKeys(thumbKey, thumbAdultKey, ogKey));
     }
 
     private String newSlug() {

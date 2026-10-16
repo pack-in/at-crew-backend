@@ -19,7 +19,7 @@ import jakarta.validation.constraints.Size;
 import java.util.List;
 
 public record UploadArtworkRequest(
-        @NotEmpty @Size(max = 30) List<String> imageKeys,
+        @NotEmpty @Size(max = 99) List<String> imageKeys,
         @Min(0) int representativeImageIndex,
         // 사용자 지정 썸네일(업로드-R05, 3:4 크롭) — 카드 썸네일은 이 이미지로만 만든다. 본문 이미지와 다른 key여야 한다.
         @NotBlank String thumbnailKey,

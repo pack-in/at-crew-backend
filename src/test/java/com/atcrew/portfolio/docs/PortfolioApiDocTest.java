@@ -525,7 +525,10 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
                                         .description("헤더용 작성자 이름 — 고정형은 생성 시점에 얼린 이름, 그 외는 현재 이름"),
                                 fieldWithPath("data.itemCount").description("담긴 작품 수"),
                                 fieldWithPath("data.createdAt").description("생성 시각 (ISO 8601)"),
-                                fieldWithPath("data.updatedAt").description("최종 수정 시각 (ISO 8601)")
+                                fieldWithPath("data.updatedAt").description("최종 수정 시각 (ISO 8601)"),
+                                fieldWithPath("data.ogImageKey").type(JsonFieldType.STRING)
+                                        .description("공유 미리보기(OG) 이미지 R2 key — 담긴 작품 중 외부 열람 가능한 업로드 최신 1개의 "
+                                                + "1200×630 JPEG(성인물은 블러본). null이면 서비스 기본 이미지를 쓴다").optional()
                         )
                 ));
 

@@ -562,6 +562,31 @@ class ArtworkModuleTests {
         assertThat(artworkService.getArtworkStatus(memberId, uploaded.id())).isEqualTo(ArtworkStatus.PROCESSING);
     }
 
+    // 공유 미리보기(OG)는 연령 등급으로 고른다 — 성인물은 블러본, 등급을 바꾸면 다음 조회부터 바로 바뀐다.
+    @Test
+    void 작품_상세의_og_이미지는_연령_등급에_맞춰_고른다() {
+        String memberId = registerAuthor();
+        String thumbnailKey = signedKey(memberId, "og-thumb");
+        ArtworkInfo uploaded = uploadWithThumbnail(memberId, signedKey(memberId, "og-body"), thumbnailKey);
+        assertThat(uploaded.ogImageKey()).isNull();
+
+        processThumbnail(uploaded.id(), thumbnailKey);
+        assertThat(artworkService.getArtwork(uploaded.id(), memberId).ogImageKey()).isEqualTo("og-adult/og-thumb.jpg");
+
+        artworkService.updateArtwork(memberId, uploaded.id(), new UpdateArtworkCommand(null, null, null, null, null,
+                null, null, null, null, null, null, null, AgeRating.ALL, null, null, null, null, null, null));
+        assertThat(artworkService.getArtwork(uploaded.id(), memberId).ogImageKey()).isEqualTo("og/og-thumb.jpg");
+    }
+
+    @Test
+    void 지정_썸네일이_없는_작품은_og_이미지가_없다() {
+        String memberId = registerAuthor();
+        ArtworkInfo uploaded = uploadMinimal(memberId, signedKey(memberId, "no-thumb"));
+        processImage(uploaded.id(), signedKey(memberId, "no-thumb"), MediaProcessingStatus.DONE);
+
+        assertThat(artworkService.getArtwork(uploaded.id(), memberId).ogImageKey()).isNull();
+    }
+
     @Test
     void 썸네일을_바꾸면_이전_썸네일의_원본과_변형본을_고아_처리한다() {
         String memberId = registerAuthor();
@@ -575,7 +600,9 @@ class ArtworkModuleTests {
         assertThat(updated.thumbnailKey()).isEqualTo(newThumb);
         assertThat(updated.thumbnailImage().originalKey()).isEqualTo(newThumb);
         assertThat(updated.thumbnailImage().processingStatus()).isEqualTo(ImageProcessingStatus.PENDING);
-        assertThat(orphanedKeys()).contains(oldThumb, "thumb/r-old.avif", "thumb-adult/r-old.avif");
+        assertThat(orphanedKeys()).contains(oldThumb, "thumb/r-old.avif", "thumb-adult/r-old.avif",
+                "og/r-old.jpg", "og-adult/r-old.jpg");
+        assertThat(updated.ogImageKey()).isNull();
     }
 
     @Test
@@ -692,7 +719,8 @@ class ArtworkModuleTests {
         artworkService.permanentlyDeleteArtworks(memberId, List.of(uploaded.id()));
 
         assertThat(deletedImageKeysOf(events, uploaded.id()))
-                .contains(thumb, "thumb/d-thumb.avif", "thumb-adult/d-thumb.avif", "original/d-body.avif");
+                .contains(thumb, "thumb/d-thumb.avif", "thumb-adult/d-thumb.avif", "original/d-body.avif",
+                        "og/d-thumb.jpg", "og-adult/d-thumb.jpg");
         awaitCondition(() -> thumbnailAssetCount(uploaded.id()) == 0);
     }
 
@@ -835,11 +863,12 @@ class ArtworkModuleTests {
                 null, null, done ? "original/" + variantName(imageKey) + ".avif" : null, status);
     }
 
-    /** 사용자 지정 썸네일의 Worker webhook — THUMBNAIL_WITH_ADULT_BLUR라 thumb와 블러본만 만든다. */
+    /** 사용자 지정 썸네일의 Worker webhook — THUMBNAIL_WITH_ADULT_BLUR라 thumb·블러본과 OG 2종을 만든다. */
     private void processThumbnail(String artworkId, String thumbnailKey) {
         String name = variantName(thumbnailKey);
         mediaCallbackService.process(MediaOwnerType.ARTWORK_THUMBNAIL, artworkId, thumbnailKey,
-                "thumb/" + name + ".avif", "thumb-adult/" + name + ".avif", null, MediaProcessingStatus.DONE);
+                "thumb/" + name + ".avif", "thumb-adult/" + name + ".avif", null,
+                "og/" + name + ".jpg", "og-adult/" + name + ".jpg", MediaProcessingStatus.DONE, null);
     }
 
     // Worker와 같은 규칙으로 변환 결과 이름을 만든다 — 마지막 경로 조각에서 확장자를 뗀다
@@ -1031,37 +1060,37 @@ class ArtworkModuleTests {
     }
 
     @Test
-    void 이미지는_30장까지_업로드할_수_있고_31장이면_거부된다() {
+    void 이미지는_99장까지_업로드할_수_있고_100장이면_거부된다() {
         String memberId = registerAuthor();
-        List<String> thirtyImages = java.util.stream.IntStream.range(0, 30)
+        List<String> ninetyNineImages = java.util.stream.IntStream.range(0, 99)
                 .mapToObj(i -> signedKey(memberId, "bulk-" + i))
                 .toList();
 
-        ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, baseUploadCommand(thirtyImages, List.of()));
+        ArtworkInfo uploaded = artworkService.uploadArtwork(memberId, baseUploadCommand(ninetyNineImages, List.of()));
 
-        assertThat(uploaded.images()).hasSize(30);
+        assertThat(uploaded.images()).hasSize(99);
 
-        List<String> thirtyOneImages = new ArrayList<>(thirtyImages);
-        thirtyOneImages.add(signedKey(memberId, "bulk-30"));
-        assertThatThrownBy(() -> artworkService.uploadArtwork(memberId, baseUploadCommand(thirtyOneImages, List.of())))
+        List<String> hundredImages = new ArrayList<>(ninetyNineImages);
+        hundredImages.add(signedKey(memberId, "bulk-99"));
+        assertThatThrownBy(() -> artworkService.uploadArtwork(memberId, baseUploadCommand(hundredImages, List.of())))
                 .isInstanceOf(DomainException.class)
                 .extracting(e -> ((DomainException) e).getCode())
                 .isEqualTo("INVALID_IMAGE_COUNT");
     }
 
     @Test
-    void presign은_30개까지_발급되고_31개면_거부된다() {
-        List<String> contentTypes30 = java.util.stream.IntStream.range(0, 30)
+    void presign은_99개까지_발급되고_100개면_거부된다() {
+        List<String> contentTypes99 = java.util.stream.IntStream.range(0, 99)
                 .mapToObj(i -> "image/png")
                 .toList();
 
-        List<PresignedUrlInfo> urls = artworkService.generatePresignedUrls(presignMemberId(), 30, contentTypes30, null);
+        List<PresignedUrlInfo> urls = artworkService.generatePresignedUrls(presignMemberId(), 99, contentTypes99, null);
 
-        assertThat(urls).hasSize(30);
+        assertThat(urls).hasSize(99);
 
-        List<String> contentTypes31 = new ArrayList<>(contentTypes30);
-        contentTypes31.add("image/png");
-        assertThatThrownBy(() -> artworkService.generatePresignedUrls(presignMemberId(), 31, contentTypes31, null))
+        List<String> contentTypes100 = new ArrayList<>(contentTypes99);
+        contentTypes100.add("image/png");
+        assertThatThrownBy(() -> artworkService.generatePresignedUrls(presignMemberId(), 100, contentTypes100, null))
                 .isInstanceOf(DomainException.class)
                 .extracting(e -> ((DomainException) e).getCode())
                 .isEqualTo("INVALID_IMAGE_COUNT");

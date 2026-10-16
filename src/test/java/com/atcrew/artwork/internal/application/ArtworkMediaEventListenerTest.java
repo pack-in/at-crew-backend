@@ -90,7 +90,7 @@ class ArtworkMediaEventListenerTest {
         List<MediaAssetInfo> assets = new java.util.ArrayList<>();
         for (int i = 0; i < statuses.length; i++) {
             assets.add(new MediaAssetInfo("raw/" + (i + 1) + ".png", "thumb/" + (i + 1) + ".avif", null,
-                    "original/" + (i + 1) + ".avif", statuses[i], i, null));
+                    "original/" + (i + 1) + ".avif", statuses[i], i, null, null, null));
         }
         when(mediaService.getAssets(MediaOwnerType.ARTWORK, artworkId)).thenReturn(assets);
     }
