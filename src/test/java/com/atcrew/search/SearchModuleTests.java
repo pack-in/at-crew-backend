@@ -39,6 +39,7 @@ import com.atcrew.search.internal.application.ArtworkReindexService;
 import com.atcrew.search.internal.application.RecruitReindexService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.modulith.test.ApplicationModuleTest;
 
 import java.time.Duration;
@@ -92,6 +93,9 @@ class SearchModuleTests {
     @Autowired
     MediaCallbackService mediaCallbackService;
 
+    @Autowired
+    JdbcTemplate jdbcTemplate;
+
     @Test
     void 전체_재색인_후에도_기존_작품이_검색된다() {
         ArtworkInfo artwork = uploadReadyArtwork(ArtworkField.ANIMATION, CreativeType.COMMISSION,
@@ -104,6 +108,48 @@ class SearchModuleTests {
         List<SearchResultItem> found = awaitSearchResult(
                 () -> searchService.search(queryWithArtworkField(ArtworkField.ANIMATION)));
         assertThat(found).extracting(SearchResultItem::id).contains(artwork.id());
+    }
+
+    @Test
+    void 검색_결과에_publicCode와_현재_authorHandle이_담긴다() {
+        ArtworkInfo artwork = uploadReadyArtwork(ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
+                List.of(ArtworkRole.LINEART), List.of(Genre.BL), AgeRating.ALL, uniqueToken());
+
+        SearchResultItem found = awaitSearchItem(artwork.id(), artwork.title());
+
+        assertThat(found.publicCode()).isEqualTo(artwork.publicCode()).hasSize(6);
+        assertThat(found.authorHandle()).isEqualTo(artwork.authorHandle());
+    }
+
+    @Test
+    void handle_변경_이벤트는_그_작가_작품_문서의_authorHandle만_갱신한다() {
+        String owner = registerMember();
+        String other = registerMember();
+        String token = uniqueToken();
+        ArtworkInfo mine = uploadReadyArtwork(owner, ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
+                List.of(ArtworkRole.LINEART), List.of(Genre.BL), AgeRating.ALL, token + " mine");
+        ArtworkInfo others = uploadReadyArtwork(other, ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
+                List.of(ArtworkRole.LINEART), List.of(Genre.BL), AgeRating.ALL, token + " others");
+        awaitCondition(() -> searchService.search(mergedQuery(token, 20)).totalCount() == 2);
+        String oldHandle = mine.authorHandle();
+        // 다른 작가의 handle을 이벤트 없이 DB에서만 바꿔 둔다. 리스너가 그 작가 작품만이 아니라 다른 작품까지 재색인하면
+        // 다른 작가 문서가 이 값으로 바뀌므로, 옛 값이 그대로인지로 "그 작가만" 재색인했음을 판별한다.
+        // 다른 작가 작품의 색인 이벤트가 아직 처리 중이면 그 재색인이 DB만 바꾼 값을 읽어 오탐이 나므로 먼저 비운다.
+        awaitCondition(() -> jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM EVENT_PUBLICATION WHERE COMPLETION_DATE IS NULL AND SERIALIZED_EVENT LIKE ?",
+                Long.class, "%" + others.id() + "%") == 0L);
+        String othersDbOnly = "dbonly" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+        jdbcTemplate.update("UPDATE members SET handle = ? WHERE id = ?", othersDbOnly, other);
+        String newHandle = "chg" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+
+        memberService.changeHandle(owner, newHandle);
+
+        // MemberHandleChangedEvent 리스너도 @ApplicationModuleListener(비동기)라 폴링한다.
+        awaitCondition(() -> authorHandleOf(token, mine.id()).equals(newHandle));
+        assertThat(authorHandleOf(token, mine.id())).isNotEqualTo(oldHandle);
+        assertThat(authorHandleOf(token, others.id()))
+                .isEqualTo(others.authorHandle())
+                .isNotEqualTo(othersDbOnly);
     }
 
     @Test
@@ -411,6 +457,19 @@ class SearchModuleTests {
             SearchPage<SearchResultItem> page = searchService.search(queryWithArtworkField(ArtworkField.PRINT_COMIC));
             return page.items().stream().noneMatch(i -> i.id().equals(artwork.id()));
         });
+    }
+
+    private String authorHandleOf(String token, String artworkId) {
+        return searchService.search(mergedQuery(token, 20)).items().stream()
+                .filter(item -> item.id().equals(artworkId))
+                .map(SearchResultItem::authorHandle)
+                .findFirst().orElse("");
+    }
+
+    private SearchResultItem awaitSearchItem(String artworkId, String token) {
+        return awaitSearchResult(() -> searchService.search(mergedQuery(token, 20))).stream()
+                .filter(item -> item.id().equals(artworkId))
+                .findFirst().orElseThrow();
     }
 
     private SearchQuery queryWithArtworkField(ArtworkField field) {

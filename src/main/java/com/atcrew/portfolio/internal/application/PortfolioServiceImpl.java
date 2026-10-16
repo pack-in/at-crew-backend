@@ -10,9 +10,12 @@ import com.atcrew.artwork.Genre;
 import com.atcrew.artwork.Visibility;
 import com.atcrew.billing.BillingService;
 import com.atcrew.common.exception.DomainException;
+import com.atcrew.common.id.PublicCodeGenerator;
+import com.atcrew.common.persistence.DuplicateKeyViolations;
 import com.atcrew.common.response.CursorPage;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
+import com.atcrew.member.ResolvedHandle;
 import com.atcrew.portfolio.PortfolioArtworkAddedEvent;
 import com.atcrew.portfolio.PortfolioArtworkCardInfo;
 import com.atcrew.portfolio.PortfolioArtworkRemovedEvent;
@@ -42,6 +45,7 @@ import jakarta.persistence.criteria.Predicate;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.http.HttpStatus;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -93,6 +97,7 @@ public class PortfolioServiceImpl implements PortfolioService {
     private final ArtworkService artworkService;
     private final MemberService memberService;
     private final BillingService billingService;
+    private final PublicCodeGenerator publicCodeGenerator;
     private final ShareSlugGenerator shareSlugGenerator;
     private final PortfolioBlocker portfolioBlocker;
     // Spring Boot 4가 자동 구성한 Jackson 3 매퍼 — HTTP 응답 직렬화와 동일한 설정으로 스냅샷 JSON을 만든다.
@@ -105,6 +110,7 @@ public class PortfolioServiceImpl implements PortfolioService {
                          ArtworkService artworkService,
                          MemberService memberService,
                          BillingService billingService,
+                         PublicCodeGenerator publicCodeGenerator,
                          ShareSlugGenerator shareSlugGenerator,
                          PortfolioBlocker portfolioBlocker,
                          JsonMapper jsonMapper,
@@ -115,6 +121,7 @@ public class PortfolioServiceImpl implements PortfolioService {
         this.artworkService = artworkService;
         this.memberService = memberService;
         this.billingService = billingService;
+        this.publicCodeGenerator = publicCodeGenerator;
         this.shareSlugGenerator = shareSlugGenerator;
         this.portfolioBlocker = portfolioBlocker;
         this.jsonMapper = jsonMapper;
@@ -153,9 +160,10 @@ public class PortfolioServiceImpl implements PortfolioService {
         boolean hasNext = portfolios.size() > size;
         List<Portfolio> page = hasNext ? portfolios.subList(0, size) : portfolios;
         String nextCursor = (hasNext && !page.isEmpty()) ? formatCursor(page.get(page.size() - 1), appliedSort) : null;
+        String ownerHandle = currentHandleOf(memberId);
         return CursorPage.of(
                 page.stream()
-                        .map(p -> PortfolioMapper.toSummaryInfo(p, itemCountOf(p), loadCoverThumbnails(p)))
+                        .map(p -> PortfolioMapper.toSummaryInfo(p, ownerHandle, itemCountOf(p), loadCoverThumbnails(p)))
                         .toList(),
                 nextCursor);
     }
@@ -179,7 +187,7 @@ public class PortfolioServiceImpl implements PortfolioService {
     @Transactional(readOnly = true)
     public PortfolioInfo getPortfolio(String memberId, String portfolioId) {
         Portfolio portfolio = findOwned(memberId, portfolioId);
-        return PortfolioMapper.toInfo(portfolio, itemCountOf(portfolio), loadCards(portfolio));
+        return PortfolioMapper.toInfo(portfolio, currentHandleOf(memberId), itemCountOf(portfolio), loadCards(portfolio));
     }
 
     /**
@@ -210,14 +218,28 @@ public class PortfolioServiceImpl implements PortfolioService {
      */
     @Transactional
     public PortfolioSharedInfo getSharedPortfolio(String identifier) {
-        Portfolio portfolio = resolveSharedPortfolio(identifier);
-        assertNotBlocked(portfolio);
+        return toSharedInfo(resolveSharedPortfolio(identifier));
+    }
+
+    /**
+     * 공개 URL {@code /{handle}/portfolio/{code}}의 헤더 조회(member-handle-design §2.2) — 해석만 다르고 접근 정책·응답은
+     * {@link #getSharedPortfolio}와 같다. 작가 페이지는 코드가 없어 이 경로로 열리지 않는다(주소가 {@code /{handle}}).
+     */
+    @Transactional(readOnly = true)
+    public PortfolioSharedInfo getSharedPortfolioByCode(String handle, String publicCode) {
+        return toSharedInfo(resolveByPublicCode(handle, publicCode));
+    }
+
+    private PortfolioSharedInfo toSharedInfo(Portfolio portfolio) {
+        MemberInfo owner = assertNotBlocked(portfolio);
         return new PortfolioSharedInfo(
                 portfolio.getId(),
                 portfolio.getKind(),
                 portfolio.getReflectionType(),
                 portfolio.getTitle(),
-                resolveOwnerName(portfolio),
+                resolveOwnerName(portfolio, owner),
+                owner.handle(),
+                portfolio.getPublicCode(),
                 itemCountOf(portfolio),
                 portfolio.getCreatedAt(),
                 portfolio.getUpdatedAt(),
@@ -292,7 +314,19 @@ public class PortfolioServiceImpl implements PortfolioService {
     @Transactional
     public CursorPage<PortfolioArtworkCardInfo> getSharedPortfolioArtworks(String identifier, String cursor, int size,
                                                                             String viewerMemberId) {
-        Portfolio portfolio = resolveSharedPortfolio(identifier);
+        return sharedArtworkPage(resolveSharedPortfolio(identifier), cursor, size, viewerMemberId);
+    }
+
+    /** 공개 URL {@code /{handle}/portfolio/{code}}의 작품 목록 — 정책·페이징은 {@link #getSharedPortfolioArtworks}와 같다. */
+    @Transactional(readOnly = true)
+    public CursorPage<PortfolioArtworkCardInfo> getSharedPortfolioArtworksByCode(String handle, String publicCode,
+                                                                                  String cursor, int size,
+                                                                                  String viewerMemberId) {
+        return sharedArtworkPage(resolveByPublicCode(handle, publicCode), cursor, size, viewerMemberId);
+    }
+
+    private CursorPage<PortfolioArtworkCardInfo> sharedArtworkPage(Portfolio portfolio, String cursor, int size,
+                                                                    String viewerMemberId) {
         assertNotBlocked(portfolio);
         boolean hideAdultContent = !memberService.isAdultContentVisible(viewerMemberId)
                 && !portfolio.getOwnerMemberId().equals(viewerMemberId);
@@ -375,11 +409,20 @@ public class PortfolioServiceImpl implements PortfolioService {
      */
     @Transactional
     public PortfolioSnapshotDetailInfo getSharedSnapshotDetail(String identifier, String snapshotId) {
-        Portfolio portfolio = resolveSharedPortfolio(identifier);
+        return snapshotDetailOf(resolveSharedPortfolio(identifier), snapshotId);
+    }
+
+    /** 공개 URL {@code /{handle}/portfolio/{code}}의 스냅샷 상세 — 정책은 {@link #getSharedSnapshotDetail}과 같다. */
+    @Transactional(readOnly = true)
+    public PortfolioSnapshotDetailInfo getSharedSnapshotDetailByCode(String handle, String publicCode, String snapshotId) {
+        return snapshotDetailOf(resolveByPublicCode(handle, publicCode), snapshotId);
+    }
+
+    private PortfolioSnapshotDetailInfo snapshotDetailOf(Portfolio portfolio, String snapshotId) {
         assertNotBlocked(portfolio);
         if (portfolio.getReflectionType() != ReflectionType.SNAPSHOT) {
             throw new PortfolioException(PortfolioErrorCode.PORTFOLIO_NOT_FOUND,
-                    "identifier=" + identifier + " snapshotId=" + snapshotId);
+                    "portfolioId=" + portfolio.getId() + " snapshotId=" + snapshotId);
         }
         PortfolioItemSnapshot snapshot = portfolioItemSnapshotRepository
                 .findByPortfolioIdAndSnapshotPublicId(portfolio.getId(), snapshotId)
@@ -524,8 +567,15 @@ public class PortfolioServiceImpl implements PortfolioService {
     /**
      * 공유 식별자 해석 — 슬러그 우선, 없으면 작가 페이지 handle로 해석한다(§2.6).
      * 22자 handle이 실제로 존재할 수 있어 두 식별자가 한 네임스페이스를 공유하므로 이 순서가 곧 정책이다.
+     * 슬러그는 전환기 동안 새 공유 포트폴리오에도 발급된다 — 새 주소를 모르는 운영 FE가 이 경로로 링크를 만든다
+     * (member-handle-design §3.3).
      */
     private Portfolio resolveSharedPortfolio(String identifier) {
+        // findByShareSlug(null)은 share_slug IS NULL로 풀려 slug 없는 행 전부(작가 페이지 등)가 걸린다 —
+        // 다건 결과로 500이 나므로 빈 식별자는 조회 전에 끊는다.
+        if (identifier == null || identifier.isBlank()) {
+            throw new PortfolioException(PortfolioErrorCode.PORTFOLIO_NOT_FOUND, "빈 공유 식별자");
+        }
         return portfolioRepository.findByShareSlug(identifier)
                 .or(() -> resolveArtistPageByHandle(identifier))
                 .orElseThrow(() -> new PortfolioException(PortfolioErrorCode.PORTFOLIO_NOT_FOUND,
@@ -543,17 +593,32 @@ public class PortfolioServiceImpl implements PortfolioService {
      * <p>비인증 요청이 쓰기를 유발하지만 생성 대상은 <b>실재하는 회원의 빈 작가 페이지 1행</b>뿐이고
      * (uk_pf_owner_artist_page), 본인이 탭을 열었을 때 어차피 만들어질 행과 같다.
      *
-     * <p>탈퇴 회원은 handle이 클리어되므로 이 조회 자체가 실패해 생성도 일어나지 않는다.
-     * 인프라 장애를 404로 둔갑시키지 않도록 회원 부재를 뜻하는 DomainException만 잡는다.
+     * <p>handle은 원장으로 해석해 옛 handle도 현재 소유 회원의 작가 페이지로 이어진다(member-handle-design §2.1).
+     * 원장에 없는 handle(404)만 "찾을 수 없음"으로 돌리고, 탈퇴 회원 소유(410 MEMBER_WITHDRAWN)는 그대로 전파해 탈퇴
+     * 안내를 띄운다 — 어느 쪽이든 생성은 일어나지 않는다. 인프라 장애를 404로 둔갑시키지 않도록 DomainException만 본다.
      */
     private Optional<Portfolio> resolveArtistPageByHandle(String handle) {
-        String ownerMemberId;
+        ResolvedHandle resolved;
         try {
-            ownerMemberId = memberService.findByHandle(handle).id();
+            resolved = memberService.resolveHandle(handle);
         } catch (DomainException e) {
-            return Optional.empty();
+            if (e.getStatus() == HttpStatus.NOT_FOUND) {
+                return Optional.empty();
+            }
+            throw e;
         }
-        return Optional.of(getOrCreateArtistPage(ownerMemberId));
+        return Optional.of(getOrCreateArtistPage(resolved.memberId()));
+    }
+
+    /**
+     * 공개 URL {@code /{handle}/portfolio/{code}} 해석 — handle은 원장으로 해석하고(옛 handle 포함, 탈퇴 410·없음 404는
+     * member가 던진다) 그 소유자의 공개 코드로 찾는다. 작가 페이지는 코드가 null이라 여기서 찾히지 않는다.
+     */
+    private Portfolio resolveByPublicCode(String handle, String publicCode) {
+        ResolvedHandle resolved = memberService.resolveHandle(handle);
+        return portfolioRepository.findByOwnerMemberIdAndPublicCode(resolved.memberId(), publicCode)
+                .orElseThrow(() -> new PortfolioException(PortfolioErrorCode.PORTFOLIO_NOT_FOUND,
+                        "handle=" + handle + " publicCode=" + publicCode));
     }
 
     /**
@@ -575,12 +640,13 @@ public class PortfolioServiceImpl implements PortfolioService {
      * <p>회원 부재·탈퇴를 뜻하는 {@link DomainException}만 잡는다 — 인프라 장애까지 잡으면 일시적 오류로
      * 멀쩡한 포트폴리오를 영구 차단하게 된다.
      */
-    private void assertNotBlocked(Portfolio portfolio) {
+    private MemberInfo assertNotBlocked(Portfolio portfolio) {
         if (portfolio.getBlockedAt() != null) {
             throw new PortfolioException(PortfolioErrorCode.PORTFOLIO_BLOCKED, "portfolioId=" + portfolio.getId());
         }
         try {
-            memberService.findById(portfolio.getOwnerMemberId());
+            // 확인한 소유자를 돌려줘 헤더의 이름·현재 handle 조회를 한 번으로 끝낸다.
+            return memberService.findById(portfolio.getOwnerMemberId());
         } catch (DomainException e) {
             // 탈퇴·부재 회원 — 이벤트가 아직 반영되지 않은 상태이므로 이 자리에서 차단을 확정한다.
             portfolioBlocker.blockOwnedPortfolios(portfolio.getOwnerMemberId());
@@ -589,11 +655,16 @@ public class PortfolioServiceImpl implements PortfolioService {
     }
 
     // 헤더 "사용자 이름 / 포트폴리오 이름"용. 고정형은 생성 시점에 얼린 이름을 쓴다(§5.1, 마이페이지_작가-R44).
-    private String resolveOwnerName(Portfolio portfolio) {
+    private String resolveOwnerName(Portfolio portfolio, MemberInfo owner) {
         if (portfolio.getReflectionType() == ReflectionType.SNAPSHOT) {
             return portfolio.getSnapshotOwnerName();
         }
-        return memberService.findById(portfolio.getOwnerMemberId()).name();
+        return owner.name();
+    }
+
+    // 소유자 본인 응답(PortfolioInfo·PortfolioSummaryInfo)의 공유 URL 조립용 현재 handle.
+    private String currentHandleOf(String memberId) {
+        return memberService.findById(memberId).handle();
     }
 
     // 공유 작품 목록 커서는 마지막 항목의 ordinal이다 — 정렬 기준이 ordinal 하나뿐이라 복합 커서가 필요 없다.
@@ -622,10 +693,11 @@ public class PortfolioServiceImpl implements PortfolioService {
             if (reflectionType == ReflectionType.SNAPSHOT) {
                 result = createSnapshot(memberId, validatedTitle, artworks);
             } else {
-                Portfolio portfolio = portfolioRepository.saveAndFlush(Portfolio.createShared(
-                        memberId, ReflectionType.LIVE, validatedTitle, shareSlugGenerator.generate()));
+                Portfolio portfolio = saveNewShared(Portfolio.createShared(
+                        memberId, ReflectionType.LIVE, validatedTitle, issuePublicCode(memberId),
+                        shareSlugGenerator.generate()));
                 replaceItems(portfolio, artworks.stream().map(ArtworkInfo::id).toList());
-                result = PortfolioMapper.toInfo(portfolio, artworks.size(),
+                result = PortfolioMapper.toInfo(portfolio, currentHandleOf(memberId), artworks.size(),
                         artworks.stream().map(PortfolioMapper::toCardInfo).toList());
             }
             // 복제("복제해서 만들기")는 읽기 전용 프리필(getDuplicationSource)을 거쳐 이 메서드를 그대로
@@ -655,10 +727,10 @@ public class PortfolioServiceImpl implements PortfolioService {
         assertImagesSettled(artworks);
         MemberInfo owner = memberService.findById(memberId);
         Portfolio portfolio = Portfolio.createShared(
-                memberId, ReflectionType.SNAPSHOT, title, shareSlugGenerator.generate());
+                memberId, ReflectionType.SNAPSHOT, title, issuePublicCode(memberId), shareSlugGenerator.generate());
         portfolio.markAsSnapshot(owner.name(),
                 jsonMapper.writeValueAsString(new OwnerProfileSnapshot(owner.name(), owner.handle())));
-        portfolioRepository.saveAndFlush(portfolio);
+        saveNewShared(portfolio);
 
         List<PortfolioItemSnapshot> snapshots = new ArrayList<>();
         for (int ordinal = 0; ordinal < artworks.size(); ordinal++) {
@@ -672,7 +744,31 @@ public class PortfolioServiceImpl implements PortfolioService {
         for (int ordinal = 0; ordinal < snapshots.size(); ordinal++) {
             cards.add(PortfolioMapper.toCardInfo(snapshots.get(ordinal), artworks.get(ordinal).roles()));
         }
-        return PortfolioMapper.toInfo(portfolio, snapshots.size(), cards);
+        return PortfolioMapper.toInfo(portfolio, owner.handle(), snapshots.size(), cards);
+    }
+
+    /** 6자 공개 코드 발급(member-handle-design §3.2) — 같은 소유자의 기존 코드를 사전 조회로 피한다. */
+    private String issuePublicCode(String memberId) {
+        return publicCodeGenerator.generate(code -> portfolioRepository.existsByOwnerMemberIdAndPublicCode(memberId, code))
+                .orElseThrow(() -> new PortfolioException(PortfolioErrorCode.PUBLIC_CODE_GENERATION_FAILED,
+                        "재추첨 소진 memberId=" + memberId));
+    }
+
+    /**
+     * 사전 조회를 통과한 코드가 동시 생성과 겹치면 uk_pf_owner_code 위반이 flush에서 터진다. 같은 트랜잭션은 이미
+     * rollback-only라 재추첨하지 않고 PUBLIC_CODE_GENERATION_FAILED로 끝낸다.
+     */
+    private Portfolio saveNewShared(Portfolio portfolio) {
+        try {
+            return portfolioRepository.saveAndFlush(portfolio);
+        } catch (DataIntegrityViolationException e) {
+            if (!DuplicateKeyViolations.isDuplicateKey(e)) {
+                throw e;
+            }
+            throw new PortfolioException(PortfolioErrorCode.PUBLIC_CODE_GENERATION_FAILED,
+                    "memberId=" + portfolio.getOwnerMemberId() + " code=" + portfolio.getPublicCode()
+                            + " cause=" + e.getMessage());
+        }
     }
 
     /**
@@ -744,7 +840,8 @@ public class PortfolioServiceImpl implements PortfolioService {
             }
             portfolio.markEdited();
             // 변경 감지로 반영된다 — 별도 save() 호출은 중복이다.
-            PortfolioInfo result = PortfolioMapper.toInfo(portfolio, itemCountOf(portfolio), loadCards(portfolio));
+            PortfolioInfo result = PortfolioMapper.toInfo(
+                    portfolio, currentHandleOf(memberId), itemCountOf(portfolio), loadCards(portfolio));
             eventPublisher.publishEvent(new PortfolioSubmitSucceededEvent(memberId, result.id(), "edit",
                     result.kind(), result.reflectionType(), countOwnedByMember(memberId), result.itemCount(),
                     Instant.now()));

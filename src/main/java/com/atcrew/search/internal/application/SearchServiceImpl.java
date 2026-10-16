@@ -174,6 +174,7 @@ class SearchServiceImpl implements SearchService {
                 doc.getAuthorId(),
                 doc.getAuthorName(),
                 doc.getAuthorHandle(),
+                doc.getPublicCode(),
                 doc.getAgeRating() != null ? AgeRating.valueOf(doc.getAgeRating()) : null,
                 doc.getCreatedAt()
         );
@@ -192,6 +193,7 @@ class SearchServiceImpl implements SearchService {
                 null,
                 doc.getAuthorId(),
                 doc.getAuthorName(),
+                null,
                 null,
                 null,
                 doc.getCreatedAt()

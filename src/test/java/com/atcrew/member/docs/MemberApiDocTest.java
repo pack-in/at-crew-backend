@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.restdocs.payload.JsonFieldType;
 import org.springframework.test.web.servlet.MvcResult;
 
 import java.util.List;
@@ -282,9 +283,101 @@ class MemberApiDocTest extends RestDocsIntegrationSupport {
                                 fieldWithPath("data.postLanguages").description("노출받을 게시물 언어 목록"),
                                 fieldWithPath("data.marketingAgreed").description("마케팅 정보 수신 동의 여부"),
                                 fieldWithPath("data.adultContentVisible").description("성인 콘텐츠 표시 여부"),
+                                fieldWithPath("data.handleChangeAvailableAt").type(JsonFieldType.STRING).optional()
+                                        .description("다음 handle 변경 가능 시각 (ISO 8601, UTC) — 지금 변경 가능하면 필드가 "
+                                                + "응답에서 생략된다. HANDLE_CHANGE_TOO_SOON 토스트의 날짜 안내에 쓴다"),
                                 fieldWithPath("data.createdAt").description("가입 일시 (ISO 8601)"),
                                 fieldWithPath("data.updatedAt").description("최종 수정 일시 (ISO 8601)")
                         )
+                ));
+    }
+
+    /**
+     * 사용자 아이디(handle) 변경 성공 시나리오 문서화(설정-R17).
+     * 변경 직후 GET /api/members/me에 handleChangeAvailableAt이 채워지는 것까지 함께 문서화한다.
+     */
+    @Test
+    void 사용자_아이디_변경_성공_문서화() throws Exception {
+        String uniqueEmail = "doc-handle-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com";
+        String accessToken = registerAndGetAccessToken(uniqueEmail, "아이디변경문서유저");
+        String newHandle = "Doc" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+
+        mockMvc.perform(patch("/api/members/me/handle")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .content(objectMapper.writeValueAsString(new ChangeHandleRequest(newHandle))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.handle").value(newHandle))
+                .andDo(document("member/change-handle",
+                        preprocessRequest(prettyPrint()),
+                        preprocessResponse(prettyPrint()),
+                        requestFields(
+                                fieldWithPath("handle").description(
+                                        "새 사용자 아이디 — 영문·숫자·밑줄(_) 4~14자, 연속 밑줄·예약어 불가, 앞뒤 공백은 제거")
+                        ),
+                        relaxedResponseFields(
+                                fieldWithPath("code").description("응답 코드 (SUCCESS)"),
+                                fieldWithPath("data.handle").description("변경된 현재 사용자 아이디 (입력한 대소문자 그대로)"),
+                                fieldWithPath("data.handleChangeAvailableAt")
+                                        .description("다음 변경 가능 시각 (ISO 8601, UTC) — 변경 성공 시점 + 30일")
+                        )
+                ));
+
+        // 변경 직후 내 정보에 다음 변경 가능 시각이 실린다
+        mockMvc.perform(get("/api/members/me")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.handle").value(newHandle))
+                .andExpect(jsonPath("$.data.handleChangeAvailableAt").isNotEmpty())
+                .andDo(document("member/get-me-after-handle-change",
+                        preprocessRequest(prettyPrint()),
+                        preprocessResponse(prettyPrint()),
+                        relaxedResponseFields(
+                                fieldWithPath("code").description("응답 코드 (SUCCESS)"),
+                                fieldWithPath("data.handle").description("현재 사용자 아이디"),
+                                fieldWithPath("data.handleChangeAvailableAt")
+                                        .description("다음 handle 변경 가능 시각 (ISO 8601, UTC) — 이 시각 전의 변경 요청은 "
+                                                + "HANDLE_CHANGE_TOO_SOON(409)")
+                        )
+                ));
+    }
+
+    /**
+     * 사용자 아이디 사전 확인 시나리오 문서화 — 비로그인(가입 화면) 사용 가능/불가 두 응답.
+     */
+    @Test
+    void 사용자_아이디_사전_확인_문서화() throws Exception {
+        String available = "Free" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+
+        mockMvc.perform(get("/api/members/handles/availability").param("handle", available))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.available").value(true))
+                .andDo(document("member/check-handle-availability",
+                        preprocessRequest(prettyPrint()),
+                        preprocessResponse(prettyPrint()),
+                        queryParameters(
+                                parameterWithName("handle").description(
+                                        "확인할 사용자 아이디 (최대 50자, 형식 검사는 응답의 errorCode로 돌려준다)")
+                        ),
+                        relaxedResponseFields(
+                                fieldWithPath("code").description("응답 코드 (SUCCESS) — 사용 불가여도 SUCCESS"),
+                                fieldWithPath("data.available").description("사용 가능하면 true"),
+                                fieldWithPath("data.errorCode").type(JsonFieldType.STRING).optional().description(
+                                        "사용 불가 사유 — 사용 가능하면 null. HANDLE_REQUIRED·HANDLE_TOO_SHORT·"
+                                                + "HANDLE_TOO_LONG·HANDLE_INVALID_CHARACTERS·HANDLE_CONSECUTIVE_UNDERSCORES·"
+                                                + "HANDLE_RESERVED·DUPLICATE_HANDLE·HANDLE_UNCHANGED(로그인 본인의 현재 handle과 "
+                                                + "대소문자까지 같음)")
+                        )
+                ));
+
+        mockMvc.perform(get("/api/members/handles/availability").param("handle", "abc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.available").value(false))
+                .andExpect(jsonPath("$.data.errorCode").value("HANDLE_TOO_SHORT"))
+                .andDo(document("member/check-handle-availability-unavailable",
+                        preprocessRequest(prettyPrint()),
+                        preprocessResponse(prettyPrint())
                 ));
     }
 
@@ -331,6 +424,9 @@ class MemberApiDocTest extends RestDocsIntegrationSupport {
             String countryCode,
             String primaryLanguage
     ) {}
+
+    /** 사용자 아이디 변경 요청 바디 */
+    record ChangeHandleRequest(String handle) {}
 
     /** 이름 수정 요청 바디 */
     record UpdateNameRequest(String name) {}

@@ -95,10 +95,14 @@ class PortfolioController {
         return ApiResponse.success(portfolioService.getSelectablePortfolios(memberId));
     }
 
-    @Operation(summary = "공유 포트폴리오 생성", description = "프로 플랜 전용입니다. 응답의 shareSlug로 공유 URL을 구성합니다.")
+    @Operation(summary = "공유 포트폴리오 생성",
+            description = "프로 플랜 전용입니다. 공유 URL은 응답의 ownerHandle·publicCode로 /{ownerHandle}/portfolio/{publicCode} "
+                    + "형태로 구성합니다. shareSlug는 옛 /portfolio/{slug} 링크용으로 전환기 동안만 함께 발급하며 새 링크에 쓰지 않습니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "생성 성공")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409",
             description = "고정형(SNAPSHOT)에 이미지 처리가 끝나지 않은 작품이 포함됨(ARTWORK_IMAGE_PROCESSING)")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "500",
+            description = "PUBLIC_CODE_GENERATION_FAILED — 공유 포트폴리오 공개 코드(6자) 발급 실패")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<PortfolioInfo> createPortfolio(@RequestBody @Valid CreatePortfolioRequest request) {
@@ -173,9 +177,16 @@ class PortfolioController {
     }
 
     @Operation(summary = "공유 포트폴리오 열람",
-            description = "인증이 필요 없습니다. 식별자는 공유 슬러그 또는 작가 handle이며 슬러그를 먼저 해석합니다. "
-                    + "검색엔진 색인 제외를 위해 X-Robots-Tag: noindex 헤더를 함께 내려줍니다.")
+            description = "인증이 필요 없습니다. 식별자는 옛 공유 슬러그 또는 작가 handle(옛 handle 포함)이며 슬러그를 먼저 "
+                    + "해석합니다. 응답의 ownerHandle·publicCode로 새 주소(/{ownerHandle}/portfolio/{publicCode}, 작가 페이지는 "
+                    + "/{ownerHandle})를 조립해 리다이렉트합니다. 검색엔진 색인 제외를 위해 X-Robots-Tag: noindex 헤더를 함께 내려줍니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400",
+            description = "식별자 형식 오류(COMMON_INVALID_INPUT)")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404",
+            description = "PORTFOLIO_NOT_FOUND — 슬러그도 handle도 해석되지 않음(한 번도 쓰인 적 없는 handle 포함)")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "410",
+            description = "탈퇴한 회원의 handle(MEMBER_WITHDRAWN), 차단된 포트폴리오(PORTFOLIO_BLOCKED)")
     @GetMapping("/shared/{identifier}")
     public ResponseEntity<ApiResponse<PortfolioSharedInfo>> getSharedPortfolio(
             @Parameter(description = "공유 슬러그 또는 작가 handle") @PathVariable @Pattern(regexp = SHARED_IDENTIFIER_PATTERN, message = "공유 식별자 형식이 올바르지 않습니다") String identifier) {
@@ -183,8 +194,14 @@ class PortfolioController {
     }
 
     @Operation(summary = "공유 포트폴리오 작품 목록",
-            description = "인증이 필요 없습니다. 작품 순서는 업로드순(오래된순) 고정이며 커서는 마지막 항목의 순번입니다.")
+            description = "인증 선택 — 토큰을 보내면 성인 표시 설정과 본인 예외가 반영됩니다. 작품 순서는 업로드순(오래된순) 고정이며 커서는 마지막 항목의 순번입니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400",
+            description = "식별자 형식 오류(COMMON_INVALID_INPUT), 커서 형식 오류(INVALID_CURSOR)")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404",
+            description = "PORTFOLIO_NOT_FOUND — 슬러그도 handle도 해석되지 않음(한 번도 쓰인 적 없는 handle 포함)")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "410",
+            description = "탈퇴한 회원의 handle(MEMBER_WITHDRAWN), 차단된 포트폴리오(PORTFOLIO_BLOCKED)")
     @GetMapping("/shared/{identifier}/artworks")
     public ResponseEntity<ApiResponse<CursorPage<PortfolioArtworkCardInfo>>> getSharedPortfolioArtworks(
             @Parameter(description = "공유 슬러그 또는 작가 handle") @PathVariable @Pattern(regexp = SHARED_IDENTIFIER_PATTERN, message = "공유 식별자 형식이 올바르지 않습니다") String identifier,
@@ -199,6 +216,12 @@ class PortfolioController {
             description = "인증이 필요 없습니다. 고정형(SNAPSHOT) 포트폴리오 안에서만 열리는 독립 자원이며, "
                     + "생성 시점에 얼린 값만 내려줍니다. 원본 작품 ID나 원본으로 이동하는 링크는 제공하지 않습니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400",
+            description = "식별자·스냅샷 ID 형식 오류(COMMON_INVALID_INPUT)")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404",
+            description = "PORTFOLIO_NOT_FOUND — 슬러그도 handle도 해석되지 않음(한 번도 쓰인 적 없는 handle 포함)")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "410",
+            description = "탈퇴한 회원의 handle(MEMBER_WITHDRAWN), 차단된 포트폴리오(PORTFOLIO_BLOCKED)")
     @GetMapping("/shared/{identifier}/snapshots/{snapshotId}")
     public ResponseEntity<ApiResponse<PortfolioSnapshotDetailInfo>> getSharedSnapshotDetail(
             @Parameter(description = "공유 슬러그 또는 작가 handle") @PathVariable @Pattern(regexp = SHARED_IDENTIFIER_PATTERN, message = "공유 식별자 형식이 올바르지 않습니다") String identifier,

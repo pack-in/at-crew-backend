@@ -30,6 +30,8 @@ import com.atcrew.artwork.internal.exception.ArtworkException;
 import com.atcrew.artwork.internal.persistence.ArtworkRepository;
 import com.atcrew.billing.BillingService;
 import com.atcrew.common.exception.DomainException;
+import com.atcrew.common.id.PublicCodeGenerator;
+import com.atcrew.common.persistence.DuplicateKeyViolations;
 import com.atcrew.common.response.CursorPage;
 import com.atcrew.common.response.OffsetPage;
 import com.atcrew.media.MediaConstraints;
@@ -42,6 +44,7 @@ import com.atcrew.media.MediaVariantProfile;
 import com.atcrew.member.Language;
 import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberService;
+import com.atcrew.member.ResolvedHandle;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Join;
@@ -51,6 +54,7 @@ import jakarta.persistence.criteria.Subquery;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -100,6 +104,7 @@ class ArtworkServiceImpl implements ArtworkService {
     private final ApplicationEventPublisher eventPublisher;
     private final ArtworkPurger artworkPurger;
     private final ArtworkViewRecorder artworkViewRecorder;
+    private final PublicCodeGenerator publicCodeGenerator;
 
     ArtworkServiceImpl(ArtworkRepository artworkRepository,
                        MemberService memberService,
@@ -107,7 +112,8 @@ class ArtworkServiceImpl implements ArtworkService {
                        BillingService billingService,
                        ApplicationEventPublisher eventPublisher,
                        ArtworkPurger artworkPurger,
-                       ArtworkViewRecorder artworkViewRecorder) {
+                       ArtworkViewRecorder artworkViewRecorder,
+                       PublicCodeGenerator publicCodeGenerator) {
         this.artworkRepository = artworkRepository;
         this.memberService = memberService;
         this.mediaService = mediaService;
@@ -115,6 +121,7 @@ class ArtworkServiceImpl implements ArtworkService {
         this.eventPublisher = eventPublisher;
         this.artworkPurger = artworkPurger;
         this.artworkViewRecorder = artworkViewRecorder;
+        this.publicCodeGenerator = publicCodeGenerator;
     }
 
     @Override
@@ -173,6 +180,7 @@ class ArtworkServiceImpl implements ArtworkService {
             List<Material> materials = toMaterials(command.materials());
             Artwork artwork = Artwork.create(
                     memberId,
+                    issuePublicCode(memberId),
                     command.title(),
                     command.description(),
                     command.imageKeys(),
@@ -194,7 +202,7 @@ class ArtworkServiceImpl implements ArtworkService {
                     command.videoLinks(),
                     materials
             );
-            Artwork saved = artworkRepository.save(artwork);
+            Artwork saved = saveNewArtwork(artwork);
             // 포트폴리오 편입은 portfolio가 이 트랜잭션 안에서 동기 처리한다 — 검증 실패 시 업로드까지 롤백된다.
             // 이미지 처리 트리거는 커밋 뒤에만 나가므로(#174) 이 순서가 롤백 가능성에 영향을 주지는 않는다.
             eventPublisher.publishEvent(new ArtworkPortfolioSelectionRequested(
@@ -225,7 +233,23 @@ class ArtworkServiceImpl implements ArtworkService {
     @Override
     @Transactional(readOnly = true)
     public ArtworkInfo getArtwork(String artworkId, String viewerMemberId) {
-        Artwork artwork = findArtworkById(artworkId);
+        return toViewableInfo(findArtworkById(artworkId), viewerMemberId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ArtworkInfo getArtworkByPublicCode(String handle, String publicCode, String viewerMemberId) {
+        // 옛 handle(moved)이어도 작품 쪽에는 조회 집계가 없어(집계는 POST /views) 이중 집계를 막을 일이 없다.
+        ResolvedHandle resolved = memberService.resolveHandle(handle);
+        Artwork artwork = artworkRepository.findByAuthorIdAndPublicCode(resolved.memberId(), publicCode)
+                .orElseThrow(() -> new ArtworkException(ArtworkErrorCode.ARTWORK_NOT_FOUND,
+                        "handle=" + handle + " publicCode=" + publicCode));
+        return toViewableInfo(artwork, viewerMemberId);
+    }
+
+    /** 작품 상세 접근 판정(ArtworkAccess) 후 응답으로 변환한다 — ID 조회와 공개 코드 조회가 같은 판정을 쓴다. */
+    private ArtworkInfo toViewableInfo(Artwork artwork, String viewerMemberId) {
+        String artworkId = artwork.getId();
         switch (artwork.accessFor(viewerMemberId)) {
             case NOT_FOUND -> throw new ArtworkException(ArtworkErrorCode.ARTWORK_NOT_FOUND, artworkId);
             case DELETED -> throw new ArtworkException(ArtworkErrorCode.ARTWORK_DELETED, artworkId);
@@ -738,6 +762,12 @@ class ArtworkServiceImpl implements ArtworkService {
 
     @Override
     @Transactional(readOnly = true)
+    public List<String> getArtworkIdsByAuthor(String authorId) {
+        return artworkRepository.findIdsByAuthorId(authorId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public long countActiveByAuthor(String memberId) {
         return artworkRepository.countByAuthorIdAndStatusNot(memberId, ArtworkStatus.DELETED);
     }
@@ -789,6 +819,30 @@ class ArtworkServiceImpl implements ArtworkService {
     private Artwork findArtworkById(String artworkId) {
         return artworkRepository.findById(artworkId)
                 .orElseThrow(() -> new ArtworkException(ArtworkErrorCode.ARTWORK_NOT_FOUND, artworkId));
+    }
+
+    /** 6자 공개 코드 발급(member-handle-design §3.2) — 같은 작가의 기존 코드(휴지통 포함)를 사전 조회로 피한다. */
+    private String issuePublicCode(String authorId) {
+        return publicCodeGenerator.generate(code -> artworkRepository.existsByAuthorIdAndPublicCode(authorId, code))
+                .orElseThrow(() -> new ArtworkException(ArtworkErrorCode.PUBLIC_CODE_GENERATION_FAILED,
+                        "재추첨 소진 authorId=" + authorId));
+    }
+
+    /**
+     * 새 작품 INSERT를 즉시 flush한다 — 사전 조회를 통과한 코드가 동시 업로드와 겹치면 uk_artworks_author_code 위반이
+     * 커밋 시점(서비스 밖)이 아니라 여기서 터지게 해 500 원인 불명 대신 PUBLIC_CODE_GENERATION_FAILED로 끝낸다.
+     * 같은 트랜잭션은 이미 rollback-only라 재추첨하지 않는다.
+     */
+    private Artwork saveNewArtwork(Artwork artwork) {
+        try {
+            return artworkRepository.saveAndFlush(artwork);
+        } catch (DataIntegrityViolationException e) {
+            if (!DuplicateKeyViolations.isDuplicateKey(e)) {
+                throw e;
+            }
+            throw new ArtworkException(ArtworkErrorCode.PUBLIC_CODE_GENERATION_FAILED,
+                    "authorId=" + artwork.getAuthorId() + " code=" + artwork.getPublicCode() + " cause=" + e.getMessage());
+        }
     }
 
     /**

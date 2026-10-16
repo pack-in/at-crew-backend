@@ -27,6 +27,16 @@ public interface ArtworkRepository extends JpaRepository<Artwork, String>, JpaSp
     @Query("SELECT a FROM Artwork a WHERE a.id = :id")
     Optional<Artwork> findByIdForUpdate(@Param("id") String id);
 
+    // 6자 공개 코드 발급 시 작가 내 충돌 사전 조회(member-handle-design §3.2) — 휴지통 작품도 행이 남아 있어 함께 센다.
+    boolean existsByAuthorIdAndPublicCode(String authorId, String publicCode);
+
+    // 공개 URL /{handle}/artwork/{code} 해석 — (author_id, public_code) UNIQUE라 최대 1건이다.
+    Optional<Artwork> findByAuthorIdAndPublicCode(String authorId, String publicCode);
+
+    // 작가 작품 ID만 조회(검색 재색인용) — 엔티티를 적재하지 않는다
+    @Query("SELECT a.id FROM Artwork a WHERE a.authorId = :authorId")
+    List<String> findIdsByAuthorId(@Param("authorId") String authorId);
+
     // 탈퇴 회원 작품 일괄 처리
     List<Artwork> findAllByAuthorId(String authorId);
 

@@ -21,6 +21,7 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Pattern;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -43,6 +44,10 @@ import java.util.List;
 @RestController
 @RequestMapping("/api")
 class ArtworkController {
+
+    // 경로 변수 handle — 옛 handle(최대 30자, 하이픈 포함)까지 받는다. 새 규칙은 생성·변경 시에만 적용한다(member-handle-design §2.2).
+    private static final String HANDLE_PATTERN = "^[A-Za-z0-9_-]{1,50}$";
+    private static final String PUBLIC_CODE_PATTERN = "^[a-z0-9]{6}$";
 
     private final ArtworkService artworkService;
     private final SecurityUtils securityUtils;
@@ -85,6 +90,8 @@ class ArtworkController {
             description = "스타터 작품 개수 초과(STARTER_ARTWORK_LIMIT_EXCEEDED), "
                     + "스타터의 다중 언어 선택(MULTI_LANGUAGE_REQUIRES_PRO), "
                     + "주 사용 언어 미포함(LANGUAGE_NOT_ALLOWED)")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "500",
+            description = "PUBLIC_CODE_GENERATION_FAILED — 작품 공개 코드(6자) 발급 실패")
     @PostMapping("/artworks")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<ArtworkInfo> uploadArtwork(@RequestBody @Valid UploadArtworkRequest request) {
@@ -93,12 +100,46 @@ class ArtworkController {
     }
 
     @Operation(summary = "작품 상세 조회",
-            description = "조회수를 올리지 않습니다. 열람 집계는 POST /api/artworks/{artworkId}/views로 별도 호출합니다.")
+            description = "조회수를 올리지 않습니다. 열람 집계는 POST /api/artworks/{artworkId}/views로 별도 호출합니다. "
+                    + "옛 주소 /artwork/{UUID}의 리다이렉트용으로, 응답의 authorHandle·publicCode로 새 주소 "
+                    + "/{authorHandle}/artwork/{publicCode}를 조립합니다.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403",
+            description = "완전 비공개 작품(ARTWORK_PRIVATE)")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404",
+            description = "ARTWORK_NOT_FOUND — 작품이 없거나 처리 중인 타인 작품")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "410",
+            description = "휴지통으로 옮긴 작품(ARTWORK_DELETED), 운영 차단 작품(ARTWORK_BLOCKED)")
     @GetMapping("/artworks/{artworkId}")
     public ApiResponse<ArtworkInfo> getArtwork(
             @Parameter(description = "작품 ID") @PathVariable String artworkId) {
         String viewerId = getOptionalMemberId();
         return ApiResponse.success(artworkService.getArtwork(artworkId, viewerId));
+    }
+
+    @Operation(summary = "작품 상세 조회 (공개 주소)",
+            description = "공개 URL /{handle}/artwork/{code}용 조회입니다. 인증 선택이며 접근 판정·응답은 "
+                    + "GET /api/artworks/{artworkId}와 같습니다. handle은 옛 handle도 받으며, 응답의 authorHandle은 항상 "
+                    + "현재 handle입니다 — URL의 handle과 대소문자 무시 비교로 다르면 현재 handle 주소로 리다이렉트합니다. "
+                    + "조회수를 올리지 않습니다(열람 집계는 POST /api/artworks/{artworkId}/views).")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400",
+            description = "handle·code 형식 오류(COMMON_INVALID_INPUT)")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403",
+            description = "완전 비공개 작품(ARTWORK_PRIVATE)")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404",
+            description = "handle이 쓰인 적 없음(MEMBER_NOT_FOUND), 그 작가에게 해당 코드의 작품이 없거나 "
+                    + "처리 중인 타인 작품(ARTWORK_NOT_FOUND)")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "410",
+            description = "탈퇴한 회원의 handle(MEMBER_WITHDRAWN), 휴지통으로 옮긴 작품(ARTWORK_DELETED), "
+                    + "운영 차단 작품(ARTWORK_BLOCKED)")
+    @GetMapping("/members/{handle}/artworks/{code}")
+    public ApiResponse<ArtworkInfo> getArtworkByPublicCode(
+            @Parameter(description = "작가 handle (옛 handle 포함)") @PathVariable
+            @Pattern(regexp = HANDLE_PATTERN, message = "handle 형식이 올바르지 않습니다") String handle,
+            @Parameter(description = "작품 공개 코드 (영문 소문자·숫자 6자)") @PathVariable
+            @Pattern(regexp = PUBLIC_CODE_PATTERN, message = "작품 코드 형식이 올바르지 않습니다") String code) {
+        return ApiResponse.success(artworkService.getArtworkByPublicCode(handle, code, getOptionalMemberId()));
     }
 
     @Operation(summary = "작품 열람 기록",

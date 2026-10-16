@@ -10,6 +10,8 @@ public record ArtworkInfo(
         String authorId,
         String authorName,
         String authorHandle,
+        // 공개 URL /{authorHandle}/artwork/{publicCode}의 6자 코드(member-handle-design §3). 작가 안에서만 유일하다
+        String publicCode,
         String title,
         String description,
         List<ArtworkImageInfo> images,

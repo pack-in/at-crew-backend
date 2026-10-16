@@ -22,6 +22,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.TestPropertySource;
 
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -90,7 +91,7 @@ class ArtworkCollectionFetchTest {
 
     private Artwork artworkWithCollections(String authorId) {
         return Artwork.create(
-                authorId, "쿼리 수 측정용 작품", "설명",
+                authorId, UUID.randomUUID().toString().substring(0, 6), "쿼리 수 측정용 작품", "설명",
                 List.of("raw/1.png"), 0, null,
                 ImageLayoutType.VERTICAL_SCROLL, ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
                 List.of(ArtworkRole.values()[0]), List.of(Genre.values()[0]), null,

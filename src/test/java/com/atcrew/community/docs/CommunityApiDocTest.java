@@ -155,7 +155,8 @@ class CommunityApiDocTest extends RestDocsIntegrationSupport {
                         ),
                         relaxedResponseFields(
                                 fieldWithPath("code").description("응답 코드 (SUCCESS)"),
-                                fieldWithPath("data.items").description("작품 카드 목록 (공개·이미지 처리 완료 작품만 노출)"),
+                                fieldWithPath("data.items").description("작품 카드 목록 (공개·이미지 처리 완료 작품만 노출). 카드 링크는 각 항목의 authorHandle·publicCode로 "
+                                        + "/{authorHandle}/artwork/{publicCode}를 조립한다"),
                                 fieldWithPath("data.page").description("현재 페이지 번호 (1부터)"),
                                 fieldWithPath("data.size").description("페이지 크기"),
                                 fieldWithPath("data.totalCount").description("전체 작품 수 (현재 필터·뷰어 조건 기준)"),
@@ -179,7 +180,8 @@ class CommunityApiDocTest extends RestDocsIntegrationSupport {
                                 fieldWithPath("data").description(
                                         "작품 카드 목록 (최대 6개). 최근 7일 기간 조회수 → 북마크 수 → 최신 등록순이며, "
                                                 + "기간 조회수가 있는 작품이 6개 미만이면 조회수가 없는 작품으로 채운다. "
-                                                + "노출 조건은 포트폴리오 탭 목록과 같다")
+                                                + "노출 조건은 포트폴리오 탭 목록과 같다. 카드 링크는 각 항목의 authorHandle·publicCode로 "
+                                                + "/{authorHandle}/artwork/{publicCode}를 조립한다")
                         )
                 ));
     }

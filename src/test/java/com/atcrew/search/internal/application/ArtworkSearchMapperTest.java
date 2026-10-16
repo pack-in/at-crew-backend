@@ -37,6 +37,7 @@ class ArtworkSearchMapperTest {
         assertThat(doc.getAuthorId()).isEqualTo("author-1");
         assertThat(doc.getAuthorName()).isEqualTo("작가이름");
         assertThat(doc.getAuthorHandle()).isEqualTo("handle1");
+        assertThat(doc.getPublicCode()).isEqualTo("abc123");
         assertThat(doc.getArtworkField()).isEqualTo(ArtworkField.ILLUSTRATION.name());
         assertThat(doc.getCreativeType()).isEqualTo(CreativeType.ORIGINAL.name());
         assertThat(doc.getAgeRating()).isEqualTo(AgeRating.ALL.name());
@@ -101,7 +102,7 @@ class ArtworkSearchMapperTest {
                 new ArtworkImageInfo("orig-1", "rep-thumb-1", "rep-thumb-adult-1", "orig-1.avif", ImageProcessingStatus.DONE)
         );
         return new ArtworkInfo(
-                "artwork-1", "author-1", "작가이름", "handle1",
+                "artwork-1", "author-1", "작가이름", "handle1", "abc123",
                 "제목", "설명", images, representativeImageIndex, thumbnailKey, thumbnailImage, null,
                 ImageLayoutType.VERTICAL_SCROLL,
                 ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL, List.of(ArtworkRole.LINEART),

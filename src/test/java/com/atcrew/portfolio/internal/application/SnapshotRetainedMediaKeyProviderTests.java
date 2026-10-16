@@ -182,7 +182,7 @@ class SnapshotRetainedMediaKeyProviderTests {
 
     private String givenSnapshotPortfolio() {
         Portfolio portfolio = portfolioRepository.save(Portfolio.createShared(
-                UUID.randomUUID().toString(), ReflectionType.SNAPSHOT, "고정형", newSlug()));
+                UUID.randomUUID().toString(), ReflectionType.SNAPSHOT, "고정형", newCode(), null));
         return portfolio.getId();
     }
 
@@ -201,7 +201,7 @@ class SnapshotRetainedMediaKeyProviderTests {
                 jsonMapper.writeValueAsString(payload), payload.referencedMediaKeys(thumbKey, thumbAdultKey, ogKey));
     }
 
-    private String newSlug() {
-        return UUID.randomUUID().toString().replace("-", "").substring(0, 22);
+    private String newCode() {
+        return UUID.randomUUID().toString().substring(0, 6);
     }
 }

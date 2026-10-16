@@ -20,6 +20,7 @@ import com.atcrew.support.BillingTestSupport;
 import com.atcrew.support.RestDocsIntegrationSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.restdocs.payload.JsonFieldType;
@@ -79,6 +80,10 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
     @Autowired
     MediaCallbackService mediaCallbackService;
 
+    // 옛 공유 링크 slug를 붙이는 데 쓴다(legacySlug).
+    @Autowired
+    JdbcTemplate jdbcTemplate;
+
     @Test
     void 공유_포트폴리오_생성_조회_수정_삭제_문서화() throws Exception {
         RegisteredMember member = registerProMember("포트폴리오생성유저");
@@ -119,8 +124,14 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
                                 fieldWithPath("data.title").type(JsonFieldType.STRING)
                                         .description("제목 — 작가 페이지는 null").optional(),
                                 fieldWithPath("data.shareSlug").type(JsonFieldType.STRING)
-                                        .description("공유 링크 슬러그 (22자) — 작가 페이지는 null").optional(),
+                                        .description("옛 공유 링크 슬러그 — 신규 발급 중단으로 새 포트폴리오와 작가 페이지는 null").optional(),
+                                fieldWithPath("data.ownerHandle")
+                                        .description("소유자의 현재 사용자 아이디 — 공유 URL /{ownerHandle}/portfolio/{publicCode} 조립용"),
+                                fieldWithPath("data.publicCode").type(JsonFieldType.STRING)
+                                        .description("공유 URL의 6자 코드(영문 소문자·숫자) — 작가 페이지는 null").optional(),
                                 fieldWithPath("data.itemCount").description("담긴 작품 수"),
+                                fieldWithPath("data.artworks[].publicCode").type(JsonFieldType.STRING)
+                                        .description("원본 작품 공개 코드 — /{ownerHandle}/artwork/{publicCode} 조립용. 고정형 카드는 null").optional(),
                                 fieldWithPath("data.artworks[].artworkId").type(JsonFieldType.STRING)
                                         .description("원본 작품 ID — 고정형 카드는 null").optional(),
                                 fieldWithPath("data.artworks[].snapshotId").type(JsonFieldType.STRING)
@@ -163,7 +174,7 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
                                 fieldWithPath("data.title").type(JsonFieldType.STRING)
                                         .description("제목 — 작가 페이지는 null").optional(),
                                 fieldWithPath("data.shareSlug").type(JsonFieldType.STRING)
-                                        .description("공유 링크 슬러그 — 작가 페이지는 null").optional(),
+                                        .description("옛 공유 링크 슬러그 — 신규 발급 중단으로 새 포트폴리오와 작가 페이지는 null").optional(),
                                 fieldWithPath("data.itemCount").description("담긴 작품 수"),
                                 fieldWithPath("data.artworks[].artworkId").description("원본 작품 ID"),
                                 fieldWithPath("data.artworks[].title").description("작품 제목"),
@@ -279,7 +290,12 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
                                 fieldWithPath("code").description("응답 코드 (SUCCESS)"),
                                 fieldWithPath("data.id").description("포트폴리오 ID"),
                                 fieldWithPath("data.reflectionType").description("반영 유형 (SNAPSHOT)"),
-                                fieldWithPath("data.shareSlug").description("공유 링크 슬러그 (22자)"),
+                                fieldWithPath("data.shareSlug").type(JsonFieldType.STRING)
+                                        .description("옛 공유 링크 슬러그 — 신규 발급 중단으로 새 포트폴리오는 null").optional(),
+                                fieldWithPath("data.ownerHandle")
+                                        .description("소유자의 현재 사용자 아이디 — 공유 URL /{ownerHandle}/portfolio/{publicCode} 조립용"),
+                                fieldWithPath("data.publicCode").type(JsonFieldType.STRING)
+                                        .description("공유 URL의 6자 코드(영문 소문자·숫자) — 작가 페이지는 null").optional(),
                                 fieldWithPath("data.itemCount").description("얼려 담긴 작품 수"),
                                 fieldWithPath("data.artworks[].snapshotId")
                                         .description("스냅샷 ID — 스냅샷 상세 URL의 식별자. 원본 작품 ID는 노출하지 않는다"),
@@ -293,8 +309,8 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
                 .andReturn();
         String snapshotPortfolioId = objectMapper.readTree(createResult.getResponse().getContentAsString())
                 .at("/data/id").asText();
-        String shareSlug = objectMapper.readTree(createResult.getResponse().getContentAsString())
-                .at("/data/shareSlug").asText();
+        String shareSlug = legacySlug(objectMapper.readTree(createResult.getResponse().getContentAsString())
+                .at("/data/id").asText());
         String snapshotId = objectMapper.readTree(createResult.getResponse().getContentAsString())
                 .at("/data/artworks/0/snapshotId").asText();
 
@@ -390,7 +406,11 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
                                 fieldWithPath("data.items[].title").type(JsonFieldType.STRING)
                                         .description("제목 — 작가 페이지는 null(사용자 이름 헤더를 쓴다)").optional(),
                                 fieldWithPath("data.items[].shareSlug").type(JsonFieldType.STRING)
-                                        .description("공유 링크 슬러그 — 작가 페이지는 null").optional(),
+                                        .description("옛 공유 링크 슬러그 — 신규 발급 중단으로 새 포트폴리오와 작가 페이지는 null").optional(),
+                                fieldWithPath("data.items[].ownerHandle")
+                                        .description("소유자의 현재 사용자 아이디 — 공유 URL 조립용"),
+                                fieldWithPath("data.items[].publicCode").type(JsonFieldType.STRING)
+                                        .description("공유 URL /{ownerHandle}/portfolio/{publicCode}의 6자 코드 — 작가 페이지는 null").optional(),
                                 fieldWithPath("data.items[].itemCount").description("담긴 작품 수 (카드의 \"N개\" 표기용)"),
                                 fieldWithPath("data.items[].coverThumbnails[].thumbKey").type(JsonFieldType.STRING)
                                         .description("카드 커버 2x2 썸네일 R2 키 — 업로드 오래된순 최대 4개, "
@@ -496,8 +516,8 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
                                 "공유용 포트폴리오", "LIVE", List.of(artworkId, secondArtworkId)))))
                 .andExpect(status().isCreated())
                 .andReturn();
-        String shareSlug = objectMapper.readTree(createResult.getResponse().getContentAsString())
-                .at("/data/shareSlug").asText();
+        String shareSlug = legacySlug(objectMapper.readTree(createResult.getResponse().getContentAsString())
+                .at("/data/id").asText());
 
         // 슬러그 식별자 — 인증 없이 열람한다
         mockMvc.perform(get("/api/portfolios/shared/{identifier}", shareSlug))
@@ -523,6 +543,10 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
                                         .description("제목 — 작가 페이지는 null").optional(),
                                 fieldWithPath("data.ownerName")
                                         .description("헤더용 작성자 이름 — 고정형은 생성 시점에 얼린 이름, 그 외는 현재 이름"),
+                                fieldWithPath("data.ownerHandle")
+                                        .description("소유자의 현재 사용자 아이디 — 공유 URL /{ownerHandle}/portfolio/{publicCode} 조립용"),
+                                fieldWithPath("data.publicCode").type(JsonFieldType.STRING)
+                                        .description("공유 URL의 6자 코드(영문 소문자·숫자) — 작가 페이지는 null").optional(),
                                 fieldWithPath("data.itemCount").description("담긴 작품 수"),
                                 fieldWithPath("data.createdAt").description("생성 시각 (ISO 8601)"),
                                 fieldWithPath("data.updatedAt").description("최종 수정 시각 (ISO 8601)"),
@@ -553,6 +577,9 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
                                 fieldWithPath("data.id").description("작가 페이지 포트폴리오 ID"),
                                 fieldWithPath("data.kind").description("유형 (ARTIST_PAGE)"),
                                 fieldWithPath("data.ownerName").description("헤더에 표시할 작가 이름"),
+                                fieldWithPath("data.ownerHandle").description("소유자의 현재 사용자 아이디 — 요청 handle이 옛 handle이면 달라진다"),
+                                fieldWithPath("data.publicCode").type(JsonFieldType.STRING)
+                                        .description("작가 페이지는 항상 null — 주소가 /{ownerHandle}").optional(),
                                 fieldWithPath("data.itemCount").description("담긴 작품 수")
                         )
                 ));
@@ -578,8 +605,8 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
                                 List.of(firstArtworkId, secondArtworkId, thirdArtworkId)))))
                 .andExpect(status().isCreated())
                 .andReturn();
-        String shareSlug = objectMapper.readTree(createResult.getResponse().getContentAsString())
-                .at("/data/shareSlug").asText();
+        String shareSlug = legacySlug(objectMapper.readTree(createResult.getResponse().getContentAsString())
+                .at("/data/id").asText());
 
         MvcResult firstPage = mockMvc.perform(get("/api/portfolios/shared/{identifier}/artworks", shareSlug)
                         .param("size", "2"))
@@ -606,6 +633,8 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
                                         .description("원본 작품 ID — 고정형 카드는 null").optional(),
                                 fieldWithPath("data.items[].snapshotId").type(JsonFieldType.STRING)
                                         .description("고정형 스냅샷 ID — 최신 반영형·작가 페이지 카드는 null").optional(),
+                                fieldWithPath("data.items[].publicCode").type(JsonFieldType.STRING)
+                                        .description("원본 작품 공개 코드 — /{ownerHandle}/artwork/{publicCode} 조립용. 고정형 카드는 null").optional(),
                                 fieldWithPath("data.items[].title").description("작품 제목"),
                                 fieldWithPath("data.items[].thumbKey").type(JsonFieldType.STRING)
                                         .description("카드 썸네일 R2 키 — 이미지 처리 전이면 null").optional(),
@@ -632,6 +661,130 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
                 .andExpect(jsonPath("$.data.items.length()").value(1))
                 .andExpect(jsonPath("$.data.items[0].artworkId").value(thirdArtworkId))
                 .andExpect(jsonPath("$.data.hasNext").value(false));
+    }
+
+    @Test
+    void 공개_주소_공유_포트폴리오_열람_문서화() throws Exception {
+        RegisteredMember member = registerProMember("공개주소열람유저");
+        String firstArtworkId = uploadReadyArtwork(member.memberId(), "공개 주소 작품 1");
+        String secondArtworkId = uploadReadyArtwork(member.memberId(), "공개 주소 작품 2");
+
+        MvcResult createResult = mockMvc.perform(post("/api/portfolios")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + member.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(createRequestBody(
+                                "공개 주소 포트폴리오", "LIVE", List.of(firstArtworkId, secondArtworkId)))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String code = objectMapper.readTree(createResult.getResponse().getContentAsString())
+                .at("/data/publicCode").asText();
+
+        mockMvc.perform(get("/api/members/{handle}/portfolios/{code}", member.handle(), code))
+                .andExpect(status().isOk())
+                .andExpect(header().string("X-Robots-Tag", "noindex"))
+                .andExpect(jsonPath("$.data.kind").value("SHARED"))
+                .andExpect(jsonPath("$.data.ownerHandle").value(member.handle()))
+                .andExpect(jsonPath("$.data.publicCode").value(code))
+                .andDo(document("portfolio/get-by-public-code",
+                        preprocessResponse(prettyPrint()),
+                        pathParameters(
+                                parameterWithName("handle").description("작가 사용자 아이디 — 옛 아이디도 받는다(대소문자 무관)"),
+                                parameterWithName("code").description("포트폴리오 공개 코드 (영문 소문자·숫자 6자)")
+                        ),
+                        responseHeaders(
+                                headerWithName("X-Robots-Tag").description("검색엔진 색인 제외 (noindex)")
+                        ),
+                        relaxedResponseFields(
+                                fieldWithPath("code").description("응답 코드 (SUCCESS)"),
+                                fieldWithPath("data.id").description("포트폴리오 ID"),
+                                fieldWithPath("data.kind").description("유형 (SHARED)"),
+                                fieldWithPath("data.reflectionType").description("반영 유형 — LIVE / SNAPSHOT"),
+                                fieldWithPath("data.title").description("포트폴리오 제목"),
+                                fieldWithPath("data.ownerName").description("헤더용 작성자 이름"),
+                                fieldWithPath("data.ownerHandle").description(
+                                        "소유자의 현재 사용자 아이디 — URL의 handle과 대소문자 무시 비교로 다르면 이 값으로 308 리다이렉트"),
+                                fieldWithPath("data.publicCode").description("공유 URL의 6자 코드"),
+                                fieldWithPath("data.itemCount").description("담긴 작품 수")
+                        )
+                ));
+
+        mockMvc.perform(get("/api/members/{handle}/portfolios/{code}/artworks", member.handle(), code)
+                        .param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("X-Robots-Tag", "noindex"))
+                .andExpect(jsonPath("$.data.items.length()").value(2))
+                .andExpect(jsonPath("$.data.items[0].publicCode").isNotEmpty())
+                .andDo(document("portfolio/list-artworks-by-public-code",
+                        preprocessResponse(prettyPrint()),
+                        pathParameters(
+                                parameterWithName("handle").description("작가 사용자 아이디 — 옛 아이디도 받는다(대소문자 무관)"),
+                                parameterWithName("code").description("포트폴리오 공개 코드 (영문 소문자·숫자 6자)")
+                        ),
+                        queryParameters(
+                                parameterWithName("cursor").description("커서 — 직전 페이지 마지막 항목의 순번").optional(),
+                                parameterWithName("size").description("페이지 크기 (기본 20, 최대 50)").optional()
+                        ),
+                        responseHeaders(
+                                headerWithName("X-Robots-Tag").description("검색엔진 색인 제외 (noindex)")
+                        ),
+                        relaxedResponseFields(
+                                fieldWithPath("code").description("응답 코드 (SUCCESS)"),
+                                fieldWithPath("data.items[].artworkId").description("원본 작품 ID"),
+                                fieldWithPath("data.items[].publicCode").description(
+                                        "원본 작품 공개 코드 — 카드 링크는 /{포트폴리오 ownerHandle}/artwork/{publicCode}"),
+                                fieldWithPath("data.items[].title").description("작품 제목"),
+                                fieldWithPath("data.nextCursor").type(JsonFieldType.STRING)
+                                        .description("다음 페이지 커서 (없으면 null)").optional(),
+                                fieldWithPath("data.hasNext").description("다음 페이지 존재 여부")
+                        )
+                ));
+
+        // 그 작가에게 없는 코드 — 404
+        mockMvc.perform(get("/api/members/{handle}/portfolios/{code}", member.handle(), "zzzzzz"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PORTFOLIO_NOT_FOUND"))
+                .andDo(document("portfolio/get-by-public-code-not-found", preprocessResponse(prettyPrint())));
+    }
+
+    @Test
+    void 공개_주소_고정형_스냅샷_상세_문서화() throws Exception {
+        RegisteredMember member = registerProMember("공개주소스냅샷유저");
+        String artworkId = uploadReadyArtwork(member.memberId(), "스냅샷 공개 주소 작품");
+
+        MvcResult createResult = mockMvc.perform(post("/api/portfolios")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + member.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(createRequestBody(
+                                "공개 주소 고정형", "SNAPSHOT", List.of(artworkId)))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String code = objectMapper.readTree(createResult.getResponse().getContentAsString())
+                .at("/data/publicCode").asText();
+        String snapshotId = objectMapper.readTree(createResult.getResponse().getContentAsString())
+                .at("/data/artworks/0/snapshotId").asText();
+
+        mockMvc.perform(get("/api/members/{handle}/portfolios/{code}/snapshots/{snapshotPublicId}",
+                        member.handle(), code, snapshotId))
+                .andExpect(status().isOk())
+                .andExpect(header().string("X-Robots-Tag", "noindex"))
+                .andExpect(jsonPath("$.data.snapshotId").value(snapshotId))
+                .andDo(document("portfolio/get-snapshot-by-public-code",
+                        preprocessResponse(prettyPrint()),
+                        pathParameters(
+                                parameterWithName("handle").description("작가 사용자 아이디 — 옛 아이디도 받는다(대소문자 무관)"),
+                                parameterWithName("code").description("고정형 포트폴리오 공개 코드 (영문 소문자·숫자 6자)"),
+                                parameterWithName("snapshotPublicId").description("스냅샷 ID (UUID) — 카드 응답의 snapshotId")
+                        ),
+                        responseHeaders(
+                                headerWithName("X-Robots-Tag").description("검색엔진 색인 제외 (noindex)")
+                        ),
+                        relaxedResponseFields(
+                                fieldWithPath("code").description("응답 코드 (SUCCESS)"),
+                                fieldWithPath("data.snapshotId").description("스냅샷 ID"),
+                                fieldWithPath("data.title").description("생성 시점의 작품 제목"),
+                                fieldWithPath("data.ownerName").description("작성자 이름 — 포트폴리오 생성 시점에 얼린 값")
+                        )
+                ));
     }
 
     @Test
@@ -774,4 +927,14 @@ class PortfolioApiDocTest extends RestDocsIntegrationSupport {
         return "raw/" + keySigner.sign(memberId, name) + "/" + name + ".png";
     }
 
+    /**
+     * 옛 공유 링크 slug를 붙여 돌려준다. 신규 slug 발급이 중단돼(member-handle-design §3.3) 새 포트폴리오에는 slug가
+     * 없다. 새 주소(/{handle}/portfolio/{code}) 조회 문서화는 공개_주소_* 테스트가 맡고, 이 slug 경로는
+     * 옛 링크(/portfolio/{handle|slug}) 해석 API 문서화에만 쓴다.
+     */
+    private String legacySlug(String portfolioId) {
+        String slug = UUID.randomUUID().toString().replace("-", "").substring(0, 22);
+        jdbcTemplate.update("UPDATE portfolios SET share_slug = ? WHERE id = ?", slug, portfolioId);
+        return slug;
+    }
 }

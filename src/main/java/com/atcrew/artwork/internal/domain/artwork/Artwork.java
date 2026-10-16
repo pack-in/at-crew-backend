@@ -69,6 +69,11 @@ public class Artwork implements Persistable<String> {
     private String id;
 
     private String authorId;
+
+    // 공개 URL /{handle}/artwork/{code}의 6자 코드(member-handle-design §3). 작가 안에서만 유일하고 발급은 서비스 책임이라
+    // 생성 시 주입받는다. 휴지통 이동·복원에도 바뀌지 않는다.
+    private String publicCode;
+
     private String title;
 
     // MariaDB 전환(docs/design/mariadb-migration-design.md §3.10) — 65535까지의 길이를 지정해
@@ -218,7 +223,7 @@ public class Artwork implements Persistable<String> {
     protected Artwork() {
     }
 
-    public static Artwork create(String authorId, String title, String description,
+    public static Artwork create(String authorId, String publicCode, String title, String description,
                                  List<String> imageKeys, int representativeImageIndex,
                                  String thumbnailKey,
                                  ImageLayoutType imageLayoutType, ArtworkField artworkField,
@@ -238,6 +243,7 @@ public class Artwork implements Persistable<String> {
         Artwork artwork = new Artwork();
         artwork.id = UuidV7Generator.generate();
         artwork.authorId = authorId;
+        artwork.publicCode = publicCode;
         artwork.title = title;
         artwork.description = description;
         artwork.representativeImageIndex = representativeImageIndex;
@@ -482,6 +488,7 @@ public class Artwork implements Persistable<String> {
 
     public String getId() { return id; }
     public String getAuthorId() { return authorId; }
+    public String getPublicCode() { return publicCode; }
     public String getTitle() { return title; }
     public String getDescription() { return description; }
     public int getRepresentativeImageIndex() { return representativeImageIndex; }

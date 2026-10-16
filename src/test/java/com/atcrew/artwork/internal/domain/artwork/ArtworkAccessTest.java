@@ -66,7 +66,7 @@ class ArtworkAccessTest {
 
     // 제3자 판정은 READY 상태에서만 공개 여부를 따지므로 이미지 처리 완료까지 태워 둔다.
     private Artwork readyArtwork(Visibility visibility) {
-        Artwork artwork = Artwork.create("author-1", "제목", "설명", List.of("raw/1.png"), 0, null,
+        Artwork artwork = Artwork.create("author-1", "abc123", "제목", "설명", List.of("raw/1.png"), 0, null,
                 ImageLayoutType.VERTICAL_SCROLL, ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL,
                 List.of(), List.of(), null, List.of(), AgeRating.ALL, List.of(Language.KO), visibility,
                 List.of(), null, null, List.of(), List.of());

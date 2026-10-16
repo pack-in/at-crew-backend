@@ -4,6 +4,8 @@ import com.atcrew.member.MemberInfo;
 import com.atcrew.member.MemberProfileInfo;
 import com.atcrew.member.internal.domain.Member;
 
+import java.time.Instant;
+
 class MemberMapper {
 
     private MemberMapper() {
@@ -81,7 +83,8 @@ class MemberMapper {
                 member.getPrimaryLanguage(),
                 member.getPostLanguages(),
                 member.isMarketingAgreed(),
-                member.isAdultContentVisible()
+                member.isAdultContentVisible(),
+                member.handleChangeAvailableAt(Instant.now())
         );
     }
 }

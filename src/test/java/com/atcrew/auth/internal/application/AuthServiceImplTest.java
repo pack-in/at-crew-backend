@@ -228,7 +228,7 @@ class AuthServiceImplTest {
         when(memberService.register(any())).thenReturn(memberInfo(AuthProvider.EMAIL));
 
         AuthInfo result = authService.registerWithEmail(
-                new EmailRegisterCommand(EMAIL, "Pass1234!", "홍길동", true, true, true, false, "Asia/Seoul", "KR", Language.KO));
+                new EmailRegisterCommand(EMAIL, "Pass1234!", "홍길동", true, true, true, false, "Asia/Seoul", "KR", Language.KO, null));
 
         assertThat(result.isNewUser()).isTrue();
         verify(memberService).register(argThat(cmd ->
@@ -240,12 +240,37 @@ class AuthServiceImplTest {
     }
 
     @Test
+    void 이메일_가입_시_입력한_handle을_member_모듈로_넘긴다() {
+        when(memberService.register(any())).thenReturn(memberInfo(AuthProvider.EMAIL));
+
+        authService.registerWithEmail(new EmailRegisterCommand(
+                EMAIL, "Pass1234!", "홍길동", true, true, true, false, "Asia/Seoul", "KR", Language.KO, "Pack_1n"));
+
+        verify(memberService).register(argThat(cmd -> "Pack_1n".equals(cmd.handle())));
+    }
+
+    @Test
+    void handle_중복_가입_409_전파() {
+        when(memberService.register(any()))
+                .thenThrow(new MemberException(MemberErrorCode.DUPLICATE_HANDLE, "Pack_1n"));
+
+        assertThatThrownBy(() -> authService.registerWithEmail(new EmailRegisterCommand(
+                EMAIL, "Pass1234!", "홍길동", true, true, true, false, "Asia/Seoul", "KR", Language.KO, "Pack_1n")))
+                .isInstanceOf(DomainException.class)
+                .satisfies(e -> assertThat(((DomainException) e).getCode())
+                        .isEqualTo(MemberErrorCode.DUPLICATE_HANDLE.name()));
+
+        verify(eventPublisher).publishEvent(
+                new AuthSignupFailedEvent(AuthProvider.EMAIL, MemberErrorCode.DUPLICATE_HANDLE.name()));
+    }
+
+    @Test
     void 이메일_중복_가입_409_전파() {
         when(memberService.register(any()))
                 .thenThrow(new MemberException(MemberErrorCode.DUPLICATE_EMAIL, EMAIL));
 
         assertThatThrownBy(() -> authService.registerWithEmail(
-                new EmailRegisterCommand(EMAIL, "Pass1234!", "홍길동", true, true, true, false, "Asia/Seoul", "KR", Language.KO)))
+                new EmailRegisterCommand(EMAIL, "Pass1234!", "홍길동", true, true, true, false, "Asia/Seoul", "KR", Language.KO, null)))
                 .isInstanceOf(DomainException.class)
                 .satisfies(e -> assertThat(((DomainException) e).getStatus()).isEqualTo(HttpStatus.CONFLICT));
 
@@ -261,7 +286,7 @@ class AuthServiceImplTest {
         when(memberService.register(any())).thenReturn(memberInfo(AuthProvider.GOOGLE));
 
         AuthInfo result = authService.registerWithGoogle(
-                new GoogleRegisterCommand(TOKEN, "홍길동", true, true, true, false, "Asia/Seoul", "KR", Language.KO));
+                new GoogleRegisterCommand(TOKEN, "홍길동", true, true, true, false, "Asia/Seoul", "KR", Language.KO, null));
 
         assertThat(result.isNewUser()).isTrue();
         verify(memberService).register(argThat(cmd ->
@@ -272,11 +297,23 @@ class AuthServiceImplTest {
     }
 
     @Test
+    void Google_가입_시_입력한_handle을_member_모듈로_넘긴다() {
+        when(googleTokenVerifierPort.verify(TOKEN)).thenReturn(new GoogleUser(EMAIL, AuthProvider.GOOGLE, true));
+        when(memberService.register(any())).thenReturn(memberInfo(AuthProvider.GOOGLE));
+
+        authService.registerWithGoogle(new GoogleRegisterCommand(
+                TOKEN, "홍길동", true, true, true, false, "Asia/Seoul", "KR", Language.KO, "Ggl_user1"));
+
+        verify(memberService).register(argThat(cmd ->
+                cmd.authProvider() == AuthProvider.GOOGLE && "Ggl_user1".equals(cmd.handle())));
+    }
+
+    @Test
     void Google_회원가입_토큰_오류_시_IP_카운터_누적() {
         when(googleTokenVerifierPort.verify(TOKEN)).thenThrow(new AuthException(AuthErrorCode.INVALID_GOOGLE_TOKEN));
 
         assertThatThrownBy(() -> authService.registerWithGoogle(
-                new GoogleRegisterCommand(TOKEN, "홍길동", true, true, true, false, "Asia/Seoul", "KR", Language.KO)))
+                new GoogleRegisterCommand(TOKEN, "홍길동", true, true, true, false, "Asia/Seoul", "KR", Language.KO, null)))
                 .isInstanceOf(AuthException.class)
                 .satisfies(e -> assertThat(((AuthException) e).getCode())
                         .isEqualTo(AuthErrorCode.INVALID_GOOGLE_TOKEN.name()));
@@ -293,7 +330,7 @@ class AuthServiceImplTest {
                 .when(loginAttemptLimiter).checkIpBlocked();
 
         assertThatThrownBy(() -> authService.registerWithGoogle(
-                new GoogleRegisterCommand(TOKEN, "홍길동", true, true, true, false, "Asia/Seoul", "KR", Language.KO)))
+                new GoogleRegisterCommand(TOKEN, "홍길동", true, true, true, false, "Asia/Seoul", "KR", Language.KO, null)))
                 .isInstanceOf(AuthException.class)
                 .satisfies(e -> assertThat(((AuthException) e).getCode())
                         .isEqualTo(AuthErrorCode.TOO_MANY_ATTEMPTS.name()));
@@ -732,7 +769,7 @@ class AuthServiceImplTest {
                 "테스트", null, List.of(), null, null, List.of(),
                 List.of(), null, null, List.of(), List.of(), List.of(), null, List.of(), null, null, List.of(),
                 5, 5, null, null, null, List.of(),
-                true, null, null, Instant.now(), Instant.now(), "Asia/Seoul", "KR", Language.KO, List.of(Language.KO), false, false);
+                true, null, null, Instant.now(), Instant.now(), "Asia/Seoul", "KR", Language.KO, List.of(Language.KO), false, false, null);
     }
 
     private AuthException catchAuthException(Runnable action) {
