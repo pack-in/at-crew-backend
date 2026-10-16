@@ -42,8 +42,11 @@ jobs:
       # 캐시 쓰기는 기본 브랜치 잡에서만 일어나고 나머지는 읽기 전용이라 서로 오염되지 않는다.
       - uses: gradle/actions/setup-gradle@v4
 
+      # --rerun: openapi.json은 test 태스크의 선언된 출력이 아니라 테스트의 부수 효과다. Java가 안 바뀐 main push
+      # (예: cloudflare-worker만 바뀐 dependabot PR)에서는 test가 빌드 캐시로 복원(FROM-CACHE)돼 이 파일이 생기지 않고
+      # 다음 단계 cp가 실패했다(2026-10-16, #246). 이 태스크만 캐시를 건너뛰고 실제로 돌린다.
       - name: OpenAPI 스펙 추출 (build/openapi/openapi.json)
-        run: ./gradlew test --tests "com.atcrew.support.OpenApiExportTest"
+        run: ./gradlew test --rerun --tests "com.atcrew.support.OpenApiExportTest"
 
       - name: 정적 사이트 조립
         run: |
