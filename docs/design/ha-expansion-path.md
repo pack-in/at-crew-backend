@@ -143,6 +143,7 @@ terraform apply -var ha_enabled=true
 - [ ] **두 인스턴스 모두에서 `./bootstrap.sh` 실행** — 관측·백업은 인스턴스마다 필요하다
 - [ ] 페일오버 드릴 — RDS 콘솔에서 강제 전환을 걸고 앱이 자동 복구되는지 확인
 - [ ] `docs/operations/incident-runbook.md`의 "DB Replica 승격" 절을 RDS 기준으로 갱신
+- [ ] presign 발급 한도(`PresignRateLimiter`)를 공유 저장소로 옮기기 — 지금은 인스턴스 메모리라 2대면 한도가 2배가 된다(#216)
 
 **마지막 항목이 중요하다.** 자동 페일오버로 바뀌면 수동 승격 런북은 더 이상 맞지 않는다.
 
