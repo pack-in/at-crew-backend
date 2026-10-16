@@ -75,7 +75,7 @@ class PortfolioPublicCodeTests {
     }
 
     @Test
-    void 최신반영형과_고정형_공유_포트폴리오는_코드를_받고_slug는_발급되지_않는다() {
+    void 최신반영형과_고정형_공유_포트폴리오는_코드와_전환기_slug를_함께_받는다() {
         String memberId = registerProMember();
 
         PortfolioInfo live = portfolioService.createShared(memberId, "최신", ReflectionType.LIVE, List.of());
@@ -83,8 +83,9 @@ class PortfolioPublicCodeTests {
 
         assertThat(portfolio(live.id()).getPublicCode()).matches("^[a-z0-9]{6}$");
         assertThat(portfolio(snapshot.id()).getPublicCode()).matches("^[a-z0-9]{6}$");
-        assertThat(live.shareSlug()).isNull();
-        assertThat(snapshot.shareSlug()).isNull();
+        // 새 주소를 모르는 운영 FE가 /portfolio/{shareSlug}로 링크를 만들므로 전환기에는 slug도 발급한다(§3.3).
+        assertThat(live.shareSlug()).matches("^[A-Za-z0-9_-]{22}$");
+        assertThat(snapshot.shareSlug()).matches("^[A-Za-z0-9_-]{22}$");
     }
 
     @Test

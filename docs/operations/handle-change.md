@@ -238,6 +238,9 @@ V52에서 `members.handle`을 덮어쓰는 UPDATE는 작업용 테이블 `v52_ha
 **`v52_handle_renames`가 남아 있으면** 그 UPDATE는 실행 전이거나 롤백된 것이라 `members.handle`은 배포 전 그대로다
 (설계된 실패 지점인 "재추첨 후에도 원장 PK 충돌"이 이 경우다). `v52_handle_renames`가 없는데 V52가 실패로 남아 있으면
 `members.handle`이 이미 바뀌었을 수 있으므로 정리하지 말고 6.3 백업 복원으로 간다.
+드물게 `DROP TABLE` 직전의 암시적 커밋 뒤 DROP 자체가 실패하면(메타데이터 락 대기 초과 등) UPDATE는 커밋되고 작업용 테이블도
+남는다. 그래서 `v52_handle_renames`가 남아 있어도 정리 전에 그 테이블의 새 handle 값이 `members.handle`에 이미 들어갔는지
+대조하고, 들어갔으면 6.3으로 간다.
 
 ### 6.2 정리 후 재기동
 

@@ -172,7 +172,16 @@ ALTER TABLE portfolios ADD UNIQUE KEY uk_pf_owner_code (owner_member_id, public_
 
 ### 3.3 기존 slug
 
-`portfolios.share_slug`는 옛 링크 해석 전용으로 남기고 신규 발급을 중단한다. `ShareSlugGenerator`와 그 안의 handle 충돌 검사는 제거한다.
+`portfolios.share_slug`는 옛 링크 해석용으로 남긴다. 신규 발급은 **가입 handle과 같은 전환기가 끝날 때(PA-14) 중단한다.**
+
+- **왜 바로 중단하지 않는가**: 운영 FE는 새 주소 체계를 배포하기 전까지 `shareSlug ?? portfolio.id`로 `/portfolio/{식별자}`
+  링크를 만든다. BE가 먼저 나가면서 slug를 발급하지 않으면 새 공유 포트폴리오의 링크가 UUID가 되고,
+  `GET /api/portfolios/shared/{identifier}`는 UUID를 해석하지 않으므로 생성 직후 화면·카드·복사한 링크가 모두 404가 된다
+  (PR #252 리뷰에서 발견).
+- `ShareSlugGenerator`는 슬러그 중복만 검사한다. 예전의 handle 충돌 검사는 뺐다 — 슬러그는 22자 base64url이고 새 handle은
+  4~14자라 겹칠 수 없으며, 해석 순서도 슬러그가 먼저다.
+- 전환기가 끝나면 `ShareSlugGenerator`를 지우고 `Portfolio.createShared`의 slug 인자를 없앤다. 이미 발급된 slug는 옛 링크
+  해석용으로 계속 남는다.
 
 ### 3.4 응답 필드
 

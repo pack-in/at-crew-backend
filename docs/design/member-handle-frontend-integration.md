@@ -13,7 +13,8 @@
   **main에 반영된 뒤에** 갱신되므로, 그전에는 이 문서의 요청·응답 형식을 기준으로 한다. 응답 예시의 필드명은 실제
   DTO 그대로다.
 - BE가 먼저 나가도 **옛 API는 그대로 동작**한다(옛 `/api/portfolios/shared/{identifier}`·`/api/artworks/{id}` 유지).
-  가입 요청의 `handle`도 전환기 동안은 선택이라, FE 배포 전에 BE가 나가도 깨지지 않는다(§6).
+  가입 요청의 `handle`도 전환기 동안은 선택이라, FE 배포 전에 BE가 나가도 깨지지 않는다(§6). 같은 이유로 공유 포트폴리오의
+  `shareSlug`도 전환기 동안 계속 발급한다.
 
 ## 1. 새 URL 체계
 
@@ -115,7 +116,9 @@ terms trash upload billing _next admin help about signup settings company
 
 - `identifier`는 옛 22자 slug 또는 handle(옛 handle 포함)이다. BE는 slug를 먼저 해석하고 없으면 handle로 해석한다.
   둘 다 안 되면 `PORTFOLIO_NOT_FOUND`(404), 탈퇴 회원 handle이면 `MEMBER_WITHDRAWN`(410)이다.
-- 옛 slug는 신규 발급이 중단됐다. 새로 만든 공유 포트폴리오의 `shareSlug`는 항상 null이며 **새 링크 생성에 쓰면 안 된다.**
+- `shareSlug`는 옛 링크 해석용이다. 지금 운영 FE가 이 값으로 링크를 만들고 있어서 **전환기 동안은 새 공유 포트폴리오에도
+  발급되지만, 새 주소 체계를 반영한 FE는 새 링크 생성에 쓰면 안 된다.** 가입 `handle` 필수화와 같은 시점에 발급을 중단하며,
+  그 뒤 새 공유 포트폴리오의 `shareSlug`는 null이다.
 - **`/profile/{handle}` 체인 정리 요청**: `profile`은 이 라우트 때문에 예약어로 막아 두었다. BE는 FE의 리다이렉트 체인을
   볼 수 없으므로, FE에 `/profile/{handle}` → (다른 경로) → ... 식의 연쇄 리다이렉트가 있다면 **`/{handle}`로 한 번에**
   308 하도록 정리해 달라. 다단 리다이렉트는 옛 handle이 섞이면 이중 변환이 생긴다. 실제 라우트 구성을 알려 주면

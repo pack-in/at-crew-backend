@@ -170,8 +170,8 @@ class PortfolioServiceTests {
 
         assertThat(created.kind()).isEqualTo(PortfolioKind.SHARED);
         assertThat(created.reflectionType()).isEqualTo(ReflectionType.LIVE);
-        // 신규 slug 발급은 중단됐고(member-handle-design §3.3) 6자 공개 코드를 받는다.
-        assertThat(created.shareSlug()).isNull();
+        // 6자 공개 코드와 함께 전환기 slug도 받는다(member-handle-design §3.3).
+        assertThat(created.shareSlug()).matches("^[A-Za-z0-9_-]{22}$");
         assertThat(portfolioRepository.findById(created.id()).orElseThrow().getPublicCode()).matches("^[a-z0-9]{6}$");
         assertThat(created.itemCount()).isEqualTo(2);
         assertThat(created.artworks()).extracting(PortfolioArtworkCardInfo::artworkId)
@@ -224,8 +224,8 @@ class PortfolioServiceTests {
                 memberId, "고정형", ReflectionType.SNAPSHOT, List.of(artworkId, secondArtworkId));
 
         assertThat(created.reflectionType()).isEqualTo(ReflectionType.SNAPSHOT);
-        // 신규 slug 발급은 중단됐고(member-handle-design §3.3) 6자 공개 코드를 받는다.
-        assertThat(created.shareSlug()).isNull();
+        // 6자 공개 코드와 함께 전환기 slug도 받는다(member-handle-design §3.3).
+        assertThat(created.shareSlug()).matches("^[A-Za-z0-9_-]{22}$");
         assertThat(portfolioRepository.findById(created.id()).orElseThrow().getPublicCode()).matches("^[a-z0-9]{6}$");
         assertThat(created.itemCount()).isEqualTo(2);
         // 고정형 카드는 원본 작품 ID 대신 스냅샷 ID를 노출한다(마이페이지_작가-R39, PH-01).
@@ -1219,7 +1219,7 @@ class PortfolioServiceTests {
     void 소유자를_확인할_수_없는_포트폴리오는_열람_시점에_차단된다() {
         Portfolio orphan = portfolioRepository.save(Portfolio.createShared(
                 UUID.randomUUID().toString(), ReflectionType.LIVE, "주인 없는 포트폴리오",
-                UUID.randomUUID().toString().substring(0, 6)));
+                UUID.randomUUID().toString().substring(0, 6), null));
         String slug = legacySlug(orphan.getId());
 
         assertThatThrownBy(() -> portfolioService.getSharedPortfolio(slug))

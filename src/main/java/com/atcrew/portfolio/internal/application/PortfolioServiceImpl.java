@@ -98,6 +98,7 @@ public class PortfolioServiceImpl implements PortfolioService {
     private final MemberService memberService;
     private final BillingService billingService;
     private final PublicCodeGenerator publicCodeGenerator;
+    private final ShareSlugGenerator shareSlugGenerator;
     private final PortfolioBlocker portfolioBlocker;
     // Spring Boot 4가 자동 구성한 Jackson 3 매퍼 — HTTP 응답 직렬화와 동일한 설정으로 스냅샷 JSON을 만든다.
     private final JsonMapper jsonMapper;
@@ -110,6 +111,7 @@ public class PortfolioServiceImpl implements PortfolioService {
                          MemberService memberService,
                          BillingService billingService,
                          PublicCodeGenerator publicCodeGenerator,
+                         ShareSlugGenerator shareSlugGenerator,
                          PortfolioBlocker portfolioBlocker,
                          JsonMapper jsonMapper,
                          ApplicationEventPublisher eventPublisher) {
@@ -120,6 +122,7 @@ public class PortfolioServiceImpl implements PortfolioService {
         this.memberService = memberService;
         this.billingService = billingService;
         this.publicCodeGenerator = publicCodeGenerator;
+        this.shareSlugGenerator = shareSlugGenerator;
         this.portfolioBlocker = portfolioBlocker;
         this.jsonMapper = jsonMapper;
         this.eventPublisher = eventPublisher;
@@ -564,10 +567,11 @@ public class PortfolioServiceImpl implements PortfolioService {
     /**
      * 공유 식별자 해석 — 슬러그 우선, 없으면 작가 페이지 handle로 해석한다(§2.6).
      * 22자 handle이 실제로 존재할 수 있어 두 식별자가 한 네임스페이스를 공유하므로 이 순서가 곧 정책이다.
-     * 슬러그는 신규 발급이 중단돼 옛 공유 링크 해석에만 쓰인다(member-handle-design §3.3).
+     * 슬러그는 전환기 동안 새 공유 포트폴리오에도 발급된다 — 새 주소를 모르는 운영 FE가 이 경로로 링크를 만든다
+     * (member-handle-design §3.3).
      */
     private Portfolio resolveSharedPortfolio(String identifier) {
-        // findByShareSlug(null)은 share_slug IS NULL로 풀려 slug 없는 행 전부(V53 이후 공유 포트폴리오)가 걸린다 —
+        // findByShareSlug(null)은 share_slug IS NULL로 풀려 slug 없는 행 전부(작가 페이지 등)가 걸린다 —
         // 다건 결과로 500이 나므로 빈 식별자는 조회 전에 끊는다.
         if (identifier == null || identifier.isBlank()) {
             throw new PortfolioException(PortfolioErrorCode.PORTFOLIO_NOT_FOUND, "빈 공유 식별자");
@@ -690,7 +694,8 @@ public class PortfolioServiceImpl implements PortfolioService {
                 result = createSnapshot(memberId, validatedTitle, artworks);
             } else {
                 Portfolio portfolio = saveNewShared(Portfolio.createShared(
-                        memberId, ReflectionType.LIVE, validatedTitle, issuePublicCode(memberId)));
+                        memberId, ReflectionType.LIVE, validatedTitle, issuePublicCode(memberId),
+                        shareSlugGenerator.generate()));
                 replaceItems(portfolio, artworks.stream().map(ArtworkInfo::id).toList());
                 result = PortfolioMapper.toInfo(portfolio, currentHandleOf(memberId), artworks.size(),
                         artworks.stream().map(PortfolioMapper::toCardInfo).toList());
@@ -722,7 +727,7 @@ public class PortfolioServiceImpl implements PortfolioService {
         assertImagesSettled(artworks);
         MemberInfo owner = memberService.findById(memberId);
         Portfolio portfolio = Portfolio.createShared(
-                memberId, ReflectionType.SNAPSHOT, title, issuePublicCode(memberId));
+                memberId, ReflectionType.SNAPSHOT, title, issuePublicCode(memberId), shareSlugGenerator.generate());
         portfolio.markAsSnapshot(owner.name(),
                 jsonMapper.writeValueAsString(new OwnerProfileSnapshot(owner.name(), owner.handle())));
         saveNewShared(portfolio);

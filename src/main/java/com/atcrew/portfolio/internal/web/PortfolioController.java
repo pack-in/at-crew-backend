@@ -97,7 +97,7 @@ class PortfolioController {
 
     @Operation(summary = "공유 포트폴리오 생성",
             description = "프로 플랜 전용입니다. 공유 URL은 응답의 ownerHandle·publicCode로 /{ownerHandle}/portfolio/{publicCode} "
-                    + "형태로 구성합니다(shareSlug는 옛 링크 전용이라 새 포트폴리오는 null).")
+                    + "형태로 구성합니다. shareSlug는 옛 /portfolio/{slug} 링크용으로 전환기 동안만 함께 발급하며 새 링크에 쓰지 않습니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "생성 성공")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409",
             description = "고정형(SNAPSHOT)에 이미지 처리가 끝나지 않은 작품이 포함됨(ARTWORK_IMAGE_PROCESSING)")
