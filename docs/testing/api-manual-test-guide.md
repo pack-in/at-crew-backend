@@ -389,7 +389,7 @@
 ```
 **필드 제약**:
 - `activityFields`: `@Size(max=4)`, 원소 `@NotNull` (`[]` 전송 시 전체 삭제)
-- `activeRegion`: 단일 선택 (SEOUL·GYEONGGI·GANGWON·CHUNGBUK·CHUNGNAM·JEONBUK·JEONNAM·GYEONGBUK·GYEONGNAM·JEJU)
+- `activeRegion`: 단일 선택 (SEOUL·GYEONGGI·GANGWON·CHUNGBUK·CHUNGNAM·JEONBUK·JEONNAM·GYEONGBUK·GYEONGNAM·JEJU·OVERSEAS)
 - `teamExperiences`: `@Size(max=4)`, 원소 `@NotNull`
 - `totalSlotCount`: `@Min(1) @Max(5)`
 - `availableSlotCount`: `@Min(0) @Max(5)`, `totalSlotCount` 이하여야 함(서비스단 검증)
