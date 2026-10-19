@@ -515,6 +515,7 @@ class ArtworkModuleTests {
                 List.of(), List.of(), null, List.of(),
                 AgeRating.ALL, List.of(Language.KO), true, List.of(), List.of(), null, null, List.of(), List.of()));
         processImage(uploaded.id(), signedKey(memberId, "ct"), MediaProcessingStatus.DONE);
+        processThumbnail(uploaded.id(), signedKey(memberId, "custom-thumb"));
         awaitReady(memberId, uploaded.id());
         artworkService.deleteArtwork(memberId, uploaded.id());
 
@@ -558,8 +559,47 @@ class ArtworkModuleTests {
         ArtworkInfo detail = artworkService.getArtwork(uploaded.id(), memberId);
         assertThat(detail.thumbnailKey()).isEqualTo(thumbnailKey);
         assertThat(detail.thumbnailImage().thumbKey()).isEqualTo("thumb/c-thumb.avif");
-        // 썸네일 처리는 작품 상태를 정하지 않는다 — 본문이 끝나야 READY다.
+        // 썸네일만 끝나서는 READY가 아니다 — 본문도 끝나야 한다.
         assertThat(artworkService.getArtworkStatus(memberId, uploaded.id())).isEqualTo(ArtworkStatus.PROCESSING);
+    }
+
+    // FE는 READY를 기다렸다가 목록을 다시 받는다. 썸네일보다 READY가 먼저 오면 카드가 곧 지워질 raw를 받아
+    // 깨진다(2026-10-18 운영) — READY는 카드 썸네일까지 끝난 뒤여야 하고, 그때 카드는 변환본이다.
+    @Test
+    void 본문이_끝나도_카드_썸네일이_끝나야_READY가_되고_그때_카드는_변환본이다() {
+        String memberId = registerAuthor();
+        String thumbnailKey = signedKey(memberId, "r-thumb");
+        ArtworkInfo uploaded = uploadWithThumbnail(memberId, signedKey(memberId, "r-body"), thumbnailKey);
+
+        processImage(uploaded.id(), signedKey(memberId, "r-body"), MediaProcessingStatus.DONE);
+        // 리스너는 비동기라 "반영 안 됨"을 기다릴 신호가 없다 — 고치기 전에는 이 사이에 READY가 됐다. 처리 완료
+        // 이벤트 반영은 같은 테스트 컨텍스트에서 수백 ms 안에 끝난다(awaitReady 실측).
+        try {
+            Thread.sleep(2_000);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
+        assertThat(artworkService.getArtworkStatus(memberId, uploaded.id())).isEqualTo(ArtworkStatus.PROCESSING);
+
+        processThumbnail(uploaded.id(), thumbnailKey);
+
+        awaitReady(memberId, uploaded.id());
+        assertThat(artworkService.getMyArtworks(memberId, null, 20).items().get(0).thumbKey())
+                .isEqualTo("thumb/r-thumb.avif");
+    }
+
+    @Test
+    void 카드_썸네일이_실패해도_본문이_끝나면_READY가_된다() {
+        String memberId = registerAuthor();
+        String thumbnailKey = signedKey(memberId, "rf-thumb");
+        ArtworkInfo uploaded = uploadWithThumbnail(memberId, signedKey(memberId, "rf-body"), thumbnailKey);
+
+        mediaCallbackService.process(MediaOwnerType.ARTWORK_THUMBNAIL, uploaded.id(), thumbnailKey,
+                null, null, null, MediaProcessingStatus.FAILED);
+        processImage(uploaded.id(), signedKey(memberId, "rf-body"), MediaProcessingStatus.DONE);
+
+        awaitReady(memberId, uploaded.id());
     }
 
     // 공유 미리보기(OG)는 연령 등급으로 고른다 — 성인물은 블러본, 등급을 바꾸면 다음 조회부터 바로 바뀐다.

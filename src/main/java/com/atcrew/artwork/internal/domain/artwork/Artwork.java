@@ -416,8 +416,13 @@ public class Artwork implements Persistable<String> {
      * 실패한 작품이 정상 공개 상태가 되어 피드·검색에 깨진 채로 노출됐다.
      */
     public void restore(List<ImageProcessingStatus> imageStatuses) {
+        restore(imageStatuses, null);
+    }
+
+    /** 카드 썸네일 자산의 현황까지 넣어 되돌린다 — {@link #resolveStatus} 참고. */
+    public void restore(List<ImageProcessingStatus> imageStatuses, ImageProcessingStatus thumbnailStatus) {
         assertDeleted();
-        this.status = resolveStatus(imageStatuses);
+        this.status = resolveStatus(imageStatuses, thumbnailStatus);
         this.visibility = this.visibilityBeforeDelete != null ? this.visibilityBeforeDelete : Visibility.PRIVATE;
         this.visibilityBeforeDelete = null;
         this.deletedAt = null;
@@ -429,9 +434,15 @@ public class Artwork implements Persistable<String> {
      *
      * <p>이미지가 하나도 없는 작품은 업로드 경로상 만들어질 수 없지만, 그 경우 PROCESSING으로 두면
      * 아무도 끝내주지 않아 고착되므로 FAILED로 본다.
+     *
+     * <p>카드 썸네일 자산({@code thumbnailStatus}, 없으면 null)은 처리 중일 때만 본다 — 처리 중이면 PROCESSING에 둔다.
+     * 그 사이 목록은 카드에 raw 원본 key를 내려주는데, Worker는 썸네일 변환이 끝나면 raw를 지운다. FE는 READY를
+     * 기다렸다가 목록을 다시 받으므로, READY가 썸네일보다 먼저 오면 곧 사라질 raw를 받아 카드가 깨진다
+     * (2026-10-18 운영). 썸네일이 실패해도 작품은 본문 이미지로 판정한다 — 카드는 raw로 남는다.
      */
-    private static ArtworkStatus resolveStatus(List<ImageProcessingStatus> imageStatuses) {
-        if (imageStatuses.contains(ImageProcessingStatus.PENDING)) {
+    private static ArtworkStatus resolveStatus(List<ImageProcessingStatus> imageStatuses,
+                                               ImageProcessingStatus thumbnailStatus) {
+        if (imageStatuses.contains(ImageProcessingStatus.PENDING) || thumbnailStatus == ImageProcessingStatus.PENDING) {
             return ArtworkStatus.PROCESSING;
         }
         return imageStatuses.contains(ImageProcessingStatus.DONE) ? ArtworkStatus.READY : ArtworkStatus.FAILED;
@@ -445,10 +456,15 @@ public class Artwork implements Persistable<String> {
      * media에 남아 있으므로 복구하면 그대로 쓸 수 있다.
      */
     public void applyImageStatuses(List<ImageProcessingStatus> imageStatuses) {
+        applyImageStatuses(imageStatuses, null);
+    }
+
+    /** 카드 썸네일 자산의 현황까지 넣어 반영한다 — {@link #resolveStatus} 참고. */
+    public void applyImageStatuses(List<ImageProcessingStatus> imageStatuses, ImageProcessingStatus thumbnailStatus) {
         if (status == ArtworkStatus.DELETED) {
             return;
         }
-        this.status = resolveStatus(imageStatuses);
+        this.status = resolveStatus(imageStatuses, thumbnailStatus);
     }
 
     // 뷰어별 접근 판정 — 공개 여부는 "피드 공개 여부 × 라이브 포트폴리오 편입 여부" 2요소로 계산한다
