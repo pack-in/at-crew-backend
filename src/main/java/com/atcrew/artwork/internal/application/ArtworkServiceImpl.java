@@ -381,7 +381,8 @@ class ArtworkServiceImpl implements ArtworkService {
             artwork.repositionRepresentative(command.representativeImageIndex(), images.size());
         }
         artwork.applyImageStatuses(images.stream().map(MediaAssetInfo::status)
-                .map(ArtworkMapper::toImageStatus).toList());
+                .map(ArtworkMapper::toImageStatus).toList(),
+                thumbnail != null ? ArtworkMapper.toImageStatus(thumbnail.status()) : null);
 
         Artwork saved = artworkRepository.save(artwork);
         eventPublisher.publishEvent(new ArtworkChangedEvent(saved.getId()));
@@ -691,7 +692,8 @@ class ArtworkServiceImpl implements ArtworkService {
         // 복구도 보유 작품이 늘어나는 행위라 스타터 제한을 그대로 적용한다(휴지통-R03).
         assertArtworkQuota(memberId, artworks.size());
         for (Artwork artwork : artworks) {
-            artwork.restore(imageStatusesOf(artwork.getId()));
+            artwork.restore(imageStatusesOf(artwork.getId()), ArtworkMapper.thumbnailStatusOf(
+                    mediaService.getAssets(MediaOwnerType.ARTWORK_THUMBNAIL, artwork.getId())));
         }
         artworkRepository.saveAll(artworks);
         artworks.forEach(a -> eventPublisher.publishEvent(new ArtworkChangedEvent(a.getId())));

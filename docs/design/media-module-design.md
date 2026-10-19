@@ -122,7 +122,7 @@ OG 백필용 `OG_ONLY`는 Worker 트리거 payload에만 있는 이름이고 이
 작품의 사용자 지정 썸네일(업로드-R05, FE가 3:4로 잘라 올림)은 본문과 **owner type을 나눠** `ARTWORK_THUMBNAIL`
 (ownerId = 작품 ID) 자산 1장으로 둔다. 같은 owner의 slotRole로 두면 본문 목록을 읽는 곳(대표 이미지 인덱스·처리
 상태·스냅샷·검색)을 전부 걸러야 해서다. 썸네일은 연령 등급과 무관하게 블러본까지 만든다 — 등급은 업로드 뒤에도
-바뀐다. 썸네일 처리 완료는 작품 상태(READY)를 정하지 않는다. recruit은 썸네일 슬롯도 카드·OG 모두 원본 변환본을
+바뀐다. 썸네일이 처리 중이면 작품은 READY가 되지 않는다(§5). recruit은 썸네일 슬롯도 카드·OG 모두 원본 변환본을
 쓰고(`PostingImages`) 성인 게이팅 대상도 아니라(`recruit-module-design.md` §7) `ORIGINAL`만 쓴다.
 
 썸네일 변환 이전에 올라온 작품의 지정 썸네일은 raw로만 있고 자산 행이 없다. 백필하지 않는다 — 변환하면 Worker가
@@ -319,6 +319,12 @@ public record MediaAssetProcessedEvent(MediaOwnerType ownerType, String ownerId,
   영원히 READY로 못 넘어가는 회귀가 생겼을 것). **PENDING이 없는데 DONE도 없으면(전량 실패) `FAILED`로
   끝낸다** — 이 분기가 없으면 어느 조건에도 걸리지 않아 PROCESSING에 영구 고착되고, 재시도 스케줄러는
   PENDING만 다루므로 자력 복구도 불가능하다(2026-09-09 프로덕션 4건, 원인은 용량 상한 초과).
+  **카드 썸네일 자산(`ARTWORK_THUMBNAIL`)이 PENDING이어도 PROCESSING에 둔다.** 썸네일 처리 전 목록은 카드에
+  raw 원본 key를 내려주는데 Worker는 썸네일 변환이 끝나면 raw를 지운다. FE는 READY를 기다렸다가 목록을 다시
+  받으므로, READY가 썸네일보다 먼저 오면 곧 사라질 raw를 받아 카드가 깨진다(2026-10-18 운영 — OG 합성이 썸네일
+  콜백 앞에 들어가 썸네일이 본문보다 늦게 끝나는 일이 잦아진 것으로 추정). 썸네일의 DONE/FAILED는 판정에 넣지 않는다 —
+  썸네일만 실패해도 작품은 본문 이미지로 판정하고 카드는 raw로 남는다. 리스너는 썸네일 이벤트로도 같은 락
+  아래에서 다시 판정한다.
   이 로직은 `Artwork` 애그리게잇에 그대로 남고, 리스너는
   이벤트를 받아 `Artwork`에 위임만 한다 — 부분 실패 허용 여부 판단 자체는 도메인 로직이라 media로 옮기지
   않는다.

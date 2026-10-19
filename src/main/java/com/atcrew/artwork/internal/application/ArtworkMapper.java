@@ -16,6 +16,8 @@ import com.atcrew.media.MediaAssetInfo;
 import com.atcrew.media.MediaProcessingStatus;
 import com.atcrew.member.MemberInfo;
 
+import java.util.List;
+
 
 class ArtworkMapper {
 
@@ -106,6 +108,11 @@ class ArtworkMapper {
             case DONE -> ImageProcessingStatus.DONE;
             case FAILED -> ImageProcessingStatus.FAILED;
         };
+    }
+
+    /** 카드 썸네일 자산(작품당 최대 1개)의 처리 상태. 지정 썸네일 자산이 없는 작품이면 null. */
+    static ImageProcessingStatus thumbnailStatusOf(List<MediaAssetInfo> thumbnails) {
+        return thumbnails.stream().findFirst().map(t -> toImageStatus(t.status())).orElse(null);
     }
 
     static BookmarkFolderInfo toFolderInfo(BookmarkFolder folder) {

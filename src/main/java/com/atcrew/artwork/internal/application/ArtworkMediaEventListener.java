@@ -40,21 +40,19 @@ class ArtworkMediaEventListener {
 
     @ApplicationModuleListener
     void onMediaAssetProcessed(MediaAssetProcessedEvent event) {
-        if (event.ownerType() == MediaOwnerType.ARTWORK_THUMBNAIL) {
-            // 썸네일은 작품 상태(READY)를 정하지 않는다 — 처리 전에도 raw로 카드를 띄울 수 있다. 카드 썸네일이
-            // 바뀌었으니 검색 색인만 다시 쓰게 한다.
-            eventPublisher.publishEvent(new ArtworkChangedEvent(event.ownerId()));
-            return;
-        }
-        if (event.ownerType() != MediaOwnerType.ARTWORK) {
+        // 카드 썸네일도 처리 중이면 작품을 PROCESSING에 둔다(Artwork#resolveStatus) — 썸네일 이벤트로도 다시 판정한다.
+        if (event.ownerType() != MediaOwnerType.ARTWORK && event.ownerType() != MediaOwnerType.ARTWORK_THUMBNAIL) {
             return;
         }
         // 같은 작품의 이미지 이벤트가 동시에 들어오면 각 트랜잭션이 서로의 갱신을 못 본 채 readyFor를
         // 판정해 READY 전이가 영구 유실될 수 있다 — findByIdForUpdate로 부모 행을 잠가 직렬화한다.
+        // 본문 이미지와 썸네일 이벤트도 같은 락으로 직렬화된다.
         artworkRepository.findByIdForUpdate(event.ownerId()).ifPresentOrElse(artwork -> {
             // 변환 결과는 media가 이미 저장했다 — 작품은 그 현황만 보고 상태를 정한다(#193).
             artwork.applyImageStatuses(mediaService.getAssets(MediaOwnerType.ARTWORK, event.ownerId()).stream()
-                    .map(MediaAssetInfo::status).map(ArtworkMapper::toImageStatus).toList());
+                            .map(MediaAssetInfo::status).map(ArtworkMapper::toImageStatus).toList(),
+                    ArtworkMapper.thumbnailStatusOf(
+                            mediaService.getAssets(MediaOwnerType.ARTWORK_THUMBNAIL, event.ownerId())));
             artworkRepository.save(artwork);
             // 검색 색인이 썸네일·상태 변경을 반영하도록 재발행 (기존 webhook 경로와 동일)
             eventPublisher.publishEvent(new ArtworkChangedEvent(artwork.getId()));

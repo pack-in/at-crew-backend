@@ -129,6 +129,46 @@ class ArtworkImageProcessingTest {
         assertThat(artwork.getStatus()).isEqualTo(ArtworkStatus.FAILED);
     }
 
+    // 카드 썸네일이 처리 중인데 READY를 주면 FE가 그 순간 목록을 받아 곧 지워질 raw를 카드에 그린다(2026-10-18 운영).
+    @Test
+    void 본문이_끝나도_카드_썸네일이_처리_중이면_PROCESSING에_머문다() {
+        Artwork artwork = artworkWith("raw/1.png");
+
+        artwork.applyImageStatuses(List.of(DONE), PENDING);
+
+        assertThat(artwork.getStatus()).isEqualTo(ArtworkStatus.PROCESSING);
+    }
+
+    @Test
+    void 카드_썸네일까지_끝나면_READY로_전환된다() {
+        Artwork artwork = artworkWith("raw/1.png");
+
+        artwork.applyImageStatuses(List.of(DONE), DONE);
+
+        assertThat(artwork.getStatus()).isEqualTo(ArtworkStatus.READY);
+    }
+
+    // 썸네일 실패는 작품을 실패시키지 않는다 — 카드는 raw로 남고, 판정은 본문 이미지로 한다.
+    @Test
+    void 카드_썸네일이_실패해도_본문_판정을_따른다() {
+        Artwork ready = artworkWith("raw/1.png");
+        ready.applyImageStatuses(List.of(DONE), FAILED);
+        Artwork failed = artworkWith("raw/1.png");
+        failed.applyImageStatuses(List.of(FAILED), DONE);
+
+        assertThat(ready.getStatus()).isEqualTo(ArtworkStatus.READY);
+        assertThat(failed.getStatus()).isEqualTo(ArtworkStatus.FAILED);
+    }
+
+    @Test
+    void 카드_썸네일이_처리_중인_작품을_복구하면_PROCESSING으로_돌아온다() {
+        Artwork artwork = trashedArtwork();
+
+        artwork.restore(List.of(DONE), PENDING);
+
+        assertThat(artwork.getStatus()).isEqualTo(ArtworkStatus.PROCESSING);
+    }
+
     private Artwork trashedArtwork() {
         Artwork artwork = artworkWith("raw/1.png");
         artwork.moveToTrash();
