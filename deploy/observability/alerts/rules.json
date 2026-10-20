@@ -962,5 +962,79 @@
         }
       }
     ]
+  },
+  {
+    "uid": "atcrew-mysql-down",
+    "title": "[P2] DB 지표 수집 불가",
+    "ruleGroup": "at-crew-p2",
+    "folderUID": "__FOLDER_UID__",
+    "condition": "C",
+    "for": "10m",
+    "labels": {
+      "severity": "p2"
+    },
+    "annotations": {
+      "summary": "Alloy의 prometheus.exporter.mysql이 10분간 MariaDB에 접속하지 못했다(mysql_up < 1 또는 지표 없음)",
+      "description": "DB 지표만 끊긴 상태일 가능성이 크다(서비스가 살아 있으면 [P1] API 전면 다운은 조용하다). 런북: docs/operations/incident-runbook.md P2 표"
+    },
+    "noDataState": "Alerting",
+    "execErrState": "OK",
+    "isPaused": false,
+    "data": [
+      {
+        "refId": "A",
+        "relativeTimeRange": {
+          "from": 600,
+          "to": 0
+        },
+        "datasourceUid": "__PROM_UID__",
+        "model": {
+          "refId": "A",
+          "instant": true,
+          "editorMode": "code",
+          "expr": "max(mysql_up)"
+        }
+      },
+      {
+        "refId": "C",
+        "relativeTimeRange": {
+          "from": 600,
+          "to": 0
+        },
+        "datasourceUid": "__expr__",
+        "model": {
+          "refId": "C",
+          "type": "threshold",
+          "expression": "A",
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "conditions": [
+            {
+              "evaluator": {
+                "type": "lt",
+                "params": [
+                  1
+                ]
+              },
+              "operator": {
+                "type": "and"
+              },
+              "query": {
+                "params": [
+                  "C"
+                ]
+              },
+              "reducer": {
+                "type": "last",
+                "params": []
+              },
+              "type": "query"
+            }
+          ]
+        }
+      }
+    ]
   }
 ]
