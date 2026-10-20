@@ -18,7 +18,10 @@ import java.util.List;
  * 정기 결제 실패를 회원에게 메일로 알린다(설정-R03, QA-041).
  *
  * <p>커밋 뒤에 발송한다 — 웹훅 처리가 롤백되면 실제로는 플랜이 바뀌지 않았는데 실패 메일만 나가게 된다.
- * 같은 실패 웹훅이 재전송돼도 상태가 이미 PAST_DUE면 이벤트 자체가 다시 나지 않으므로 메일도 한 번만 간다.
+ *
+ * <p>인보이스당 한 번만 보낸다. 같은 이벤트 ID의 재전송은 웹훅 중복 제거가 막지만, Stripe가 같은 인보이스를
+ * 재시도하다 또 실패하면 새 이벤트 ID로 실패 이벤트가 다시 난다 — 그래서 첫 시도({@code attemptCount == 1})의
+ * 실패에만 보낸다. 결제 성공 쪽 복구 판정과 같은 기준(Stripe {@code attempt_count})이다.
  */
 @Component
 class BillingNotificationListener {
@@ -37,6 +40,11 @@ class BillingNotificationListener {
 
     @ApplicationModuleListener
     void onPaymentFailed(SubscriptionPaymentFailedEvent event) {
+        if (event.attemptCount() > 1) {
+            log.info("결제 실패 메일 생략 — 재시도 실패: memberId={}, attemptCount={}",
+                    event.memberId(), event.attemptCount());
+            return;
+        }
         // 탈퇴 회원은 결과에서 빠진다. findById는 예외를 던져 이벤트가 끝없이 재발행 대상으로 남는다.
         MemberInfo member = memberService.findAllByIds(List.of(event.memberId())).get(event.memberId());
         if (member == null || member.loginEmail() == null) {
