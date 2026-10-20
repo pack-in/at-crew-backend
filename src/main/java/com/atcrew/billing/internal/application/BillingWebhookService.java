@@ -309,7 +309,8 @@ public class BillingWebhookService {
                             subscription.getCurrentPeriodEnd(), subscription.isCancelAtPeriodEnd(), occurredAt);
                     if (changed) {
                         eventPublisher.publishEvent(new SubscriptionPaymentFailedEvent(
-                                subscription.getMemberId(), subscription.getPlan(), occurredAt));
+                                subscription.getMemberId(), subscription.getPlan(), occurredAt,
+                                invoice.getAttemptCount() == null ? 1L : invoice.getAttemptCount()));
                         eventPublisher.publishEvent(new SubscriptionPaymentFailureRecordedEvent(
                                 subscription.getMemberId(), subscription.getStripeSubscriptionId(),
                                 subscription.getPlan(), paymentType(subscription), failureCode(invoice),

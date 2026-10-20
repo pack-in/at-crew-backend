@@ -58,7 +58,7 @@ class SecurityConfig {
 
     @Bean
     SecurityFilterChain filterChain(HttpSecurity http, JwtAuthenticationFilter jwtFilter,
-            JwtAuthenticationEntryPoint entryPoint) throws Exception {
+            JwtAuthenticationEntryPoint entryPoint, JwtAccessDeniedHandler accessDeniedHandler) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable) // stateless JWT — CSRF 불필요 (쿠키 전환 시 재검토)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
@@ -89,6 +89,14 @@ class SecurityConfig {
                                     "/api/auth/google/login",
                                     "/api/auth/google/register",
                                     "/api/auth/refresh").permitAll();
+
+                    // 관리자 전용 API는 관리자 권한 체계(docs/roadmap.md 8번)가 생기기 전까지 누구에게도 열지 않는다.
+                    // 전에는 로그인만 확인해 일반 회원도 배너를 바꾸고 구인글을 승인할 수 있었다. 아래 공개 규칙보다
+                    // 먼저 선언해 어떤 permitAll에도 가려지지 않게 한다. 배너 목록 조회(GET)는 공개로 남는다.
+                    auth.requestMatchers(HttpMethod.POST, "/api/community/banners").denyAll()
+                            .requestMatchers(HttpMethod.PATCH, "/api/community/banners/{bannerId}").denyAll()
+                            .requestMatchers(HttpMethod.DELETE, "/api/community/banners/{bannerId}").denyAll()
+                            .requestMatchers("/api/recruit/admin/**").denyAll();
 
                     // prod 프로파일에서는 차단 (DevMemberController도 prod에서 미로드 — 이중 방어)
                     if (!isProd()) {
@@ -172,7 +180,8 @@ class SecurityConfig {
                     }
                     auth.anyRequest().authenticated();
                 })
-                .exceptionHandling(ex -> ex.authenticationEntryPoint(entryPoint))
+                .exceptionHandling(ex -> ex.authenticationEntryPoint(entryPoint)
+                        .accessDeniedHandler(accessDeniedHandler))
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
     }

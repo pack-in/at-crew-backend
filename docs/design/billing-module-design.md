@@ -109,7 +109,7 @@ CTA 상태는 `AVAILABLE`(구매 가능) / `CURRENT`(이용 중) / `CHANGE`(다�
 |--------|------|
 | `checkout.session.completed` | `mode=payment`일 때만 지급. `TEAM_POSTING`은 `BOOST`도 함께 +1 |
 | `customer.subscription.created/updated/deleted` | 구독 미러 갱신. Price ID로 플랜 판별, 기간 종료 시각은 **구독 아이템**에서 읽는다 |
-| `invoice.payment_failed` | 유예 없이 `PAST_DUE` + 즉시 스타터 혜택 회수, `SubscriptionPaymentFailedEvent` 발행 |
+| `invoice.payment_failed` | 유예 없이 `PAST_DUE` + 즉시 스타터 혜택 회수, `SubscriptionPaymentFailedEvent` 발행 → 커밋 뒤 결제 실패 안내 메일(`BillingNotificationListener`) |
 | `invoice.payment_succeeded` | `PAST_DUE`였다면 `ACTIVE`로 복원 |
 | `charge.refunded` | 전액 환불일 때만 권한 회수. 부분 환불은 지급 단위와 대응하지 않아 무시 |
 

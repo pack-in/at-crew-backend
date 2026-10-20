@@ -78,9 +78,15 @@ aws ssm start-session --target <인스턴스 ID> \
 # 이 터미널을 열어 둔 채로 GUI에서 127.0.0.1:13306, 계정 readonly, DB atcrew로 접속한다
 ```
 
-터널에는 `ssm:StartSession`(대상: 앱 인스턴스와 문서 `AWS-StartPortForwardingSession`)과
-`ssm:TerminateSession` 권한이 필요하다. 배포용 IAM 사용자 `at-crew-be`에는 2026-10-20 기준 이 권한이
-없다(`send-command`만 된다) — IAM 변경은 root 계정으로만 할 수 있다.
+권한은 IAM 사용자 `at-crew-be`의 인라인 정책 `at-crew-be-ssm-session-and-audit-read`에 있다(2026-10-20
+root가 부여). 대상은 `Name` 태그가 `at-crew-app`으로 시작하는 인스턴스, 세션 종류는 포트 포워딩과 기본
+셸, 종료·재연결은 자기 세션만이다 — 인스턴스를 교체해도 태그만 맞으면 다시 요청할 필요가 없다. 같은
+정책에 CloudTrail 조회(`DescribeTrails`·`GetTrailStatus`·`LookupEvents`)도 들어 있다. IAM 변경은 root
+계정으로만 할 수 있다.
+
+**Homebrew `mysql` 9.x 클라이언트로는 붙지 않는다** — `mysql_native_password` 플러그인이 빠져
+`ERROR 2059`가 난다. GUI 툴은 자체 드라이버를 써서 문제없고, CLI가 필요하면 MariaDB 클라이언트를 쓴다
+(`docker run --rm -it mariadb:11.4 mariadb -h host.docker.internal -P 13306 -u readonly -p atcrew`).
 
 **GUI에서는 root를 쓰지 않는다.** `readonly` 계정은 `atcrew`의 SELECT만 있다. 데이터 수정은 GUI가
 아니라 이 디렉토리의 절차 문서(예: `moderation-block.md`, `handle-change.md`)에 적힌 SQL로만 한다.
@@ -203,6 +209,7 @@ cat /var/lib/node_exporter/textfile_collector/backup.prom
 | 알람 | 첫 확인 | 판단 기준 |
 |---|---|---|
 | R2 이미지 백업 26시간 미실행 | `journalctl -u atcrew-image-backup.service --since "-3 days"` → `systemctl list-timers atcrew-image-backup.timer` | 흔한 원인은 토큰 권한이다 — 이 키는 원본·백업 **두 버킷 모두**에 권한이 있어야 한다. 로그에 `NotImplemented`가 보이면 R2 미구현 헤더(태깅 등)를 보낸 것이다 — "R2 이미지 복구" 절의 설명 참고. 즉시 실행은 `sudo systemctl start atcrew-image-backup.service` |
+| R2 이미지 백업 원본 누락 | `journalctl -u atcrew-image-backup.service --since "-2 days"`에서 "백업에 없는 key" 목록 확인 → `sudo systemctl start atcrew-image-backup.service`로 한 번 더 실행 | sync가 exit 0으로 끝났는데 원본이 다 복사되지 않은 상태다(이슈 #268). 재실행으로 0이 되면 일시적인 복사 누락이었다. 같은 key가 계속 남으면 그 key만 복사가 실패하는 것이다 — `aws s3 sync --dryrun`으로 그 key가 복사 대상으로 잡히는지 본다. 잡히지 않으면 sync의 비교 판단이 틀린 것이라 `aws s3 cp`로 그 key만 복사한다. 원본 수와 백업 수의 차이로 판단하지 않는다 — 백업은 원본에서 지워진 객체도 남기므로 정상일 때도 백업이 더 많다. sync 시작 5분 전 이후에 올라온 객체는 다음 실행에서 센다 |
 | 5xx 증가 | Sentry에서 해당 시각 이슈 → `requestId`로 Loki 조회 | 특정 엔드포인트 집중이면 그 기능 문제, 전방위면 DB·의존성 |
 | p95 지연 2초 초과 | 대시보드 "요청량/지연" → 어떤 엔드포인트인지 | 검색·이미지 업로드가 흔한 원인. DB 커넥션 pending도 함께 본다 |
 | 메일 발송 실패 | Resend 대시보드, `.env`의 `RESEND_API_KEY` 유효성 | 비밀번호 재설정이 막히므로 사용자 문의로 바로 이어진다 |

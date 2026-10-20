@@ -523,7 +523,6 @@ class ArtworkServiceImpl implements ArtworkService {
 
     // 공개 상태는 사용자가 고르는 값이 아니라 노출 위치 조합에서 계산되는 파생값이다(업로드-R09).
     // 라이브 포트폴리오 편입까지 반영한 최종 접근 판정은 Artwork.accessFor가 담당한다(마이페이지_작가-R04).
-    // "링크 공개"라는 제3의 상태는 없으므로 LINK_ONLY를 새로 만들어내는 경로도 없다.
     private Visibility visibilityOf(boolean publishToFeed) {
         return publishToFeed ? Visibility.PUBLIC : Visibility.PRIVATE;
     }

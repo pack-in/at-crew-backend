@@ -9,6 +9,7 @@ import com.atcrew.billing.internal.domain.BillingCustomer;
 import com.atcrew.billing.internal.persistence.BillingCustomerRepository;
 import com.atcrew.billing.internal.persistence.EntitlementBalanceRepository;
 import com.atcrew.common.exception.DomainException;
+import com.atcrew.common.mail.MailSender;
 import com.atcrew.member.MemberService;
 import com.atcrew.support.BillingTestSupport;
 import com.stripe.Stripe;
@@ -18,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.modulith.test.ApplicationModuleTest;
 import org.springframework.modulith.test.PublishedEvents;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.util.List;
 import java.util.UUID;
@@ -30,6 +32,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.timeout;
+import static org.mockito.Mockito.verify;
 
 /**
  * 결제/구독 모듈 테스트. 실제 Stripe 서버는 호출하지 않고 웹훅 페이로드 픽스처로 검증한다 —
@@ -56,6 +62,10 @@ class BillingModuleTests {
 
     @Autowired
     EntitlementBalanceRepository balanceRepository;
+
+    // 결제 실패 메일이 커밋 뒤 실제로 발송 경로를 타는지 본다 — Resend는 호출하지 않는다.
+    @MockitoBean
+    MailSender mailSender;
 
     // === 단건 게시 상품 ===
 
@@ -142,7 +152,7 @@ class BillingModuleTests {
     }
 
     @Test
-    void 결제_실패_웹훅은_유예_없이_스타터로_내리고_알림_이벤트를_발행한다(PublishedEvents events) {
+    void 결제_실패_웹훅은_유예_없이_스타터로_내리고_결제_실패_메일을_보낸다(PublishedEvents events) {
         String memberId = registerMemberWithCustomer("sub-fail", "cus_sub_fail");
         webhookService.handle(subscriptionEvent("evt_fail_sub", "customer.subscription.created",
                 "sub_fail", "cus_sub_fail", "active", BASE_CREATED));
@@ -157,6 +167,9 @@ class BillingModuleTests {
         assertThat(events.ofType(SubscriptionPaymentFailedEvent.class)
                 .matching(event -> memberId.equals(event.memberId())))
                 .hasSize(1);
+        // 메일은 비동기 리스너가 커밋 뒤에 보낸다(설정-R03, QA-041).
+        verify(mailSender, timeout(5_000)).send(
+                eq(memberService.findById(memberId).loginEmail()), eq("정기 결제에 실패했어요"), anyString());
     }
 
     @Test

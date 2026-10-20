@@ -503,6 +503,9 @@ class PortfolioServiceTests {
         PortfolioDuplicationSourceInfo source = portfolioService.getDuplicationSource(memberId, created.id());
         assertThat(source.selectedArtworkIds()).containsExactly(keptArtworkId);
         assertThat(source.excludedCount()).isEqualTo(1);
+        // 자동 선택에서만 빠질 뿐 사용자가 직접 골라 담는 것은 막지 않는다.
+        assertThat(portfolioService.createShared(memberId, "수동 선택", ReflectionType.LIVE,
+                List.of(privateArtworkId, keptArtworkId)).itemCount()).isEqualTo(2);
     }
 
     // 같은 비공개 작품이라도 다른 라이브 포트폴리오(여기서는 작가 페이지)에 담겨 있으면 열람 가능하므로 남는다(§5.4).
@@ -522,27 +525,6 @@ class PortfolioServiceTests {
         PortfolioDuplicationSourceInfo source = portfolioService.getDuplicationSource(memberId, created.id());
         assertThat(source.selectedArtworkIds()).containsExactly(keptArtworkId, privateArtworkId);
         assertThat(source.excludedCount()).isZero();
-    }
-
-    // 링크 공개는 제3의 공개 상태가 아니라 PRIVATE와 동일 취급이므로, 라이브 포트폴리오에 편입되지 않았으면
-    // 완전 비공개로 보고 자동 선택에서 뺀다(마이페이지_작가-R04·R41). 수동 선택은 그대로 허용한다.
-    @Test
-    void 복제_원본의_링크_공개_작품은_편입되지_않았으면_자동_선택에서_빠진다() {
-        String memberId = registerProMember();
-        String keptArtworkId = uploadArtwork(memberId);
-        String linkOnlyArtworkId = uploadReadyArtwork(memberId);
-        PortfolioInfo created = portfolioService.createShared(
-                memberId, "고정형", ReflectionType.SNAPSHOT, List.of(keptArtworkId, linkOnlyArtworkId));
-
-        markLinkOnly(linkOnlyArtworkId);
-
-        PortfolioDuplicationSourceInfo source = portfolioService.getDuplicationSource(memberId, created.id());
-
-        assertThat(source.selectedArtworkIds()).containsExactly(keptArtworkId);
-        assertThat(source.excludedCount()).isEqualTo(1);
-        // 자동 선택에서만 빠질 뿐 사용자가 직접 골라 담는 것은 막지 않는다.
-        assertThat(portfolioService.createShared(memberId, "수동 선택", ReflectionType.LIVE,
-                List.of(linkOnlyArtworkId, keptArtworkId)).itemCount()).isEqualTo(2);
     }
 
     // 고정형은 스냅샷이 아니라 원본의 현재 상태로 판정한다 — 복제본은 원본을 다시 담기 때문이다(§5.3).
@@ -2182,17 +2164,6 @@ class PortfolioServiceTests {
         jdbcTemplate.update(
                 "UPDATE portfolio_item_snapshots SET blocked_at = UTC_TIMESTAMP(6) WHERE source_artwork_id = ?",
                 artworkId);
-    }
-
-    /**
-     * 라이트에서 넘어온 레거시 링크 공개 작품을 재현한다 — API 쓰기 경로는 400으로 막혀 있어(마이페이지_작가-R04)
-     * 저장 상태를 직접 바꾼다.
-     */
-    @SuppressWarnings("deprecation")
-    private void markLinkOnly(String artworkId) {
-        Artwork artwork = artworkRepository.findById(artworkId).orElseThrow();
-        artwork.changeVisibility(Visibility.LINK_ONLY);
-        artworkRepository.save(artwork);
     }
 
     /** "업데이트순" 결과에서 공유 포트폴리오 ID만 순서대로 뽑는다 — 작가 페이지는 비교 대상이 아니다. */
