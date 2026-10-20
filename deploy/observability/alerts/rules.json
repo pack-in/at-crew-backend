@@ -446,6 +446,81 @@
     ]
   },
   {
+    "uid": "atcrew-image-backup-missing",
+    "title": "[P2] R2 이미지 백업에 원본 객체가 빠져 있다",
+    "ruleGroup": "at-crew-p2",
+    "folderUID": "__FOLDER_UID__",
+    "condition": "C",
+    "for": "0m",
+    "labels": {
+      "severity": "p2"
+    },
+    "annotations": {
+      "summary": "마지막 이미지 백업 대조에서 백업에 없는 원본 객체가 나왔다",
+      "description": "sync는 끝났지만 원본이 다 복사되지 않았다. 빠진 key는 journalctl -u atcrew-image-backup.service 에 찍힌다. R2에는 오브젝트 버저닝이 없어 그 사이 원본이 지워지면 되돌릴 수 없다."
+    },
+    "noDataState": "OK",
+    "execErrState": "OK",
+    "isPaused": false,
+    "_comment": "이슈 #268. 위 26시간 규칙은 스크립트가 실패로 끝나야만 잡는다 — exit 0인데 복사가 빠진 경우는 이 규칙이 잡는다. 스크립트가 하루 한 번 값을 쓰고 다음 실행까지 유지되므로 for는 오탐을 거르지 못한다. 그래서 for를 0m로 두고, 오탐은 측정 쪽에서 막는다(sync 시작 5분 전 이후 객체는 세지 않는다). 지표가 없으면(이 변경 배포 전) OK.",
+    "data": [
+      {
+        "refId": "A",
+        "relativeTimeRange": {
+          "from": 600,
+          "to": 0
+        },
+        "datasourceUid": "__PROM_UID__",
+        "model": {
+          "refId": "A",
+          "instant": true,
+          "editorMode": "code",
+          "expr": "max(atcrew_image_backup_missing_objects)"
+        }
+      },
+      {
+        "refId": "C",
+        "relativeTimeRange": {
+          "from": 600,
+          "to": 0
+        },
+        "datasourceUid": "__expr__",
+        "model": {
+          "refId": "C",
+          "type": "threshold",
+          "expression": "A",
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "conditions": [
+            {
+              "evaluator": {
+                "type": "gt",
+                "params": [
+                  0
+                ]
+              },
+              "operator": {
+                "type": "and"
+              },
+              "query": {
+                "params": [
+                  "C"
+                ]
+              },
+              "reducer": {
+                "type": "last",
+                "params": []
+              },
+              "type": "query"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
     "uid": "atcrew-5xx",
     "title": "[P2] 5xx 응답 증가",
     "ruleGroup": "at-crew-p2",
