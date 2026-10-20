@@ -10,7 +10,9 @@ import com.atcrew.artwork.ArtworkVisibilityChangedEvent;
 import com.atcrew.artwork.BookmarkRemovedEvent;
 import com.atcrew.artwork.BookmarkSavedEvent;
 import org.springframework.modulith.events.ApplicationModuleListener;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
@@ -42,65 +44,66 @@ class ArtworkAnalyticsListener {
         this.analyticsEventPublisher = analyticsEventPublisher;
     }
 
-    @ApplicationModuleListener
+    @ApplicationModuleListener(propagation = Propagation.NOT_SUPPORTED)
     void onArtworkPublished(ArtworkPublishedEvent event) {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("upload_order", event.uploadOrder());
         properties.put("is_first_artwork", event.isFirstArtwork());
         properties.put("visibility", event.visibility().name());
         analyticsEventPublisher.publish(ARTWORK_PUBLISHED, event.authorId(), properties,
-                AnalyticsInsertId.of(ARTWORK_PUBLISHED, event.artworkId()));
+                AnalyticsInsertId.of(ARTWORK_PUBLISHED, event.artworkId()), null);
     }
 
     /**
-     * 업로드 트랜잭션이 롤백되는 경로에서 발행되므로 레지스트리를 거치지 않는 동기 리스너로만 받는다
-     * (package-info.java 참고) — 재시도는 없다.
-     *
-     * <p>{@code publishAnonymous}를 쓴다 — 막 롤백된 요청 스레드에서 공통 속성(plan_type/locale)을
-     * 조회하려고 billing·member를 또 DB로 왕복시키지 않는다. distinct_id는 memberId 그대로다.
+     * 업로드 트랜잭션이 롤백되는 경로에서 발행되므로 레지스트리를 거치지 않는 {@code AFTER_ROLLBACK}
+     * 리스너로 받고, 실패 응답을 늦추지 않도록 별도 스레드에서 보낸다(package-info.java 참고) — 재시도는 없다.
      */
+    @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_ROLLBACK)
     void onArtworkPublishFailed(ArtworkPublishFailedEvent event) {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("error_code", event.errorCode());
-        analyticsEventPublisher.publishAnonymous(ARTWORK_PUBLISH_FAILED, event.memberId(), properties,
-                AnalyticsInsertId.of(ARTWORK_PUBLISH_FAILED, event.memberId(), event.occurredAt()));
+        analyticsEventPublisher.publish(ARTWORK_PUBLISH_FAILED, event.memberId(), properties,
+                AnalyticsInsertId.of(ARTWORK_PUBLISH_FAILED, event.memberId(), event.occurredAt()),
+                event.occurredAt());
     }
 
-    @ApplicationModuleListener
+    @ApplicationModuleListener(propagation = Propagation.NOT_SUPPORTED)
     void onArtworkEdited(ArtworkEditedEvent event) {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("changed_section_ids", event.changedSectionIds());
         analyticsEventPublisher.publish(ARTWORK_EDITED, event.authorId(), properties,
-                AnalyticsInsertId.of(ARTWORK_EDITED, event.artworkId(), event.occurredAt()));
+                AnalyticsInsertId.of(ARTWORK_EDITED, event.artworkId(), event.occurredAt()), event.occurredAt());
     }
 
-    @ApplicationModuleListener
+    @ApplicationModuleListener(propagation = Propagation.NOT_SUPPORTED)
     void onArtworkVisibilityChanged(ArtworkVisibilityChangedEvent event) {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("previous_visibility", event.previousVisibility().name());
         properties.put("new_visibility", event.newVisibility().name());
         analyticsEventPublisher.publish(ARTWORK_VISIBILITY_CHANGED, event.authorId(), properties,
-                AnalyticsInsertId.of(ARTWORK_VISIBILITY_CHANGED, event.artworkId(), event.occurredAt()));
+                AnalyticsInsertId.of(ARTWORK_VISIBILITY_CHANGED, event.artworkId(), event.occurredAt()),
+                event.occurredAt());
     }
 
-    @ApplicationModuleListener
+    @ApplicationModuleListener(propagation = Propagation.NOT_SUPPORTED)
     void onArtworkDeleted(ArtworkDeletedEvent event) {
         analyticsEventPublisher.publish(ARTWORK_DELETED, event.authorId(), Map.of(),
-                AnalyticsInsertId.of(ARTWORK_DELETED, event.artworkId(), event.occurredAt()));
+                AnalyticsInsertId.of(ARTWORK_DELETED, event.artworkId(), event.occurredAt()), event.occurredAt());
     }
 
-    @ApplicationModuleListener
+    @ApplicationModuleListener(propagation = Propagation.NOT_SUPPORTED)
     void onBookmarkSaved(BookmarkSavedEvent event) {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("content_type", BOOKMARK_CONTENT_TYPE_ARTWORK);
         properties.put("content_id", event.artworkId());
         properties.put("folder_id", event.folderId());
         analyticsEventPublisher.publish(BOOKMARK_SAVED, event.memberId(), properties,
-                AnalyticsInsertId.of(BOOKMARK_SAVED, event.memberId() + ":" + event.artworkId(), event.occurredAt()));
+                AnalyticsInsertId.of(BOOKMARK_SAVED, event.memberId() + ":" + event.artworkId(), event.occurredAt()),
+                event.occurredAt());
     }
 
-    @ApplicationModuleListener
+    @ApplicationModuleListener(propagation = Propagation.NOT_SUPPORTED)
     void onBookmarkRemoved(BookmarkRemovedEvent event) {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("content_type", BOOKMARK_CONTENT_TYPE_ARTWORK);
@@ -108,6 +111,6 @@ class ArtworkAnalyticsListener {
         properties.put("folder_id", event.folderId());
         analyticsEventPublisher.publish(BOOKMARK_REMOVED, event.memberId(), properties,
                 AnalyticsInsertId.of(BOOKMARK_REMOVED, event.memberId() + ":" + event.artworkId(),
-                        event.occurredAt()));
+                        event.occurredAt()), event.occurredAt());
     }
 }

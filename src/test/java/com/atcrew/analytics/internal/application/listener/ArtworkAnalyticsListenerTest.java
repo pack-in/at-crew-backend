@@ -18,6 +18,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
@@ -37,7 +38,7 @@ class ArtworkAnalyticsListenerTest {
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> properties = ArgumentCaptor.forClass(Map.class);
         verify(analyticsEventPublisher).publish(eq("artwork_published"), eq("member-1"), properties.capture(),
-                eq("artwork_published:artwork-1"));
+                eq("artwork_published:artwork-1"), isNull());
         assertThat(properties.getValue())
                 .containsEntry("upload_order", 3L)
                 .containsEntry("is_first_artwork", false)
@@ -53,8 +54,9 @@ class ArtworkAnalyticsListenerTest {
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> properties = ArgumentCaptor.forClass(Map.class);
-        verify(analyticsEventPublisher).publishAnonymous(eq("artwork_publish_failed"), eq("member-2"),
-                properties.capture(), eq("artwork_publish_failed:member-2:" + occurredAt.toEpochMilli()));
+        verify(analyticsEventPublisher).publish(eq("artwork_publish_failed"), eq("member-2"),
+                properties.capture(), eq("artwork_publish_failed:member-2:" + occurredAt.toEpochMilli()),
+                eq(occurredAt));
         assertThat(properties.getValue()).containsEntry("error_code", "STARTER_ARTWORK_LIMIT_EXCEEDED");
         // draft_id는 싣지 않는다(의도적 제외) — 키 자체가 없어야 한다.
         assertThat(properties.getValue()).doesNotContainKey("draft_id");
@@ -69,7 +71,7 @@ class ArtworkAnalyticsListenerTest {
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> properties = ArgumentCaptor.forClass(Map.class);
         verify(analyticsEventPublisher).publish(eq("artwork_edited"), eq("member-3"), properties.capture(),
-                eq("artwork_edited:artwork-3:" + occurredAt.toEpochMilli()));
+                eq("artwork_edited:artwork-3:" + occurredAt.toEpochMilli()), eq(occurredAt));
         assertThat(properties.getValue()).containsEntry("changed_section_ids", List.of("title", "tags"));
     }
 
@@ -83,7 +85,7 @@ class ArtworkAnalyticsListenerTest {
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> properties = ArgumentCaptor.forClass(Map.class);
         verify(analyticsEventPublisher).publish(eq("artwork_visibility_changed"), eq("member-4"), properties.capture(),
-                eq("artwork_visibility_changed:artwork-4:" + occurredAt.toEpochMilli()));
+                eq("artwork_visibility_changed:artwork-4:" + occurredAt.toEpochMilli()), eq(occurredAt));
         assertThat(properties.getValue())
                 .containsEntry("previous_visibility", "PUBLIC")
                 .containsEntry("new_visibility", "PRIVATE");
@@ -96,7 +98,7 @@ class ArtworkAnalyticsListenerTest {
         listener.onArtworkDeleted(new ArtworkDeletedEvent("artwork-5", "member-5", occurredAt));
 
         verify(analyticsEventPublisher).publish(eq("artwork_deleted"), eq("member-5"), eq(Map.of()),
-                eq("artwork_deleted:artwork-5:" + occurredAt.toEpochMilli()));
+                eq("artwork_deleted:artwork-5:" + occurredAt.toEpochMilli()), eq(occurredAt));
     }
 
     @Test
@@ -108,7 +110,7 @@ class ArtworkAnalyticsListenerTest {
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> properties = ArgumentCaptor.forClass(Map.class);
         verify(analyticsEventPublisher).publish(eq("bookmark_saved"), eq("member-6"), properties.capture(),
-                eq("bookmark_saved:member-6:artwork-6:" + occurredAt.toEpochMilli()));
+                eq("bookmark_saved:member-6:artwork-6:" + occurredAt.toEpochMilli()), eq(occurredAt));
         assertThat(properties.getValue())
                 .containsEntry("content_type", "artwork")
                 .containsEntry("content_id", "artwork-6")
@@ -124,7 +126,7 @@ class ArtworkAnalyticsListenerTest {
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> properties = ArgumentCaptor.forClass(Map.class);
         verify(analyticsEventPublisher).publish(eq("bookmark_removed"), eq("member-7"), properties.capture(),
-                eq("bookmark_removed:member-7:artwork-7:" + occurredAt.toEpochMilli()));
+                eq("bookmark_removed:member-7:artwork-7:" + occurredAt.toEpochMilli()), eq(occurredAt));
         assertThat(properties.getValue())
                 .containsEntry("content_type", "artwork")
                 .containsEntry("content_id", "artwork-7")

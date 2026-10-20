@@ -17,6 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -46,7 +47,7 @@ class MemberAnalyticsListenerTest {
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> properties = ArgumentCaptor.forClass(Map.class);
         verify(analyticsEventPublisher).publish(eq("account_deleted"), eq("member-001"), properties.capture(),
-                eq("account_deleted:member-001"));
+                eq("account_deleted:member-001"), isNull());
         assertThat(properties.getValue())
                 .containsEntry("had_active_subscription", true)
                 .containsEntry("artwork_count", 7L)
@@ -64,7 +65,7 @@ class MemberAnalyticsListenerTest {
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> properties = ArgumentCaptor.forClass(Map.class);
         verify(analyticsEventPublisher).publish(eq("account_deleted"), eq("member-002"), properties.capture(),
-                eq("account_deleted:member-002"));
+                eq("account_deleted:member-002"), isNull());
         assertThat(properties.getValue())
                 .containsEntry("had_active_subscription", false)
                 .containsEntry("artwork_count", 0L)
@@ -80,7 +81,7 @@ class MemberAnalyticsListenerTest {
         assertThatThrownBy(() -> listener.onMemberDeactivated(new MemberDeactivatedEvent("member-003")))
                 .isInstanceOf(RuntimeException.class);
 
-        verify(analyticsEventPublisher, never()).publish(any(), any(), any(), any());
+        verify(analyticsEventPublisher, never()).publish(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -91,10 +92,10 @@ class MemberAnalyticsListenerTest {
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> properties = ArgumentCaptor.forClass(Map.class);
-        // 롤백 직후 DB 재조회(plan_type/locale)를 피하려고 publishAnonymous를 쓴다 — publish는 호출 안 됨.
-        verify(analyticsEventPublisher).publishAnonymous(eq("account_deletion_failed"), eq("member-004"),
-                properties.capture(), eq("account_deletion_failed:member-004:" + occurredAt.toEpochMilli()));
-        verify(analyticsEventPublisher, never()).publish(any(), any(), any(), any());
+        // 회원이 특정되는 실패라 publish로 보낸다 — account_type·plan_type이 같은 회원의 다른 이벤트와 맞는다.
+        verify(analyticsEventPublisher).publish(eq("account_deletion_failed"), eq("member-004"),
+                properties.capture(), eq("account_deletion_failed:member-004:" + occurredAt.toEpochMilli()),
+                eq(occurredAt));
         assertThat(properties.getValue()).containsEntry("error_code", "MEMBER_NOT_FOUND");
     }
 
@@ -108,7 +109,7 @@ class MemberAnalyticsListenerTest {
         ArgumentCaptor<Map<String, Object>> properties = ArgumentCaptor.forClass(Map.class);
         verify(analyticsEventPublisher).publish(eq("profile_section_saved"), eq("member-005"),
                 properties.capture(),
-                eq("profile_section_saved:member-005:artist_info:" + occurredAt.toEpochMilli()));
+                eq("profile_section_saved:member-005:artist_info:" + occurredAt.toEpochMilli()), eq(occurredAt));
         assertThat(properties.getValue())
                 .containsEntry("section_type", "artist_info")
                 .containsEntry("completion_rate", 1.0)
@@ -118,8 +119,8 @@ class MemberAnalyticsListenerTest {
     }
 
     // E2E 2026-10-07에서 실제로 잡힌 결함 — 기본정보/구직정보가 한 저장 요청에서 같이 바뀌면 두
-    // 이벤트의 occurredAt이 같아서, sectionType을 insertId에 안 넣으면 PostHog가 하나를 중복으로
-    // 버린다. 두 섹션 이벤트의 insertId가 서로 달라야 한다.
+    // 이벤트의 occurredAt이 같아서, sectionType을 insertId에 안 넣으면 uuid가 같아져 PostHog가 하나로
+    // 합친다. 두 섹션 이벤트의 insertId가 서로 달라야 한다.
     @Test
     void 같은_시각에_발행된_서로_다른_섹션_이벤트는_insertId가_다르다() {
         Instant occurredAt = Instant.parse("2026-10-05T00:00:00Z");
@@ -129,7 +130,7 @@ class MemberAnalyticsListenerTest {
 
         ArgumentCaptor<String> insertIds = ArgumentCaptor.forClass(String.class);
         verify(analyticsEventPublisher, org.mockito.Mockito.times(2))
-                .publish(eq("profile_section_saved"), eq("member-006"), any(), insertIds.capture());
+                .publish(eq("profile_section_saved"), eq("member-006"), any(), insertIds.capture(), eq(occurredAt));
         assertThat(insertIds.getAllValues()).doesNotHaveDuplicates();
     }
 }
