@@ -81,7 +81,7 @@ com.atcrew.artwork.internal/               ← 모듈 외부에서 직접 접근
 | `videoLinks` | `List<String>` | 영상 링크 URL (최대 5개, YouTube 등) |
 | `ageRating` | enum | ALL / R18 / G18 |
 | `languages` | enum 배열 | 게시물 작성·노출 언어 KO / JA / ZH / EN. 필수이며 **주 사용 언어를 반드시 포함**한다. 스타터는 주 언어 1개로 고정, 프로는 주 언어를 포함한 최대 4개(업로드-R30, REQ-020) |
-| `visibility` | enum | PUBLIC(피드 공개 ON) / PRIVATE(피드 공개 OFF), LINK_ONLY는 deprecated |
+| `visibility` | enum | PUBLIC(피드 공개 ON) / PRIVATE(피드 공개 OFF) |
 | `visibilityBeforeDelete` | enum | 휴지통 이동 전 공개 상태 스냅샷 |
 | `materials` | `List<Material>` | 소재 정보 (이름·대상·R2 첨부키·외부 링크) |
 | `status` | enum | PROCESSING / READY / FAILED / DELETED |
@@ -740,10 +740,10 @@ R2는 Cloudflare R2 (S3 호환). AWS SDK S3 v2를 사용하되 `Region.of("auto"
 | OFF(PRIVATE) | 1개 이상 | ✅ 조회 가능 | ✅ 조회 가능 | ✅ |
 | OFF(PRIVATE) | 0개 (= 완전 비공개) | ❌ 403 | ❌ 403 | ✅ |
 
-- "링크 공개"라는 제3의 상태는 없다. 레거시 `LINK_ONLY`(라이트 ETL 매핑용)는 판정상 `PRIVATE`와
-  동일 취급한다. 업로드·공개 상태 변경 API(`publishToFeed`/`portfolioIds` 조합, §업로드-R09)는 애초에
-  `visibility`를 입력받지 않으므로 `LINK_ONLY`를 신규 생성할 경로 자체가 없다(2026-08-13 PA-05로
-  `UNSUPPORTED_VISIBILITY` 400 가드와 함께 구 `PATCH /visibility` 제거).
+- "링크 공개"라는 제3의 상태는 없다. 업로드·공개 상태 변경 API(`publishToFeed`/`portfolioIds` 조합,
+  §업로드-R09)는 `visibility`를 입력받지 않는다(2026-08-13 PA-05로 구 `PATCH /visibility` 제거).
+  라이트 호환용으로 남겨 두던 레거시 `LINK_ONLY`는 2026-10-20 enum에서 지웠고, 남은 행은 V54가
+  `PRIVATE`로 옮겼다(판정상 이미 같았다).
 - 커뮤니티 피드·검색 색인은 `PUBLIC`만 대상으로 한다(포트폴리오 한정 공개는 노출하지 않음).
 - 휴지통 이동 시 강제 PRIVATE으로 변경. 복구 시 공개 범위는 이전 값으로 복원한다.
 - 복구 시 **작품 상태는 삭제 전 값이 아니라 이미지 현황으로 다시 계산한다**(이슈 #146). 휴지통에 있는

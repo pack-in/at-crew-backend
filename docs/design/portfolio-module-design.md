@@ -323,7 +323,7 @@ GET /api/portfolios/{id}/duplication-source:
    (신규 공개 record: ArtworkStateInfo(id, status, visibility))
 4. 제외 판정 = 존재하지 않음 OR status == DELETED OR 완전 비공개                (마이페이지_작가-R41)
    완전 비공개 = visibility != PUBLIC AND portfolioIncluded == false            (마이페이지_작가-R04)
-   ※ 레거시 LINK_ONLY도 편입되지 않았으면 완전 비공개로 본다(자동 선택 제외, 수동 선택은 가능)
+   ※ 자동 선택에서만 빠지고 수동 선택은 가능하다
 5. 응답 = { defaultTitle: "{원본 제목 또는 사용자 이름} 복사본", selectedArtworkIds: 남은 ID들, excludedCount }
 ```
 

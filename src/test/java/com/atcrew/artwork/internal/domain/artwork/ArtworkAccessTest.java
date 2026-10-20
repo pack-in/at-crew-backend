@@ -18,27 +18,17 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 제3자 접근 판정 회귀 방지 테스트 (마이페이지_작가-R04).
  *
  * <p>공개 여부는 "피드 공개 여부 × 라이브 포트폴리오 편입 여부" 2요소 파생 상태이며 "링크 공개"라는
- * 제3의 상태를 인정하지 않는다 — 레거시 {@code LINK_ONLY}는 {@code PRIVATE}와 동일하게 취급한다.
+ * 제3의 상태를 인정하지 않는다.
  */
-@SuppressWarnings("deprecation") // 라이트 ETL 매핑용 레거시 값의 판정 회귀를 검증하는 테스트다.
 class ArtworkAccessTest {
 
     private static final String VIEWER_ID = "viewer-1";
 
     @Test
-    void 링크공개_작품이_라이브_포트폴리오에_없으면_제3자_접근을_막는다() {
-        Artwork artwork = readyArtwork(Visibility.LINK_ONLY);
+    void 비공개_작품이_라이브_포트폴리오에_없으면_제3자_접근을_막는다() {
+        Artwork artwork = readyArtwork(Visibility.PRIVATE);
 
         assertThat(artwork.accessFor(VIEWER_ID)).isEqualTo(ArtworkAccess.PRIVATE);
-    }
-
-    @Test
-    void 링크공개_작품도_라이브_포트폴리오에_편입되면_제3자_접근을_허용한다() {
-        Artwork artwork = readyArtwork(Visibility.LINK_ONLY);
-
-        artwork.updatePortfolioInclusion(true);
-
-        assertThat(artwork.accessFor(VIEWER_ID)).isEqualTo(ArtworkAccess.ALLOWED);
     }
 
     @Test

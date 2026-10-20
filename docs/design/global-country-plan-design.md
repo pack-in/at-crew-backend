@@ -34,7 +34,7 @@ Pro 플랜 게이팅이 필요한 "작품 노출 국가"는 로드맵 5순위(�
 기존 코드 조사 결과(2026-07-30):
 - `Member`에 국가/언어 필드 전무. `timezone`(String, IANA tzdb 카탈로그 검증)만 최근 추가됨 — 동일 패턴 재사용 가능.
 - Plan/Subscription/Payment/Billing 도메인 **전무**.
-- `Artwork`에 노출 국가/지역 필드 없음. 공개 범위는 `Visibility`(PUBLIC/LINK_ONLY/PRIVATE) 하나뿐, 국가 축 없음.
+- `Artwork`에 노출 국가/지역 필드 없음. 공개 범위는 `Visibility`(PUBLIC/PRIVATE) 하나뿐, 국가 축 없음.
 - i18n(MessageSource/LocaleResolver) 관련 설정 전무 — 이번 작업 스코프에서도 도입하지 않음(사용자 결정).
 - Figma "요금제" 페이지(`UI개편_설정` 파일, node `6627:25961` 등)에 월간/연간 토글, 카드형 요금제 UI가 이미 존재 — 프론트는 이 화면을 이미 준비 중.
 - Figma 작품 업로드 플로우 중 `마이페이지_작가_유료사용자` 프레임에만 "작품 설정을 선택해주세요" 단계(활동 언어/이미지 나열 형식/연령대)가 있고, `마이페이지_작가_무료 사용자` 프레임에는 해당 단계가 없음 — Pro 전용 게이팅이 디자인 레벨에서 이미 확정.
