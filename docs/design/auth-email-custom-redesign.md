@@ -603,6 +603,10 @@ POST /api/auth/email/password-reset/confirm   { "token": "...", "newPassword": "
 - 요청 rate limit: 이메일당 예: 5분 3회.
 
 **(해결됨, 2026-08-12)** 메일 발송 인프라는 Resend로 확정·구현. 메일 템플릿은 Figma 문구 그대로 반영.
+
+**(변경, 2026-10-20)** 발송 어댑터를 Cloudflare Email Service(`CloudflareMailAdapter`, 발신 `no-reply@mail.at-crew.com`)로
+교체했다. Resend 계정·키가 한 번도 설정되지 않아 운영에서 메일이 전부 조용히 실패하고 있었고, 팀 Cloudflare 계정에
+mail.at-crew.com Email Sending(DKIM·SPF·DMARC)이 이미 켜져 있었다. `MailSender` 포트와 호출부는 그대로다.
 재설정 페이지 URL은 `{FRONTEND_BASE_URL}/reset-password?token=...`로 백엔드가 링크를 생성한다 —
 프론트가 이 경로와 다르게 라우트를 만들었다면 인계 시 반드시 맞춰야 한다(백엔드 쪽 값 변경은
 `app.frontend-base-url` 설정 하나로 가능).

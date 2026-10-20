@@ -207,7 +207,7 @@ entitlement 원장, recruit 3종 게이팅, artwork 스타터 4개 제한, 탈�
 - `PATCH /api/members/me/marketing-agreement` — 마케팅 수신 동의 토글(필수 약관 동의 시각 보존)
 - `PATCH /api/members/me/adult-content` — 성인 콘텐츠 표시 토글(`Member.adultContentVisible` 신규 필드, V14)
 
-**구현 완료(2026-08-12) — 비밀번호 재설정 + 이메일 발송 인프라:** `docs/design/auth-email-custom-redesign.md` §7이 "별도 설계 필요" 초안이었던 부분을 확정·구현. 메일 프로바이더는 **Resend**로 결정(`com.atcrew.common.mail` 포트+어댑터, 다른 모듈도 재사용 가능). 토큰 링크 방식·TTL 1시간(Figma "비밀번호를 잊으셨나요?" 이메일 문구로 확정 — 초안의 30분에서 정정), SHA-256 해시 저장, 단발성, 성공 시 전 기기 로그아웃. 동일 이메일에 GOOGLE 계정만 있으면 별도 안내 메일 발송(Figma "Google 계정 가입 이메일" 화면 확인). Flyway V17.
+**구현 완료(2026-08-12) — 비밀번호 재설정 + 이메일 발송 인프라:** `docs/design/auth-email-custom-redesign.md` §7이 "별도 설계 필요" 초안이었던 부분을 확정·구현. 메일 프로바이더는 **Resend**로 결정(2026-10-20 Cloudflare Email Service로 교체 — Resend 계정이 없어 운영 메일이 나가지 않았음)(`com.atcrew.common.mail` 포트+어댑터, 다른 모듈도 재사용 가능). 토큰 링크 방식·TTL 1시간(Figma "비밀번호를 잊으셨나요?" 이메일 문구로 확정 — 초안의 30분에서 정정), SHA-256 해시 저장, 단발성, 성공 시 전 기기 로그아웃. 동일 이메일에 GOOGLE 계정만 있으면 별도 안내 메일 발송(Figma "Google 계정 가입 이메일" 화면 확인). Flyway V17.
 - `POST /api/auth/email/password-reset/request` — 가입 여부 무관 항상 200 (enumeration 방지), 이메일당 5분 3회 rate limit
 - `POST /api/auth/email/password-reset/confirm` — 토큰+새 비밀번호로 재설정 확정
 

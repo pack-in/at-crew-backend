@@ -164,9 +164,12 @@ app:
   frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:3000}
 
 mail:
-  resend:
-    api-key: ${RESEND_API_KEY:dummy-resend-key}
-    from-address: ${MAIL_FROM_ADDRESS:AT-CREW <onboarding@resend.dev>}
+  # Cloudflare Email Service — mail.at-crew.com에 Email Sending이 켜져 있다(팀 Cloudflare 계정).
+  from-address: ${MAIL_FROM_ADDRESS:no-reply@mail.at-crew.com}
+  from-name: ${MAIL_FROM_NAME:AT-CREW}
+  cloudflare:
+    account-id: ${CLOUDFLARE_ACCOUNT_ID:dummy-account-id}
+    api-token: ${CLOUDFLARE_EMAIL_API_TOKEN:dummy-email-api-token}
 
 auth:
   password-reset:

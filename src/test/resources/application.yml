@@ -64,9 +64,11 @@ app:
   frontend-base-url: https://at-crew.com
 
 mail:
-  resend:
-    api-key: test-resend-key
-    from-address: AT-CREW <test@at-crew.com>
+  from-address: test@mail.at-crew.com
+  from-name: AT-CREW
+  cloudflare:
+    account-id: test-account-id
+    api-token: test-email-api-token
 
 auth:
   password-reset:
