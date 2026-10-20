@@ -5,7 +5,9 @@ import com.atcrew.analytics.internal.application.AnalyticsInsertId;
 import com.atcrew.auth.AuthSignupFailedEvent;
 import com.atcrew.auth.AuthSignupSucceededEvent;
 import org.springframework.modulith.events.ApplicationModuleListener;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
@@ -33,20 +35,22 @@ class AuthAnalyticsListener {
     /**
      * 회원가입 성공 — 가입 경로와 주 사용 언어를 싣는다. distinct_id는 가입된 회원 ID다.
      */
-    @ApplicationModuleListener
+    @ApplicationModuleListener(propagation = Propagation.NOT_SUPPORTED)
     void onAuthSignupSucceeded(AuthSignupSucceededEvent event) {
         String memberId = event.memberId();
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("signup_method", event.signupMethod().name());
         properties.put("primary_language", event.primaryLanguage() == null ? null : event.primaryLanguage().name());
         analyticsEventPublisher.publish(SIGNUP_SUCCEEDED, memberId, properties,
-                AnalyticsInsertId.of(SIGNUP_SUCCEEDED, memberId));
+                AnalyticsInsertId.of(SIGNUP_SUCCEEDED, memberId), null);
     }
 
     /**
      * 회원가입 실패 — 가입 트랜잭션이 롤백돼 아직 회원이 없으므로 회원과 연결되지 않는 임시
      * distinct_id를 발행 시점에 새로 만든다(재시도·레지스트리 경유가 없는 단발성 이벤트라 안전하다).
+     * person을 만들지 않는 익명 발행이다.
      */
+    @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_ROLLBACK)
     void onAuthSignupFailed(AuthSignupFailedEvent event) {
         String distinctId = UUID.randomUUID().toString();
@@ -54,6 +58,6 @@ class AuthAnalyticsListener {
         properties.put("signup_method", event.signupMethod().name());
         properties.put("error_code", event.errorCode());
         analyticsEventPublisher.publishAnonymous(SIGNUP_FAILED, distinctId, properties,
-                AnalyticsInsertId.of(SIGNUP_FAILED, distinctId));
+                AnalyticsInsertId.of(SIGNUP_FAILED, distinctId), null);
     }
 }

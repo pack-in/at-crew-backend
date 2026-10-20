@@ -12,6 +12,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
@@ -31,7 +32,7 @@ class AuthAnalyticsListenerTest {
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> properties = ArgumentCaptor.forClass(Map.class);
         verify(analyticsEventPublisher).publish(eq("auth_signup_succeeded"), eq("member-001"), properties.capture(),
-                eq("auth_signup_succeeded:member-001"));
+                eq("auth_signup_succeeded:member-001"), isNull());
         assertThat(properties.getValue())
                 .containsEntry("signup_method", "EMAIL")
                 .containsEntry("primary_language", "KO");
@@ -46,7 +47,7 @@ class AuthAnalyticsListenerTest {
         ArgumentCaptor<String> distinctId = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> insertId = ArgumentCaptor.forClass(String.class);
         verify(analyticsEventPublisher).publishAnonymous(eq("auth_signup_failed"), distinctId.capture(),
-                properties.capture(), insertId.capture());
+                properties.capture(), insertId.capture(), isNull());
 
         assertThat(properties.getValue())
                 .containsEntry("signup_method", "GOOGLE")

@@ -185,11 +185,12 @@ class BillingAnalyticsListenerTest {
                 .containsEntry("subscription_status", "active");
     }
 
+    /** 발행된 속성을 꺼낸다. 이벤트 시각은 웹훅·체크아웃이 넘긴 사건 시각이어야 한다(전송 시각이 아니다). */
     private Map<String, Object> captured(String eventName, String insertId) {
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> properties = ArgumentCaptor.forClass(Map.class);
         verify(analyticsEventPublisher).publish(eq(eventName), eq(MEMBER_ID), properties.capture(),
-                eq(insertId));
+                eq(insertId), eq(OCCURRED_AT));
         return properties.getValue();
     }
 }

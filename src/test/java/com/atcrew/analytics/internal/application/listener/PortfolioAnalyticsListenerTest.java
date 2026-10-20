@@ -12,6 +12,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
@@ -32,7 +33,7 @@ class PortfolioAnalyticsListenerTest {
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> properties = ArgumentCaptor.forClass(Map.class);
         verify(analyticsEventPublisher).publish(eq("portfolio_artwork_added"), eq("member-1"),
-                properties.capture(), eq("portfolio_artwork_added:portfolio-1:artwork-1"));
+                properties.capture(), eq("portfolio_artwork_added:portfolio-1:artwork-1"), isNull());
         assertThat(properties.getValue())
                 .containsEntry("portfolio_id", "portfolio-1")
                 .containsEntry("artwork_id", "artwork-1")
@@ -49,7 +50,7 @@ class PortfolioAnalyticsListenerTest {
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> properties = ArgumentCaptor.forClass(Map.class);
         verify(analyticsEventPublisher).publish(eq("portfolio_artwork_removed"), eq("member-1"),
-                properties.capture(), eq("portfolio_artwork_removed:portfolio-1:artwork-2"));
+                properties.capture(), eq("portfolio_artwork_removed:portfolio-1:artwork-2"), isNull());
         assertThat(properties.getValue())
                 .containsEntry("portfolio_id", "portfolio-1")
                 .containsEntry("artwork_id", "artwork-2")

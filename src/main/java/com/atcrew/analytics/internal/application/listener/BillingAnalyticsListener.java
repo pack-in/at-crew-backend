@@ -20,6 +20,7 @@ import com.atcrew.billing.SubscriptionRenewedEvent;
 import com.atcrew.billing.SubscriptionStatus;
 import org.springframework.modulith.events.ApplicationModuleListener;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Propagation;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -59,7 +60,7 @@ class BillingAnalyticsListener {
     }
 
     /** 결제창 도달 — 세션 ID로 사건이 특정되므로 $insert_id도 그것으로 만든다. */
-    @ApplicationModuleListener
+    @ApplicationModuleListener(propagation = Propagation.NOT_SUPPORTED)
     void onCheckoutStarted(SubscriptionCheckoutStartedEvent event) {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("checkout_session_id", event.checkoutSessionId());
@@ -67,22 +68,22 @@ class BillingAnalyticsListener {
         properties.put("trial_days", event.trialDays());
         properties.put("started_at", iso(event.startedAt()));
         analyticsEventPublisher.publish(CHECKOUT_STARTED, event.memberId(), properties,
-                AnalyticsInsertId.of(CHECKOUT_STARTED, event.checkoutSessionId()));
+                AnalyticsInsertId.of(CHECKOUT_STARTED, event.checkoutSessionId()), event.startedAt());
     }
 
     /** 최초 구독 활성화. 과거 취소 이력이 있는 재구독은 {@link #onReactivated}가 담당한다. */
-    @ApplicationModuleListener
+    @ApplicationModuleListener(propagation = Propagation.NOT_SUPPORTED)
     void onActivated(SubscriptionActivatedEvent event) {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("subscription_id", event.subscriptionId());
         properties.put("billing_interval", billingInterval(event.plan()));
         properties.put("activated_at", iso(event.activatedAt()));
         analyticsEventPublisher.publish(ACTIVATED, event.memberId(), properties,
-                AnalyticsInsertId.of(ACTIVATED, event.stripeEventId()));
+                AnalyticsInsertId.of(ACTIVATED, event.stripeEventId()), event.activatedAt());
     }
 
     /** 재구독. days_since_end는 직전 구독 주기 종료 이후 지난 일수이며, 종료 시각을 모르면 빠진다. */
-    @ApplicationModuleListener
+    @ApplicationModuleListener(propagation = Propagation.NOT_SUPPORTED)
     void onReactivated(SubscriptionReactivatedEvent event) {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("subscription_id", event.subscriptionId());
@@ -90,10 +91,10 @@ class BillingAnalyticsListener {
         properties.put("days_since_end", event.daysSinceEnd());
         properties.put("reactivated_at", iso(event.reactivatedAt()));
         analyticsEventPublisher.publish(REACTIVATED, event.memberId(), properties,
-                AnalyticsInsertId.of(REACTIVATED, event.stripeEventId()));
+                AnalyticsInsertId.of(REACTIVATED, event.stripeEventId()), event.reactivatedAt());
     }
 
-    @ApplicationModuleListener
+    @ApplicationModuleListener(propagation = Propagation.NOT_SUPPORTED)
     void onCancelRequested(SubscriptionCancelRequestedEvent event) {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("subscription_id", event.subscriptionId());
@@ -101,10 +102,10 @@ class BillingAnalyticsListener {
         properties.put("current_period_end", iso(event.currentPeriodEnd()));
         properties.put("requested_at", iso(event.requestedAt()));
         analyticsEventPublisher.publish(CANCEL_REQUESTED, event.memberId(), properties,
-                AnalyticsInsertId.of(CANCEL_REQUESTED, event.stripeEventId()));
+                AnalyticsInsertId.of(CANCEL_REQUESTED, event.stripeEventId()), event.requestedAt());
     }
 
-    @ApplicationModuleListener
+    @ApplicationModuleListener(propagation = Propagation.NOT_SUPPORTED)
     void onCancelRequestRevoked(SubscriptionCancelRequestRevokedEvent event) {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("subscription_id", event.subscriptionId());
@@ -112,10 +113,10 @@ class BillingAnalyticsListener {
         properties.put("current_period_end", iso(event.currentPeriodEnd()));
         properties.put("revoked_at", iso(event.revokedAt()));
         analyticsEventPublisher.publish(CANCEL_REQUEST_REVOKED, event.memberId(), properties,
-                AnalyticsInsertId.of(CANCEL_REQUEST_REVOKED, event.stripeEventId()));
+                AnalyticsInsertId.of(CANCEL_REQUEST_REVOKED, event.stripeEventId()), event.revokedAt());
     }
 
-    @ApplicationModuleListener
+    @ApplicationModuleListener(propagation = Propagation.NOT_SUPPORTED)
     void onEnded(SubscriptionEndedEvent event) {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("subscription_id", event.subscriptionId());
@@ -123,10 +124,10 @@ class BillingAnalyticsListener {
         properties.put("end_reason", event.endReason().name().toLowerCase(Locale.ROOT));
         properties.put("ended_at", iso(event.endedAt()));
         analyticsEventPublisher.publish(ENDED, event.memberId(), properties,
-                AnalyticsInsertId.of(ENDED, event.stripeEventId()));
+                AnalyticsInsertId.of(ENDED, event.stripeEventId()), event.endedAt());
     }
 
-    @ApplicationModuleListener
+    @ApplicationModuleListener(propagation = Propagation.NOT_SUPPORTED)
     void onBillingIntervalChanged(SubscriptionBillingIntervalChangedEvent event) {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("subscription_id", event.subscriptionId());
@@ -134,11 +135,11 @@ class BillingAnalyticsListener {
         properties.put("new_interval", billingInterval(event.newPlan()));
         properties.put("effective_at", iso(event.effectiveAt()));
         analyticsEventPublisher.publish(BILLING_INTERVAL_CHANGED, event.memberId(), properties,
-                AnalyticsInsertId.of(BILLING_INTERVAL_CHANGED, event.stripeEventId()));
+                AnalyticsInsertId.of(BILLING_INTERVAL_CHANGED, event.stripeEventId()), event.effectiveAt());
     }
 
     /** 구독 최초 결제 성공. 정기 갱신은 {@link #onRenewed}가 담당한다. */
-    @ApplicationModuleListener
+    @ApplicationModuleListener(propagation = Propagation.NOT_SUPPORTED)
     void onPaymentSucceeded(SubscriptionPaymentSucceededEvent event) {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("subscription_id", event.subscriptionId());
@@ -148,11 +149,11 @@ class BillingAnalyticsListener {
         properties.put("currency", event.currency());
         properties.put("paid_at", iso(event.paidAt()));
         analyticsEventPublisher.publish(PAYMENT_SUCCEEDED, event.memberId(), properties,
-                AnalyticsInsertId.of(PAYMENT_SUCCEEDED, event.stripeEventId()));
+                AnalyticsInsertId.of(PAYMENT_SUCCEEDED, event.stripeEventId()), event.paidAt());
     }
 
     /** 정기 갱신 결제 성공. renewal_number는 카운터 도입(V49) 이후 건만 센 값이다. */
-    @ApplicationModuleListener
+    @ApplicationModuleListener(propagation = Propagation.NOT_SUPPORTED)
     void onRenewed(SubscriptionRenewedEvent event) {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("subscription_id", event.subscriptionId());
@@ -162,14 +163,14 @@ class BillingAnalyticsListener {
         properties.put("currency", event.currency());
         properties.put("renewed_at", iso(event.renewedAt()));
         analyticsEventPublisher.publish(RENEWED, event.memberId(), properties,
-                AnalyticsInsertId.of(RENEWED, event.stripeEventId()));
+                AnalyticsInsertId.of(RENEWED, event.stripeEventId()), event.renewedAt());
     }
 
     /**
      * 구독 결제 실패. Stripe 웹훅이 정상 처리된 결과이므로 도메인 트랜잭션 롤백용 실패 리스너 패턴이
      * 아니라 성공 계열과 같은 {@code @ApplicationModuleListener}를 쓴다(package-info.java 참고).
      */
-    @ApplicationModuleListener
+    @ApplicationModuleListener(propagation = Propagation.NOT_SUPPORTED)
     void onPaymentFailed(SubscriptionPaymentFailureRecordedEvent event) {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("subscription_id", event.subscriptionId());
@@ -180,11 +181,11 @@ class BillingAnalyticsListener {
         properties.put("currency", event.currency());
         properties.put("failed_at", iso(event.failedAt()));
         analyticsEventPublisher.publish(PAYMENT_FAILED, event.memberId(), properties,
-                AnalyticsInsertId.of(PAYMENT_FAILED, event.stripeEventId()));
+                AnalyticsInsertId.of(PAYMENT_FAILED, event.stripeEventId()), event.failedAt());
     }
 
     /** 결제 실패 후 복구. recovery_attempt_number는 카운터 도입(V49) 이후 건만 센 값이다. */
-    @ApplicationModuleListener
+    @ApplicationModuleListener(propagation = Propagation.NOT_SUPPORTED)
     void onPaymentRecovered(SubscriptionPaymentRecoveredEvent event) {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("subscription_id", event.subscriptionId());
@@ -194,28 +195,28 @@ class BillingAnalyticsListener {
         properties.put("currency", event.currency());
         properties.put("recovered_at", iso(event.recoveredAt()));
         analyticsEventPublisher.publish(PAYMENT_RECOVERED, event.memberId(), properties,
-                AnalyticsInsertId.of(PAYMENT_RECOVERED, event.stripeEventId()));
+                AnalyticsInsertId.of(PAYMENT_RECOVERED, event.stripeEventId()), event.recoveredAt());
     }
 
     /** 결제 수단 등록. 카드 정보는 설계상 싣지 않고 구독 상태만 남긴다. */
-    @ApplicationModuleListener
+    @ApplicationModuleListener(propagation = Propagation.NOT_SUPPORTED)
     void onPaymentMethodUpdated(PaymentMethodUpdatedEvent event) {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("subscription_status", subscriptionStatus(event.subscriptionStatus()));
         properties.put("updated_at", iso(event.updatedAt()));
         analyticsEventPublisher.publish(PAYMENT_METHOD_UPDATED, event.memberId(), properties,
-                AnalyticsInsertId.of(PAYMENT_METHOD_UPDATED, event.stripeEventId()));
+                AnalyticsInsertId.of(PAYMENT_METHOD_UPDATED, event.stripeEventId()), event.updatedAt());
     }
 
     /** 환불 — 부분이어도 기록한다(권한 회수는 전체 환불만 대상이지만 분석은 별개). */
-    @ApplicationModuleListener
+    @ApplicationModuleListener(propagation = Propagation.NOT_SUPPORTED)
     void onRefunded(SubscriptionRefundedEvent event) {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("refund_type", event.refundType());
         properties.put("amount", event.amount());
         properties.put("currency", event.currency());
         analyticsEventPublisher.publish(REFUNDED, event.memberId(), properties,
-                AnalyticsInsertId.of(REFUNDED, event.stripeEventId()));
+                AnalyticsInsertId.of(REFUNDED, event.stripeEventId()), null);
     }
 
     /** 결제 유형은 PostHog 속성 표기(소문자)로 내보낸다. 판별하지 못한 경우는 속성에서 빠진다. */
