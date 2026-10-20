@@ -179,6 +179,18 @@ class BillingWebhookPaymentEventsTest {
         assertThat(recorded.failedAt()).isEqualTo(OCCURRED_AT);
         assertThat(recorded.stripeEventId()).isEqualTo("evt_6");
         assertThat(mirror.getStatus()).isEqualTo(SubscriptionStatus.PAST_DUE);
+        assertThat(capture(SubscriptionPaymentFailedEvent.class).attemptCount()).isEqualTo(1L);
+    }
+
+    // Stripe 재시도 실패는 새 이벤트 ID로 온다 — 실패 지표는 시도마다 세야 하므로 이벤트는 계속 내되,
+    // 회원 메일이 첫 실패에만 가도록 시도 횟수를 실어 보낸다(BillingNotificationListener).
+    @Test
+    void Stripe_재시도_실패도_알림_이벤트를_내고_시도_횟수를_싣는다() {
+        givenEstablishedMirror(SubscriptionStatus.PAST_DUE);
+
+        service.handle(invoiceEvent("evt_6_retry", "invoice.payment_failed", "subscription_cycle", null, 3));
+
+        assertThat(capture(SubscriptionPaymentFailedEvent.class).attemptCount()).isEqualTo(3L);
     }
 
     @Test

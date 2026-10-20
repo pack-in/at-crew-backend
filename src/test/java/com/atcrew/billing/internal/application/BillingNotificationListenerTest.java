@@ -44,7 +44,7 @@ class BillingNotificationListenerTest {
     void 결제_실패_메일은_회원_이메일로_플랜과_요금제_화면_링크를_담아_보낸다() {
         givenActiveMember("<작가>");
 
-        listener.onPaymentFailed(new SubscriptionPaymentFailedEvent(MEMBER_ID, PlanType.PRO_YEARLY, Instant.now()));
+        listener.onPaymentFailed(new SubscriptionPaymentFailedEvent(MEMBER_ID, PlanType.PRO_YEARLY, Instant.now(), 1L));
 
         ArgumentCaptor<String> html = ArgumentCaptor.forClass(String.class);
         verify(mailSender).send(eq(EMAIL), eq("정기 결제에 실패했어요"), html.capture());
@@ -60,7 +60,7 @@ class BillingNotificationListenerTest {
     void 월간_플랜이면_월간으로_표기한다() {
         givenActiveMember("작가");
 
-        listener.onPaymentFailed(new SubscriptionPaymentFailedEvent(MEMBER_ID, PlanType.PRO_MONTHLY, Instant.now()));
+        listener.onPaymentFailed(new SubscriptionPaymentFailedEvent(MEMBER_ID, PlanType.PRO_MONTHLY, Instant.now(), 1L));
 
         ArgumentCaptor<String> html = ArgumentCaptor.forClass(String.class);
         verify(mailSender).send(anyString(), anyString(), html.capture());
@@ -71,7 +71,16 @@ class BillingNotificationListenerTest {
     void 탈퇴한_회원에게는_보내지_않고_예외도_던지지_않는다() {
         when(memberService.findAllByIds(List.of(MEMBER_ID))).thenReturn(Map.of());
 
-        listener.onPaymentFailed(new SubscriptionPaymentFailedEvent(MEMBER_ID, PlanType.PRO_MONTHLY, Instant.now()));
+        listener.onPaymentFailed(new SubscriptionPaymentFailedEvent(MEMBER_ID, PlanType.PRO_MONTHLY, Instant.now(), 1L));
+
+        verify(mailSender, never()).send(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void Stripe_재시도_실패에는_다시_보내지_않는다() {
+        givenActiveMember("작가");
+
+        listener.onPaymentFailed(new SubscriptionPaymentFailedEvent(MEMBER_ID, PlanType.PRO_MONTHLY, Instant.now(), 2L));
 
         verify(mailSender, never()).send(anyString(), anyString(), anyString());
     }
