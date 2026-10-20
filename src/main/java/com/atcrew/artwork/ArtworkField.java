@@ -2,11 +2,7 @@ package com.atcrew.artwork;
 
 public enum ArtworkField {
     ILLUSTRATION, WEBTOON,
-    // TODO: 작품 분야 값 집합이 피그마 화면마다 다르다 — 기획 확정 필요.
-    //  - 홈 UI개편_홈(구 커뮤니티) 6107:24822: 전체/웹툰/일러스트/애니메이션/출판만화 (웹소설·기타 없음)
-    //  - 검색 UI개편_검색 5752:29315: 일러스트/웹툰/애니메이션/웹소설/기타 (출판만화 없음)
-    //  기획서(2026-07-28) 홈-R01·업로드-R06은 출판만화 쪽이며, 홈 프레임이 검색 프레임보다 최신이다.
-    //  웹소설로 확정되면 이 enum과 member/company의 ActivityField.PRINT_COMIC을 함께 교체하고
-    //  데이터 마이그레이션(artworks·portfolio_item_snapshots·ES 재색인)이 필요하다.
+    // 값 집합은 홈 화면(6107:24822)의 출판만화 쪽으로 확정됐다(PM, 2026-08-27).
+    // 검색 화면(5752:29315)의 웹소설은 구버전 기획이라 폐기. ETC는 홈 칩에는 없지만 업로드 분류용으로 유지한다.
     PRINT_COMIC, ANIMATION, ETC
 }
