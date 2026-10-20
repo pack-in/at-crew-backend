@@ -203,6 +203,7 @@ cat /var/lib/node_exporter/textfile_collector/backup.prom
 | 알람 | 첫 확인 | 판단 기준 |
 |---|---|---|
 | R2 이미지 백업 26시간 미실행 | `journalctl -u atcrew-image-backup.service --since "-3 days"` → `systemctl list-timers atcrew-image-backup.timer` | 흔한 원인은 토큰 권한이다 — 이 키는 원본·백업 **두 버킷 모두**에 권한이 있어야 한다. 로그에 `NotImplemented`가 보이면 R2 미구현 헤더(태깅 등)를 보낸 것이다 — "R2 이미지 복구" 절의 설명 참고. 즉시 실행은 `sudo systemctl start atcrew-image-backup.service` |
+| R2 이미지 백업 원본 누락 | `journalctl -u atcrew-image-backup.service --since "-2 days"`에서 "백업에 없는 key" 목록 확인 → `sudo systemctl start atcrew-image-backup.service`로 한 번 더 실행 | sync가 exit 0으로 끝났는데 원본이 다 복사되지 않은 상태다(이슈 #268). 재실행으로 0이 되면 일시적인 복사 누락이었다. 같은 key가 계속 남으면 그 key만 복사가 실패하는 것이다 — `aws s3 sync --dryrun`으로 그 key가 복사 대상으로 잡히는지 본다. 잡히지 않으면 sync의 비교 판단이 틀린 것이라 `aws s3 cp`로 그 key만 복사한다. 원본 수와 백업 수의 차이로 판단하지 않는다 — 백업은 원본에서 지워진 객체도 남기므로 정상일 때도 백업이 더 많다. sync 시작 5분 전 이후에 올라온 객체는 다음 실행에서 센다 |
 | 5xx 증가 | Sentry에서 해당 시각 이슈 → `requestId`로 Loki 조회 | 특정 엔드포인트 집중이면 그 기능 문제, 전방위면 DB·의존성 |
 | p95 지연 2초 초과 | 대시보드 "요청량/지연" → 어떤 엔드포인트인지 | 검색·이미지 업로드가 흔한 원인. DB 커넥션 pending도 함께 본다 |
 | 메일 발송 실패 | Resend 대시보드, `.env`의 `RESEND_API_KEY` 유효성 | 비밀번호 재설정이 막히므로 사용자 문의로 바로 이어진다 |

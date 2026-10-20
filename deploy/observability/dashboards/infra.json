@@ -520,6 +520,65 @@
       },
       "options": {},
       "description": "마지막 실행에서 새로 복사한 객체 수. 업로드가 있는데 계속 0이면 동기화가 원본을 못 읽고 있다는 신호다(토큰 권한 확인)."
+    },
+    {
+      "id": 25,
+      "title": "이미지 백업 대조",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 5,
+        "w": 8,
+        "x": 16,
+        "y": 19
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "__PROM_UID__"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(atcrew_image_backup_source_objects)",
+          "legendFormat": "원본",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "__PROM_UID__"
+          },
+          "editorMode": "code",
+          "range": true
+        },
+        {
+          "refId": "B",
+          "expr": "max(atcrew_image_backup_backup_objects)",
+          "legendFormat": "백업",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "__PROM_UID__"
+          },
+          "editorMode": "code",
+          "range": true
+        },
+        {
+          "refId": "C",
+          "expr": "max(atcrew_image_backup_missing_objects)",
+          "legendFormat": "백업에 없는 원본",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "__PROM_UID__"
+          },
+          "editorMode": "code",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {},
+      "description": "\"백업에 없는 원본\"이 0보다 크면 P2(이슈 #268). 백업은 원본에서 지워진 객체도 남기므로 백업이 원본보다 많은 게 정상이다 — 두 개수의 차이로 누락을 판단하지 않는다."
     }
   ]
 }

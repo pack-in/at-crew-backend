@@ -83,14 +83,45 @@ s3 =
 CFG
 export AWS_CONFIG_FILE="$WORK/aws-config"
 
+# 대조 기준 시각. sync가 원본 목록을 다 받기 전에 올라온 객체는 이번 복사 대상에서 빠질 수 있으므로,
+# 시작 시각보다 5분 이른 시각을 기준으로 삼는다(서버와 R2의 시계 오차도 여기서 흡수한다).
+CUTOFF="$(date -u -d "@$(( $(date -u +%s) - 300 ))" +%Y-%m-%dT%H:%M:%S)"
+
 aws s3 sync "s3://$SOURCE_BUCKET" "s3://$BACKUP_BUCKET" \
   --endpoint-url "$R2_ENDPOINT" --no-progress > "$WORK/sync.log"
 
 COPIED=$(grep -c '^copy:' "$WORK/sync.log" || true)
 echo "[image-backup] 새로 복사한 객체: ${COPIED}개"
 
-# 성공 시각을 남긴다 — DB 백업과 같은 26시간 규칙으로 알람에 태운다. 지표가 없으면 동기화가
-# 조용히 멈춰도 아무도 모른다.
+# 대조 — sync가 exit 0으로 끝났다고 원본이 다 복사됐다는 보장은 없다(이슈 #268).
+# 원본·백업 개수만 비교하면 안 된다. 백업은 --delete 없이 쌓이기만 해서 정상일 때도 백업이 더 많다.
+# 원본에서 지워진 옛 객체가 백업에 남아 있으면 새 객체가 빠져도 개수로는 가려진다.
+# 그래서 key 단위로 "기준 시각 이전에 생긴 원본 객체 중 백업에 없는 것"을 센다.
+# 기준 시각 이후 객체는 다음 실행 때 센다. 지표가 다음 실행까지 24시간 유지되므로, 이런 객체를
+# 세면 하루짜리 거짓 알람이 된다.
+list_objects() {  # key<TAB>LastModified, 빈 버킷이면 아무것도 출력하지 않는다
+  aws s3api list-objects-v2 --bucket "$1" --endpoint-url "$R2_ENDPOINT" \
+    --query 'Contents[].[Key,LastModified]' --output text | { grep -v '^None$' || true; }
+}
+list_objects "$SOURCE_BUCKET" > "$WORK/source.tsv"
+list_objects "$BACKUP_BUCKET" > "$WORK/backup.tsv"
+
+SOURCE_COUNT=$(wc -l < "$WORK/source.tsv" | tr -d ' ')
+BACKUP_COUNT=$(wc -l < "$WORK/backup.tsv" | tr -d ' ')
+# LastModified의 앞 19자(YYYY-MM-DDTHH:MM:SS)는 UTC 고정 형식이라 문자열 비교가 곧 시각 비교다.
+awk -F'\t' -v c="$CUTOFF" 'substr($2, 1, 19) < c { print $1 }' "$WORK/source.tsv" | LC_ALL=C sort > "$WORK/source.keys"
+cut -f1 "$WORK/backup.tsv" | LC_ALL=C sort > "$WORK/backup.keys"
+LC_ALL=C comm -23 "$WORK/source.keys" "$WORK/backup.keys" > "$WORK/missing.keys"
+MISSING=$(wc -l < "$WORK/missing.keys" | tr -d ' ')
+
+echo "[image-backup] 원본 ${SOURCE_COUNT}개, 백업 ${BACKUP_COUNT}개, 백업에 없는 원본(${CUTOFF}Z 이전) ${MISSING}개"
+if [ "$MISSING" -gt 0 ]; then
+  echo "[image-backup] 백업에 없는 key(최대 50개):" >&2
+  head -50 "$WORK/missing.keys" | sed 's/^/  /' >&2
+fi
+
+# 지표를 남긴다 — 성공 시각은 DB 백업과 같은 26시간 규칙으로, 누락 수는 0보다 크면 바로 알람에
+# 태운다. 지표가 없으면 동기화가 조용히 멈추거나 빠뜨려도 아무도 모른다.
 if [ -d "$METRIC_DIR" ]; then
   TMP="$METRIC_FILE.tmp"
   {
@@ -100,10 +131,26 @@ if [ -d "$METRIC_DIR" ]; then
     echo "# HELP atcrew_image_backup_copied_objects 마지막 실행에서 새로 복사한 객체 수"
     echo "# TYPE atcrew_image_backup_copied_objects gauge"
     echo "atcrew_image_backup_copied_objects $COPIED"
+    echo "# HELP atcrew_image_backup_source_objects 원본 버킷 객체 수"
+    echo "# TYPE atcrew_image_backup_source_objects gauge"
+    echo "atcrew_image_backup_source_objects $SOURCE_COUNT"
+    echo "# HELP atcrew_image_backup_backup_objects 백업 버킷 객체 수(원본에서 지워진 객체도 남아 있어 원본보다 많은 게 정상)"
+    echo "# TYPE atcrew_image_backup_backup_objects gauge"
+    echo "atcrew_image_backup_backup_objects $BACKUP_COUNT"
+    echo "# HELP atcrew_image_backup_missing_objects sync 시작 5분 전까지 생긴 원본 객체 중 백업에 없는 수"
+    echo "# TYPE atcrew_image_backup_missing_objects gauge"
+    echo "atcrew_image_backup_missing_objects $MISSING"
   } > "$TMP"
   mv "$TMP" "$METRIC_FILE"   # 원자적 교체 — 수집 중 반쪽짜리 파일을 읽지 않게
 else
   echo "[image-backup] 경고: $METRIC_DIR 가 없어 지표를 남기지 못했다(Alloy 설치 전이면 정상)"
+fi
+
+# 누락이 있으면 실패로 끝낸다 — systemctl status·journalctl에서도 실패로 보이게. 지표는 위에서 이미
+# 남겼으므로 알람은 그쪽으로 울린다.
+if [ "$MISSING" -gt 0 ]; then
+  echo "[image-backup] 실패: 백업에 없는 원본 ${MISSING}개" >&2
+  exit 1
 fi
 
 echo "[image-backup] 완료"
