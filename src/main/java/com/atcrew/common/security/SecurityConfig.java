@@ -58,7 +58,7 @@ class SecurityConfig {
 
     @Bean
     SecurityFilterChain filterChain(HttpSecurity http, JwtAuthenticationFilter jwtFilter,
-            JwtAuthenticationEntryPoint entryPoint) throws Exception {
+            JwtAuthenticationEntryPoint entryPoint, JwtAccessDeniedHandler accessDeniedHandler) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable) // stateless JWT — CSRF 불필요 (쿠키 전환 시 재검토)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
@@ -180,7 +180,8 @@ class SecurityConfig {
                     }
                     auth.anyRequest().authenticated();
                 })
-                .exceptionHandling(ex -> ex.authenticationEntryPoint(entryPoint))
+                .exceptionHandling(ex -> ex.authenticationEntryPoint(entryPoint)
+                        .accessDeniedHandler(accessDeniedHandler))
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
     }

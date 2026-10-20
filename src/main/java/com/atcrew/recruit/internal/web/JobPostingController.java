@@ -178,6 +178,7 @@ class JobPostingController {
 
     @Operation(summary = "[관리자] PENDING 구인글 목록")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "FORBIDDEN — 관리자 전용. 관리자 권한 체계 도입 전까지 누구에게도 열려 있지 않다")
     @GetMapping("/admin/job-postings")
     public ApiResponse<CursorPage<JobPostingInfo>> getPendingJobPostings(
             @Parameter(description = "커서") @RequestParam(required = false) String cursor,
@@ -188,6 +189,7 @@ class JobPostingController {
 
     @Operation(summary = "[관리자] 구인글 승인", description = "PENDING → PUBLISHED")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "승인 성공")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "FORBIDDEN — 관리자 전용. 관리자 권한 체계 도입 전까지 누구에게도 열려 있지 않다")
     @PatchMapping("/admin/job-postings/{jobPostingId}/approve")
     public ApiResponse<JobPostingInfo> approveJobPosting(
             @Parameter(description = "구인글 ID") @PathVariable @Pattern(regexp = UUID_PATTERN, message = "구인글 ID 형식이 올바르지 않습니다") String jobPostingId) {
@@ -197,6 +199,7 @@ class JobPostingController {
 
     @Operation(summary = "[관리자] 구인글 반려", description = "PENDING → CLOSED")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "반려 성공")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "FORBIDDEN — 관리자 전용. 관리자 권한 체계 도입 전까지 누구에게도 열려 있지 않다")
     @PatchMapping("/admin/job-postings/{jobPostingId}/reject")
     public ApiResponse<JobPostingInfo> rejectJobPosting(
             @Parameter(description = "구인글 ID") @PathVariable @Pattern(regexp = UUID_PATTERN, message = "구인글 ID 형식이 올바르지 않습니다") String jobPostingId) {

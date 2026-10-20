@@ -44,6 +44,7 @@ class BannerController {
 
     @Operation(summary = "배너 등록", description = "커뮤니티 상단 배너를 등록합니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "등록 성공")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "FORBIDDEN — 관리자 전용. 관리자 권한 체계 도입 전까지 누구에게도 열려 있지 않다")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<BannerInfo> createBanner(@RequestBody @Valid CreateBannerRequest request) {
@@ -53,6 +54,7 @@ class BannerController {
 
     @Operation(summary = "배너 수정", description = "이미지·링크·노출 순서를 수정합니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "수정 성공")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "FORBIDDEN — 관리자 전용. 관리자 권한 체계 도입 전까지 누구에게도 열려 있지 않다")
     @PatchMapping("/{bannerId}")
     public ApiResponse<BannerInfo> updateBanner(
             @Parameter(description = "배너 ID") @PathVariable String bannerId,
@@ -63,6 +65,7 @@ class BannerController {
 
     @Operation(summary = "배너 삭제", description = "배너를 삭제(soft delete)합니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "204", description = "삭제 성공")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "FORBIDDEN — 관리자 전용. 관리자 권한 체계 도입 전까지 누구에게도 열려 있지 않다")
     @DeleteMapping("/{bannerId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteBanner(@Parameter(description = "배너 ID") @PathVariable String bannerId) {

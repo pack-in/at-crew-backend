@@ -273,6 +273,7 @@ class SecurityIntegrationTest extends RestDocsIntegrationSupport {
 
     // ─── 섹션 4-1: 관리자 전용 경로 → 로그인한 일반 회원도 403 ─────────────
     // 관리자 권한 체계가 없어 누구에게도 열지 않는다(SecurityConfig). 전에는 로그인만 하면 호출됐다.
+    // 본문 code까지 본다 — 기본 처리기(sendError)는 본문이 비고, 실제 서버에서는 /error 재디스패치로 401이 된다.
 
     @Test
     void 관리자_전용_배너_쓰기는_로그인해도_403() throws Exception {
@@ -282,15 +283,18 @@ class SecurityIntegrationTest extends RestDocsIntegrationSupport {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"memberId\":\"x\",\"imageUrl\":\"https://a.com/b.png\",\"linkUrl\":\"https://a.com\"}"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
         mockMvc.perform(patch("/api/community/banners/{bannerId}", "some-id")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
         mockMvc.perform(delete("/api/community/banners/{bannerId}", "some-id")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
     }
 
     @Test
@@ -299,13 +303,16 @@ class SecurityIntegrationTest extends RestDocsIntegrationSupport {
 
         mockMvc.perform(get("/api/recruit/admin/job-postings")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
         mockMvc.perform(patch("/api/recruit/admin/job-postings/{id}/approve", UUID.randomUUID().toString())
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
         mockMvc.perform(patch("/api/recruit/admin/job-postings/{id}/reject", UUID.randomUUID().toString())
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
     }
 
     @Test

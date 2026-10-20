@@ -232,7 +232,7 @@ artwork/community와 동일하게 커서 페이지네이션(`CursorPage<T>`), OF
 | PATCH | `/api/recruit/job-postings/{id}/applications/{applicationId}/review-status` | 필요(작성자) | 지원자 상태 변경 |
 | POST | `/api/recruit/job-postings/{id}/applications` | 필요 | 지원 |
 | PATCH | `/api/recruit/job-postings/{id}/boost` | 필요(작성자) | 끌어올리기 적용(§2.1.1) |
-| GET/PATCH | `/api/recruit/admin/job-postings` | 필요(관리자) | PENDING 목록 조회, 승인/반려 — 관리자 권한 체계는 이번 스코프에서 최소 구현(§7 참고) |
+| GET/PATCH | `/api/recruit/admin/job-postings` | 관리자 전용(현재 차단) | PENDING 목록 조회, 승인/반려 — 관리자 권한 체계 도입 전까지 SecurityConfig가 모두 403으로 막는다(2026-10-20, §7 참고) |
 
 ### 4.2 팀원모집글 (TeamPosting) / 구직글 (JobSeekingPost)
 

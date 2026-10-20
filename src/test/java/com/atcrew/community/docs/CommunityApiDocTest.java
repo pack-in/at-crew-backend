@@ -47,7 +47,7 @@ class CommunityApiDocTest extends RestDocsIntegrationSupport {
         // 배너 등록 API는 관리자 권한 체계 도입 전까지 SecurityConfig가 막아 두므로(403) 서비스로 직접 만든다.
         String uniqueEmail = "banner-doc-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com";
         MemberInfo owner = memberService.register(uniqueEmail,
-                "bannerdoc" + UUID.randomUUID().toString().substring(0, 6), "배너문서유저");
+                "bannerdoc" + UUID.randomUUID().toString().substring(0, 4), "배너문서유저");
         bannerService.createBanner(new CreateBannerCommand(owner.id(),
                 "https://img.atcrew.co.kr/banners/sample.png", "https://atcrew.co.kr/artworks/sample", 0));
 
