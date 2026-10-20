@@ -56,7 +56,7 @@ artwork/                          ← public API
     │   │   ├── ArtworkImage.java      ← embedded
     │   │   ├── Material.java          ← embedded (소재)
     │   │   ├── ArtworkStatus.java     ← PROCESSING / READY / FAILED / DELETED
-    │   │   ├── Visibility.java        ← PUBLIC / PRIVATE (+ LINK_ONLY deprecated)
+    │   │   ├── Visibility.java        ← PUBLIC / PRIVATE
     │   │   ├── ImageLayoutType.java   ← VERTICAL_SCROLL / HORIZONTAL_SWIPE
     │   │   ├── AgeRating.java         ← ALL / ADULT
     │   │   ├── ArtworkField.java      ← 작품 분야 enum
@@ -118,7 +118,7 @@ public class Artwork {
     // 접근 제어
     private AgeRating ageRating;             // 전체 / 성인(R-18)
     private Set<Language> languages;         // 게시물 작성·노출 언어 (업로드-R30, 스타터 1개·프로 다중)
-    private Visibility visibility;           // PUBLIC / PRIVATE (+ LINK_ONLY deprecated)
+    private Visibility visibility;           // PUBLIC / PRIVATE
     private Visibility visibilityBeforeDelete; // 복구 시 원상 복원용 스냅샷
 
     // 소재 정보 (피그마 소재 등록 섹션)
@@ -232,7 +232,7 @@ ImageLayoutType: VERTICAL_SCROLL(세로 스크롤) / HORIZONTAL_SWIPE(가로 스
 AgeRating      : ALL(전체) / ADULT(성인 R-18)
 
 Visibility     : PUBLIC(작품 피드 공개 ON) / PRIVATE(작품 피드 공개 OFF)
-                 / LINK_ONLY(deprecated — 라이트 ETL 매핑용 레거시, 판정상 PRIVATE와 동일 취급)
+                 (레거시 LINK_ONLY는 2026-10-20 제거, 남은 행은 V54가 PRIVATE로 전환)
 
 ArtworkStatus  : PROCESSING / READY / FAILED / DELETED
 ```
@@ -409,7 +409,7 @@ Authorization: Bearer {accessToken}
   계산한다(마이페이지_작가-R04). `status=READY`이면서 `visibility=PUBLIC`이거나 `portfolioIncluded=true`면 허용
 - 피드 공개 OFF + 라이브 포트폴리오 미편입 = 완전 비공개 → 상세 URL 제3자 접근 차단(403)
 - 고정형(SNAPSHOT) 포트폴리오 포함은 원본 공개 위치로 계산하지 않는다
-- "링크 공개"라는 제3의 상태는 없다 — 레거시 `LINK_ONLY`는 미편입 시 완전 비공개로 판정한다
+- "링크 공개"라는 제3의 상태는 없다(레거시 `LINK_ONLY`는 2026-10-20 제거)
 
 ### 6.3 커뮤니티 피드
 
@@ -563,8 +563,7 @@ public void onMemberDeactivated(MemberDeactivatedEvent event) {
 ```
 PUBLIC ◀──▶ PRIVATE   (피드 공개 ON/OFF 2값, 자유롭게 전환)
 
-LINK_ONLY는 신규 선택 불가 — 업로드·공개 상태 변경 API가 400으로 막는다
-(라이트 ETL로 유입된 기존 행만 보유 가능)
+레거시 LINK_ONLY는 2026-10-20 제거했다(V54가 남은 행을 PRIVATE로 전환)
 
 삭제 시: visibilityBeforeDelete = 현재 visibility 스냅샷
 복구 시: visibility = visibilityBeforeDelete

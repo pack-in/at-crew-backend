@@ -469,8 +469,7 @@ public class Artwork implements Persistable<String> {
 
     // 뷰어별 접근 판정 — 공개 여부는 "피드 공개 여부 × 라이브 포트폴리오 편입 여부" 2요소로 계산한다
     // (마이페이지_작가-R04, docs/design/portfolio-module-design.md §5.4).
-    // 피드 공개가 아니면서 라이브 포트폴리오에도 없는 작품이 곧 완전 비공개이며, 레거시 LINK_ONLY는
-    // 이 계산에서 PRIVATE와 동일하게 취급한다("링크 공개"라는 제3의 상태를 인정하지 않는다).
+    // 피드 공개가 아니면서 라이브 포트폴리오에도 없는 작품이 곧 완전 비공개다("링크 공개"라는 제3의 상태는 없다).
     // 운영 차단은 삭제·공개 상태·고정형 설정보다 우선한다(R39) — 단 작성자 본인의 열람은 막지 않는다
     // (차단 안내 배지는 프론트가 ArtworkInfo.blocked로 그린다).
     public ArtworkAccess accessFor(String viewerMemberId) {
