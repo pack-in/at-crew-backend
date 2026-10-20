@@ -43,6 +43,16 @@ class CommonPropertiesSupplierTest {
                 .doesNotContainKey("locale");
     }
 
+    // FE(lib/posthog/config.ts)는 "production"을 보낸다. 프로파일 이름 "prod"를 그대로 보내면
+    // app_env=production으로 거를 때 서버 이벤트가 전부 빠진다.
+    @Test
+    void 운영_프로파일은_FE와_같은_production으로_싣는다() {
+        when(environment.getActiveProfiles()).thenReturn(new String[] {"prod"});
+        CommonPropertiesSupplier supplier = new CommonPropertiesSupplier(memberService, billingService, environment);
+
+        assertThat(supplier.ofEnvironment()).containsEntry("app_env", "production");
+    }
+
     @Test
     void 회원_기준_속성은_account_type이_creator이고_plan_locale을_더한다() {
         when(environment.getActiveProfiles()).thenReturn(new String[] {"local"});

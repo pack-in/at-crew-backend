@@ -74,7 +74,9 @@ auth:
 
 # 분석 이벤트(plans/261005-posthog-analytics-events) — 이 파일이 main application.yml을 완전히
 # 대체하므로 키가 없으면 PostHog 클라이언트 빈이 기동에 실패한다. 테스트가 외부로 나가서는 안 되므로
-# host는 닿지 않는 로컬 주소로 둔다 — capture()는 메모리 큐에 넣고 바로 돌아오고 전송만 조용히 실패한다.
+# host는 닿지 않는 로컬 주소로 둔다 — 전송은 즉시 연결 거부로 실패하고, 분석 리스너의 발행 기록만 미완료로
+# 남는다(plans/261019-posthog-server-delivery). 페이로드 검증은 PostHogAnalyticsEventPublisherTest,
+# 실제 전송·발행 기록 반영은 로컬 스텁 서버를 띄우는 AnalyticsDeliveryIntegrationTest가 한다.
 posthog:
   api-key: test-posthog-api-key
   host: http://localhost:1

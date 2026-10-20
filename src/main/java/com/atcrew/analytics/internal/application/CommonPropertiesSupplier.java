@@ -46,7 +46,15 @@ class CommonPropertiesSupplier {
         this.memberService = memberService;
         this.billingService = billingService;
         String[] activeProfiles = environment.getActiveProfiles();
-        this.appEnv = activeProfiles.length == 0 ? "default" : activeProfiles[0];
+        this.appEnv = activeProfiles.length == 0 ? "default" : appEnvOf(activeProfiles[0]);
+    }
+
+    /**
+     * FE(lib/posthog/config.ts)의 app_env 값 체계("local"|"staging"|"production")에 맞춘다. 운영 프로파일 이름
+     * "prod"를 그대로 보내면 app_env=production으로 거를 때 서버 이벤트가 전부 빠진다.
+     */
+    private static String appEnvOf(String profile) {
+        return "prod".equals(profile) ? "production" : profile;
     }
 
     /** 회원과 무관한 공통 속성 — account_type은 FE와 맞춰 "unknown"이다. */

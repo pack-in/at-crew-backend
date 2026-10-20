@@ -1,72 +1,82 @@
 package com.atcrew.analytics.internal.application;
 
 import com.atcrew.analytics.AnalyticsEventPublisher;
-import com.posthog.server.PostHogCaptureOptions;
-import com.posthog.server.PostHogInterface;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.atcrew.analytics.internal.config.PostHogCaptureClient;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestClientException;
 
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.function.Supplier;
+import java.util.UUID;
 
 /**
- * PostHog 전송 구현(plans/261005-posthog-analytics-events).
+ * PostHog 전송 구현(plans/261005-posthog-analytics-events, 261019-posthog-server-delivery).
  *
- * <p><b>예외를 삼킨다.</b> 분석 전송 실패가 작품 발행·결제 같은 비즈니스 흐름을 되돌리면 안 되므로
- * 호출자에게 전파하지 않고 경고 로그만 남긴다. 실패를 추적할 수 있도록 이벤트명과 {@code $insert_id}를
- * 함께 찍는다.
+ * <p><b>실패하면 예외를 던진다.</b> 로그만 남기고 삼키면 성공 리스너가 완료 처리돼 재발행 기회가 사라진다.
+ * 던진 예외는 비동기 리스너의 예외 처리기가 ERROR로 남기고(→ Sentry), 미완료 발행 기록은
+ * {@code atcrew_modulith_incomplete_events} 지표로 잡힌다.
  *
- * <p><b>타임아웃.</b> SDK에 HTTP 타임아웃 설정 항목이 없다(2.3.2 기준 {@code PostHogConfig}에 proxy만 있다).
- * 대신 {@code capture()}는 메모리 큐에 넣고 바로 돌아오고 실제 전송은 SDK 내부 executor가 하므로
- * 호출 스레드가 네트워크를 기다리는 구간이 없다 — 느린 전송이 응답 지연으로 번지지 않는다.
+ * <p><b>중복 제거.</b> PostHog는 uuid·이벤트명·timestamp·distinct_id가 모두 같은 이벤트를 한 건으로 합친다
+ * ({@code $insert_id}는 보지 않는다). 그래서 uuid를 insertId와 timestamp로 결정적으로 만들고, timestamp에는
+ * 사건 발생 시각을 쓴다. 재발행된 이벤트는 직렬화를 거쳐도 값이 같도록 밀리초로 자른다.
  */
 @Component
 class PostHogAnalyticsEventPublisher implements AnalyticsEventPublisher {
 
-    private static final Logger log = LoggerFactory.getLogger(PostHogAnalyticsEventPublisher.class);
-
     private static final String INSERT_ID = "$insert_id";
+    private static final String PROCESS_PERSON_PROFILE = "$process_person_profile";
 
-    private final PostHogInterface postHog;
+    private final PostHogCaptureClient client;
     private final CommonPropertiesSupplier commonProperties;
 
-    PostHogAnalyticsEventPublisher(PostHogInterface postHog, CommonPropertiesSupplier commonProperties) {
-        this.postHog = postHog;
+    PostHogAnalyticsEventPublisher(PostHogCaptureClient client, CommonPropertiesSupplier commonProperties) {
+        this.client = client;
         this.commonProperties = commonProperties;
     }
 
     @Override
-    public void publish(String eventName, String memberId, Map<String, Object> properties, String insertId) {
-        capture(eventName, memberId, () -> commonProperties.of(memberId), properties, insertId);
+    public void publish(String eventName, String memberId, Map<String, Object> properties, String insertId,
+                        Instant occurredAt) {
+        send(eventName, memberId, commonProperties.of(memberId), properties, insertId, occurredAt);
     }
 
     @Override
-    public void publishAnonymous(String eventName, String distinctId, Map<String, Object> properties, String insertId) {
-        capture(eventName, distinctId, commonProperties::ofEnvironment, properties, insertId);
+    public void publishAnonymous(String eventName, String distinctId, Map<String, Object> properties,
+                                 String insertId, Instant occurredAt) {
+        Map<String, Object> common = commonProperties.ofEnvironment();
+        // 임시 distinct_id마다 person이 생기면 사용자 수가 부풀어 오른다.
+        common.put(PROCESS_PERSON_PROFILE, false);
+        send(eventName, distinctId, common, properties, insertId, occurredAt);
     }
 
-    /** 공통 속성 조립도 try 안에서 한다 — 조립 단계의 실패 역시 호출자에게 전파하지 않는다. */
-    private void capture(String eventName, String distinctId, Supplier<Map<String, Object>> common,
-                         Map<String, Object> properties, String insertId) {
+    private void send(String eventName, String distinctId, Map<String, Object> common,
+                      Map<String, Object> properties, String insertId, Instant occurredAt) {
+        Instant timestamp = (occurredAt == null ? Instant.now() : occurredAt).truncatedTo(ChronoUnit.MILLIS);
+        boolean hasInsertId = insertId != null && !insertId.isBlank();
+
+        Map<String, Object> merged = new LinkedHashMap<>(common);
+        if (properties != null) {
+            // 빈 값은 아예 보내지 않는다 — PostHog에서 null 속성과 속성 없음을 구분해 쓰지 않는다.
+            properties.forEach((key, value) -> {
+                if (value != null) {
+                    merged.put(key, value);
+                }
+            });
+        }
+        if (hasInsertId) {
+            merged.put(INSERT_ID, insertId);
+        }
+        UUID uuid = hasInsertId
+                ? UUID.nameUUIDFromBytes((insertId + "@" + timestamp.toEpochMilli()).getBytes(StandardCharsets.UTF_8))
+                : UUID.randomUUID();
+
         try {
-            PostHogCaptureOptions.Builder options = PostHogCaptureOptions.builder().properties(common.get());
-            if (properties != null) {
-                // SDK 속성 맵은 null 값을 허용하지 않는다(Kotlin Map<String, Any>) — 빈 값은 아예 보내지 않는다.
-                properties.forEach((key, value) -> {
-                    if (value != null) {
-                        options.property(key, value);
-                    }
-                });
-            }
-            if (insertId != null && !insertId.isBlank()) {
-                options.property(INSERT_ID, insertId);
-            }
-            postHog.capture(distinctId, eventName, options.build());
-        } catch (RuntimeException e) {
-            // ERROR로 남긴다 — sentry.minimum-event-level=error라 Sentry로 알람이 간다(observability-design.md P2).
-            // warn이었다면 전송 장애가 아무도 모르게 조용히 쌓였을 것이다.
-            log.error("PostHog 이벤트 전송 실패: event={}, insertId={}", eventName, insertId, e);
+            client.send(eventName, distinctId, merged, timestamp, uuid);
+        } catch (RestClientException e) {
+            throw new AnalyticsDeliveryException(eventName, insertId, e);
         }
     }
 }

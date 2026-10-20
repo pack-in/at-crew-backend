@@ -5,8 +5,10 @@ import java.time.Instant;
 /**
  * PostHog {@code $insert_id} 생성(plans/261005-posthog-analytics-events).
  *
- * <p>성공 이벤트는 Modulith 이벤트 레지스트리를 거치므로 앱 재배포 시 미완료 건이 다시 발행된다.
- * 같은 사건이 두 번 전송돼도 PostHog가 중복으로 세지 않도록, 사건 하나를 가리키는 고정 문자열을 만든다.
+ * <p>성공 이벤트는 Modulith 이벤트 레지스트리를 거치므로 앱 재기동 시 미완료 건이 다시 발행된다.
+ * 같은 사건이 두 번 전송돼도 PostHog가 한 건으로 합치도록, 사건 하나를 가리키는 고정 문자열을 만든다.
+ * PostHog는 {@code $insert_id}가 아니라 이벤트 uuid로 중복을 판정하므로, 발행 구현체가 이 값과 발생 시각으로
+ * uuid를 만든다(plans/261019-posthog-server-delivery).
  */
 public final class AnalyticsInsertId {
 

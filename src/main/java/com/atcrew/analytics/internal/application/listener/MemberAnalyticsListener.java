@@ -9,7 +9,9 @@ import com.atcrew.member.MemberDeactivatedEvent;
 import com.atcrew.member.ProfileSectionSavedEvent;
 import com.atcrew.portfolio.PortfolioService;
 import org.springframework.modulith.events.ApplicationModuleListener;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
@@ -51,7 +53,7 @@ class MemberAnalyticsListener {
      *
      * <p>조회가 실패하면 예외를 그대로 던진다 — 이벤트가 미완료로 남아 재배포 때 다시 발행된다.
      */
-    @ApplicationModuleListener
+    @ApplicationModuleListener(propagation = Propagation.NOT_SUPPORTED)
     void onMemberDeactivated(MemberDeactivatedEvent event) {
         String memberId = event.memberId();
         Map<String, Object> properties = new LinkedHashMap<>();
@@ -59,25 +61,23 @@ class MemberAnalyticsListener {
         properties.put("artwork_count", artworkService.countActiveByAuthor(memberId));
         properties.put("portfolio_count", portfolioService.countOwnedByMember(memberId));
         analyticsEventPublisher.publish(ACCOUNT_DELETED, memberId, properties,
-                AnalyticsInsertId.of(ACCOUNT_DELETED, memberId));
+                AnalyticsInsertId.of(ACCOUNT_DELETED, memberId), null);
     }
 
     /**
      * 탈퇴 처리 실패 집계 — 실패 원인 에러 코드만 싣는다.
      *
-     * <p>롤백된 트랜잭션에는 레지스트리에 완료 표시를 남길 커밋이 없어 {@code AFTER_ROLLBACK}로
-     * 동기 처리한다(package-info 참고). 재시도가 없으므로 전송 유실을 감수한다.
-     *
-     * <p>{@code publishAnonymous}를 쓴다 — 공통 속성(plan_type/locale) 조회는 billing·member를 DB로
-     * 왕복하는데, 막 롤백된 요청 스레드에서 그 조회까지 성공을 보장할 수 없다(AFTER_ROLLBACK 경로의
-     * JPA 세션 상태는 검증되지 않았다). distinct_id는 그대로 memberId를 써서 PostHog person은 맞게 묶인다.
+     * <p>롤백된 트랜잭션에는 레지스트리에 완료 표시를 남길 커밋이 없어 {@code AFTER_ROLLBACK}로 받고,
+     * 실패 응답을 늦추지 않도록 별도 스레드에서 보낸다(package-info 참고). 재시도가 없으므로 전송 유실을 감수한다.
      */
+    @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_ROLLBACK)
     void on(AccountDeletionFailedEvent event) {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("error_code", event.errorCode());
-        analyticsEventPublisher.publishAnonymous(ACCOUNT_DELETION_FAILED, event.memberId(), properties,
-                AnalyticsInsertId.of(ACCOUNT_DELETION_FAILED, event.memberId(), event.occurredAt()));
+        analyticsEventPublisher.publish(ACCOUNT_DELETION_FAILED, event.memberId(), properties,
+                AnalyticsInsertId.of(ACCOUNT_DELETION_FAILED, event.memberId(), event.occurredAt()),
+                event.occurredAt());
     }
 
     /**
@@ -85,7 +85,7 @@ class MemberAnalyticsListener {
      *
      * <p>같은 회원이 반복해서 저장할 수 있는 이벤트라 {@code $insert_id}에 발생 시각까지 넣는다.
      */
-    @ApplicationModuleListener
+    @ApplicationModuleListener(propagation = Propagation.NOT_SUPPORTED)
     void on(ProfileSectionSavedEvent event) {
         String memberId = event.memberId();
         Map<String, Object> properties = new LinkedHashMap<>();
@@ -95,10 +95,10 @@ class MemberAnalyticsListener {
         properties.put("changed_field_count", event.changedFieldCount());
         properties.put("is_first_completion", event.isFirstCompletion());
         // 기본정보/구직정보가 한 저장 요청에서 같이 바뀌면 같은 occurredAt으로 이벤트가 2개 난다
-        // (MemberServiceImpl.updateInfo) — sectionType을 insertId에 안 넣으면 두 이벤트가 같은
-        // $insert_id를 갖게 되어 PostHog가 하나를 중복으로 버린다(E2E 2026-10-07 실측으로 발견).
+        // (MemberServiceImpl.updateInfo) — sectionType을 insertId에 안 넣으면 두 이벤트의 uuid가 같아져
+        // PostHog가 하나로 합친다(E2E 2026-10-07에 $insert_id 충돌로 발견, uuid도 insertId로 만든다).
         analyticsEventPublisher.publish(PROFILE_SECTION_SAVED, memberId, properties,
                 AnalyticsInsertId.of(PROFILE_SECTION_SAVED, memberId + ":" + event.sectionType(),
-                        event.occurredAt()));
+                        event.occurredAt()), event.occurredAt());
     }
 }

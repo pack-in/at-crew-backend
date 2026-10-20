@@ -7,7 +7,9 @@ import com.atcrew.portfolio.PortfolioArtworkRemovedEvent;
 import com.atcrew.portfolio.PortfolioSubmitFailedEvent;
 import com.atcrew.portfolio.PortfolioSubmitSucceededEvent;
 import org.springframework.modulith.events.ApplicationModuleListener;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
@@ -33,7 +35,7 @@ class PortfolioAnalyticsListener {
         this.analyticsEventPublisher = analyticsEventPublisher;
     }
 
-    @ApplicationModuleListener
+    @ApplicationModuleListener(propagation = Propagation.NOT_SUPPORTED)
     void onArtworkAdded(PortfolioArtworkAddedEvent event) {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("portfolio_id", event.portfolioId());
@@ -44,10 +46,10 @@ class PortfolioAnalyticsListener {
         // 한 포트폴리오에 여러 작품이 같은 요청으로 추가될 수 있어 portfolioId만으로는 insertId가 겹친다.
         String insertId = AnalyticsInsertId.of(PORTFOLIO_ARTWORK_ADDED,
                 event.portfolioId() + ":" + event.artworkId());
-        analyticsEventPublisher.publish(PORTFOLIO_ARTWORK_ADDED, event.memberId(), properties, insertId);
+        analyticsEventPublisher.publish(PORTFOLIO_ARTWORK_ADDED, event.memberId(), properties, insertId, null);
     }
 
-    @ApplicationModuleListener
+    @ApplicationModuleListener(propagation = Propagation.NOT_SUPPORTED)
     void onArtworkRemoved(PortfolioArtworkRemovedEvent event) {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("portfolio_id", event.portfolioId());
@@ -56,10 +58,10 @@ class PortfolioAnalyticsListener {
         properties.put("reflection_type", event.reflectionType() == null ? null : event.reflectionType().name());
         String insertId = AnalyticsInsertId.of(PORTFOLIO_ARTWORK_REMOVED,
                 event.portfolioId() + ":" + event.artworkId());
-        analyticsEventPublisher.publish(PORTFOLIO_ARTWORK_REMOVED, event.memberId(), properties, insertId);
+        analyticsEventPublisher.publish(PORTFOLIO_ARTWORK_REMOVED, event.memberId(), properties, insertId, null);
     }
 
-    @ApplicationModuleListener
+    @ApplicationModuleListener(propagation = Propagation.NOT_SUPPORTED)
     void onSubmitSucceeded(PortfolioSubmitSucceededEvent event) {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("portfolio_id", event.portfolioId());
@@ -69,20 +71,22 @@ class PortfolioAnalyticsListener {
         properties.put("kind", event.kind().name());
         properties.put("reflection_type", event.reflectionType() == null ? null : event.reflectionType().name());
         analyticsEventPublisher.publish(PORTFOLIO_SUBMIT_SUCCEEDED, event.memberId(), properties,
-                AnalyticsInsertId.of(PORTFOLIO_SUBMIT_SUCCEEDED, event.portfolioId(), event.occurredAt()));
+                AnalyticsInsertId.of(PORTFOLIO_SUBMIT_SUCCEEDED, event.portfolioId(), event.occurredAt()),
+                event.occurredAt());
     }
 
     /**
-     * 생성/수정 트랜잭션이 롤백되는 경로에서 발행되므로 레지스트리를 거치지 않는 동기 리스너로만 받는다
-     * (package-info.java 참고) — 재시도는 없다. 막 롤백된 요청 스레드에서 공통 속성(plan_type/locale)
-     * 조회로 DB를 또 왕복시키지 않도록 publishAnonymous를 쓴다.
+     * 생성/수정 트랜잭션이 롤백되는 경로에서 발행되므로 레지스트리를 거치지 않는 {@code AFTER_ROLLBACK}
+     * 리스너로 받고, 실패 응답을 늦추지 않도록 별도 스레드에서 보낸다(package-info.java 참고) — 재시도는 없다.
      */
+    @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_ROLLBACK)
     void onSubmitFailed(PortfolioSubmitFailedEvent event) {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("mode", event.mode());
         properties.put("error_code", event.errorCode());
-        analyticsEventPublisher.publishAnonymous(PORTFOLIO_SUBMIT_FAILED, event.memberId(), properties,
-                AnalyticsInsertId.of(PORTFOLIO_SUBMIT_FAILED, event.memberId(), event.occurredAt()));
+        analyticsEventPublisher.publish(PORTFOLIO_SUBMIT_FAILED, event.memberId(), properties,
+                AnalyticsInsertId.of(PORTFOLIO_SUBMIT_FAILED, event.memberId(), event.occurredAt()),
+                event.occurredAt());
     }
 }
