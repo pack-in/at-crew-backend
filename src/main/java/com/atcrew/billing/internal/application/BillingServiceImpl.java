@@ -38,9 +38,9 @@ class BillingServiceImpl implements BillingService {
      * <p>프론트 실제 경로(PH-02 회신, 2026-10-06)에 맞춘 값. 언어 접두어는 백엔드가 붙이지 않는다 —
      * {@code /billing/success}도 마찬가지로 URL에 언어 세그먼트를 안 넣고({@link
      * com.atcrew.billing.internal.infra.StripeGateway#checkoutParams}), 접두어 처리는 프론트
-     * i18n 라우팅이 전담한다.
+     * i18n 라우팅이 전담한다. 결제 실패 안내 메일의 링크도 이 화면으로 보낸다({@link BillingNotificationListener}).
      */
-    private static final String PORTAL_RETURN_PATH = "/setting?tab=billing";
+    static final String PORTAL_RETURN_PATH = "/setting?tab=billing";
 
     private static final List<SubscriptionStatus> LIVE_STATUSES =
             List.of(SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE);
