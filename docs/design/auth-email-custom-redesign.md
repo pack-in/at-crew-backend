@@ -563,7 +563,7 @@ public enum AuthErrorCode {
 > 미확정 항목을 전부 확정했다. **토큰 링크 방식 확정**(§7.1 권장안 그대로). **TTL은 1시간**으로
 > 확정 — 아래 §7.3 초안의 30분은 Figma 이메일 문구("링크는 이메일 발송 시점으로부터 1시간 동안
 > 유효합니다")와 달라 정정됨. 메일 발송 인프라는 **Resend**로 결정, `com.atcrew.common.mail`
-> (`MailSender` 포트 + `ResendMailAdapter`)에 구현했고 다른 모듈(예: 결제 실패 알림)도 재사용
+> (`MailSender` 포트 + `ResendMailAdapter`, 2026-10-20 `CloudflareMailAdapter`로 교체 — §7.3 하단 참고)에 구현했고 다른 모듈(예: 결제 실패 알림)도 재사용
 > 가능하다. `PasswordResetToken`(Flyway V17)·`PasswordResetAttemptLimiter`(기존
 > `login_attempts` 테이블 재사용, `pwreset:` 접두사)까지 전부 `com.atcrew.auth` 모듈에 구현 완료.
 > Google 전용 계정에 보내는 안내 메일도 Figma "Google 계정 가입 이메일" 화면 문구 그대로 구현했다.

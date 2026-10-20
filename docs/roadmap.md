@@ -175,7 +175,7 @@ recruit/기업 프로필과 병렬 진행 중이라 별도 워크트리(`worktre
   구인글은 기획서(`마이페이지_기업-R04`, `구인구직-R02`)에 유료 상품으로 명시돼 있는데 기존 로드맵에서 누락됐던 항목이며,
   가격은 기획서에 값이 없어 이번에 새로 정했다.
 - 정기 결제 실패: 웹훅 기준 판별, 유예 없이 즉시 스타터 전환. `SubscriptionPaymentFailedEvent` 발행까지 구현됨 —
-  **이메일 발송은 인프라 구현 완료**(2026-08-12, `com.atcrew.common.mail`, Resend 기반 — §6 참고)이므로
+  **이메일 발송은 인프라 구현 완료**(2026-08-12, `com.atcrew.common.mail`, Resend 기반으로 시작해 2026-10-20 Cloudflare Email Service로 교체 — §6 참고)이므로
   이 이벤트를 구독해 `MailSender.send(to, subject, html)` 호출하는 리스너만 추가하면 된다(인프라 자체는 더 이상 블로커 아님).
 - 탈퇴 시 활성 구독 즉시 취소(잔여 기간 환불 없음). Stripe Customer는 결제 이력 보존을 위해 삭제하지 않는다.
 
