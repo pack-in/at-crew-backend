@@ -37,7 +37,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * 구인글 CRUD + PENDING 승인 API (docs/design/recruit-module-design.md §4.1).
- * 관리자 엔드포인트는 별도 Role 체계가 도입되기 전까지 인증만 요구하는 최소 구현이다(§7).
+ * 관리자 엔드포인트는 별도 Role 체계가 도입되기 전까지 SecurityConfig가 막아 둔다(§7).
  */
 @Tag(name = "구인글", description = "구인글 작성·수정·조회·상태전이·관리자 승인 API")
 @Validated
@@ -173,33 +173,37 @@ class JobPostingController {
         return ApiResponse.success(recruitService.boostJobPosting(memberId, jobPostingId));
     }
 
-    // === 관리자 — TODO: 관리자 Role 체계 도입 후 @PreAuthorize("hasRole('ADMIN')") 추가(설계 §7) ===
+    // === 관리자 — 관리자 Role 체계 도입 전까지 SecurityConfig가 /api/recruit/admin/**를 모두 막는다(403).
+    //     도입 후 @PreAuthorize("hasRole('ADMIN')")로 바꿔 연다(설계 §7). ===
 
     @Operation(summary = "[관리자] PENDING 구인글 목록")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "FORBIDDEN — 관리자 전용. 관리자 권한 체계 도입 전까지 누구에게도 열려 있지 않다")
     @GetMapping("/admin/job-postings")
     public ApiResponse<CursorPage<JobPostingInfo>> getPendingJobPostings(
             @Parameter(description = "커서") @RequestParam(required = false) String cursor,
             @Parameter(description = "페이지 크기 (기본 20, 최대 50)") @RequestParam(required = false) Integer size) {
-        securityUtils.getCurrentMemberId(); // 인증만 요구 — 관리자 Role 체계는 후속 작업
+        securityUtils.getCurrentMemberId(); // SecurityConfig가 이 경로를 막아 둔다 — 관리자 Role 체계는 후속 작업
         return ApiResponse.success(recruitService.getPendingJobPostings(cursor, resolveSize(size)));
     }
 
     @Operation(summary = "[관리자] 구인글 승인", description = "PENDING → PUBLISHED")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "승인 성공")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "FORBIDDEN — 관리자 전용. 관리자 권한 체계 도입 전까지 누구에게도 열려 있지 않다")
     @PatchMapping("/admin/job-postings/{jobPostingId}/approve")
     public ApiResponse<JobPostingInfo> approveJobPosting(
             @Parameter(description = "구인글 ID") @PathVariable @Pattern(regexp = UUID_PATTERN, message = "구인글 ID 형식이 올바르지 않습니다") String jobPostingId) {
-        securityUtils.getCurrentMemberId(); // 인증만 요구 — 관리자 Role 체계는 후속 작업
+        securityUtils.getCurrentMemberId(); // SecurityConfig가 이 경로를 막아 둔다 — 관리자 Role 체계는 후속 작업
         return ApiResponse.success(recruitService.approveJobPosting(jobPostingId));
     }
 
     @Operation(summary = "[관리자] 구인글 반려", description = "PENDING → CLOSED")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "반려 성공")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "FORBIDDEN — 관리자 전용. 관리자 권한 체계 도입 전까지 누구에게도 열려 있지 않다")
     @PatchMapping("/admin/job-postings/{jobPostingId}/reject")
     public ApiResponse<JobPostingInfo> rejectJobPosting(
             @Parameter(description = "구인글 ID") @PathVariable @Pattern(regexp = UUID_PATTERN, message = "구인글 ID 형식이 올바르지 않습니다") String jobPostingId) {
-        securityUtils.getCurrentMemberId(); // 인증만 요구 — 관리자 Role 체계는 후속 작업
+        securityUtils.getCurrentMemberId(); // SecurityConfig가 이 경로를 막아 둔다 — 관리자 Role 체계는 후속 작업
         return ApiResponse.success(recruitService.rejectJobPosting(jobPostingId));
     }
 

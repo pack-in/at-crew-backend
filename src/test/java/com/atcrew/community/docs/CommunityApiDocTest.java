@@ -1,5 +1,7 @@
 package com.atcrew.community.docs;
 
+import com.atcrew.community.BannerService;
+import com.atcrew.community.CreateBannerCommand;
 import com.atcrew.member.ActivityField;
 import com.atcrew.member.DesiredEmploymentType;
 import com.atcrew.member.DesiredGenre;
@@ -13,12 +15,8 @@ import com.atcrew.support.RestDocsIntegrationSupport;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.test.web.servlet.MvcResult;
 
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 import static org.springframework.restdocs.mockmvc.MockMvcRestDocumentation.document;
@@ -41,47 +39,17 @@ class CommunityApiDocTest extends RestDocsIntegrationSupport {
     @Autowired
     MemberService memberService;
 
-    @Test
-    void 배너_등록_후_목록_조회_성공_문서화() throws Exception {
-        // 배너 등록은 인증된 회원이면 누구나 호출 가능 (RBAC 미도입 — BannerController TODO 참고)
-        String uniqueEmail = "banner-doc-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com";
-        MvcResult registerResult = mockMvc.perform(post("/api/auth/email/register")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new RegisterRequest(
-                                uniqueEmail, "Secure1!", "Secure1!", "배너문서유저",
-                                true, true, true, false, "Asia/Seoul", "KR", "KO"))))
-                .andExpect(status().isCreated())
-                .andReturn();
-        String responseBody = registerResult.getResponse().getContentAsString();
-        String accessToken = objectMapper.readTree(responseBody).at("/data/accessToken").asText();
-        String ownerId = objectMapper.readTree(responseBody).at("/data/member/id").asText();
+    @Autowired
+    BannerService bannerService;
 
-        mockMvc.perform(post("/api/community/banners")
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "memberId", ownerId,
-                                "imageUrl", "https://img.atcrew.co.kr/banners/sample.png",
-                                "linkUrl", "https://atcrew.co.kr/artworks/sample",
-                                "sortOrder", 0))))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.code").value("SUCCESS"))
-                .andDo(document("community/create-banner",
-                        preprocessRequest(prettyPrint()),
-                        preprocessResponse(prettyPrint()),
-                        requestFields(
-                                fieldWithPath("memberId").description("배너 등록 대상 회원 ID"),
-                                fieldWithPath("imageUrl").description("배너 이미지 URL"),
-                                fieldWithPath("linkUrl").description("클릭 시 이동 경로"),
-                                fieldWithPath("sortOrder").description("노출 순서 (생략 시 마지막 순번 자동 부여)").optional()
-                        ),
-                        relaxedResponseFields(
-                                fieldWithPath("code").description("응답 코드 (SUCCESS)"),
-                                fieldWithPath("data.id").description("배너 ID"),
-                                fieldWithPath("data.sortOrder").description("노출 순서"),
-                                fieldWithPath("data.status").description("배너 상태 (ACTIVE·INACTIVE·DELETED)")
-                        )
-                ));
+    @Test
+    void 배너_목록_조회_성공_문서화() throws Exception {
+        // 배너 등록 API는 관리자 권한 체계 도입 전까지 SecurityConfig가 막아 두므로(403) 서비스로 직접 만든다.
+        String uniqueEmail = "banner-doc-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com";
+        MemberInfo owner = memberService.register(uniqueEmail,
+                "bannerdoc" + UUID.randomUUID().toString().substring(0, 4), "배너문서유저");
+        bannerService.createBanner(new CreateBannerCommand(owner.id(),
+                "https://img.atcrew.co.kr/banners/sample.png", "https://atcrew.co.kr/artworks/sample", 0));
 
         mockMvc.perform(get("/api/community/banners"))
                 .andExpect(status().isOk())
@@ -230,19 +198,4 @@ class CommunityApiDocTest extends RestDocsIntegrationSupport {
                         )
                 ));
     }
-
-    /** 이메일 회원가입 요청 바디 (accessToken 발급용) */
-    record RegisterRequest(
-            String email,
-            String password,
-            String passwordConfirm,
-            String name,
-            boolean agreeService,
-            boolean agreePrivacy,
-            boolean agreeThirdParty,
-            boolean agreeMarketing,
-            String timezone,
-            String countryCode,
-            String primaryLanguage
-    ) {}
 }
