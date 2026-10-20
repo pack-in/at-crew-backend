@@ -22,8 +22,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
-// TODO: 관리자 권한 체계(RBAC) 도입 전까지 쓰기 엔드포인트는 일반 인증 회원 누구나 호출 가능하다.
-// RBAC가 생기면 admin 권한으로 제한해야 한다 (docs/design/community-module-design.md §5.1).
+// 쓰기 엔드포인트(등록·수정·삭제)는 관리자 전용이라 관리자 권한 체계(RBAC) 도입 전까지 SecurityConfig가
+// 모두 막는다(403). RBAC가 생기면 admin 권한으로 열어야 한다 (docs/design/community-module-design.md §5.1).
 @Tag(name = "커뮤니티 배너", description = "커뮤니티 화면 상단 배너 조회·관리 API")
 @RestController
 @RequestMapping("/api/community/banners")

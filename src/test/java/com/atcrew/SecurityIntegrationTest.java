@@ -271,6 +271,60 @@ class SecurityIntegrationTest extends RestDocsIntegrationSupport {
                 .andExpect(status().isNoContent());
     }
 
+    // ─── 섹션 4-1: 관리자 전용 경로 → 로그인한 일반 회원도 403 ─────────────
+    // 관리자 권한 체계가 없어 누구에게도 열지 않는다(SecurityConfig). 전에는 로그인만 하면 호출됐다.
+
+    @Test
+    void 관리자_전용_배너_쓰기는_로그인해도_403() throws Exception {
+        String token = memberToken("배너차단");
+
+        mockMvc.perform(post("/api/community/banners")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"memberId\":\"x\",\"imageUrl\":\"https://a.com/b.png\",\"linkUrl\":\"https://a.com\"}"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(patch("/api/community/banners/{bannerId}", "some-id")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(delete("/api/community/banners/{bannerId}", "some-id")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void 관리자_전용_구인글_승인_경로는_로그인해도_403() throws Exception {
+        String token = memberToken("승인차단");
+
+        mockMvc.perform(get("/api/recruit/admin/job-postings")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(patch("/api/recruit/admin/job-postings/{id}/approve", UUID.randomUUID().toString())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(patch("/api/recruit/admin/job-postings/{id}/reject", UUID.randomUUID().toString())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void 관리자_전용_경로는_토큰이_없으면_401() throws Exception {
+        mockMvc.perform(delete("/api/community/banners/{bannerId}", "some-id"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void 배너_목록_조회는_계속_공개다() throws Exception {
+        mockMvc.perform(get("/api/community/banners"))
+                .andExpect(status().isOk());
+    }
+
+    private String memberToken(String name) {
+        MemberInfo member = memberService.register(uniqueEmail(), uniqueHandle(), name);
+        return jwtProvider.generateAccessToken(member.id(), member.loginEmail());
+    }
+
     // ─── 섹션 5: 공개 엔드포인트 → 토큰 없이 접근 가능 ─────────────
 
     @Test
