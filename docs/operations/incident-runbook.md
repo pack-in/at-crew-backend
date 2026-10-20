@@ -78,9 +78,15 @@ aws ssm start-session --target <인스턴스 ID> \
 # 이 터미널을 열어 둔 채로 GUI에서 127.0.0.1:13306, 계정 readonly, DB atcrew로 접속한다
 ```
 
-터널에는 `ssm:StartSession`(대상: 앱 인스턴스와 문서 `AWS-StartPortForwardingSession`)과
-`ssm:TerminateSession` 권한이 필요하다. 배포용 IAM 사용자 `at-crew-be`에는 2026-10-20 기준 이 권한이
-없다(`send-command`만 된다) — IAM 변경은 root 계정으로만 할 수 있다.
+권한은 IAM 사용자 `at-crew-be`의 인라인 정책 `at-crew-be-ssm-session-and-audit-read`에 있다(2026-10-20
+root가 부여). 대상은 `Name` 태그가 `at-crew-app`으로 시작하는 인스턴스, 세션 종류는 포트 포워딩과 기본
+셸, 종료·재연결은 자기 세션만이다 — 인스턴스를 교체해도 태그만 맞으면 다시 요청할 필요가 없다. 같은
+정책에 CloudTrail 조회(`DescribeTrails`·`GetTrailStatus`·`LookupEvents`)도 들어 있다. IAM 변경은 root
+계정으로만 할 수 있다.
+
+**Homebrew `mysql` 9.x 클라이언트로는 붙지 않는다** — `mysql_native_password` 플러그인이 빠져
+`ERROR 2059`가 난다. GUI 툴은 자체 드라이버를 써서 문제없고, CLI가 필요하면 MariaDB 클라이언트를 쓴다
+(`docker run --rm -it mariadb:11.4 mariadb -h host.docker.internal -P 13306 -u readonly -p atcrew`).
 
 **GUI에서는 root를 쓰지 않는다.** `readonly` 계정은 `atcrew`의 SELECT만 있다. 데이터 수정은 GUI가
 아니라 이 디렉토리의 절차 문서(예: `moderation-block.md`, `handle-change.md`)에 적힌 SQL로만 한다.
