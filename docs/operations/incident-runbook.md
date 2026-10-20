@@ -66,6 +66,45 @@ deploy/observability/silence.sh --end <silence ID>        # 끝나면 바로 해
 자격증명이 없다는 에러가 나면 스크립트가 만드는 방법을 출력한다. 값은 CI가 쓰는 저장소 Secret
 `GRAFANA_URL`·`GRAFANA_API_KEY`와 같다.
 
+### 운영 DB를 GUI로 조회할 때 — SSM 포트 포워딩 + 읽기 전용 계정
+
+DB 포트는 호스트 루프백(`127.0.0.1:3306`)에만 열려 있다. 로컬에서 SSM으로 터널을 열고 GUI 툴
+(DBeaver·TablePlus·DataGrip)로 붙는다. MySQL Workbench는 MariaDB 11을 지원하지 않아 권하지 않는다.
+
+```bash
+aws ssm start-session --target <인스턴스 ID> \
+  --document-name AWS-StartPortForwardingSession \
+  --parameters '{"portNumber":["3306"],"localPortNumber":["13306"]}'
+# 이 터미널을 열어 둔 채로 GUI에서 127.0.0.1:13306, 계정 readonly, DB atcrew로 접속한다
+```
+
+터널에는 `ssm:StartSession`(대상: 앱 인스턴스와 문서 `AWS-StartPortForwardingSession`)과
+`ssm:TerminateSession` 권한이 필요하다. 배포용 IAM 사용자 `at-crew-be`에는 2026-10-20 기준 이 권한이
+없다(`send-command`만 된다) — IAM 변경은 root 계정으로만 할 수 있다.
+
+**GUI에서는 root를 쓰지 않는다.** `readonly` 계정은 `atcrew`의 SELECT만 있다. 데이터 수정은 GUI가
+아니라 이 디렉토리의 절차 문서(예: `moderation-block.md`, `handle-change.md`)에 적힌 SQL로만 한다.
+
+`readonly` 계정 만들기(최초 1회). 비밀번호 평문이 SSM 명령 이력에 남지 않게 **해시만** 서버로 보낸다.
+평문은 로컬 키체인에 둔다.
+
+```bash
+PW=$(openssl rand -base64 24)
+security add-generic-password -U -a readonly -s at-crew-prod-db-readonly -w "$PW"
+# 꺼낼 때: security find-generic-password -s at-crew-prod-db-readonly -w
+HASH=$(python3 -c 'import hashlib,sys; print("*"+hashlib.sha1(hashlib.sha1(sys.argv[1].encode()).digest()).hexdigest().upper())' "$PW")
+deploy/ssm-run.sh <<EOF
+cd /home/ec2-user/at-crew-backend/deploy
+PW=\$(sed -n 's/^MARIADB_ROOT_PASSWORD=//p' .env | tail -1)
+docker exec -i -e MYSQL_PWD="\$PW" deploy-mariadb-1 mariadb -u root -e "
+  CREATE USER IF NOT EXISTS 'readonly'@'%' IDENTIFIED BY PASSWORD '$HASH';
+  GRANT SELECT ON atcrew.* TO 'readonly'@'%';"
+EOF
+```
+
+호스트가 `'%'`인 이유: 루프백 포트로 들어온 접속도 컨테이너 안에서는 도커 브리지 게이트웨이(172.x)에서
+온 것으로 보인다. 외부 접근은 루프백 바인딩과 프라이빗 서브넷이 막는다.
+
 ---
 
 ## P1
@@ -171,6 +210,7 @@ cat /var/lib/node_exporter/textfile_collector/backup.prom
 | 이미지 후처리 결과 미도착 | Worker 시크릿 `SERVER_CALLBACK_URL`이 `https://api.at-crew.com/internal/media/images/processed`인지 → nginx 액세스 로그에 그 경로 요청이 찍히는지 | 콜백이 실패로 오는 게 아니라 아예 안 오는 상태. 2026-08 실제 사고(이슈 #59)와 같은 유형 |
 | 미완료 이벤트 누적 | `SELECT COUNT(*), EVENT_TYPE FROM EVENT_PUBLICATION WHERE COMPLETION_DATE IS NULL GROUP BY EVENT_TYPE` | 특정 타입만 쌓이면 그 리스너가 예외를 던지고 있다 |
 | 구독 결제 실패 | Stripe 대시보드 → 해당 고객 | 여러 건이 몰리면 카드 문제가 아니라 연동 문제 |
+| DB 지표 수집 불가 | `docker logs --since 10m deploy-alloy-1 2>&1 \| grep exporter.mysql` → `ss -ltn \| grep 3306` | `connection refused`이고 호스트에 3306 리스너가 없으면 mariadb 포트 노출(`docker-compose.app.yml`의 `127.0.0.1:3306:3306`)이 빠진 것이다 — 2026-09-03 Replica 설정 제거 때 실제로 지워져 6주간 수집이 끊겼다. `Access denied`면 `.env`의 `MYSQL_EXPORTER_DSN`·`exporter` 계정 권한을 본다 |
 
 ---
 
