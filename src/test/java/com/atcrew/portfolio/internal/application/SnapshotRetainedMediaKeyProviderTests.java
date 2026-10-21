@@ -182,7 +182,7 @@ class SnapshotRetainedMediaKeyProviderTests {
 
     private String givenSnapshotPortfolio() {
         Portfolio portfolio = portfolioRepository.save(Portfolio.createShared(
-                UUID.randomUUID().toString(), ReflectionType.SNAPSHOT, "고정형", newCode(), null));
+                UUID.randomUUID().toString(), ReflectionType.SNAPSHOT, "고정형", newCode()));
         return portfolio.getId();
     }
 

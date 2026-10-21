@@ -48,13 +48,11 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.Objects;
@@ -65,8 +63,6 @@ import java.util.UUID;
 class MemberServiceImpl implements MemberService {
 
     private static final Logger log = LoggerFactory.getLogger(MemberServiceImpl.class);
-    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
-    private static final int HANDLE_GENERATION_ATTEMPTS = 3;
 
     private final MemberRepository memberRepository;
     private final MemberHandleRepository memberHandleRepository;
@@ -96,16 +92,10 @@ class MemberServiceImpl implements MemberService {
         TermsAgreement terms = TermsAgreement.of(
                 command.agreePrivacy(), command.agreeService(),
                 command.agreeThirdParty(), command.agreeMarketing());
-        // 전환기: null뿐 아니라 빈 문자열·공백뿐인 값도 "입력 안 함"으로 보고 생성한다 — FE가 빈 입력란을 ""로 보낼 수 있다.
-        boolean generated = command.handle() == null || command.handle().isBlank();
-        String handle;
-        if (generated) {
-            handle = generateAvailableHandle(command.name());
-        } else {
-            handle = HandleValidator.validate(command.handle());
-            if (memberHandleRepository.existsById(handle)) {
-                throw new MemberException(MemberErrorCode.DUPLICATE_HANDLE, handle);
-            }
+        // null·빈 값·공백뿐이면 HANDLE_REQUIRED(400)로 거부된다.
+        String handle = HandleValidator.validate(command.handle());
+        if (memberHandleRepository.existsById(handle)) {
+            throw new MemberException(MemberErrorCode.DUPLICATE_HANDLE, handle);
         }
         Member member = buildMember(command, handle, terms);
         try {
@@ -122,33 +112,8 @@ class MemberServiceImpl implements MemberService {
             if (memberRepository.existsByLoginEmailAndAuthProvider(command.loginEmail(), command.authProvider())) {
                 throw new MemberException(MemberErrorCode.DUPLICATE_EMAIL, command.loginEmail());
             }
-            if (generated) {
-                throw new MemberException(MemberErrorCode.HANDLE_GENERATION_FAILED, "handle=" + handle);
-            }
             throw new MemberException(MemberErrorCode.DUPLICATE_HANDLE, handle);
         }
-    }
-
-    // TODO(PA-14): FE가 가입 화면에서 handle을 필수로 보내면 자동 생성 경로 전체(이 메서드·HANDLE_GENERATION_FAILED,
-    //  register의 null·공백 판정)를 제거하고 빈 값은 HandleValidator의 HANDLE_REQUIRED로 거부한다 — FE 배포 전
-    //  전환기 동안만 쓴다(member-handle-design §4.1).
-    /**
-     * 전환기 자동 생성 — {이름부 ≤8자}_{숫자 5자리}. 이름에서 영문·숫자만 남기고 4자 미만이면 user를 쓴다
-     * (V52 일괄 변경과 같은 형식). 원장에 이미 있으면 최대 3회 다시 뽑는다. 원장 PK 위반 후에는 같은
-     * 트랜잭션에서 재시도할 수 없으므로 충돌은 insert 전에 원장 조회로 거른다.
-     */
-    private String generateAvailableHandle(String name) {
-        String base = name.replaceAll("[^A-Za-z0-9]", "");
-        if (base.length() > 8) base = base.substring(0, 8);
-        if (base.length() < HandleValidator.MIN_LENGTH) base = "user";
-        for (int attempt = 0; attempt < HANDLE_GENERATION_ATTEMPTS; attempt++) {
-            String candidate = base + "_" + String.format(Locale.ROOT, "%05d", SECURE_RANDOM.nextInt(100_000));
-            if (!memberHandleRepository.existsById(candidate)) {
-                return candidate;
-            }
-            log.debug("자동 생성 handle 충돌 재추첨: attempt={}", attempt + 1);
-        }
-        throw new MemberException(MemberErrorCode.HANDLE_GENERATION_FAILED, "base=" + base);
     }
 
     private Member buildMember(RegisterMemberCommand command, String handle, TermsAgreement terms) {

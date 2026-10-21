@@ -9,12 +9,11 @@
   `/{handle}/...` 형태가 되고, 공유 URL에서 **언어 세그먼트가 없어진다.** 옛 주소는 새 주소로 308 리다이렉트해야 한다.
 - **handle은 이제 바뀔 수 있다.** 설정에서 변경하면(30일에 1회) 옛 handle은 영구히 그 회원 소유로 남아 새 주소로
   이어진다. 그래서 FE는 URL의 handle이 아니라 **API 응답의 현재 handle**을 기준으로 링크를 만들고 리다이렉트한다.
-- BE는 아직 배포 전이다(브랜치 `danhandev/member-handle`). API 문서(`https://at-crew-api-docs.pages.dev/`)는
-  **main에 반영된 뒤에** 갱신되므로, 그전에는 이 문서의 요청·응답 형식을 기준으로 한다. 응답 예시의 필드명은 실제
-  DTO 그대로다.
+- BE는 운영에 배포됐다(2026-10-16, PR #252·#258). API 문서는 `https://at-crew-api-docs.pages.dev/`에 있고, 응답
+  예시의 필드명은 실제 DTO 그대로다.
 - BE가 먼저 나가도 **옛 API는 그대로 동작**한다(옛 `/api/portfolios/shared/{identifier}`·`/api/artworks/{id}` 유지).
-  가입 요청의 `handle`도 전환기 동안은 선택이라, FE 배포 전에 BE가 나가도 깨지지 않는다(§6). 같은 이유로 공유 포트폴리오의
-  `shareSlug`도 전환기 동안 계속 발급한다.
+  FE 가입 화면 배포 후 가입 요청의 `handle`은 **필수**가 됐고(이메일·Google 가입 모두, §6), 새 공유 포트폴리오의
+  `shareSlug` 발급도 중단했다(PA-14, 2026-10-21). 이미 발급된 slug는 옛 링크 해석용으로 계속 동작한다.
 
 ## 1. 새 URL 체계
 
@@ -116,9 +115,8 @@ terms trash upload billing _next admin help about signup settings company
 
 - `identifier`는 옛 22자 slug 또는 handle(옛 handle 포함)이다. BE는 slug를 먼저 해석하고 없으면 handle로 해석한다.
   둘 다 안 되면 `PORTFOLIO_NOT_FOUND`(404), 탈퇴 회원 handle이면 `MEMBER_WITHDRAWN`(410)이다.
-- `shareSlug`는 옛 링크 해석용이다. 지금 운영 FE가 이 값으로 링크를 만들고 있어서 **전환기 동안은 새 공유 포트폴리오에도
-  발급되지만, 새 주소 체계를 반영한 FE는 새 링크 생성에 쓰면 안 된다.** 가입 `handle` 필수화와 같은 시점에 발급을 중단하며,
-  그 뒤 새 공유 포트폴리오의 `shareSlug`는 null이다.
+- `shareSlug`는 옛 링크 해석용이다. 신규 발급은 중단돼 **새 공유 포트폴리오의 `shareSlug`는 null**이고, 새 링크 생성에
+  쓰면 안 된다. 이미 발급된 slug가 담긴 옛 링크는 위 API로 계속 해석된다.
 - **`/profile/{handle}` 체인 정리 요청**: `profile`은 이 라우트 때문에 예약어로 막아 두었다. BE는 FE의 리다이렉트 체인을
   볼 수 없으므로, FE에 `/profile/{handle}` → (다른 경로) → ... 식의 연쇄 리다이렉트가 있다면 **`/{handle}`로 한 번에**
   308 하도록 정리해 달라. 다단 리다이렉트는 옛 handle이 섞이면 이중 변환이 생긴다. 실제 라우트 구성을 알려 주면
@@ -258,8 +256,8 @@ GET /api/members/handles/availability?handle=Pack_1n
 
 (Google 가입은 `email`·`password`·`passwordConfirm` 없이 `googleIdToken`을 보내는 기존 형식 — `docs/design/google-login-frontend-integration.md` §3 — 에 `handle`만 추가한다.)
 
-- **전환기: `handle`은 선택이다.** 보내지 않거나 빈 문자열·공백뿐이면 서버가 `{이름 영문·숫자 최대 8자}_{숫자 5자리}`(예: `user_48213`)로 생성한다.
-  FE 배포 후 **필수로 전환**할 예정이다(`PA-14`). **전환 일정을 합의하고 싶다** — FE 가입 화면 반영 배포 시점을 알려 달라.
+- **`handle`은 필수다(이메일·Google 가입 모두).** 보내지 않거나 빈 문자열·공백뿐이면 `HANDLE_REQUIRED`(400)이고 회원은 만들어지지 않는다.
+  서버 자동 생성은 없다.
 - 가입 시 입력한 handle은 30일 변경 제한에 산정되지 않는다. 30일 제한·"현재와 동일" 검사도 가입에는 없다.
 - 이메일 중복과 handle 중복은 구분된다.
 
@@ -267,12 +265,11 @@ GET /api/members/handles/availability?handle=Pack_1n
 
 | HTTP | code | 의미 |
 |---|---|---|
-| 400 | `HANDLE_REQUIRED` | 빈 값(전환기가 끝난 뒤) |
+| 400 | `HANDLE_REQUIRED` | 미입력·빈 문자열·공백뿐인 값 |
 | 400 | `HANDLE_TOO_SHORT` · `HANDLE_TOO_LONG` · `HANDLE_INVALID_CHARACTERS` · `HANDLE_CONSECUTIVE_UNDERSCORES` · `HANDLE_RESERVED` | 형식 위반(§5.2와 같은 이름) |
 | 400 | `COMMON_INVALID_INPUT` | handle 51자 이상 등 기존 `@Valid` 실패 |
 | 409 | `DUPLICATE_HANDLE` | 다른 회원(탈퇴 회원 포함)이 쓰고 있거나 쓴 적이 있는 handle |
 | 409 | `DUPLICATE_EMAIL` | 기존과 동일 |
-| 500 | `HANDLE_GENERATION_FAILED` | 전환기에 handle을 보내지 않았고 자동 생성이 실패한 경우(실질 발생 없음). handle을 필수로 보내면 사라진다 |
 
 **가입 토스트 문구는 기획 확인 중이다(PH-02).** 로그인-R19는 "사용자 아이디 형식·예약어·중복 문구는 설정-R17과 동일 안내"
 라고만 적고 있어 위 표의 §5.2 문구를 임시로 쓸 수 있지만, 가입 전용 문구와 다중 오류 우선순위는 미정이다.
@@ -340,4 +337,4 @@ GET /api/members/handles/availability?handle=Pack_1n
 | `PortfolioInfo`, `PortfolioSummaryInfo`, `PortfolioSharedInfo` | `ownerHandle`, `publicCode` (작가 페이지는 `publicCode` null) |
 | `PortfolioArtworkCardInfo` | `publicCode` (고정형 카드는 null) |
 | `SearchResultItem` | `publicCode` (`authorHandle`은 기존) |
-| 가입 요청 (`EmailRegisterRequest`, `GoogleRegisterRequest`) | `handle` (전환기 선택) |
+| 가입 요청 (`EmailRegisterRequest`, `GoogleRegisterRequest`) | `handle` (필수) |
