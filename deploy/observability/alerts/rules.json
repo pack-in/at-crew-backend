@@ -743,6 +743,81 @@
     ]
   },
   {
+    "_comment": "Sentry의 Discord 연동은 Team 플랜 이상이라(2026-10-21 확인) 무료로 같은 효과를 내려고 둔다. Sentry가 이슈로 만드는 대상이 ERROR 로그이므로, 그 개수가 늘면 Discord로 알리고 상세 원인은 Sentry에서 본다. 메일 발송 실패처럼 ERROR를 남기는 다른 알람과 함께 울릴 수 있다.",
+    "uid": "atcrew-error-log",
+    "title": "[P2] 앱 ERROR 로그 발생",
+    "ruleGroup": "at-crew-p2",
+    "folderUID": "__FOLDER_UID__",
+    "condition": "C",
+    "for": "0m",
+    "labels": {
+      "severity": "p2"
+    },
+    "annotations": {
+      "summary": "10분간 앱 ERROR 로그가 1건 이상 남았다",
+      "description": "Sentry(java-spring-boot, environment=prod)에서 같은 시각의 이슈를 확인한다. 반복되면 원인 수정 전까지 이슈를 묶어 추적한다."
+    },
+    "noDataState": "OK",
+    "execErrState": "OK",
+    "isPaused": false,
+    "data": [
+      {
+        "refId": "A",
+        "relativeTimeRange": {
+          "from": 900,
+          "to": 0
+        },
+        "datasourceUid": "__PROM_UID__",
+        "model": {
+          "refId": "A",
+          "instant": true,
+          "editorMode": "code",
+          "expr": "sum(increase(logback_events_total{job=\"at-crew-backend\",level=\"error\"}[10m]))"
+        }
+      },
+      {
+        "refId": "C",
+        "relativeTimeRange": {
+          "from": 900,
+          "to": 0
+        },
+        "datasourceUid": "__expr__",
+        "model": {
+          "refId": "C",
+          "type": "threshold",
+          "expression": "A",
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "conditions": [
+            {
+              "evaluator": {
+                "type": "gt",
+                "params": [
+                  0
+                ]
+              },
+              "operator": {
+                "type": "and"
+              },
+              "query": {
+                "params": [
+                  "C"
+                ]
+              },
+              "reducer": {
+                "type": "last",
+                "params": []
+              },
+              "type": "query"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
     "uid": "atcrew-media-failure",
     "title": "[P2] 이미지 후처리 실패",
     "ruleGroup": "at-crew-p2",

@@ -191,6 +191,11 @@ Stripe 웹훅 **처리 실패**는 따로 세지 않는다 — 서명 검증 실
 | P2 | `atcrew_modulith_incomplete_events` 50 초과 |
 | P2 | readiness 개별 항목 DOWN |
 | P2 | `INVALID_GOOGLE_TOKEN`(401) 10건 / 10분 — 위조 토큰 시도 의심 (등록 필요 — 콘솔 수동 설정) |
+| P2 | 앱 ERROR 로그 1건 이상 / 10분(`logback_events_total{level="error"}`) — Sentry 이슈를 Discord로 받는 대체 경로. Sentry의 Discord 연동은 Team 플랜 이상이라(2026-10-21) 무료로 같은 효과를 낸다. 상세는 Sentry에서 본다 |
+
+**Sentry 수집 결함(2026-10-21 발견·수정).** 운영 `SENTRY_DSN`이 조직에 없는 프로젝트를 가리켜 도입 이후 운영 에러가
+Sentry에 한 건도 들어가지 않았다. Sentry는 존재하지 않는 프로젝트로 온 이벤트도 HTTP 200으로 받고 버리므로, 전송 성공만으로는
+검증이 아니다 — 이슈가 실제로 생기는지 API·화면으로 확인해야 한다. 지금은 `java-spring-boot` 프로젝트 DSN을 쓴다.
 
 **`GOOGLE_LOGIN_NOT_CONFIGURED`(503)는 별도 알람이 필요 없다.** `GlobalExceptionHandler`가 모든 5xx를 `log.error`로 남기고, `SentryConfig`의 Logback 어펜더가 ERROR 로그를 Sentry 이슈로 자동 변환하는 기존 파이프라인으로 이미 커버된다 — 위 5xx 카운트 알람(5건/5분)에도 자연히 포함된다. 별도 코드 변경도 별도 Grafana 규칙도 필요 없다.
 
