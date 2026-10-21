@@ -68,7 +68,6 @@ class AuthController {
             + "HANDLE_TOO_LONG·HANDLE_INVALID_CHARACTERS·HANDLE_CONSECUTIVE_UNDERSCORES·HANDLE_RESERVED)")
     @ApiResponse(responseCode = "409", description = "이미 가입된 이메일(DUPLICATE_EMAIL) 또는 "
             + "이미 쓰였던 사용자 아이디(DUPLICATE_HANDLE)")
-    @ApiResponse(responseCode = "500", description = "HANDLE_GENERATION_FAILED — handle 미입력 시 자동 생성 실패(전환기 한정)")
     @ResponseStatus(HttpStatus.CREATED)
     @PostMapping("/email/register")
     public com.atcrew.common.response.ApiResponse<AuthInfo> emailRegister(
@@ -184,7 +183,6 @@ class AuthController {
     @ApiResponse(responseCode = "401", description = "Google 토큰 검증 실패(INVALID_GOOGLE_TOKEN)")
     @ApiResponse(responseCode = "409", description = "이미 가입된 Google 계정(DUPLICATE_EMAIL) 또는 "
             + "이미 쓰였던 사용자 아이디(DUPLICATE_HANDLE)")
-    @ApiResponse(responseCode = "500", description = "HANDLE_GENERATION_FAILED — handle 미입력 시 자동 생성 실패(전환기 한정)")
     @ApiResponse(responseCode = "429", description = "동일 IP의 토큰 검증 실패 횟수 초과(TOO_MANY_ATTEMPTS)")
     @ResponseStatus(HttpStatus.CREATED)
     @PostMapping("/google/register")

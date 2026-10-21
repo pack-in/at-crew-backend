@@ -18,6 +18,7 @@ import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Callable;
@@ -425,30 +426,19 @@ class MemberHandleTests {
     }
 
     @Test
-    void handle을_입력하지_않으면_이름부_최대_8자_밑줄_숫자_5자리로_생성한다() {
-        MemberInfo latin = memberService.register(command(uniqueEmail(), "John Doe-Smith", AuthProvider.EMAIL, null));
-        MemberInfo korean = memberService.register(command(uniqueEmail(), "홍길동", AuthProvider.GOOGLE, null));
-        MemberInfo shortName = memberService.register(command(uniqueEmail(), "Al", AuthProvider.EMAIL, null));
+    void 가입_handle이_null이거나_빈_값이거나_공백뿐이면_HANDLE_REQUIRED로_거부하고_회원과_원장을_만들지_않는다() {
+        int membersBefore = memberCount();
+        int ledgerBefore = ledgerCount();
 
-        assertThat(latin.handle()).matches("JohnDoeS_\\d{5}");
-        assertThat(korean.handle()).matches("user_\\d{5}");
-        assertThat(shortName.handle()).matches("user_\\d{5}");
-        assertThat(memberService.resolveHandle(latin.handle()).memberId()).isEqualTo(latin.id());
-        assertThat(memberService.checkHandleAvailability(latin.handle(), latin.id()).errorCode())
-                .isEqualTo("HANDLE_UNCHANGED");
-    }
+        for (AuthProvider provider : List.of(AuthProvider.EMAIL, AuthProvider.GOOGLE)) {
+            for (String blank : Arrays.asList(null, "", "   ", "\u3000\t")) {
+                assertErrorCode(() -> memberService.register(command(uniqueEmail(), "빈값", provider, blank)),
+                        MemberErrorCode.HANDLE_REQUIRED);
+            }
+        }
 
-    @Test
-    void 전환기에는_빈_문자열과_공백뿐인_handle도_자동_생성_경로로_간다() {
-        // FE가 빈 입력란을 ""로 보낼 수 있다 — null과 같이 취급한다(PA-14에서 필수화하면 HANDLE_REQUIRED로 바뀐다).
-        MemberInfo empty = memberService.register(command(uniqueEmail(), "Empty Name", AuthProvider.EMAIL, ""));
-        MemberInfo spaces = memberService.register(command(uniqueEmail(), "홍길동", AuthProvider.GOOGLE, "   "));
-        MemberInfo ideographic = memberService.register(command(uniqueEmail(), "홍길동", AuthProvider.EMAIL, "\u3000\t"));
-
-        assertThat(empty.handle()).matches("EmptyNam_\\d{5}");
-        assertThat(spaces.handle()).matches("user_\\d{5}");
-        assertThat(ideographic.handle()).matches("user_\\d{5}");
-        assertThat(memberService.resolveHandle(empty.handle()).memberId()).isEqualTo(empty.id());
+        assertThat(memberCount()).isEqualTo(membersBefore);
+        assertThat(ledgerCount()).isEqualTo(ledgerBefore);
     }
 
     @Test
@@ -564,6 +554,16 @@ class MemberHandleTests {
     private long versionOf(String memberId) {
         Long version = jdbcTemplate.queryForObject("SELECT version FROM members WHERE id = ?", Long.class, memberId);
         return version == null ? 0 : version;
+    }
+
+    private int memberCount() {
+        Integer count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM members", Integer.class);
+        return count == null ? 0 : count;
+    }
+
+    private int ledgerCount() {
+        Integer count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM member_handles", Integer.class);
+        return count == null ? 0 : count;
     }
 
     private int ledgerCountOf(String memberId) {

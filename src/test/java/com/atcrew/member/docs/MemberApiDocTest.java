@@ -422,8 +422,18 @@ class MemberApiDocTest extends RestDocsIntegrationSupport {
             boolean agreeMarketing,
             String timezone,
             String countryCode,
-            String primaryLanguage
-    ) {}
+            String primaryLanguage,
+            String handle               // 사용자 아이디(가입 필수)
+    ) {
+        // handle은 가입 필수 — 가입 자체를 검증하지 않는 호출부는 무작위 handle을 쓴다.
+        RegisterRequest(String email, String password, String passwordConfirm, String name,
+                        boolean agreeService, boolean agreePrivacy, boolean agreeThirdParty, boolean agreeMarketing,
+                        String timezone, String countryCode, String primaryLanguage) {
+            this(email, password, passwordConfirm, name, agreeService, agreePrivacy, agreeThirdParty, agreeMarketing,
+                    timezone, countryCode, primaryLanguage,
+                    "u" + UUID.randomUUID().toString().replace("-", "").substring(0, 10));
+        }
+    }
 
     /** 사용자 아이디 변경 요청 바디 */
     record ChangeHandleRequest(String handle) {}
