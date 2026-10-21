@@ -6,6 +6,7 @@ import com.atcrew.artwork.BookmarkService;
 import com.atcrew.artwork.internal.exception.ArtworkErrorCode;
 import com.atcrew.artwork.internal.exception.ArtworkException;
 import com.atcrew.artwork.internal.web.dto.CreateBookmarkFolderRequest;
+import com.atcrew.artwork.internal.web.dto.BookmarkStatusResponse;
 import com.atcrew.artwork.internal.web.dto.MoveBookmarkRequest;
 import com.atcrew.artwork.internal.web.dto.RenameBookmarkFolderRequest;
 import com.atcrew.artwork.internal.web.dto.SaveBookmarkRequest;
@@ -87,6 +88,19 @@ class BookmarkController {
             @Parameter(description = "페이지 크기 (기본 20)") @RequestParam(required = false) Integer size) {
         String memberId = securityUtils.getCurrentMemberId();
         return ApiResponse.success(bookmarkService.getBookmarks(memberId, folderId, cursor, resolveSize(size)));
+    }
+
+    @Operation(summary = "작품 저장 여부",
+            description = "현재 회원이 이 작품을 저장했는지 돌려줍니다. 작품 상세 GET은 FE SSR이 토큰 없이 부르므로 "
+                    + "보는 사람마다 다른 이 값은 상세 응답에 넣지 않고 따로 조회합니다. 저장한 적 없거나 없는 작품이면 false입니다.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401",
+            description = "UNAUTHENTICATED — 로그인 필요")
+    @GetMapping("/{artworkId}")
+    public ApiResponse<BookmarkStatusResponse> getBookmarkStatus(
+            @Parameter(description = "작품 ID") @PathVariable String artworkId) {
+        return ApiResponse.success(new BookmarkStatusResponse(
+                bookmarkService.isBookmarked(securityUtils.getCurrentMemberId(), artworkId)));
     }
 
     @Operation(summary = "북마크 저장")

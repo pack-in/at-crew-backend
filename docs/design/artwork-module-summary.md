@@ -374,6 +374,9 @@ R2 업로드 완료 후 작품 메타데이터를 저장. 바로 `PROCESSING` �
 - 작가 본인은 `PROCESSING` / `DELETED` 포함 항상 조회 가능.
 - 조회수를 올리지 않는다(2026-09-22, 홈-R14). FE SSR·편집 화면·포트폴리오가 같은 GET을 부르므로 열람자를
   식별할 수 없다 — 집계는 아래 `POST /views`가 담당한다.
+- 응답의 `bookmarkCount`는 이 작품을 저장한 회원 수(`artworks.bookmark_count`, V34)다. 보는 사람과 무관한 값이라
+  SSR에서도 그대로 쓴다. 현재 회원의 저장 여부는 같은 이유(토큰 없는 SSR 호출)로 상세 응답에 넣지 않고
+  `GET /api/bookmarks/{artworkId}`로 따로 조회한다.
 
 #### `POST /api/artworks/{artworkId}/views` — 작품 열람 기록
 
@@ -491,6 +494,7 @@ R2 업로드 완료 후 작품 메타데이터를 저장. 바로 `PROCESSING` �
 | 메서드 | 경로 | 설명 |
 |---|---|---|
 | `GET` | `/api/bookmarks` | 북마크 목록 |
+| `GET` | `/api/bookmarks/{artworkId}` | 현재 회원의 저장 여부 `{ "bookmarked": boolean }` — 저장한 적 없거나 없는 작품이면 false |
 | `POST` | `/api/bookmarks` | 북마크 저장 |
 | `DELETE` | `/api/bookmarks/{artworkId}` | 북마크 해제 |
 | `PATCH` | `/api/bookmarks/move` | 폴더 이동 |
