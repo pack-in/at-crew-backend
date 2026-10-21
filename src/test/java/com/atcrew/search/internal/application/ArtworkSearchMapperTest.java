@@ -107,7 +107,7 @@ class ArtworkSearchMapperTest {
                 ImageLayoutType.VERTICAL_SCROLL,
                 ArtworkField.ILLUSTRATION, CreativeType.ORIGINAL, List.of(ArtworkRole.LINEART),
                 List.of(Genre.BL), List.of(), List.of("태그1", "태그2"), List.of(), null, null, List.of(),
-                AgeRating.ALL, List.of(Language.KO), Visibility.PUBLIC, false, false, materials, ArtworkStatus.READY,
+                AgeRating.ALL, List.of(Language.KO), Visibility.PUBLIC, false, false, 0L, materials, ArtworkStatus.READY,
                 Instant.parse("2026-07-01T00:00:00Z"), Instant.parse("2026-07-02T00:00:00Z")
         );
     }

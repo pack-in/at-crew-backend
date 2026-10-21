@@ -57,6 +57,7 @@ class ArtworkMapper {
                 artwork.getVisibility(),
                 artwork.isPortfolioIncluded(),
                 artwork.isBlocked(),
+                artwork.getBookmarkCount(),
                 artwork.getMaterials().stream()
                         .map(m -> new MaterialInfo(m.getName(), m.getTargets(), m.getCustomTargets(),
                                 m.getAttachmentKeys(), m.getLinks()))
