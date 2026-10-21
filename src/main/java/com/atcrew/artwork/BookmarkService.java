@@ -16,6 +16,8 @@ public interface BookmarkService {
 
     CursorPage<BookmarkEntryInfo> getBookmarks(String memberId, String folderId, String cursor, int size);
 
+    boolean isBookmarked(String memberId, String artworkId);
+
     BookmarkEntryInfo saveBookmark(String memberId, String artworkId, String folderId);
 
     void removeBookmark(String memberId, String artworkId);

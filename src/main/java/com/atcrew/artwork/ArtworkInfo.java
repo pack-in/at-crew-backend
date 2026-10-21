@@ -47,6 +47,9 @@ public record ArtworkInfo(
         // 운영 정책·법적 조치에 따른 외부 노출 중단 여부(마이페이지_작가-R39) —
         // 차단된 작품은 작성자 본인에게만 조회되며 화면에는 차단 안내 배지를 노출한다
         boolean blocked,
+        // 이 작품을 저장한 회원 수 — artworks.bookmark_count(V34) 값이다. 저장·해제 시 원자적 UPDATE로 증감한다.
+        // 보는 사람의 저장 여부는 회원마다 달라 여기 두지 않는다(GET /api/bookmarks/{artworkId})
+        long bookmarkCount,
         List<MaterialInfo> materials,
         ArtworkStatus status,
         Instant createdAt,

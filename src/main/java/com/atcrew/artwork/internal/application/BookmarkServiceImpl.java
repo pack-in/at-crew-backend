@@ -227,6 +227,12 @@ class BookmarkServiceImpl implements BookmarkService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public boolean isBookmarked(String memberId, String artworkId) {
+        return entryRepository.existsByMemberIdAndArtworkId(memberId, artworkId);
+    }
+
+    @Override
     @Transactional
     public BookmarkEntryInfo saveBookmark(String memberId, String artworkId, String folderId) {
         Artwork artwork = artworkRepository.findById(artworkId)
