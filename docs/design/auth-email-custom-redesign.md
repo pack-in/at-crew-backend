@@ -563,7 +563,7 @@ public enum AuthErrorCode {
 > 미확정 항목을 전부 확정했다. **토큰 링크 방식 확정**(§7.1 권장안 그대로). **TTL은 1시간**으로
 > 확정 — 아래 §7.3 초안의 30분은 Figma 이메일 문구("링크는 이메일 발송 시점으로부터 1시간 동안
 > 유효합니다")와 달라 정정됨. 메일 발송 인프라는 **Resend**로 결정, `com.atcrew.common.mail`
-> (`MailSender` 포트 + `ResendMailAdapter`)에 구현했고 다른 모듈(예: 결제 실패 알림)도 재사용
+> (`MailSender` 포트 + `ResendMailAdapter`, 2026-10-20 `CloudflareMailAdapter`로 교체 — §7.3 하단 참고)에 구현했고 다른 모듈(예: 결제 실패 알림)도 재사용
 > 가능하다. `PasswordResetToken`(Flyway V17)·`PasswordResetAttemptLimiter`(기존
 > `login_attempts` 테이블 재사용, `pwreset:` 접두사)까지 전부 `com.atcrew.auth` 모듈에 구현 완료.
 > Google 전용 계정에 보내는 안내 메일도 Figma "Google 계정 가입 이메일" 화면 문구 그대로 구현했다.
@@ -603,6 +603,10 @@ POST /api/auth/email/password-reset/confirm   { "token": "...", "newPassword": "
 - 요청 rate limit: 이메일당 예: 5분 3회.
 
 **(해결됨, 2026-08-12)** 메일 발송 인프라는 Resend로 확정·구현. 메일 템플릿은 Figma 문구 그대로 반영.
+
+**(변경, 2026-10-20)** 발송 어댑터를 Cloudflare Email Service(`CloudflareMailAdapter`, 발신 `no-reply@mail.at-crew.com`)로
+교체했다. Resend 계정·키가 한 번도 설정되지 않아 운영에서 메일이 전부 조용히 실패하고 있었고, 팀 Cloudflare 계정에
+mail.at-crew.com Email Sending(DKIM·SPF·DMARC)이 이미 켜져 있었다. `MailSender` 포트와 호출부는 그대로다.
 재설정 페이지 URL은 `{FRONTEND_BASE_URL}/reset-password?token=...`로 백엔드가 링크를 생성한다 —
 프론트가 이 경로와 다르게 라우트를 만들었다면 인계 시 반드시 맞춰야 한다(백엔드 쪽 값 변경은
 `app.frontend-base-url` 설정 하나로 가능).

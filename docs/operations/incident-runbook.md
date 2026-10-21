@@ -212,7 +212,7 @@ cat /var/lib/node_exporter/textfile_collector/backup.prom
 | R2 이미지 백업 원본 누락 | `journalctl -u atcrew-image-backup.service --since "-2 days"`에서 "백업에 없는 key" 목록 확인 → `sudo systemctl start atcrew-image-backup.service`로 한 번 더 실행 | sync가 exit 0으로 끝났는데 원본이 다 복사되지 않은 상태다(이슈 #268). 재실행으로 0이 되면 일시적인 복사 누락이었다. 같은 key가 계속 남으면 그 key만 복사가 실패하는 것이다 — `aws s3 sync --dryrun`으로 그 key가 복사 대상으로 잡히는지 본다. 잡히지 않으면 sync의 비교 판단이 틀린 것이라 `aws s3 cp`로 그 key만 복사한다. 원본 수와 백업 수의 차이로 판단하지 않는다 — 백업은 원본에서 지워진 객체도 남기므로 정상일 때도 백업이 더 많다. sync 시작 5분 전 이후에 올라온 객체는 다음 실행에서 센다 |
 | 5xx 증가 | Sentry에서 해당 시각 이슈 → `requestId`로 Loki 조회 | 특정 엔드포인트 집중이면 그 기능 문제, 전방위면 DB·의존성 |
 | p95 지연 2초 초과 | 대시보드 "요청량/지연" → 어떤 엔드포인트인지 | 검색·이미지 업로드가 흔한 원인. DB 커넥션 pending도 함께 본다 |
-| 메일 발송 실패 | Resend 대시보드, `.env`의 `RESEND_API_KEY` 유효성 | 비밀번호 재설정이 막히므로 사용자 문의로 바로 이어진다 |
+| 메일 발송 실패 | 앱 로그 "메일 발송 실패"의 errors, Cloudflare 대시보드 Email Sending, `.env`의 `CLOUDFLARE_EMAIL_API_TOKEN` 유효성 | 비밀번호 재설정이 막히므로 사용자 문의로 바로 이어진다 |
 | 이미지 후처리 실패 | Cloudflare Worker 로그, `media_assets` 테이블의 FAILED 행 | 업로드는 됐는데 썸네일이 없는 상태 |
 | 이미지 후처리 결과 미도착 | Worker 시크릿 `SERVER_CALLBACK_URL`이 `https://api.at-crew.com/internal/media/images/processed`인지 → nginx 액세스 로그에 그 경로 요청이 찍히는지 | 콜백이 실패로 오는 게 아니라 아예 안 오는 상태. 2026-08 실제 사고(이슈 #59)와 같은 유형 |
 | 미완료 이벤트 누적 | `SELECT COUNT(*), EVENT_TYPE FROM EVENT_PUBLICATION WHERE COMPLETION_DATE IS NULL GROUP BY EVENT_TYPE` | 특정 타입만 쌓이면 그 리스너가 예외를 던지고 있다 |

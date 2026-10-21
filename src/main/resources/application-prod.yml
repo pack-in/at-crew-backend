@@ -25,9 +25,10 @@ app:
   frontend-base-url: ${FRONTEND_BASE_URL}
 
 mail:
-  resend:
-    api-key: ${RESEND_API_KEY}
-    from-address: ${MAIL_FROM_ADDRESS}
+  # 기본값 없음 — 비어 있으면 MailProperties가 기동을 멈춘다(키 없이 떠서 메일이 조용히 실패하던 문제 방지).
+  cloudflare:
+    account-id: ${CLOUDFLARE_ACCOUNT_ID}
+    api-token: ${CLOUDFLARE_EMAIL_API_TOKEN}
 
 auth:
   password-reset:

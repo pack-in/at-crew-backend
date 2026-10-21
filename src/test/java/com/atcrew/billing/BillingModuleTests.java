@@ -63,7 +63,7 @@ class BillingModuleTests {
     @Autowired
     EntitlementBalanceRepository balanceRepository;
 
-    // 결제 실패 메일이 커밋 뒤 실제로 발송 경로를 타는지 본다 — Resend는 호출하지 않는다.
+    // 결제 실패 메일이 커밋 뒤 실제로 발송 경로를 타는지 본다 — 실제 메일 API는 호출하지 않는다.
     @MockitoBean
     MailSender mailSender;
 

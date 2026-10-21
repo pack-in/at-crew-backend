@@ -175,7 +175,7 @@ recruit/기업 프로필과 병렬 진행 중이라 별도 워크트리(`worktre
   구인글은 기획서(`마이페이지_기업-R04`, `구인구직-R02`)에 유료 상품으로 명시돼 있는데 기존 로드맵에서 누락됐던 항목이며,
   가격은 기획서에 값이 없어 이번에 새로 정했다.
 - 정기 결제 실패: 웹훅 기준 판별, 유예 없이 즉시 스타터 전환. `SubscriptionPaymentFailedEvent` 발행까지 구현됨 —
-  **이메일 발송은 인프라 구현 완료**(2026-08-12, `com.atcrew.common.mail`, Resend 기반 — §6 참고)이므로
+  **이메일 발송은 인프라 구현 완료**(2026-08-12, `com.atcrew.common.mail`, Resend 기반으로 시작해 2026-10-20 Cloudflare Email Service로 교체 — §6 참고)이므로
   이 이벤트를 구독해 `MailSender.send(to, subject, html)` 호출하는 리스너만 추가하면 된다(인프라 자체는 더 이상 블로커 아님).
 - 탈퇴 시 활성 구독 즉시 취소(잔여 기간 환불 없음). Stripe Customer는 결제 이력 보존을 위해 삭제하지 않는다.
 
@@ -207,7 +207,7 @@ entitlement 원장, recruit 3종 게이팅, artwork 스타터 4개 제한, 탈�
 - `PATCH /api/members/me/marketing-agreement` — 마케팅 수신 동의 토글(필수 약관 동의 시각 보존)
 - `PATCH /api/members/me/adult-content` — 성인 콘텐츠 표시 토글(`Member.adultContentVisible` 신규 필드, V14)
 
-**구현 완료(2026-08-12) — 비밀번호 재설정 + 이메일 발송 인프라:** `docs/design/auth-email-custom-redesign.md` §7이 "별도 설계 필요" 초안이었던 부분을 확정·구현. 메일 프로바이더는 **Resend**로 결정(`com.atcrew.common.mail` 포트+어댑터, 다른 모듈도 재사용 가능). 토큰 링크 방식·TTL 1시간(Figma "비밀번호를 잊으셨나요?" 이메일 문구로 확정 — 초안의 30분에서 정정), SHA-256 해시 저장, 단발성, 성공 시 전 기기 로그아웃. 동일 이메일에 GOOGLE 계정만 있으면 별도 안내 메일 발송(Figma "Google 계정 가입 이메일" 화면 확인). Flyway V17.
+**구현 완료(2026-08-12) — 비밀번호 재설정 + 이메일 발송 인프라:** `docs/design/auth-email-custom-redesign.md` §7이 "별도 설계 필요" 초안이었던 부분을 확정·구현. 메일 프로바이더는 **Resend**로 결정(2026-10-20 Cloudflare Email Service로 교체 — Resend 계정이 없어 운영 메일이 나가지 않았음)(`com.atcrew.common.mail` 포트+어댑터, 다른 모듈도 재사용 가능). 토큰 링크 방식·TTL 1시간(Figma "비밀번호를 잊으셨나요?" 이메일 문구로 확정 — 초안의 30분에서 정정), SHA-256 해시 저장, 단발성, 성공 시 전 기기 로그아웃. 동일 이메일에 GOOGLE 계정만 있으면 별도 안내 메일 발송(Figma "Google 계정 가입 이메일" 화면 확인). Flyway V17.
 - `POST /api/auth/email/password-reset/request` — 가입 여부 무관 항상 200 (enumeration 방지), 이메일당 5분 3회 rate limit
 - `POST /api/auth/email/password-reset/confirm` — 토큰+새 비밀번호로 재설정 확정
 

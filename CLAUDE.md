@@ -51,7 +51,7 @@
 | [docs/design/billing-frontend-integration.md](docs/design/billing-frontend-integration.md) | 결제/구독 프론트 연동 요청서 — 카탈로그 렌더링, Checkout 리다이렉트, 복귀 페이지 폴링, Portal 위임, 403 기반 게이팅 모달 |
 | [docs/design/billing-free-trial.md](docs/design/billing-free-trial.md) | 구독 30일 무료 체험 — 첫 구독만(취소 이력 포함 판정)·열린 Checkout 세션 만료로 우회 차단·카탈로그 trialDays, 알려진 제약, live·실카드 E2E 검증 기록 |
 | [docs/design/google-login-frontend-integration.md](docs/design/google-login-frontend-integration.md) | Google 로그인 프론트 연동 요청서 — Firebase JS SDK 제거, Google Identity Services(GIS)로 ID Token 직접 발급, 로그인/회원가입 API 계약, 에러코드별 처리 가이드 |
-| [docs/design/settings-i18n-design.md](docs/design/settings-i18n-design.md) | 설정 API 전체(로그아웃·비밀번호 변경·마케팅 동의·성인 콘텐츠 토글)·이메일 발송 인프라(Resend)·i18n 필드·언어 세그먼트 설계 |
+| [docs/design/settings-i18n-design.md](docs/design/settings-i18n-design.md) | 설정 API 전체(로그아웃·비밀번호 변경·마케팅 동의·성인 콘텐츠 토글)·이메일 발송 인프라(Resend로 설계, 2026-10-20 Cloudflare Email Service로 교체)·i18n 필드·언어 세그먼트 설계 |
 | [docs/design/media-module-design.md](docs/design/media-module-design.md) | media 모듈 설계 — artwork에 내장돼 있던 Presigned URL 발급·Worker 트리거·webhook·재시도·고아파일 정리를 범용 모듈로 추출, artwork·recruit이 공용 소비 |
 | [docs/design/og-image-design.md](docs/design/og-image-design.md) | 공유 링크 미리보기(OG) 이미지 — 카드 썸네일로 1200×630 JPEG 합성(contain+흐린 배경, Images 바인딩), 성인물 블러본 선택 규칙, 작품 상세·공유 포트폴리오 `ogImageKey`, 고정형 스냅샷 얼리기, 알려진 제약·배포 순서 |
 | [docs/design/og-image-frontend-integration.md](docs/design/og-image-frontend-integration.md) | OG 프론트 연동 요청서 — `ogImageKey` 사용법, null이면 기본 이미지, 접근 제한 시 OG 미제공, 플랫폼별 이미지 불필요 |
