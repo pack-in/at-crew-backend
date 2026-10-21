@@ -680,7 +680,7 @@
     },
     "annotations": {
       "summary": "10분간 메일 발송 실패가 3건을 넘었다",
-      "description": "비밀번호 재설정·인증 메일이 나가지 않는 상태다. Resend 키 만료나 도메인 문제를 먼저 본다."
+      "description": "비밀번호 재설정·인증 메일이 나가지 않는 상태다. Cloudflare Email Sending 토큰 만료나 발신 도메인 문제를 먼저 본다."
     },
     "noDataState": "OK",
     "execErrState": "OK",

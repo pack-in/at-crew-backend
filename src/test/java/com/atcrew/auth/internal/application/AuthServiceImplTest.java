@@ -582,6 +582,24 @@ class AuthServiceImplTest {
     }
 
     @Test
+    void 재설정_메일의_회원_이름은_HTML로_해석되지_않게_이스케이프한다() {
+        MemberInfo member = mock(MemberInfo.class);
+        when(member.id()).thenReturn(MEMBER_ID);
+        when(member.loginEmail()).thenReturn(EMAIL);
+        when(member.name()).thenReturn("<a href=//e.vil>");
+        when(memberService.findActiveByLoginEmailAndProviderOrEmpty(EMAIL, AuthProvider.EMAIL))
+                .thenReturn(Optional.of(member));
+
+        authService.requestPasswordReset(EMAIL);
+
+        org.mockito.ArgumentCaptor<String> html = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(mailSender).send(eq(EMAIL), eq("비밀번호 재설정 코드"), html.capture());
+        assertThat(html.getValue())
+                .contains("&lt;a href=//e.vil&gt;")
+                .doesNotContain("<a href=//e.vil>");
+    }
+
+    @Test
     void 재설정_요청_GOOGLE_계정만_있으면_안내메일_발송() {
         when(memberService.findActiveByLoginEmailAndProviderOrEmpty(EMAIL, AuthProvider.EMAIL))
                 .thenReturn(Optional.empty());

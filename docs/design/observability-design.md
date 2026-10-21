@@ -154,7 +154,7 @@ R2는 헬스 인디케이터가 없다(자체 구현 대상 아님) — §6의 �
 | `atcrew_billing_checkout_completed_total{product}` | counter | `billing` — `BillingMetrics` | 웹훅 엔드포인트가 하나라 HTTP 지표로는 결제 성사 여부를 알 수 없다 |
 | `atcrew_billing_subscription_payment_failed_total{plan}` | counter | `billing` — `SubscriptionPaymentFailedEvent` 리스너 | 정기 결제 실패는 서버 오류가 아니라 이벤트다 |
 | `atcrew_media_processing_total{status,owner_type}` | counter | `media` — `MediaAssetProcessedEvent` 리스너 | 콜백은 실패 상태여도 HTTP 204라 성공과 구분되지 않는다 |
-| `atcrew_mail_send_failure_total{provider}` | counter | `common/mail` — `ResendMailAdapter` | 발송 실패를 예외로 올리지 않고 삼키므로 로그 외 흔적이 없다 |
+| `atcrew_mail_send_failure_total{provider}` | counter | `common/mail` — `CloudflareMailAdapter`(2026-10-20 Resend에서 교체) | 발송 실패를 예외로 올리지 않고 삼키므로 로그 외 흔적이 없다 |
 | `atcrew_media_pending_assets` | gauge | `media` — `MediaPendingMetrics` | 콜백이 **실패로 오는 것**이 아니라 **아예 오지 않는** 경우는 카운터가 움직이지 않는다. 잔량으로만 드러난다(이슈 #59) |
 | `atcrew_modulith_incomplete_events` | gauge | `common/observability` | 이벤트 소비가 막히면 색인·후처리가 조용히 멈춘다. 스크레이프마다 조회하지 않고 60초 주기로 갱신한 값을 읽는다 |
 
@@ -185,7 +185,7 @@ Stripe 웹훅 **처리 실패**는 따로 세지 않는다 — 서명 검증 실
 | P1 | 24시간 내 백업 성공 기록 없음 |
 | P1 | 배포 헬스체크 실패 (마이그레이션 포함 배포라 자동 롤백을 하지 않은 경우) |
 | P2 | 5xx 5건 / 5분 |
-| P2 | 외부 의존성(Stripe·Resend·R2·ES) 실패 3건 / 10분 |
+| P2 | 외부 의존성(Stripe·Cloudflare Email·R2·ES) 실패 3건 / 10분 |
 | P2 | p95 레이턴시 2초가 10분 지속 |
 | P2 | 업로드 후 15분 초과 PENDING 이미지가 10분 지속 (콜백 미도착) |
 | P2 | `atcrew_modulith_incomplete_events` 50 초과 |

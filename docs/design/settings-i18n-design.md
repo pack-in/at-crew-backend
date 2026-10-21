@@ -12,7 +12,7 @@
 
 | 항목 | 결정 |
 |---|---|
-| 메일 발송 | 신규 `com.atcrew.notification` 모듈(common 아님, §1). Resend HTTP API 어댑터 + 로컬/테스트용 로깅 어댑터, 프로파일로 스위칭 |
+| 메일 발송 | 신규 `com.atcrew.notification` 모듈(common 아님, §1). Resend HTTP API 어댑터 + 로컬/테스트용 로깅 어댑터, 프로파일로 스위칭 — **실제 구현은 `com.atcrew.common.mail`의 단일 어댑터이며, 2026-10-20 Cloudflare Email Service로 교체됨**(auth-email-custom-redesign.md §7.3) |
 | 계정 유형 | `Member.accountType`(CREATOR\|COMPANY) 신설, 가입 시 필수·이후 읽기 전용 |
 | 언어 | `Member.primaryLanguage`(가입 시 필수, 변경 불가) + `postLanguages`(복수, 설정에서 변경 가능, 주 언어는 해제 불가) + `Artwork.languages`(작품별, 스타터 1개·프로 다중 — 업로드-R30) |
 | 마케팅 동의 | 신규 컬럼을 만들지 않고 기존 `TermsAgreement.marketingNotification`(컬럼 `terms_marketing`)을 토글 대상으로 재사용 |

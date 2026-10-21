@@ -33,6 +33,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.util.HtmlUtils;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -444,7 +445,7 @@ class AuthServiceImpl implements AuthService {
                 <p>이 코드는 이메일 발송 시점으로부터 10분 동안 유효합니다.<br/>
                 본인이 요청하지 않았다면 이 메일을 무시해주세요. 비밀번호는 변경되지 않아요.</p>
                 <p>앳크루를 이용해주셔서 감사합니다.</p>
-                """.formatted(member.name(), code);
+                """.formatted(HtmlUtils.htmlEscape(member.name()), code); // 이름은 회원이 정한 값이라 HTML로 해석되지 않게 한다
         mailSender.send(member.loginEmail(), "비밀번호 재설정 코드", html);
         log.info("비밀번호 재설정 코드 메일 발송: memberId={}", member.id());
     }
