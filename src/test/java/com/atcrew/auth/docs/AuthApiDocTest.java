@@ -41,55 +41,13 @@ class AuthApiDocTest extends RestDocsIntegrationSupport {
     private RefreshTokenRepository refreshTokenRepository;
 
     /**
-     * 사용자 아이디(handle)를 직접 입력하는 이메일 회원가입 문서화 (로그인-R19, member-handle-design §4.1).
-     * handle은 전환기 동안 선택 입력이라 기존 스니펫(auth/email-register)과 별도로 만든다.
-     */
-    @Test
-    void 이메일_회원가입_사용자_아이디_입력_문서화() throws Exception {
-        String uniqueEmail = "doc-handle-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com";
-        String handle = "Reg" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
-
-        mockMvc.perform(post("/api/auth/email/register")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new RegisterWithHandleRequest(
-                                uniqueEmail, "Secure1!", "Secure1!", "아이디입력유저",
-                                true, true, true, false,
-                                "Asia/Seoul", "KR", "KO", handle))))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.data.member.handle").value(handle))
-                .andDo(document("auth/email-register-with-handle",
-                        preprocessRequest(prettyPrint()),
-                        preprocessResponse(prettyPrint()),
-                        requestFields(
-                                fieldWithPath("email").description("이메일 주소"),
-                                fieldWithPath("password").description("비밀번호 (영문·숫자·특수문자 포함 8자 이상)"),
-                                fieldWithPath("passwordConfirm").description("비밀번호 확인"),
-                                fieldWithPath("name").description("이름·작가명 (최대 16자)"),
-                                fieldWithPath("agreeService").description("서비스 이용약관 동의 (필수)"),
-                                fieldWithPath("agreePrivacy").description("개인정보처리방침 동의 (필수)"),
-                                fieldWithPath("agreeThirdParty").description("제3자 정보제공 동의 (선택)"),
-                                fieldWithPath("agreeMarketing").description("마케팅 정보 수신 동의 (선택)"),
-                                fieldWithPath("timezone").description("IANA 시간대 ID"),
-                                fieldWithPath("countryCode").description("거주 국가 (ISO 3166-1 alpha-2)"),
-                                fieldWithPath("primaryLanguage").description("주 사용 언어 (KO·JA·ZH·EN)"),
-                                fieldWithPath("handle").description("사용자 아이디 — 영문·숫자·밑줄(_) 4~14자, 연속 밑줄·예약어 "
-                                        + "불가, 대소문자 무관 중복 불가. 전환기 동안 선택이며 생략하면 서버가 생성한다 "
-                                        + "(FE 배포 후 필수로 전환 예정)")
-                        ),
-                        relaxedResponseFields(
-                                fieldWithPath("code").description("응답 코드 (SUCCESS)"),
-                                fieldWithPath("data.member.handle").description("가입한 사용자 아이디 (입력한 대소문자 그대로)")
-                        )
-                ));
-    }
-
-    /**
      * 이메일 회원가입 성공 시나리오 문서화.
      * 요청 필드와 응답 필드를 모두 스니펫으로 생성한다.
      */
     @Test
     void 이메일_회원가입_성공_문서화() throws Exception {
         String uniqueEmail = "doc-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com";
+        String handle = "Reg" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
 
         mockMvc.perform(post("/api/auth/email/register")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -99,10 +57,11 @@ class AuthApiDocTest extends RestDocsIntegrationSupport {
                                 "Secure1!",
                                 "문서화유저",
                                 true, true, true, false,
-                                "Asia/Seoul", "KR", "KO"))))
+                                "Asia/Seoul", "KR", "KO", handle))))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.isNewUser").value(true))
+                .andExpect(jsonPath("$.data.member.handle").value(handle))
                 .andDo(document("auth/email-register",
                         preprocessRequest(prettyPrint()),
                         preprocessResponse(prettyPrint()),
@@ -118,7 +77,9 @@ class AuthApiDocTest extends RestDocsIntegrationSupport {
                                 fieldWithPath("timezone").description("IANA 시간대 ID, 클라이언트 자동감지값 (예: Asia/Seoul)"),
                                 fieldWithPath("countryCode").description("거주 국가 (ISO 3166-1 alpha-2, 예: KR)"),
                                 fieldWithPath("primaryLanguage").description(
-                                        "주 사용 언어 (KO·JA·ZH·EN) — 가입 후 변경할 수 없습니다")
+                                        "주 사용 언어 (KO·JA·ZH·EN) — 가입 후 변경할 수 없습니다"),
+                                fieldWithPath("handle").description("사용자 아이디 (필수) — 영문·숫자·밑줄(_) 4~14자, "
+                                        + "연속 밑줄·예약어 불가, 대소문자 무관 중복 불가. 빈 값은 HANDLE_REQUIRED")
                         ),
                         relaxedResponseFields(
                                 fieldWithPath("code").description("응답 코드 (SUCCESS)"),
@@ -126,7 +87,7 @@ class AuthApiDocTest extends RestDocsIntegrationSupport {
                                 fieldWithPath("data.refreshToken").description("리프레시 토큰 (JWT)"),
                                 fieldWithPath("data.isNewUser").description("신규 가입 여부"),
                                 fieldWithPath("data.member.id").description("회원 고유 식별자"),
-                                fieldWithPath("data.member.handle").description("회원 핸들 (@아이디)"),
+                                fieldWithPath("data.member.handle").description("가입한 사용자 아이디 (입력한 대소문자 그대로)"),
                                 fieldWithPath("data.member.authProvider").description("인증 제공자 (EMAIL)"),
                                 fieldWithPath("data.member.name").description("이름·작가명"),
                                 fieldWithPath("data.member.employmentStatus").description("구직 상태"),
@@ -604,24 +565,18 @@ class AuthApiDocTest extends RestDocsIntegrationSupport {
             boolean agreeMarketing,
             String timezone,
             String countryCode,
-            String primaryLanguage
-    ) {}
-
-    /** handle을 직접 입력하는 이메일 회원가입 요청 바디 */
-    record RegisterWithHandleRequest(
-            String email,
-            String password,
-            String passwordConfirm,
-            String name,
-            boolean agreeService,
-            boolean agreePrivacy,
-            boolean agreeThirdParty,
-            boolean agreeMarketing,
-            String timezone,
-            String countryCode,
             String primaryLanguage,
-            String handle
-    ) {}
+            String handle               // 사용자 아이디(가입 필수)
+    ) {
+        // handle은 가입 필수 — 가입 자체를 검증하지 않는 호출부는 무작위 handle을 쓴다.
+        RegisterRequest(String email, String password, String passwordConfirm, String name,
+                        boolean agreeService, boolean agreePrivacy, boolean agreeThirdParty, boolean agreeMarketing,
+                        String timezone, String countryCode, String primaryLanguage) {
+            this(email, password, passwordConfirm, name, agreeService, agreePrivacy, agreeThirdParty, agreeMarketing,
+                    timezone, countryCode, primaryLanguage,
+                    "u" + UUID.randomUUID().toString().replace("-", "").substring(0, 10));
+        }
+    }
 
     /** 이메일 로그인 요청 바디 */
     record LoginRequest(String email, String password) {}

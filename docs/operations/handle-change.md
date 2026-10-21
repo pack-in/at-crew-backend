@@ -197,7 +197,7 @@ handle 기능은 Flyway 마이그레이션 두 개를 포함한다. 둘 다 **�
    ```
 
 FE가 새 주소 체계와 308 리다이렉트를 반영하기 전에 BE가 먼저 나가도 옛 API는 그대로 동작한다
-(`docs/design/member-handle-frontend-integration.md`). 가입 `handle`은 전환기 동안 선택 입력이다.
+(`docs/design/member-handle-frontend-integration.md`). 가입 `handle`은 FE 가입 화면 배포 후 필수가 됐다(PA-14, 2026-10-21).
 
 V51은 병렬 브랜치(`feat/og-image`, `V51__og_image_keys.sql`)가 쓰는 번호다. Flyway `outOfOrder`가 꺼져 있으므로
 (기본값, `application.yml`에 설정 없음) **V51이 V52·V53보다 먼저 운영에 적용돼야 한다.** V52·V53이 먼저 나가면 이후

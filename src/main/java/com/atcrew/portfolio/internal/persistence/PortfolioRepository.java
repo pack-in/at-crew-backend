@@ -28,9 +28,6 @@ public interface PortfolioRepository extends JpaRepository<Portfolio, String>, J
 
     Optional<Portfolio> findByShareSlug(String shareSlug);
 
-    // 전환기 슬러그 발급 시 충돌 재시도 판정용(ShareSlugGenerator).
-    boolean existsByShareSlug(String shareSlug);
-
     // 6자 공개 코드 발급 시 소유자 내 충돌 사전 조회(member-handle-design §3.2).
     boolean existsByOwnerMemberIdAndPublicCode(String ownerMemberId, String publicCode);
 

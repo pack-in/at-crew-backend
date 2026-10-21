@@ -90,7 +90,7 @@ class SnapshotOgBackfillServiceTests {
 
     private String snapshotPortfolio() {
         return portfolioRepository.save(Portfolio.createShared(UUID.randomUUID().toString(), ReflectionType.SNAPSHOT,
-                "고정형", UUID.randomUUID().toString().replace("-", "").substring(0, 6), null)).getId();  // 6자 공개 코드, slug 없음
+                "고정형", UUID.randomUUID().toString().replace("-", "").substring(0, 6))).getId();  // 6자 공개 코드
     }
 
     private static PortfolioItemSnapshot snapshot(String portfolioId, int ordinal, String thumbKey, AgeRating ageRating) {

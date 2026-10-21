@@ -172,16 +172,17 @@ ALTER TABLE portfolios ADD UNIQUE KEY uk_pf_owner_code (owner_member_id, public_
 
 ### 3.3 기존 slug
 
-`portfolios.share_slug`는 옛 링크 해석용으로 남긴다. 신규 발급은 **가입 handle과 같은 전환기가 끝날 때(PA-14) 중단한다.**
+`portfolios.share_slug`는 옛 링크 해석용으로 남긴다. 신규 발급은 FE 새 주소 체계 배포 후 가입 handle 필수화와 함께
+**PA-14(2026-10-21)에서 중단했다.** 새 공유 포트폴리오의 `shareSlug`는 null이다.
 
-- **왜 바로 중단하지 않는가**: 운영 FE는 새 주소 체계를 배포하기 전까지 `shareSlug ?? portfolio.id`로 `/portfolio/{식별자}`
+- **왜 바로 중단하지 않았는가**: 운영 FE는 새 주소 체계를 배포하기 전까지 `shareSlug ?? portfolio.id`로 `/portfolio/{식별자}`
   링크를 만든다. BE가 먼저 나가면서 slug를 발급하지 않으면 새 공유 포트폴리오의 링크가 UUID가 되고,
   `GET /api/portfolios/shared/{identifier}`는 UUID를 해석하지 않으므로 생성 직후 화면·카드·복사한 링크가 모두 404가 된다
   (PR #252 리뷰에서 발견).
-- `ShareSlugGenerator`는 슬러그 중복만 검사한다. 예전의 handle 충돌 검사는 뺐다 — 슬러그는 22자 base64url이고 새 handle은
-  4~14자라 겹칠 수 없으며, 해석 순서도 슬러그가 먼저다.
-- 전환기가 끝나면 `ShareSlugGenerator`를 지우고 `Portfolio.createShared`의 slug 인자를 없앤다. 이미 발급된 slug는 옛 링크
-  해석용으로 계속 남는다.
+- 발급하던 동안 `ShareSlugGenerator`는 슬러그 중복만 검사했다. handle 충돌 검사는 하지 않았다 — 슬러그는 22자 base64url이고
+  새 handle은 4~14자라 겹칠 수 없으며, 해석 순서도 슬러그가 먼저다.
+- PA-14에서 `ShareSlugGenerator`·`PortfolioRepository.existsByShareSlug`를 지우고 `Portfolio.createShared`의 slug 인자를
+  없앴다. 이미 발급된 slug는 옛 링크 해석용(`findByShareSlug`)으로 계속 남는다.
 
 ### 3.4 응답 필드
 
@@ -199,7 +200,7 @@ ALTER TABLE portfolios ADD UNIQUE KEY uk_pf_owner_code (owner_member_id, public_
 - `HandleValidator`로 검증한다. 30일 제한·"현재 값과 같음" 검사는 없다.
 - 회원 insert와 원장 insert를 같은 트랜잭션에서 한다. `DuplicateKeyException`은 지금처럼 이메일 중복을 먼저 재조회하고, 아니면 `DUPLICATE_HANDLE`.
 - `generateUniqueHandle`의 기존 형식(`{이름}_{hex8}`)과 3회 재시도 루프, `HANDLE_GENERATION_FAILED`는 제거한다.
-- **FE 전환기**: FE 배포 전에 BE가 나가면 handle 없는 가입 요청이 모두 400이 된다. 그래서 전환기 동안 `handle`을 선택 입력으로 두고, 없으면 서버가 새 형식(`{이름부 ≤8자}_{숫자 5자리}`)으로 생성한다. FE 배포 후 필수로 전환한다(후속 이슈로 추적).
+- **FE 배포 전 선택 입력(종료)**: FE 배포 전에 BE가 나가면 handle 없는 가입 요청이 모두 400이 되므로, FE 배포 전까지 `handle`을 선택 입력으로 두고 없으면 서버가 새 형식(`{이름부 ≤8자}_{숫자 5자리}`)으로 생성했다. FE 가입 화면 배포 후 **PA-14(2026-10-21)에서 필수로 전환**했다 — null·빈 값·공백뿐이면 `HANDLE_REQUIRED`(400)이고 자동 생성 경로는 제거했다. 요청 DTO에는 `@NotBlank`를 두지 않는다(공통 `COMMON_INVALID_INPUT` 대신 `HANDLE_REQUIRED`를 내리기 위해). Google 가입도 같다.
 - `DevMemberController` 경로도 원장 insert를 거친다.
 
 ### 4.2 기존 데이터 이전 (SQL 마이그레이션)
@@ -231,7 +232,7 @@ ALTER TABLE portfolios ADD UNIQUE KEY uk_pf_owner_code (owner_member_id, public_
 | 통합 | 동시성 | 서로 다른 두 회원이 같은 handle 동시 요청 → 1명만 성공. 같은 회원 동시 2회 → 1성공 + `HANDLE_CHANGE_CONFLICT`(500 아님) |
 | 통합 | 해석기 | 현재·옛·탈퇴·없음 → 200·200(현재 handle)·410·404, 옛 handle 조회 시 조회수 이벤트 미발행, portfolio API 3종도 해석기 경유 |
 | 통합 | 6자 코드 | 작가 내 유일(타 작가와 동일 코드 허용), 충돌 재발급(난수 고정), 휴지통 작품 코드 유지, 복제본 새 코드, 작가 페이지 null |
-| 통합 | 가입 | handle 입력 경로, 전환기 미입력 자동 생성, 이메일 중복과 handle 중복 구분 |
+| 통합 | 가입 | handle 입력 경로, 미입력·빈 값·공백 → `HANDLE_REQUIRED`(회원·원장 미생성), 이메일 중복과 handle 중복 구분 |
 | 통합 | 마이그레이션 | 규칙 위반 handle·탈퇴 회원·스냅샷 JSON 픽스처 → 적용 후 활성 handle 전부 검증기 통과, 옛 handle 원장 잔존, 코드 작가별 유일 |
 | 통합 | search | `MemberHandleChangedEvent` → 해당 작가 문서만 재색인 |
 | 보안 | `SecurityConfig` | `/api/members/me/**`가 공개 패턴보다 먼저 인증으로 막힘 |
@@ -271,18 +272,18 @@ ALTER TABLE portfolios ADD UNIQUE KEY uk_pf_owner_code (owner_member_id, public_
 | # | 지점 | 구현 | 이유 |
 |---|---|---|---|
 | a | 변경 시 flush 순서 | `changeHandle`이 `members`를 **원장(`member_handles`)보다 먼저** `saveAndFlush`한다. `OptimisticLockingFailureException`은 `HANDLE_CHANGE_CONFLICT`, 이어지는 제약 위반은 `DUPLICATE_HANDLE` | 같은 회원의 동시 요청은 `@Version` 검사에서, 서로 다른 회원의 동일 handle 요청은 `uk_members_handle`에서 먼저 갈려야 두 오류를 구분할 수 있다. 원장을 먼저 넣으면 같은 회원의 동시 요청이 원장 PK 위반(`DUPLICATE_HANDLE`)으로 보여 "다른 사람이 쓰는 아이디"와 "동시 요청"이 섞인다. 커밋 시점까지 flush를 미루면 서비스 밖에서 낙관적 락 예외가 터져 500이 된다 |
-| b | 자동 생성 handle의 충돌 처리 | 전환기 자동 생성(`generateAvailableHandle`)은 **원장을 사전 조회**해 비어 있는 후보를 고른 뒤 저장한다(최대 3회 추첨). 저장 중 제약 위반은 재시도하지 않고 `HANDLE_GENERATION_FAILED`(500) | insert 후 UNIQUE 위반을 잡아 재시도하면 Spring 트랜잭션이 rollback-only가 돼 같은 트랜잭션에서 다시 저장할 수 없다(§3.2의 6자 코드와 같은 이유) |
+| b | 자동 생성 handle의 충돌 처리 | **PA-14(2026-10-21)에서 제거** — 가입 handle 필수화로 자동 생성 경로가 없어졌다. 이하는 제거 전 기록. 자동 생성(`generateAvailableHandle`)은 **원장을 사전 조회**해 비어 있는 후보를 고른 뒤 저장한다(최대 3회 추첨). 저장 중 제약 위반은 재시도하지 않고 `HANDLE_GENERATION_FAILED`(500) | insert 후 UNIQUE 위반을 잡아 재시도하면 Spring 트랜잭션이 rollback-only가 돼 같은 트랜잭션에서 다시 저장할 수 없다(§3.2의 6자 코드와 같은 이유) |
 | c | `handleChangeAvailableAt` 직렬화 | `GET /api/members/me`(`MemberInfo`)는 `NON_EMPTY`라 지금 변경 가능하면 **필드가 응답에서 생략**된다(`null`로 내려오지 않음). 반면 사전 확인 API의 `errorCode`는 사용 가능일 때 `null`로 내려온다 | FE는 "필드 없음 = 지금 변경 가능"으로 처리한다 |
 | d | 51자 이상 입력 | 변경·가입 요청 DTO의 `@Size(max = 50)`가 먼저 막아 `COMMON_INVALID_INPUT`(400)이다. 15~50자는 서비스의 `HANDLE_TOO_LONG` | `member_handles.handle`이 `VARCHAR(50)`이라 DB 길이를 넘는 값이 서비스까지 오지 않게 한다. 사전 확인 API도 `@Size(max = 50)` |
 | e | `PortfolioArtworkCardInfo.publicCode` | 설계 §3.4에 없던 필드. 포트폴리오 작품 카드에도 원본 작품 `publicCode`를 싣는다. **최신 반영형·작가 페이지 카드만** 값이 있고 **고정형(SNAPSHOT) 카드는 null**(`snapshotId`로 스냅샷 상세를 연다) | 카드에서 작품 주소 `/{ownerHandle}/artwork/{publicCode}`를 조립해야 한다. 고정형은 원본 작품 URL을 제3자에게 조립해 주지 않는 기존 정책(마이페이지_작가-R38·R39)을 유지 |
 | f | 공유 식별자 해석의 오류 | `GET /api/portfolios/shared/{identifier}` 3종에서 슬러그도 handle도 해석되지 않으면(원장에 없는 handle 포함) `PORTFOLIO_NOT_FOUND`(404)이고, 탈퇴 회원 소유 handle이면 `MEMBER_WITHDRAWN`(410)을 그대로 전파한다. 반면 새 주소 API(`/api/members/{handle}/...`)는 원장에 없는 handle을 `MEMBER_NOT_FOUND`(404)로 답한다 | 옛 API는 slug와 handle이 한 식별자를 공유해 "없음"을 구분할 수 없고(기존 응답 유지), 탈퇴 안내(결정 5)는 두 경로 모두 필요하다 |
 | g | 검색 리스너 범위 | `MemberHandleChangedEvent` 수신 시 그 작가의 **작품 전부를 단건 `reindexOne`**으로 처리한다(작품 단위 예외 격리, 색인 대상이 아닌 작품은 색인에서 제거). 문서 전체 재색인과 별개 | §4.3의 "그 작가 작품만 재색인"의 구체형. 한 작품의 실패가 나머지를 막지 않는다 |
 | h | `DevMemberController` 검증 | `RegisterRequest.handle`은 길이 상한(`@Size(max = 50)`)만 두고, 컨트롤러가 `HandleValidator.validate`를 호출해 `HANDLE_*` 코드로 답한다. `MemberService.register(email, handle, name)`(개발용)은 형식을 검증하지 않는다 | 가입·변경 API와 같은 오류 코드를 쓰기 위해 Bean Validation `@Pattern` 대신 공유 검증기를 쓴다 |
-| i | `HANDLE_GENERATION_FAILED` 잔존 | §4.1은 이 코드의 제거를 적었지만, 전환기 자동 생성 경로가 남아 있어 **코드도 유지**한다. 제거는 PA-14(가입 handle 필수화)와 함께 | 새 형식(`{이름부 ≤8자}_{숫자 5자리}`) 추첨이 3회 모두 원장과 충돌하는 경우의 500 |
+| i | `HANDLE_GENERATION_FAILED` 잔존 | **PA-14(2026-10-21)에서 제거** — 자동 생성 경로와 함께 에러 코드·Swagger 500 응답을 지웠다. 이하는 제거 전 기록. §4.1은 이 코드의 제거를 적었지만, FE 배포 전 자동 생성 경로가 남아 있어 코드도 유지했다 | 새 형식(`{이름부 ≤8자}_{숫자 5자리}`) 추첨이 3회 모두 원장과 충돌하는 경우의 500 |
 | j | `MemberService.findByHandle` 제거 | 호출처가 테스트뿐이어서 공개 인터페이스에서 제거했다. 테스트는 `resolveHandle` + `findById`로 대체. `MemberRepository.findByHandle`은 남아 있으나 현재 main 호출처가 없다 | 모듈 공개 API를 작게 유지. 원장 해석은 `resolveHandle`로 일원화 |
 | k | 마이그레이션 번호 | 원장 `V52__member_handle_ledger.sql`, 공개 코드 `V53__artwork_portfolio_public_code.sql`(작업용 테이블 `v52_handle_renames`). 마이그레이션 테스트는 1단계 target을 `"51?"`(없어도 실패하지 않음)·`"52"`로 두고 2단계에서 자기 버전 하나만 적용한다 | V51은 병렬 브랜치 `feat/og-image`(`V51__og_image_keys.sql`, 미병합)가 쓴다. `outOfOrder`가 꺼져 있어 운영에는 V51이 V52·V53보다 먼저 적용돼야 한다(런북 `handle-change.md` §5) |
 | l | 변경 시각 정밀도 | `changeHandle`의 기준 시각을 `Instant.now().truncatedTo(MICROS)`로 잘라 쓴다(멱등 판정·30일 판정·`handleChangeAvailableAt` 계산 모두 이 값) | `handle_changed_at`이 `DATETIME(6)`이라 나노초가 남으면 첫 응답의 `handleChangeAvailableAt`과 DB에서 다시 읽은 값이 달라진다(재전송 응답이 첫 응답과 불일치). `HotArtworkTests`와 같은 처리 |
 | m | 같은 값 동시 요청(더블클릭) | 트랜잭션 본체를 `MemberHandleChanger.change`로 옮기고 `MemberServiceImpl.changeHandle`은 트랜잭션 없는 래퍼로 둔다. `HANDLE_CHANGE_CONFLICT`가 나면 롤백 뒤 새 읽기 트랜잭션(`findConcurrentReplay`)에서 멱등 재전송과 같은 기준(현재 handle = 요청값 strip, 대소문자 일치, 마지막 변경 5분 이내)으로 다시 판정해 맞으면 성공 응답. 다른 값끼리의 동시 요청은 그대로 `HANDLE_CHANGE_CONFLICT` | 진 쪽 트랜잭션은 `@Version` 충돌로 rollback-only라 같은 트랜잭션에서 성공을 반환하면 커밋 시 `UnexpectedRollbackException`(500)이 된다. §1.3 2단계 멱등을 동시 도착에도 적용 |
-| n | 가입 빈 문자열 | 전환기 동안 가입 `handle`이 null뿐 아니라 빈 문자열·공백뿐이어도 자동 생성 경로로 간다(`HANDLE_REQUIRED` 아님) | FE가 빈 입력란을 `""`로 보낼 수 있다. PA-14(필수화)에서 제거 |
+| n | 가입 빈 문자열 | **PA-14(2026-10-21)에서 제거** — 이제 null·빈 문자열·공백뿐인 값 모두 `HANDLE_REQUIRED`(400). 이하는 제거 전 기록. FE 배포 전에는 null뿐 아니라 빈 문자열·공백뿐이어도 자동 생성 경로로 갔다 | FE가 빈 입력란을 `""`로 보낼 수 있었다 |
 | o | 중복 키 예외 범위 | 가입·변경·작품/공유 포트폴리오 저장의 `saveAndFlush`에서 `DataIntegrityViolationException`을 잡되, `DuplicateKeyViolations.isDuplicateKey`(원인 체인의 `SQLException` 에러코드 1062)일 때만 도메인 오류로 바꾸고 나머지 무결성 위반은 그대로 전파한다. §4.1의 `DuplicateKeyException`은 쓰지 않는다 | 실측상 JPA 경로의 MariaDB 중복 키는 `DuplicateKeyException`이 아니라 `DataIntegrityViolationException`(원인 `SQLIntegrityConstraintViolationException`, errorCode 1062)으로 번역된다. 전체를 잡으면 NOT NULL·FK 위반까지 `DUPLICATE_HANDLE` 등으로 오인한다 |
 | p | 사전 확인의 현재 handle | 로그인 본인의 현재 handle과 대소문자까지 같으면 `available=false`, `errorCode=HANDLE_UNCHANGED`. 대소문자만 다른 현재 handle·옛 handle은 사용 가능 | §1.4 "본인 소유는 사용 가능"을 그대로 두면 사전 확인은 가능, 변경 API는 `HANDLE_UNCHANGED`로 판정이 어긋난다 |

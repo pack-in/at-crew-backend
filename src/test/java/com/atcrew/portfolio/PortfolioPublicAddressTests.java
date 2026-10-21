@@ -202,19 +202,6 @@ class PortfolioPublicAddressTests {
         assertThat(shared.publicCode()).isEqualTo(created.publicCode());
     }
 
-    // 전환기 회귀: 운영 FE는 shareSlug ?? id로 /portfolio/{식별자} 링크를 만든다. 새 공유 포트폴리오에 slug가 없으면
-    // 그 링크가 UUID가 돼 404였다(member-handle-design §3.3).
-    @Test
-    void 새로_만든_공유_포트폴리오는_발급된_slug로_열린다() {
-        String ownerId = registerProMember();
-        PortfolioInfo live = portfolioService.createShared(ownerId, "최신", ReflectionType.LIVE, List.of());
-        PortfolioInfo snapshot = portfolioService.createShared(ownerId, "고정", ReflectionType.SNAPSHOT, List.of());
-
-        assertThat(portfolioService.getSharedPortfolio(live.shareSlug()).id()).isEqualTo(live.id());
-        assertThat(portfolioService.getSharedPortfolio(snapshot.shareSlug()).id()).isEqualTo(snapshot.id());
-        assertThat(live.shareSlug()).isNotEqualTo(snapshot.shareSlug());
-    }
-
     @Test
     void 옛_handle을_식별자로_열면_작가_페이지와_현재_handle이_담긴다() {
         String ownerId = registerMember();
@@ -233,10 +220,9 @@ class PortfolioPublicAddressTests {
     @Test
     void 빈_식별자는_slug_조회_전에_404로_끝난다() {
         String ownerId = registerProMember();
-        // slug 없는 행이 둘 이상이어야 null 조회가 다건이 된다 — 전환기에는 발급되므로 비워서 만든다.
+        // slug 없는 행이 둘 이상이어야 null 조회가 다건이 된다 — 새 공유 포트폴리오는 slug가 없다.
         for (String title : List.of("slug 없는 공유 1", "slug 없는 공유 2")) {
-            String id = portfolioService.createShared(ownerId, title, ReflectionType.LIVE, List.of()).id();
-            jdbcTemplate.update("UPDATE portfolios SET share_slug = NULL WHERE id = ?", id);
+            portfolioService.createShared(ownerId, title, ReflectionType.LIVE, List.of());
         }
 
         assertPortfolioNotFound(() -> portfolioService.getSharedPortfolio(null));

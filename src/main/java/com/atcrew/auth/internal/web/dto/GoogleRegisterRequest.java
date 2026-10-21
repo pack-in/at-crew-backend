@@ -30,9 +30,9 @@ public record GoogleRegisterRequest(
         @Schema(description = "주 사용 언어 — 가입 후 변경할 수 없습니다(로그인-R19)", example = "KO")
         Language primaryLanguage,
 
-        // TODO(PA-14): FE 배포 후 필수(@NotBlank)로 전환한다. 형식은 member 모듈 HandleValidator가 검증한다.
+        // 빈 값은 member 모듈 HandleValidator가 HANDLE_REQUIRED로 거부한다(공통 검증 오류 대신 전용 코드를 주려고 @NotBlank를 쓰지 않는다).
         @Size(max = 50, message = "사용자 아이디가 너무 깁니다")
-        @Schema(description = "사용자 아이디 — 영문·숫자·밑줄(_) 4~14자. 전환기 동안 선택이며 생략하거나 빈 값이면 서버가 생성합니다",
-                example = "Pack_1n")
+        @Schema(description = "필수 — 영문·숫자·밑줄(_) 4~14자, 밑줄 연속 불가, 대소문자 무관 중복 불가",
+                example = "Pack_1n", requiredMode = Schema.RequiredMode.REQUIRED)
         String handle
 ) {}

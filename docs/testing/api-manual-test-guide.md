@@ -198,7 +198,7 @@
 - `agreeService`/`agreePrivacy`/`agreeThirdParty`: **셋 다 `true`여야 한다.**
   하나라도 빠지면 `TERMS_NOT_AGREED`로 거부된다(`Member.validateTerms`)
 - `agreeMarketing`: 선택
-- `handle`: 선택(전환기) — 영문·숫자·밑줄(_) 4~14자, 규칙은 위 1-0과 같음. 생략하면 서버가 `{이름부 ≤8자}_{숫자 5자리}`로 생성한다. 형식 오류는 `HANDLE_*`(400), 중복은 `DUPLICATE_HANDLE`(409). Google 가입(`/api/auth/google/register`)도 동일
+- `handle`: 필수 — 영문·숫자·밑줄(_) 4~14자, 규칙은 위 1-0과 같음. 생략하거나 빈 값이면 `HANDLE_REQUIRED`(400). 그 밖의 형식 오류는 `HANDLE_*`(400), 중복은 `DUPLICATE_HANDLE`(409). Google 가입(`/api/auth/google/register`)도 동일
 
 **정상 응답 (201)**:
 ```json

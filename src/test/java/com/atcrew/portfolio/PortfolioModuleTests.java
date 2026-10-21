@@ -81,9 +81,9 @@ class PortfolioModuleTests {
         String memberId = newMemberId();
 
         portfolioRepository.saveAndFlush(
-                Portfolio.createShared(memberId, ReflectionType.LIVE, "포트폴리오 A", newCode(), null));
+                Portfolio.createShared(memberId, ReflectionType.LIVE, "포트폴리오 A", newCode()));
         Portfolio second = portfolioRepository.saveAndFlush(
-                Portfolio.createShared(memberId, ReflectionType.SNAPSHOT, "포트폴리오 B", newCode(), null));
+                Portfolio.createShared(memberId, ReflectionType.SNAPSHOT, "포트폴리오 B", newCode()));
 
         assertThat(portfolioRepository.existsByOwnerMemberIdAndPublicCode(memberId, second.getPublicCode())).isTrue();
     }
@@ -138,7 +138,7 @@ class PortfolioModuleTests {
     @Test
     void 고정형_스냅샷은_렌더_컬럼과_상세_JSON을_함께_보존한다() {
         Portfolio portfolio = portfolioRepository.save(
-                Portfolio.createShared(newMemberId(), ReflectionType.SNAPSHOT, "고정형", newCode(), null));
+                Portfolio.createShared(newMemberId(), ReflectionType.SNAPSHOT, "고정형", newCode()));
         portfolio.markAsSnapshot("작가", "{\"handle\":\"artist\"}");
         portfolioRepository.save(portfolio);
         Instant sourceCreatedAt = Instant.parse("2026-01-02T03:04:05Z");
@@ -168,7 +168,7 @@ class PortfolioModuleTests {
 
     @Test
     void 차단은_최초_시점을_유지한다() {
-        Portfolio portfolio = Portfolio.createShared(newMemberId(), ReflectionType.LIVE, "공유", newCode(), null);
+        Portfolio portfolio = Portfolio.createShared(newMemberId(), ReflectionType.LIVE, "공유", newCode());
 
         portfolio.block();
         Instant firstBlockedAt = portfolio.getBlockedAt();

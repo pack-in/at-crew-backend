@@ -16,6 +16,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -337,7 +338,8 @@ class MemberModuleTests {
     private MemberInfo registerWithPrimaryLanguage(String emailPrefix, String name, Language primaryLanguage) {
         return memberService.register(new RegisterMemberCommand(
                 emailPrefix + "@atcrew.com", name, AuthProvider.EMAIL, "Secure1!",
-                true, true, true, false, "Asia/Seoul", "KR", primaryLanguage, null));
+                true, true, true, false, "Asia/Seoul", "KR", primaryLanguage,
+                "lang_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8)));
     }
 
     @Test

@@ -58,8 +58,8 @@ public class Portfolio implements Persistable<String> {
     // ARTIST_PAGE는 null — 화면은 사용자 이름 헤더를 쓴다(§2.1).
     private String title;
 
-    // 옛 공유 링크(/portfolio/{slug}) 해석용. FE가 새 주소 체계를 배포할 때까지(전환기) 새 공유 포트폴리오에도
-    // 계속 발급하고, 가입 handle 필수화(PA-14)와 함께 발급을 중단한다(member-handle-design §3.3). ARTIST_PAGE는 null.
+    // 옛 공유 링크(/portfolio/{slug}) 해석용. 신규 발급은 중단해 새 공유 포트폴리오와 ARTIST_PAGE는 null이다
+    // (member-handle-design §3.3).
     private String shareSlug;
 
     // 공개 URL /{handle}/portfolio/{code}의 6자 코드(member-handle-design §3). SHARED만, ARTIST_PAGE는 null.
@@ -123,11 +123,10 @@ public class Portfolio implements Persistable<String> {
 
     /** 공유 포트폴리오 — 반영 유형(LIVE/SNAPSHOT)은 생성 시 결정되고 이후 전환할 수 없다(§2). */
     public static Portfolio createShared(String ownerMemberId, ReflectionType reflectionType,
-                                         String title, String publicCode, String shareSlug) {
+                                         String title, String publicCode) {
         Portfolio portfolio = newPortfolio(ownerMemberId, PortfolioKind.SHARED, reflectionType);
         portfolio.title = title;
         portfolio.publicCode = publicCode;
-        portfolio.shareSlug = shareSlug;
         return portfolio;
     }
 
