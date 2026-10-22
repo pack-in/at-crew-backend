@@ -11,6 +11,7 @@ import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Date;
+import java.util.UUID;
 
 @Component
 public class JwtProvider {
@@ -43,6 +44,9 @@ public class JwtProvider {
         return Jwts.builder()
                 .subject(memberId)
                 .claim("type", "refresh")
+                // iat·exp가 초 단위라 jti가 없으면 같은 초에 발급한 토큰이 직전 토큰과 똑같은 문자열이 된다 —
+                // 갱신 시 방금 소비한 값이 그대로 다시 저장돼 1회용 보장(회전)이 깨진다.
+                .id(UUID.randomUUID().toString())
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + refreshTokenExpiration))
                 .signWith(secretKey, Jwts.SIG.HS512)

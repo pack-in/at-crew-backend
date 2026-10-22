@@ -45,7 +45,10 @@ public interface MemberRepository extends JpaRepository<Member, String>, JpaSpec
     int incrementProfileViewCount(@Param("id") String id);
 
     // Mongo findAndModify → 조건부 UPDATE + 영향 행 수 판별 (docs/design/mariadb-migration-design.md §3.3.1)
-    @Modifying(clearAutomatically = true)
+    // flushAutomatically 필수 — 호출자 트랜잭션에 아직 INSERT되지 않은 엔티티가 있으면(토큰 갱신이 새
+    // RefreshToken을 save한 직후 호출한다) clear가 그 INSERT를 조용히 버린다. members 외 테이블의 대기
+    // 쓰기는 Hibernate 자동 flush 대상이 아니다.
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("UPDATE Member m SET m.lastLoginAt = :now, m.updatedAt = :now WHERE m.id = :id AND m.active = true")
     int recordLogin(String id, Instant now);
 }

@@ -198,8 +198,17 @@ class AuthController {
 
     // ─── 공통 ─────────────────────────────────────────────────────────────
 
-    @Operation(summary = "토큰 갱신", description = "Refresh Token으로 새로운 Access Token과 Refresh Token을 발급합니다.")
-    @ApiResponse(responseCode = "200", description = "토큰 갱신 성공")
+    @Operation(summary = "토큰 갱신",
+            description = "Refresh Token으로 새로운 Access Token과 Refresh Token을 발급합니다. "
+                    + "Access Token 수명은 1시간(3600초), Refresh Token 수명은 30일(2592000초)입니다. "
+                    + "Refresh Token은 1회용입니다 — 갱신에 쓴 토큰은 즉시 폐기되므로 응답의 새 Refresh Token으로 "
+                    + "교체해 저장해야 하며, 같은 토큰으로 동시에 여러 번 요청하면 하나만 성공합니다.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "토큰 갱신 성공"),
+            @ApiResponse(responseCode = "400", description = "COMMON_INVALID_INPUT — refreshToken 누락"),
+            @ApiResponse(responseCode = "401", description = "INVALID_REFRESH_TOKEN — 위조·만료·이미 사용했거나 로그아웃으로 폐기된 토큰"),
+            @ApiResponse(responseCode = "403", description = "MEMBER_DEACTIVATED — 탈퇴한 회원")
+    })
     @PostMapping("/refresh")
     public com.atcrew.common.response.ApiResponse<AuthInfo> refresh(@RequestBody @Valid RefreshRequest request) {
         return com.atcrew.common.response.ApiResponse.success(authService.refresh(request.refreshToken()));
