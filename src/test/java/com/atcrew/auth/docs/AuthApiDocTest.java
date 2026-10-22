@@ -16,9 +16,17 @@ import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.restdocs.mockmvc.MockMvcRestDocumentation.document;
 import static org.springframework.restdocs.operation.preprocess.Preprocessors.*;
 import static org.springframework.restdocs.payload.PayloadDocumentation.*;
@@ -179,6 +187,87 @@ class AuthApiDocTest extends RestDocsIntegrationSupport {
                                 fieldWithPath("data.refreshToken").description("새로 발급된 리프레시 토큰 (JWT)")
                         )
                 ));
+    }
+
+    /**
+     * 갱신으로 받은 Refresh Token으로 다시 갱신할 수 있어야 한다. 한 번만 갱신해 보는 테스트로는
+     * 새 토큰이 저장되지 않는 결함(MemberRepository#recordLogin의 clear가 대기 중 INSERT를 버림)이 드러나지 않았다.
+     * 이전 토큰 재사용은 401 — 같은 초에 발급돼도 jti 덕분에 새 토큰과 값이 달라야 한다.
+     */
+    @Test
+    void 갱신으로_받은_토큰으로_연속_갱신_가능하고_이전_토큰은_거절된다() throws Exception {
+        String uniqueEmail = "chain-refresh-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com";
+        MvcResult registerResult = mockMvc.perform(post("/api/auth/email/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new RegisterRequest(
+                                uniqueEmail, "Secure1!", "Secure1!", "연속갱신유저",
+                                true, true, true, false, "Asia/Seoul", "KR", "KO"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String refreshToken = objectMapper.readTree(registerResult.getResponse().getContentAsString())
+                .at("/data/refreshToken").asText();
+
+        for (int i = 0; i < 3; i++) {
+            MvcResult result = mockMvc.perform(post("/api/auth/refresh")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(new RefreshRequest(refreshToken))))
+                    .andExpect(status().isOk())
+                    .andReturn();
+            String used = refreshToken;
+            refreshToken = objectMapper.readTree(result.getResponse().getContentAsString())
+                    .at("/data/refreshToken").asText();
+
+            mockMvc.perform(post("/api/auth/refresh")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(new RefreshRequest(used))))
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.code").value("INVALID_REFRESH_TOKEN"));
+        }
+    }
+
+    /**
+     * 같은 Refresh Token으로 동시에 갱신하면 정확히 하나만 성공한다(회전 1회용 보장).
+     * jti가 없던 때는 같은 초에 재발급된 토큰이 소비된 토큰과 같은 값이라, 5건 중 여러 건이 성공했다.
+     * 단 그 회귀는 실행 순서에 따라 초록으로 지나갈 수 있다 — 결정적인 가드는 JwtProviderTest다.
+     */
+    @Test
+    void 같은_토큰_동시_갱신은_하나만_성공한다() throws Exception {
+        String uniqueEmail = "concurrent-refresh-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com";
+        MvcResult registerResult = mockMvc.perform(post("/api/auth/email/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new RegisterRequest(
+                                uniqueEmail, "Secure1!", "Secure1!", "동시갱신유저",
+                                true, true, true, false, "Asia/Seoul", "KR", "KO"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String refreshToken = objectMapper.readTree(registerResult.getResponse().getContentAsString())
+                .at("/data/refreshToken").asText();
+        String body = objectMapper.writeValueAsString(new RefreshRequest(refreshToken));
+
+        int requests = 5;
+        ExecutorService executor = Executors.newFixedThreadPool(requests);
+        try {
+            CountDownLatch start = new CountDownLatch(1);
+            List<Future<Integer>> futures = new ArrayList<>();
+            for (int i = 0; i < requests; i++) {
+                futures.add(executor.submit(() -> {
+                    start.await();
+                    return mockMvc.perform(post("/api/auth/refresh")
+                                    .contentType(MediaType.APPLICATION_JSON)
+                                    .content(body))
+                            .andReturn().getResponse().getStatus();
+                }));
+            }
+            start.countDown();
+            List<Integer> statuses = new ArrayList<>();
+            for (Future<Integer> future : futures) {
+                statuses.add(future.get(30, TimeUnit.SECONDS));
+            }
+            assertThat(statuses).containsOnly(200, 401);
+            assertThat(statuses).filteredOn(code -> code == 200).hasSize(1);
+        } finally {
+            executor.shutdownNow();
+        }
     }
 
     /**

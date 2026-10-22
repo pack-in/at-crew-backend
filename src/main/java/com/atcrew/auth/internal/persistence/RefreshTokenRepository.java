@@ -11,8 +11,9 @@ import java.util.Optional;
 public interface RefreshTokenRepository extends JpaRepository<RefreshToken, String> {
 
     // 파생 쿼리(SELECT 후 em.remove)로 두면 DELETE가 flush까지 미뤄지는데, Hibernate는 flush 시 INSERT를
-    // DELETE보다 먼저 실행한다 — 같은 초에 재로그인하면 refresh JWT(iat/exp가 초 단위)가 이전 토큰과
-    // 완전히 동일해져 uk_rt_token 충돌이 난다. 즉시 실행되는 bulk DELETE로 Mongo의 "먼저 지우고 넣는" 순서를 보존한다.
+    // DELETE보다 먼저 실행한다. jti 도입(JwtProvider) 전에는 같은 초에 재로그인하면 refresh JWT가 이전 토큰과
+    // 완전히 동일해져 uk_rt_token 충돌이 났다. 지금은 값이 매번 달라 충돌하지 않지만, 즉시 실행되는 bulk DELETE로
+    // Mongo의 "먼저 지우고 넣는" 순서를 그대로 보존한다.
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("DELETE FROM RefreshToken r WHERE r.memberId = :memberId")
     void deleteAllByMemberId(String memberId);
