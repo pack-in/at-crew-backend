@@ -228,6 +228,7 @@ class AuthApiDocTest extends RestDocsIntegrationSupport {
     /**
      * 같은 Refresh Token으로 동시에 갱신하면 정확히 하나만 성공한다(회전 1회용 보장).
      * jti가 없던 때는 같은 초에 재발급된 토큰이 소비된 토큰과 같은 값이라, 5건 중 여러 건이 성공했다.
+     * 단 그 회귀는 실행 순서에 따라 초록으로 지나갈 수 있다 — 결정적인 가드는 JwtProviderTest다.
      */
     @Test
     void 같은_토큰_동시_갱신은_하나만_성공한다() throws Exception {
